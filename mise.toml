@@ -1,0 +1,45 @@
+[tools]
+go = "1.27.4"
+golangci-lint = "2.15.0"
+
+# Space-separated list of Go module directories. Empty until the library task lands the base
+# module; the tools under tools/ add their own checks with their tasks.
+[env]
+GO_MODULES = ""
+
+# The one check: read-only and deterministic, stopping at the first failure.
+[tasks.check]
+description = "Build, vet, format, tidy, test, and lint every module; writes nothing"
+run = '''
+set -eu
+export GOWORK=off
+for mod in $GO_MODULES; do
+  echo "check: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go build ./...
+  go vet ./...
+  unformatted=$(gofmt -l .)
+  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
+  go mod tidy -diff
+  go test -race ./...
+  golangci-lint run ./...
+done
+echo "check: ok"
+'''
+
+# Read-only and development-time: it reads the network, so CI never runs it.
+[tasks.currency]
+description = "Report every tool and requirement behind its latest; writes nothing"
+run = '''
+set -eu
+status=0
+out=$(mise outdated --local 2>/dev/null || true)
+[ -z "$out" ] || { echo "$out"; status=1; }
+export GOWORK=off
+for mod in $GO_MODULES; do
+  cd "$MISE_PROJECT_ROOT/$mod"
+  trailing=$(go list -m -u -f '{{if and (not .Indirect) .Update}}{{.Path}} {{.Version}} -> {{.Update.Version}}{{end}}' all)
+  [ -z "$trailing" ] || { echo "$mod:"; echo "$trailing"; status=1; }
+done
+exit $status
+'''

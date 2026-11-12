@@ -1,0 +1,10 @@
+{
+  "plansDirectory": "./.claude/plans",
+  "permissions": {
+    "allow": [
+      "Bash(mise run:*)",
+      "Bash(mise tasks:*)",
+      "Skill(marathon:marathon)"
+    ]
+  }
+}
