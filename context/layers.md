@@ -120,25 +120,32 @@ the next version.
 
 ## Payload measurement
 
-The three spikes were built from their `HEAD` and run over every top-level input in `~/docs` of
-their formats; no golden fallback was needed. Parts nested in archives or attachments, and legacy
-formats LibreOffice converts first, are outside it.
+The three spikes were built from their release tags (office `v0.1.0`, mail `v0.3.1`, onenote
+`v0.1.0`; the commits past them touch only a README) and run over every file in `~/docs`, at any
+depth, whose extension names their formats; no golden fallback was needed. Parts nested in
+archives or attachments, and legacy formats LibreOffice converts first, are outside it. Only
+inputs that exit 0 are measured.
 
 ```sh
 S=<scratch dir>
-for t in office mail onenote; do mkdir -p $S/src/$t
-  git -C ~/experiments/spike-ai-pipeline-$t archive HEAD | tar -x -C $S/src/$t; done
+for t in office:v0.1.0 mail:v0.3.1 onenote:v0.1.0; do mkdir -p $S/src/${t%:*}
+  git -C ~/experiments/spike-ai-pipeline-${t%:*} archive ${t#*:} | tar -x -C $S/src/${t%:*}; done
 (cd $S/src/mail && CARGO_TARGET_DIR=$S/target-mail cargo build --release --locked)
 (cd $S/src/onenote && CARGO_TARGET_DIR=$S/target-onenote cargo build --release --locked)
 (cd $S/src/office && mise trust . && mise exec -- dotnet publish src/SpikeAiPipeline.Office \
    -c Release -r linux-x64 -p:NuGetAudit=false -o $S/office-bin)
-# per office input (docx docm dotx dotm xlsx xlsm xltx xltm pptx pptm potx potm ppsx):
-$S/office-bin/spike-ai-pipeline-office "$f" --media $o/media > $o/model.json
-$S/office-bin/spike-ai-pipeline-office "$f" --format markdown > $o/text.md
-# per mail input (eml msg pst mbox):
-$S/target-mail/release/spike-ai-pipeline-mail --attachments $o/media "$f" > $o/out.jsonl
-# per OneNote section (.one; notebooks would count their sections twice):
-$S/target-onenote/release/spike-ai-pipeline-onenote --media $o/media "$f" > $o/out.jsonl
+run() { # run <tool> <find -iname patterns…>; one numbered directory per input under $S/out/<tool>
+  t=$1; shift; i=0; p=(); for e; do p+=(-o -iname "*.$e"); done
+  find ~/docs -type f \( "${p[@]:1}" \) -print0 | sort -z | while IFS= read -r -d '' f; do
+    i=$((i+1)); o=$S/out/$t/$i; mkdir -p $o; case $t in
+    office)  $S/office-bin/spike-ai-pipeline-office "$f" --format markdown > $o/text.md
+             $S/office-bin/spike-ai-pipeline-office "$f" --media $o/media > $o/model.json ;;
+    mail)    $S/target-mail/release/spike-ai-pipeline-mail --attachments $o/media "$f" > $o/out.jsonl ;;
+    onenote) $S/target-onenote/release/spike-ai-pipeline-onenote --media $o/media "$f" > $o/out.jsonl ;;
+    esac 2> $o/stderr; echo $? > $o/exit; done; }
+run office docx docm dotx dotm xlsx xlsm xltx xltm pptx pptm potx potm ppsx
+run mail eml msg pst mbox
+run onenote one   # sections only: notebooks would count their sections twice
 ```
 
 office's publish needs `-p:NuGetAudit=false`: restore fails on Microsoft.DotNet.ILCompiler
@@ -146,11 +153,24 @@ office's publish needs `-p:NuGetAudit=false`: restore fails on Microsoft.DotNet.
 
 The measure: a structured text field is a string the contract carries outside its Markdown; its
 bytes are the string's UTF-8 bytes before JSON escaping. A string is duplicated when, with
-whitespace collapsed and Markdown backslash escapes removed, it occurs in its record's Markdown
-(office's document, onenote's page). A mail body form (`text`, `html`, `rtf`, `derived.html`) is an
-alternative of the Markdown made from it, and counts whole. Output is the bytes on stdout; office's
-is the model plus its Markdown as one JSON string, as one run will write them. The run reproduced
-byte for byte.
+whitespace collapsed to one space and trimmed, it occurs in its record's Markdown with Markdown
+backslash escapes removed and whitespace collapsed the same way (office's document, mail's message,
+onenote's page). A mail body form (`text`, `html`, `rtf`, `derived.html`) is an alternative of the
+Markdown made from it, and counts whole. The fields counted:
+
+- **office**: every string in the model, and every numeric cell `value` as its JSON text, except
+  the enumerations and references `type`, `format`, `schema`, `contentType`, `source`, `target`,
+  `valueType`, `ref`, `sharedFrom`, `chartType`, `kind`, and a media block's `name`.
+- **mail**: each message's (nested ones included) `subject`, `transport_headers`,
+  `conversation_topic`, attachment `filename`, and body forms; addresses and folder paths are not
+  counted.
+- **onenote**: each page's `title`, `author`, and every string under `content` and `ink_text`
+  except `kind`, `style`, `file`, `extension`, `font_color`, `highlight`, `math`, `shape`,
+  `status`, `completed_time`, `type`, `number`, `prefix`, `suffix`, `bullet`, `id`, `section`, and
+  the times.
+
+Output is the bytes on stdout; office's is `model.json` plus `,"markdown":` and `text.md` as one
+JSON string, as one run will write them. The run reproduced byte for byte.
 
 | Tool | Read | Output | Markdown | Structured text | Duplicated | Share |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -162,9 +182,9 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
 `Encryption.one`, password-protected; both as their READMEs state.
 
 - **office.** 98% of the model's text is in the Markdown: inline text 24,237 B (24,145
-  duplicated), text cell values 5,547 B (5,505), chart categories, names, and titles 3,288 B (all),
-  comment anchors and authors 1,024 B (all), picture alt text 797 B (all), sheet names 341 B (all);
-  formulas 534 B (67, since Markdown shows a formula only without a value). The larger waste is
+  duplicated), text cell values 5,547 B (5,505), numeric cell values 391 B (359), chart
+  categories, names, and titles 3,288 B (all), comment anchors and authors 1,024 B (all), picture
+  alt text 797 B (all), sheet names 341 B (all); formulas 534 B (67, since Markdown shows a formula only without a value). The larger waste is
   the model's shape: 564,912 B written indented is 182,072 B compact, so indentation is 382,840 B,
   62% of the output; compact, the text block tree is 122,509 B beside sheet tables 40,506 B, media
   blocks 9,773 B, and charts 9,284 B. By family: docx 7.3%, xlsx 4.4%, pptx 3.4% duplicated.
@@ -173,8 +193,8 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   `.pst` 46%, an mbox 31%, an `.eml` 7%. `transport_headers` is 1,305,095 B, 26% of the output;
   114,724 B of it repeats the parsed subject, addresses, and threading fields.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
-  every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames 3,240 B (2,865),
-  ink alternatives 79 B (8). Media written over mail and onenote: 235 MB.
+  every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
+  3,240 B (2,865), ink alternatives 79 B (8). Media written over mail and onenote: 235 MB.
 
 ## Consumers of structured text
 
@@ -390,9 +410,9 @@ type Item struct { Output *Output; Part *Found; Warning *Warning }
 type Warning struct { Tool, Where, What string }
 ```
 
-`Item.Warning` is new. processing yields a tool's stderr warnings as a record output, but slice
-1's stderr line (`<tool>: warning: <where>: <what>`) parses to typed data, and warnings as data
-are quarry's.
+`Item.Warning` is new. processing yields a tool's stderr warnings as a record output, but the
+common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed data, and
+warnings as data are quarry's.
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
 docproc and Cerebro wire the same stages from the tools a host holds:
@@ -491,6 +511,7 @@ type Chunker interface {
 
 // RefusedError is an implementation's error for an input the endpoint refused: recorded, not
 // fatal, and held in the cache when Status is 4xx. Any other error stops the job.
+var ErrRefused = errors.New("infer: refused")
 type RefusedError struct { Status int; Message string }
 func (e *RefusedError) Is(target error) bool // matches ErrRefused
 ```
@@ -602,8 +623,15 @@ type Profile struct {
     Dimensions    int       `json:"dimensions"` // measured from the vectors, as docinfer's Space
     Chunker       string    `json:"chunker"`    // the Chunker's Settings
 }
-type Usage struct { Input, Output int }
-type Warning struct { Tool, Where, What string }
+type Usage struct {
+    Input  int `json:"input"`
+    Output int `json:"output"`
+}
+type Warning struct {
+    Tool  string `json:"tool"`
+    Where string `json:"where"`
+    What  string `json:"what"`
+}
 type Inference struct {
     Capability string   `json:"capability"`        // vision | transcription
     Content    string   `json:"content"`           // the image's or windows' SHA-256
@@ -626,12 +654,14 @@ type Chunk struct { // docinfer's outdir.Line, less the input's file fields
     Span   Span   `json:"span"`
     Source Source `json:"source"` // output, metadata, vision, or transcript, and its ref
     Part   Part   `json:"part"`   // provenance: the part, its parent and depth, where found
-    Stage  *Stage `json:"stage,omitempty"`
+    Stage  *Stage  `json:"stage,omitempty"`
     Output *Output `json:"output,omitempty"`
-    Vector string `json:"vector,omitzero"` // base64 little-endian float32, as returned
-    Error  string `json:"error,omitzero"`  // why the endpoint rejected it
+    Vector string  `json:"vector,omitzero"` // base64 little-endian float32, as returned
+    Error  string  `json:"error,omitzero"`  // why the endpoint rejected it
 }
-type Checkpoint struct { After uint64 } // a store's cursor: the last message whose events are out
+type Checkpoint struct { // a store's cursor
+    After uint64 `json:"after"` // the last message whose events are out
+}
 type Done struct {
     Profile Profile `json:"profile"` // the resolved identity the consumer registers its space by
     Batches int     `json:"batches"`
@@ -642,8 +672,8 @@ type Done struct {
 }
 ```
 
-Batch ids, per-item digests, provenance, warnings, and the profile are quarry's, as slice 1
-keeps them out of the tools. The manifest's sequence range is Cerebro's, from its job stream.
+Batch ids, per-item digests, provenance, warnings, and the profile are quarry's, as the common
+envelope keeps them out of the tools. The manifest's sequence range is Cerebro's, from its job stream.
 
 ### Per-job cancellation
 
@@ -869,7 +899,7 @@ type GetJob struct { Job string }       // -> Job
 type GetUpload struct { Upload string } // -> Upload: the offset to resume from
 type ListProfiles struct{}              // -> []Profile
 
-type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time }
+type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time } // Expires in UTC
 type Profile struct { Name string; Resolved event.Profile } // quarry's resolved identity
 type Job struct {
     ID, Profile, Name string; Size int64; SHA256 string
@@ -934,8 +964,9 @@ Cerebro's events are service-to-service, and Athena relays its own stream ("Brow
 ### Events
 
 Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS headers
-(`messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id` is a UUIDv7,
-`subject` is the job's ID, and `Nats-Msg-Id` deduplicates a retried append. Consumers
+(`standards-lab/context/messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id` is a UUIDv7,
+`subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed by the `id` as go-messaging keys it,
+deduplicates a retried append. Consumers
 de-duplicate through go-messaging's inbox on `source` and `id`.
 
 ```text
@@ -970,14 +1001,14 @@ cerebro.job.cancelled                {}                                         
 
 ```go
 type Extracted struct {
-    Source  event.Source   // the text extracted from: an output's Ref, or an inference's
-    Content string         // the text's SHA-256
-    Name    string         // the extraction's
-    Outcome string         // extracted, incomplete, refused, held
-    Value   jsontext.Value `json:",omitzero"` // the JSON the schema describes
-    Error   string         `json:",omitzero"`
-    Usage   event.Usage
-    TookMS  int64
+    Source  event.Source   `json:"source"`         // the text extracted from: an output's Ref, or an inference's
+    Content string         `json:"content"`        // the text's SHA-256
+    Name    string         `json:"name"`           // the extraction's
+    Outcome string         `json:"outcome"`        // extracted, incomplete, refused, held
+    Value   jsontext.Value `json:"value,omitzero"` // the JSON the schema describes
+    Error   string         `json:"error,omitzero"`
+    Usage   event.Usage    `json:"usage,omitzero"`
+    TookMS  int64          `json:"took_ms"`
 }
 ```
 
@@ -990,7 +1021,7 @@ type Extracted struct {
 
 A result batch reaches the consumer as a `cerebro.job.batch` event: quarry's `event.Batch`, its
 chunks' text, provenance, and base64 vectors. The consumer commits each batch in one
-transaction, de-duplicated through its inbox (evidence 7). The job ends with `completed`, whose
+transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7). The job ends with `completed`, whose
 data is the manifest:
 
 ```go
@@ -1006,7 +1037,7 @@ type Manifest struct {
 }
 ```
 
-The sequence range is settled here as Cerebro's own, as slice 2 left it. Each event carries the
+The sequence range is Cerebro's own ("Event shapes" above). Each event carries the
 job's sequence, from 1 with no gap, in the CloudEvents `sequence` extension as a decimal string:
 the expected-last-subject-sequence check lets one appender write the subject at a time, so the
 job's sequence is contiguous whatever the stream's global sequence interleaves. The consumer
@@ -1161,7 +1192,8 @@ The JSON names are docinfer's, snake_case (`seams_matched`).
 
 ### The command modules
 
-From the spike root's `cmd/` and `internal/`.
+From the spike root's `cmd/` and `internal/`; the third column names the spike packages each
+module is built from.
 
 ```text
 cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report}; requires
