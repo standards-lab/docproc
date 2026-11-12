@@ -7,9 +7,11 @@ data-intelligence capstone's processing service). Each arrow points from a layer
 uses it:
 
 ```text
+                    ┌────────────────────────┐
+                    │                        ▼
 system tools ──► docproc ──► docinfer ──► Cerebro
-                               ▲            ▲
-go-ai ─────────────────────────┴────────────┘
+                               ▲             ▲
+go-ai ─────────────────────────┴─────────────┘
 ```
 
 docproc extracts and knows no model; docinfer infers over what docproc extracts, calling go-ai
@@ -522,8 +524,10 @@ output's does, and the index records it, so a seen part replays its warnings.
 The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, so the index
 records every output with its content's digest. A seen part replays its whole subtree from the
 index: its outputs and warnings, then each child, in the order recorded, emitted as seen in turn
-with its own outputs, warnings, and children, then its own event. Before it replays anything, the
-dispatcher looks each descendant up under its route's current stage. A child's file exists only
+with its own outputs, warnings, and children, then its own event. A child's event carries its
+`Child.Part`, its `Depth` set from the replaying walk, since the same content can sit at another
+depth. Before it replays anything, the dispatcher looks each descendant up, by its
+`Child.Part.SHA256`, under its `Part.ContentType.Route`'s current stage. A child's file exists only
 while its parent's stage runs, so when one misses, its stage's identity having changed since, the
 part is not seen: it is prepared again, and its children with it.
 
@@ -635,13 +639,15 @@ type Index interface {
     RecordFlags(ctx context.Context, sha256 string, flags []inspect.Flag) error
 }
 type Child struct { // a found part, as its parent's entry records it
-    SHA256 string; Name, Where string; Size int64; ContentType ContentType; Outcome Outcome
+    Part    Part    `json:"part"`
+    Outcome Outcome `json:"outcome"`
 }
 ```
 
 `Warnings` and `AppendWarning` record a part's warnings as `Outputs` and `Append` record its
-outputs. `Child` carries the found part's `ContentType` in place of processing's `Route`, so a
-replayed child's part is whole.
+outputs. `Child` holds the found part's `Part` whole, in place of processing's `SHA256`, `Name`,
+`Where`, `Size`, and `Route`, so a replayed child's part is the part as found. The index records
+it as its JSON has it: `Path` and `After`, local, are never recorded.
 
 A claim is a lease, and every implementation honors one contract. A claim lasts the index's lease
 from its last `Claim` or `Renew`; the dispatcher renews it on a timer, at a third of the lease,
@@ -796,12 +802,22 @@ dispatch's events. `cmd/docinfer` feeds it from a `cmd/docproc` run directory th
 package, which reads it with docproc's `rundir`, its metadata text the spike's `metadataText`, and
 keeps its own directory's schema "1".
 
-`chunk` is the spike's docinfer chunk, kept, its `Splitter` the pipeline's chunker:
+`chunk` is the spike's docinfer chunk, its `Splitter` the pipeline's chunker. Its `Chunk` holds
+its offsets as a `Span`, the spike's docinfer `outdir.Span` moved here, so the chunker's result
+and docinfer's `Chunk`, which embeds it, share one shape:
 
 ```go
 package chunk
-type Chunk struct { Text string; Start, End int } // the text's [Start, End) bytes
-const Version = "1"
+// Chunk's JSON is docinfer.Chunk's, which embeds it, versioned by docinfer.Version.
+type Chunk struct {
+    Text string `json:"text"`
+    Span Span   `json:"span"`
+}
+type Span struct { // the text's [Start, End) bytes: the spike's docinfer outdir.Span
+    Start int `json:"start"`
+    End   int `json:"end"`
+}
+const Version = "1" // of the splitting, which keys the held embeddings
 type Splitter struct { Bound int }
 func (s Splitter) Settings() string // Version and Bound, which key the held embeddings
 func (s Splitter) Split(text string) []Chunk
@@ -837,8 +853,8 @@ Nothing needs one within an attempt either: `Done.Digest` runs over the batches 
 ```go
 package docinfer
 const Version = "1" // of the shapes below and job's, grown by addition only
-// Span is the spike's docinfer outdir.Span, carried over; a transcript's seams are docproc's
-// audio.Seam, whose JSON names are outdir.Seam's; Counts is under "docinfer's packages".
+// A chunk's span is chunk.Span; a transcript's seams are docproc's audio.Seam, whose JSON names
+// are outdir.Seam's; Counts is under "docinfer's packages".
 type Capability string // vision, transcription, embeddings; or a caller's own, as extraction
 type Identity struct {
     Capability Capability `json:"capability"`
@@ -891,15 +907,15 @@ type Source struct {
 }
 // Chunk is the spike's docinfer outdir.Line less the input's file fields (Input, File,
 // ContentType) and its Part and Output, which its Source holds, plus Digest. outdir.Part's
-// outcome leaves in the part's own event, not on each chunk.
+// outcome leaves in the part's own event, not on each chunk. It embeds chunk.Chunk, whose fields
+// encode inline, so its JSON is {digest, text, span, index, source, vector, error}.
 type Chunk struct {
-    Digest string `json:"digest"` // SHA-256 of Text: the per-item digest
-    Text   string `json:"text"`
-    Index  int    `json:"index"`  // within its source text
-    Span   Span   `json:"span"`
-    Source int    `json:"source"` // an index into the batch's Sources
-    Vector string `json:"vector,omitzero"` // base64 little-endian float32, as returned
-    Error  string `json:"error,omitzero"`  // why the endpoint rejected it
+    Digest      string `json:"digest"` // SHA-256 of Text: the per-item digest
+    chunk.Chunk        // inline: text, span
+    Index       int    `json:"index"`           // within its source text
+    Source      int    `json:"source"`          // an index into the batch's Sources
+    Vector      string `json:"vector,omitzero"` // base64 little-endian float32, as returned
+    Error       string `json:"error,omitzero"`  // why the endpoint rejected it
 }
 type Done struct {
     Batches int    `json:"batches"`
@@ -1512,12 +1528,13 @@ dispatch            changed: Input.Reader, spooled, and Input.SHA256, checked; I
                     prepared again when a descendant's stage changed; office's stage passes
                     the part's path and makes embedded and OLE media child parts; Pool keeps
                     one context for its inputs. Index gains Renew, under the lease contract,
-                    and Warnings and AppendWarning; Child carries ContentType for Route;
-                    FileIndex renews its claims. Its shapes, beside its other types, with
-                    Version "1": Event gains JSON tags, Err left out; Part takes the spike's
-                    docproc schema.Part shape, its Kind, Route, Reason, and MIME moving into
-                    the new ContentType; Identity takes schema.Stage's JSON names; Output takes
-                    docproc's JSON names, Path and Value never marshalled; Warning {tool,
+                    and Warnings and AppendWarning; Child becomes {Part, Outcome}, the found
+                    Part whole in place of its SHA256, Name, Where, Size, and Route; FileIndex
+                    renews its claims. Its shapes, beside its other types, with Version "1":
+                    Event gains JSON tags, Err left out; Part takes the spike's docproc
+                    schema.Part shape, its Kind, Route, Reason, and MIME moving into the new
+                    ContentType; Identity takes schema.Stage's JSON names; Output takes the
+                    spike's docproc JSON names, Path and Value never marshalled; Warning {tool,
                     where, what} is new, parsed from the envelope's stderr line, since the
                     spike's docproc schema has no Warning type and processing carries tool
                     warnings as []string (email.Stream.Warnings, office.Result.Warnings)
@@ -1548,13 +1565,14 @@ docinfer             new, the root package: Pipeline, Config, Cache, Key, and Me
                      client, with the go-ai mapping (a 4xx other than 408 and 429 refused,
                      anything else stopping the job; usage; incomplete). Its shapes, beside its
                      other types, with Version "1": Capability, Identity, Usage, Profile,
-                     Outcome, Inference, Batch (no index), Done, the Counts below, the spike's
-                     Span (its Seam is docproc's audio.Seam), its Source less Ref and File, plus
-                     the source's part, stage, and output, and its Line as Chunk, less the
-                     input's file fields, its part, and its output, plus Digest, its source by
-                     index into the batch
-chunk                moved from the root's internal/docinfer/chunk; Splitter gains Settings,
-                     its Version and Bound
+                     Outcome, Inference, Batch (no index), Done, the Counts below, its Source
+                     less Ref and File, plus the source's part, stage, and output, and its Line
+                     as Chunk, embedding chunk.Chunk, less the input's file fields, its part,
+                     and its output, plus Digest, its source by index into the batch; a
+                     transcript's seams are docproc's audio.Seam
+chunk                moved from the root's internal/docinfer/chunk; Chunk's Start and End become
+                     its Span, outdir.Span moved here, and its fields gain JSON tags (text,
+                     span); Splitter gains Settings, its Version and Bound
 job                  new: dispatch, then inference, under one job's context, Run taking the
                      input alone; Outputs, the content store; Update, the Go side's one-of of
                      what Run yields, with no JSON, kind, or job of its own; its shapes, beside
