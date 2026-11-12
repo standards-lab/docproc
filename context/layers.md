@@ -13,7 +13,8 @@ go-ai ────────────────────────�
 ```
 
 quarry extracts and knows no model; docinfer infers over what quarry extracts, calling go-ai
-directly; Cerebro runs docinfer's jobs, and calls go-ai itself only for extraction. Each signature
+directly; Cerebro runs docinfer's jobs over quarry's dispatcher, stages, and index, which it
+wires, and calls go-ai itself only for extraction. Each signature
 or schema traces to a capstone task in `standards-lab/context/data-intelligence.md` ("Design") or
 to spike evidence. quarry is to be renamed docproc (its tools docproc-ooxml, docproc-mail, and
 docproc-onenote) through `plan` once this task merges; this note keeps the name quarry.
@@ -390,7 +391,7 @@ route, inspect             what a file is, whether it is safe to open, which sta
 tool                       the exec and container runners                                    kept
 internal/cli               the tools' shared contract: exit codes, stderr lines, Spool       kept
 office, email, onenote     a tool's reader, decoding its schema "2"                         changed
-document, picture, audio,  the other formats, on their tools                                 kept
+document, picture, audio,  the other formats, on their tools; audio's Seam JSON-tagged       kept
   media, sevenzip
 dispatch                   stages, the walk over an input's parts, the index; the shapes of  changed
                              its events, parts, outputs, and warnings
@@ -663,14 +664,14 @@ their `event.Define[T]` calls and a `Recorder` alias, over data types in the pac
 separate events package exists; go-core's `event` is the CloudEvents envelope alone.
 
 quarry and docinfer are libraries that emit no CloudEvents themselves, so neither declares event
-kinds or has a `messaging.go`. Their shapes sit in their producing packages' ordinary files, each
-package's `Version` naming their version: quarry's are `dispatch`'s (above), and docinfer's are
-its root package's and `job`'s ("docinfer's API"). Cerebro's `messaging.go` declares its
-`cerebro.job.*` kinds, each over one of these or over its own data types ("Events"). The spike's
-docproc `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move
-into `dispatch` and `inspect`, and `rundir/schema` aliases them ("The nested modules"); the
-spike's docinfer `outdir` shapes move into docinfer. The shapes grow by addition only, as the
-tools' contracts do.
+kinds or has a `messaging.go`. Their shapes sit in their producing packages' ordinary files:
+quarry's are `dispatch`'s (above), versioned by `dispatch.Version`, and docinfer's are its root
+package's and `job`'s ("docinfer's API"), both versioned by `docinfer.Version`. Cerebro's
+`messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own data
+types ("Events"). The spike's docproc `schema` shapes
+(`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move into `dispatch` and
+`inspect`, and `rundir/schema` aliases them ("The nested modules"); the spike's docinfer `outdir`
+shapes move into docinfer. The shapes grow by addition only, as the tools' contracts do.
 
 ## docinfer's API
 
@@ -838,8 +839,8 @@ Nothing needs one within an attempt either: `Done.Digest` runs over the batches 
 ```go
 package docinfer
 const Version = "1" // of the shapes below and job's, grown by addition only
-// Span and Seam are the spike's docinfer outdir shapes of those names, carried over; Counts is
-// under "docinfer's packages".
+// Span is the spike's docinfer outdir.Span, carried over; a transcript's seams are quarry's
+// audio.Seam, whose JSON names are outdir.Seam's; Counts is under "docinfer's packages".
 type Capability string // vision, transcription, embeddings; or a caller's own, as extraction
 type Identity struct {
     Capability Capability `json:"capability"`
@@ -860,16 +861,16 @@ type Usage struct {
 }
 type Outcome string // described, incomplete, refused
 type Inference struct {
-    Capability Capability `json:"capability"`          // vision | transcription
-    Part       string     `json:"part"`                // its part's SHA-256
-    Content    []string   `json:"content"`             // an image's SHA-256, or windows' in order
-    Outcome    Outcome    `json:"outcome"`
-    Held       bool       `json:"held,omitzero"`       // read from the cache, not asked of a model
-    TextSHA256 string     `json:"text_sha256,omitzero"` // the text, in job's Outputs
-    Text       string     `json:"-"`                   // local: job puts it in Outputs
-    Seams      []Seam     `json:"seams,omitempty"`     // a transcript's, as audio.Join made them
-    Usage      Usage      `json:"usage,omitzero"`
-    TookMS     int64      `json:"took_ms"`
+    Capability Capability   `json:"capability"`           // vision | transcription
+    Part       string       `json:"part"`                 // its part's SHA-256
+    Content    []string     `json:"content"`              // an image's SHA-256, or windows' in order
+    Outcome    Outcome      `json:"outcome"`
+    Held       bool         `json:"held,omitzero"`        // read from the cache, not asked of a model
+    TextSHA256 string       `json:"text_sha256,omitzero"` // the text, in job's Outputs
+    Text       string       `json:"-"`                    // local: job puts it in Outputs
+    Seams      []audio.Seam `json:"seams,omitempty"`      // a transcript's, as audio.Join made them
+    Usage      Usage        `json:"usage,omitzero"`
+    TookMS     int64        `json:"took_ms"`
 }
 // Batch holds its chunks, and each part and source text they come from once, by index: a text's
 // or a part's SHA-256 can't name an occurrence, since the same content in two places is two.
@@ -1102,8 +1103,7 @@ to go-ai").
 
 docinfer's pipeline calls go-ai's client itself, one configuration per capability. It is the
 spike's docinfer `vision`, `transcribe`, and `embed` packages, their concurrency moved into
-`Pipeline`. The go-ai mapping that a `model` adapter module would have held lives here, in
-docinfer, beside the calls it maps.
+`Pipeline`. The go-ai mapping lives here, beside the calls it maps.
 
 ```go
 package docinfer
@@ -1240,8 +1240,8 @@ func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, e
 - **Extraction** is optional, a caller's prompt and schema run by Cerebro on go-ai over each
   source text the pipeline chunks: each text and Markdown output, and each inference text, by
   its SHA-256. Its cache key is `docinfer.Key(docinfer.Identity{"extraction", model,
-  settings}, content)`, whose settings hold the prompt's and schema's SHA-256, its token bound, and its
-  effort. Athena's summary chain maps onto it (`athena-mapping`).
+  settings}, content)`, whose settings hold the prompt's and schema's SHA-256, its token bound,
+  and its effort. Athena's summary chain maps onto it (`athena-mapping`).
 
 ### Streams and subjects
 
@@ -1370,8 +1370,9 @@ Each event carries the job's sequence, from 1 with no gap, in the CloudEvents `s
 extension as a decimal string. The expected-last-subject-sequence check lets one appender write
 the subject at a time, so the job's sequence is contiguous whatever the stream's global sequence
 interleaves. A batch is identified by its job and its event's sequence, which no attempt reuses,
-so docinfer numbers no batches and nothing renumbers them. The consumer checks completeness by holding every sequence from `First` to `Last` and by recomputing
-`Batches`, `Chunks`, and `Digest` over the batches it committed. Since a redelivered job's
+so docinfer numbers no batches and nothing renumbers them. The consumer checks completeness by
+holding every sequence from `First` to `Last` and by recomputing `Batches`, `Chunks`, and
+`Digest` over the batches it committed. Since a redelivered job's
 attempt replays content seen before, and a store resumes from its last checkpoint, the range and
 digest cover every attempt's batches, and the manifest's digest is Cerebro's, not docinfer's
 `Done.Digest`, which covers one attempt. Counts are reported per attempt, never summed: an
@@ -1391,9 +1392,9 @@ chunks arrived, and a vector is checked by its length against the profile's dime
 ## Changes per tool and per package
 
 What each promotion changes from its spike, derived from the sections above; the task that
-builds it is in brackets, or the docinfer goal for docinfer's. Every tool moves to schema "2" and the common envelope, and each
-re-records its goldens under "2" as one `.jsonl` and one `.stderr` per fixture, compared byte for
-byte, which tests its determinism.
+builds it is in brackets, or the docinfer goal for docinfer's. Every tool moves to schema "2" and
+the common envelope, and each re-records its goldens under "2" as one `.jsonl` and one `.stderr`
+per fixture, compared byte for byte, which tests its determinism.
 
 ### quarry-ooxml [ooxml]
 
@@ -1486,8 +1487,8 @@ From spike-ai-pipeline-onenote 0.1.0.
 ### quarry's packages [library]
 
 From spike-ai-pipeline-processing v0.9.0, as `github.com/standards-lab/quarry`, requiring
-`golang.org/x/text` alone. quarry loses what the earlier design gave it of inference: no
-`infer`, `chunk`, or `job` package, no `model` module, and no `cmd/docinfer`, all docinfer's.
+`golang.org/x/text` alone. It holds no inference: the pipeline, `chunk`, `job`, and
+`cmd/docinfer` are docinfer's.
 
 ```text
 route               kept
@@ -1496,8 +1497,9 @@ inspect             changed: Flag gains JSON tags (check, class, evidence), the 
 tool                kept
 internal/cli        kept: exit codes 1 to 4, the stderr parse, Spool
 document, picture,  kept
-  audio, media,
-  sevenzip
+  media, sevenzip
+audio               changed: Seam gains JSON tags (matched, matches, overlap, position), the
+                    spike's docinfer outdir.Seam's names, so docinfer's inferences carry it
 office              changed: decodes the schema "2" document and sheet lines, streamed as records;
                     Convert reads Request.Path, copying only a legacy document or an RTF;
                     Request.Format and the block tree's decoder go, since one run returns the
@@ -1549,15 +1551,16 @@ docinfer             new, the root package: Pipeline, Config, Cache, Key, and Me
                      anything else stopping the job; usage; incomplete). Its shapes, beside its
                      other types, with Version "1": Capability, Identity, Usage, Profile,
                      Outcome, Inference, Batch (no index), Done, the Counts below, the spike's
-                     Seam and Span, its Source less Ref and File, plus the source's part, stage,
-                     and output, and its Line as Chunk, less the input's file fields, its part,
-                     and its output, plus Digest, its source by index into the batch
+                     Span (its Seam is quarry's audio.Seam), its Source less Ref and File, plus
+                     the source's part, stage, and output, and its Line as Chunk, less the
+                     input's file fields, its part, and its output, plus Digest, its source by
+                     index into the batch
 chunk                moved from the root's internal/docinfer/chunk; Splitter gains Settings,
                      its Version and Bound
 job                  new: dispatch, then inference, under one job's context, Run taking the
                      input alone; Outputs, the content store; Update, the Go side's one-of of
                      what Run yields, with no JSON, kind, or job of its own; its shapes, beside
-                     its other types: Checkpoint and Done
+                     its other types, under docinfer's Version: Checkpoint and Done
 internal/            from the root's internal/docinfer/apptest: Serve and its replies, the fake
   endpointtest       OpenAI-compatible endpoint the pipeline's tests drive go-ai's client against
 internal/visiontest, moved from processing, with the integration and findings tests that call a
@@ -1610,12 +1613,14 @@ quarry/cmd/docproc     [docproc]   cmd/docproc, internal/docproc/{app, apptest, 
                                    Statx, on golang.org/x/sys; its report is the reports task's
                                    [reports]
 docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
-                        goal]      models, outdir, source, report}; requires docinfer, quarry,
-                                   go-ai, go-cli-sdk, and go-core; builds docinfer.Vision,
-                                   Transcription, and Embeddings per endpoint where vision,
-                                   transcribe, and embed were; infer keeps its commands and
-                                   feeds Pipeline.Run from source; outdir implements
-                                   docinfer.Cache over results/; its directory stays schema "1"
+                        goal]      infer, models, outdir, source, report}; requires docinfer,
+                                   quarry, go-ai, go-cli-sdk, and go-core; builds
+                                   docinfer.Vision, Transcription, and Embeddings per endpoint
+                                   where vision, transcribe, and embed were; infer keeps its run
+                                   command (commands.go, progress.go), its execute and sources
+                                   now the root package's, and feeds Pipeline.Run from source;
+                                   outdir implements docinfer.Cache over results/; its
+                                   directory stays schema "1"
 ```
 
 `rundir` and `rundir/schema` are public packages of quarry's base module, with no module or tag
@@ -1663,8 +1668,9 @@ carried; and events delivered in order within a delivery group.
 - Assumes the spike's docproc `stages` belongs in quarry, so Cerebro and docproc wire stages
   alike, and its `schema` and `rundir` become quarry's public `rundir` and `rundir/schema`, so
   `cmd/docinfer` in docinfer's repository reads a docproc run directory.
-- Assumes inference needs nothing of quarry beyond dispatch's events and shapes and `audio`'s
-  join, so quarry depends on no model concept and imports no docinfer package.
+- Assumes inference needs nothing of quarry beyond `dispatch` (its dispatcher, events, and
+  shapes), `audio`'s join and its `Seam`, and, for `cmd/docinfer`, `rundir`, so quarry depends on
+  no model concept and imports no docinfer package.
 - Assumes every stream input is spooled to scratch before its stages run, since every stage and
   tool reads a path; no stage reads a stream directly.
 - Assumes one `docinfer.Pipeline` per replica, whose per-capability bounds every concurrent job
