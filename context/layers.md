@@ -1234,7 +1234,7 @@ dispatch            changed: Input.Reader, spooled; Item.Warning, typed, in plac
                     Part takes docproc's schema.Part shape, its Kind, Route, Reason, and MIME
                     moving into the new ContentType; Output takes docproc's JSON names; Warning
                     {tool, where, what} is new, parsed from the envelope's stderr line, since
-                    docproc's schema has no Warning and processing carries tool warnings as
+                    docproc's schema has no Warning type and processing carries tool warnings as
                     []string (email.Stream.Warnings, office.Result.Warnings)
 stages              moved from the root's internal/docproc/stages, less WriteTable
 chunk               moved from the root's internal/docinfer/chunk, unchanged
