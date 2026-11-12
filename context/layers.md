@@ -102,9 +102,12 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
   appends what the Markdown lacks. The Markdown is rendered to plain text by CommonMark's
   semantics: a link reads as its text, an image as its alt text, emphasis and backslash escapes
   are removed, and link and image destinations and autolinks are URLs. Both sides are normalized
-  to Unicode NFKC and split into word tokens, runs of letters and digits, with a URL one token
-  (a URL in angle brackets keeps no whitespace, RFC 3986 appendix C). The text body's tokens are
-  aligned in order with the Markdown's; each text-body unit holding a token the Markdown lacks,
+  to Unicode NFC and split into word tokens: a word is a maximal run of letters and digits
+  (general categories L* and N*), and symbols (S*), punctuation (P*), controls and format
+  characters (C*), and separators only separate words, since the comparison is of words and
+  those are not words. A URL is one token (a URL in angle brackets keeps no whitespace, RFC 3986
+  appendix C). Tokens compare case-sensitively. The text body's tokens are aligned in order with
+  the Markdown's; each text-body unit holding a token the Markdown lacks,
   the sentence when its line holds more than one and else the line, is appended in order as a
   paragraph, escaped as a text body's Markdown is. A message with an RTF body also stores a text
   body, so the text body stands for the RTF's text.
@@ -242,19 +245,19 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
   it is made from the text body, nothing is. Compared by quarry-mail's content rule instead
-  (CommonMark plain text, NFKC, word tokens aligned in order), the units it appends are 684 B in
-  10 messages. 295 B in 7 messages are text bodies that say what their HTML doesn't: cpython's
+  (CommonMark plain text, NFC, letter-and-digit words aligned in order), the units it appends
+  are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
   `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
   inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
   log book.", where the HTML shows the image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg`
-  (16 B), and Tika's `testMSG_chinese.msg` (28 B). 389 B in 3 messages are the sentence of Outlook
-  2003's welcome message that names `SharePoint™ Services`, once in Tika's `test-outlook2003.msg`
-  (49 B) and twice in libyal's `outlook.pst` (170 B each): its stored text body holds U+0099
-  where its HTML holds `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code unit 0x0099), a
-  character the sending client mis-decoded, not one quarry-mail decodes. No decoder correction
-  applies: PT_STRING8 is read in its message's code page, and a MIME part's charset label as the
-  WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
-  windows-1252), so the rule appends those sentences as the text body holds them. The RTF's text
+  (16 B), and Tika's `testMSG_chinese.msg` (28 B). Outlook 2003's welcome message, once in
+  Tika's `test-outlook2003.msg` and twice in libyal's `outlook.pst`, appends nothing: its stored
+  text body holds U+0099 where its HTML holds `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code
+  unit 0x0099), a character the sending client mis-decoded, not one quarry-mail decodes, and as
+  a control and a symbol both only separate words, so `SharePoint` matches. No decoder
+  correction applies: PT_STRING8 is read in its message's code page, and a MIME part's charset
+  label as the WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
+  windows-1252). The RTF's text
   (control words and ignorable groups, the font, color, and style tables among them, stripped;
   `\par` and `\line` as line breaks; `\'hh` decoded in its `\ansicpg` code page; `\rquote` and
   the other symbol words as their characters), compared the same way, lacks nothing where the
@@ -299,7 +302,7 @@ that applies:
 | ooxml | `properties` | `metadata` | added |
 | mail | `markdown` | `dispatch/email.go` (`own`), `email/model.go` (`Conversation`) | kept |
 | mail | `body.html`, `body.derived.html` | none; `Conversation.HTML` copies `html` and nothing reads it; the Markdown is made from them | **cut** |
-| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 684 B of text bodies beside an HTML body (and 28 B of RTF, the same line) | into Markdown |
+| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line) | into Markdown |
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | kept |
@@ -1247,13 +1250,13 @@ From spike-ai-pipeline-mail 0.3.1.
   are still decoded, since the Markdown is made from them.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
   the text body's content the Markdown lacks, by the schema's content rule (CommonMark plain
-  text, NFKC, word tokens aligned in order), appended by sentence or line as a paragraph, escaped
-  as a text body's Markdown is. The goldens of `generated/eml/03-html-inline-image`,
-  `generated/msg/03-html-inline-image`, `generated/pst/mailbox`,
-  `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and `msg/tika-testMSG_chinese` show it.
-  `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s show the sentence whose stored text
-  holds U+0099 where the HTML holds `™`, appended as stored; their links, written as `<url>` in
-  the text body, append nothing.
+  text, NFC, letter-and-digit words aligned in order), appended by sentence or line as a
+  paragraph, escaped as a text body's Markdown is. The goldens of
+  `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
+  `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
+  `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
+  append nothing: their text body differs from the HTML only in links written as `<url>` and a
+  stored U+0099 where the HTML holds `™`, neither a word.
 - **Kept.** The store's `display_name`, a label kept as metadata.
 - **Moved.** `body.derived.markdown` up to the message's `markdown`.
 - **Added.** `smtp_address` on an Exchange (`EX`) address, from `PidTagSmtpAddress`.
