@@ -588,8 +588,8 @@ type Part struct {
     Name string; Size int64; SHA256 string; ContentType ContentType; Flags []Flag
     Parent string; Depth int; Where string
 }
-// Stage, Output, ContentType, Flag, Span, Source, Seam, and Counts are docproc's and docinfer's
-// shapes of those names, carried over.
+// Stage, Output, ContentType, Flag, Span, Source, and Seam are docproc's and docinfer's shapes
+// of those names, carried over; Counts is under "Changes per tool and per quarry package".
 type Identity struct {
     Capability string `json:"capability"` // vision | transcription | embeddings
     Model      string `json:"model"`
@@ -637,7 +637,7 @@ type Done struct {
     Batches int     `json:"batches"`
     Chunks  int     `json:"chunks"`
     Digest  string  `json:"digest"`  // SHA-256 over the batches' digests, in order
-    Counts  Counts  `json:"counts"`  // docinfer's VisionCounts and TranscriptionCounts, and parts
+    Counts  Counts  `json:"counts"`  // parts by outcome, and docinfer's counts
     Error   string  `json:"error,omitzero"`
 }
 ```
@@ -1027,4 +1027,165 @@ digest cover every attempt's batches, and the manifest's digest is Cerebro's, no
 
 ## Changes per tool and per quarry package
 
-Filled by slice 4.
+What each promotion changes from its spike, derived from the sections above; the task that
+builds it is in brackets. Every tool moves to schema "2" and the common envelope, and each
+re-records its goldens under "2" as one `.jsonl` and one `.stderr` per fixture, compared byte for
+byte, which tests its determinism.
+
+### quarry-ooxml [ooxml]
+
+From spike-ai-pipeline-office 0.1.0.
+
+- **Toolchain.** .NET 10 to .NET 11 (`Directory.Build.props`' `net10.0`, mise's `dotnet`
+  10.0.400), and System.CommandLine 2.0.14 to 3.0.0, first. The publish's
+  `-p:NuGetAudit=false`, which the ILCompiler 10.0.13 advisory forces under .NET 10, goes with
+  the move. DocumentFormat.OpenXml 3.5.1 stays.
+- **One run.** `--format json|markdown` goes: one compact `document` line holds the Markdown and
+  the model, where office writes one rendering, its JSON indented (indentation is 62% of its
+  output, measured above).
+- **Cut.** The block tree (headings, paragraphs, lists, docx tables, their inlines), sections,
+  headers and footers, notes, comments, chart blocks, and picture `alt` and `title`; their text is
+  the Markdown's, unchanged.
+- **Kept.** `sheets`, as office's `TableCell` less its docx-only fields; the Markdown renderer.
+- **Added.** `properties` (core, app, custom, typed as stored); `media` as one list in document
+  order, each with its placement (section, sheet, or slide); `embedded` packages and `ole`
+  payloads with `prog_id` written as stored, which office leaves unextracted.
+- **Envelope.** `line` and `schema` "2"; snake_case names (office's are camelCase); media names
+  keep the stored extension only when it is 1 to 8 ASCII letters and digits, where `MediaStore`
+  keeps `Path.GetExtension` whole.
+- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture.
+
+### quarry-mail [mail]
+
+From spike-ai-pipeline-mail 0.3.1.
+
+- **Toolchain.** The fixture generator's MimeKit 4.18.2 to 5.0.0, its fixture truth unchanged.
+  The Rust crates stay.
+- **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
+  are still decoded, since the Markdown is made from them.
+- **Moved.** `body.derived.markdown` up to the message's `markdown`.
+- **Added.** `smtp_address` on an Exchange (`EX`) address, from `PidTagSmtpAddress`.
+- **Flags.** `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
+- **Envelope.** `schema` "2". The Markdown links an inline image by its attachment's `file`, the
+  envelope's media rule, where mail's keeps the `cid:` source as written.
+- **Goldens.** `tests/golden/{msg,pst,generated}/` re-recorded under "2".
+
+### quarry-onenote [onenote]
+
+From spike-ai-pipeline-onenote 0.1.0.
+
+- **Toolchain.** typed-path held at 0.12.4; it moves to 0.13.0 only with onenote_parser.
+- **Cut.** A page's `content` (containers, outlines, paragraphs, runs, tables, tags), its `ink`
+  record, and `ink_text`; image `alt_text`, `ocr_text`, `hyperlink`, `printout_page`; ink
+  `strokes` and `bounds`; section and section group `display_name`.
+- **Added.** A page's `media`, flattened: each image, embedded file, and ink SVG that `content`
+  and `ink` held, in the order processing's `onenote/media.go` walks them today, which moves into
+  the tool. An embedded file's `file_type` becomes `type`.
+- **Envelope.** `schema` "2"; a page's `creation_time` and `modification_time` become optional,
+  left out when absent.
+- **Goldens.** Added: it commits none today. Each fixture gains a `.jsonl` and `.stderr`; the
+  JSON-pointer expectations in `tests/fixtures/*.json` stay as the readable checks.
+
+### quarry's packages [library]
+
+From spike-ai-pipeline-processing v0.9.0, as `github.com/standards-lab/quarry`, requiring
+`golang.org/x/text` alone.
+
+```text
+route, inspect      kept
+tool                kept
+internal/cli        kept: exit codes 1 to 4, the stderr parse, Spool
+document, picture,  kept
+  audio, media,
+  sevenzip
+office              changed: decodes the schema "2" document line; Request.Format and the block
+                    tree's decoder go, since one run returns the Markdown, properties, media, and
+                    sheets
+email               changed: Message.Markdown up, Address.SMTPAddress; Body, Conversation.HTML,
+                    and Folder.DisplayName go; Request.Attachments becomes Media
+onenote             changed: Page.Markdown and Page.Media decode the tool's lists; content.go's
+                    decoder and media.go's walk go
+dispatch            changed: Input.Reader, spooled; Item.Warning, typed, in place of a warnings
+                    record output; office's stage makes embedded and OLE media child parts;
+                    Pool keeps one context for its inputs
+stages              moved from the root's internal/docproc/stages, less WriteTable
+chunk               moved from the root's internal/docinfer/chunk, unchanged
+infer               new: the interfaces, Cache, Key, and Pipeline, from docinfer's infer, vision,
+                    transcribe, and embed less their client calls, and outdir's Key and Hold
+event               new: docproc's schema shapes, docinfer's Seam, Span, Source, Line as Chunk,
+                    and the Counts below
+job                 new: dispatch, then inference, under one job's context
+internal/goldentest, kept: test helpers that call no model
+  mediatest, textscore,
+  corpustest
+internal/visiontest, moved to cmd/docinfer [docinfer], with the integration and findings tests
+  audiotest          that call a model, since the library's module requires no client
+```
+
+`onenote.Medium.Where` names a medium's outline path today, from the walk; the contract's media
+carry no placement, so a medium's `Where` names its page and its index in `media`. An optional
+placement field returns by addition if the `design` task asks for one.
+
+`event.Counts` carries docinfer's `outdir.Counts` per job, less `Lines`, which `Done.Chunks`
+counts (an `event.Chunk` is one chunk in one place), with each `Usage` less `Total`, and with the
+job's parts by outcome:
+
+```go
+type Counts struct {
+    Parts         map[string]int       `json:"parts"`    // by dispatch.Outcome, every depth
+    Outputs       int                  `json:"outputs"`  // output events
+    Texts         int                  `json:"texts"`    // text and Markdown outputs chunked
+    Metadata      int                  `json:"metadata"` // metadata texts, one per input
+    Chunks        int                  `json:"chunks"`   // distinct chunks, by content
+    Held          int                  `json:"held"`     // distinct chunks the cache held
+    Embedded      int                  `json:"embedded"`
+    Rejected      int                  `json:"rejected"` // this job or held
+    Requests      int                  `json:"requests"` // embeddings requests sent
+    Images        int                  `json:"images"`   // image outputs, vision run or not
+    Vision        *VisionCounts        `json:"vision,omitempty"` // nil when skipped
+    Windows       int                  `json:"windows"`
+    Transcription *TranscriptionCounts `json:"transcription,omitempty"`
+    Tokens        Tokens               `json:"tokens"`   // this job's requests only
+}
+type VisionCounts struct {
+    Images, Held, Described, Incomplete, Empty, Refused, Requests, Texts int
+}
+type TranscriptionCounts struct {
+    Distinct, Held, Transcribed, Failed, Requests, Transcripts int
+    SeamsMatched, SeamsUnmatched                               int
+}
+type Tokens struct { Vision, Transcription *Usage; Embeddings Usage }
+```
+
+The JSON names are docinfer's, snake_case (`seams_matched`).
+
+### The command modules
+
+From the spike root's `cmd/` and `internal/`.
+
+```text
+cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report}; requires
+                           go-cli-sdk and go-core; wires the library's stages, keeps
+                           WriteTable; its report is the reports task's [reports]
+cmd/docinfer   [docinfer]  cmd/docinfer, internal/docinfer/{app, apptest, config, models,
+                           outdir, source, report}; requires go-ai, the only module that does;
+                           its go-ai adapter replaces vision, transcribe, and embed; infer keeps
+                           its commands and feeds Pipeline.Run from source; outdir implements
+                           infer.Cache over results/; its directory stays schema "1"
+cmd/internal   [docproc]   schema and rundir, importable by cmd/ alone; schema's shapes alias
+                           event's, its record bytes unchanged under schema "1"
+```
+
+### Asked of go-ai
+
+Requests to v1.ai.client, which `docinfer` and the capstone build on:
+
+- A transcription request that can reopen its clip, such as `TranscriptionRequest.Open func()
+  (io.ReadCloser, error)`, so `Transcribe` joins the one retry loop and honors Retry-After; or,
+  failing that, the Retry-After an `*APIError` carried.
+- `RetryPolicy`'s retry of 408, 429, and 503 proven against the live gateway, not by unit tests
+  alone.
+- The surface above kept: `Generate`, `GenerateStream` with `Accumulator`, `Embed`,
+  `Transcribe`, `*APIError`'s `Status` and `Message`, the usage fields the adapters map, and
+  `Config.Query` and the three formats for `cmd/docinfer`.
+- A consumer key in a header other than the bearer token, only if the gateway asks for one.
