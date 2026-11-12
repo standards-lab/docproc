@@ -430,15 +430,15 @@ type Item struct { Output *Output; Part *Found; Warning *Warning }
 common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed data, and
 warnings as data are quarry's.
 
-dispatch's `messaging.go` holds the shapes of the changes it produces, as JSON on the standard
+dispatch holds the shapes of the changes it produces beside its other types, as JSON on the standard
 library alone: a part, its stage's `Identity`, an output, a warning. `Part` takes the shape of
-docproc's `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its local fields
-left out of the JSON; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move into its
-`ContentType`. `Identity` is already docproc's `schema.Stage` as JSON, so no `Stage` type is
-added; `Stage` stays the interface.
+docproc's `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its local fields left
+out of the JSON; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move into its
+`ContentType`. `Identity` is already docproc's `schema.Stage` as JSON, so no `Stage` type is added;
+`Stage` stays the interface.
 
 ```go
-package dispatch // messaging.go
+package dispatch
 type Part struct {
     Name        string         `json:"name"`
     Size        int64          `json:"size"`
@@ -543,7 +543,7 @@ rejected embedding batch one text at a time, all of which docinfer's `vision`, `
 
 ```go
 package infer
-// Identity, Usage, and Profile are infer's own, in its messaging.go ("Shapes as JSON").
+// Identity, Usage, and Profile are infer's own, beside its other types ("Shapes as JSON").
 type Image struct { Path, MediaType, SHA256 string }
 type Window struct { Path, SHA256 string } // a 16 kHz mono WAV, audio's window
 type Text struct {
@@ -640,21 +640,27 @@ B in base64 (data-intelligence.md, "Results").
 
 ### Shapes as JSON
 
-The package that produces a change holds the shapes of it, as JSON on the standard library alone,
-in its own `messaging.go`, as go-web-service's `domain/organization/messaging.go`,
-`domain/document/messaging.go`, and `admin/database/messaging.go` hold their data types beside
-their `event.Define[T]` calls. quarry has no events package: it is a library and emits no
-CloudEvents itself, and go-core's `event` is the CloudEvents envelope alone. Its shapes live
-with their producers: `dispatch`'s part, output, and warning (above); `infer`'s inference texts,
-batches, chunks, done, and the identities and usage they record; `job`'s update, which composes
-them, and its checkpoint. docproc's `schema` shapes
+The package that produces a change owns its event kinds and their data types: the kinds in its
+`messaging.go`, the data types beside its other types, as JSON on the standard library alone.
+go-web-service's `domain/organization/messaging.go` and `domain/document/messaging.go` hold only
+their `event.Define[T]` calls and a `Recorder` alias, over data types in the package's `entities.go`
+(`OrganizationData`, `OrganizationDeletedData`, `LogoUploadedData`, `LogoDeletedData`;
+`DirectoryData`, `DirectoryDeletedData`, `FileUploadedData`, `FileDeletedData`), and
+`admin/database/messaging.go` defines its events over `string`. There is no separate events package,
+and go-core's `event` is the CloudEvents envelope alone. quarry is a library, emits no CloudEvents
+itself, and declares no event kinds, so it has no `messaging.go`, and its shapes sit in their
+producing packages' ordinary files: `dispatch`'s part, output, and warning (above); `infer`'s
+inference texts, batches, chunks, done, and the identities and usage they record; `job`'s update,
+which composes them, and its checkpoint. Cerebro's `messaging.go` holds its `cerebro.job.*` kinds,
+and Cerebro's own data types sit beside its other types. docproc's `schema` shapes
 (`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move into `dispatch` and
 `inspect`; docinfer's (`internal/docinfer/outdir`) into `infer`. `cmd/internal/schema` aliases the
-moved types and keeps record bytes unchanged under schema "1". The shapes grow by addition only,
-as the tools' contracts do.
+moved types and keeps record bytes unchanged under schema "1", `cmd/docproc`'s run clearing
+`Output.Path` and `Value` as `job` does. The shapes grow by addition only, as the tools' contracts
+do.
 
 ```go
-package infer // messaging.go
+package infer
 // Span, Source, and Seam are docinfer's outdir shapes of those names, carried over; Counts is
 // under "Changes per tool and per quarry package".
 type Identity struct {
@@ -688,7 +694,11 @@ type Batch struct {
     Chunks []Chunk `json:"chunks"`
     Digest string  `json:"digest"` // SHA-256 over its chunks' digests, in order
 }
-type Chunk struct { // docinfer's outdir.Line, less the input's file fields
+// Chunk is docinfer's outdir.Line less the input's file fields (Input, File, ContentType), plus
+// Digest and Stage, its Part dispatch.Part in place of outdir.Part (schema.Part plus kind, route,
+// and outcome): kind and route sit in the part's ContentType, and its outcome leaves in the
+// part's own update, not on each chunk.
+type Chunk struct {
     Digest string             `json:"digest"` // SHA-256 of Text: the per-item digest
     Text   string             `json:"text"`
     Index  int                `json:"index"`  // within its source text
@@ -709,7 +719,7 @@ type Done struct {
     Error   string  `json:"error,omitzero"`
 }
 
-package job // messaging.go
+package job
 const Version = "1" // of Update and the shapes it carries
 type Kind string    // part, output, warning, inference, batch, checkpoint, done
 type Update struct {
@@ -1048,7 +1058,7 @@ through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's
 `cerebro.job.<job>`, not its type ("Streams and subjects"). quarry declares no event types:
 Cerebro's own `messaging.go` defines each type below with go-core's `event.Define[T]`, over
 quarry's `job.Update` for the types that carry one of its update `Kind`s, and over Cerebro's own
-data types for the rest.
+data types, beside its other types, for the rest.
 
 ```text
 type                                 data                                        whose
@@ -1220,17 +1230,22 @@ onenote             changed: Page.Markdown and Page.Media decode the tool's list
                     decoder and media.go's walk go
 dispatch            changed: Input.Reader, spooled; Item.Warning, typed, in place of a warnings
                     record output; office's stage makes embedded and OLE media child parts;
-                    Pool keeps one context for its inputs; messaging.go: Part takes docproc's
-                    schema.Part shape, its Kind, Route, Reason, and MIME moving into the new
-                    ContentType; Output and Warning take docproc's JSON names
+                    Pool keeps one context for its inputs; its shapes, beside its other types:
+                    Part takes docproc's schema.Part shape, its Kind, Route, Reason, and MIME
+                    moving into the new ContentType; Output takes docproc's JSON names; Warning
+                    {tool, where, what} is new, parsed from the envelope's stderr line, since
+                    docproc's schema has no Warning and processing carries tool warnings as
+                    []string (email.Stream.Warnings, office.Result.Warnings)
 stages              moved from the root's internal/docproc/stages, less WriteTable
 chunk               moved from the root's internal/docinfer/chunk, unchanged
 infer               new: the interfaces, Cache, Key, and Pipeline, from docinfer's infer, vision,
                     transcribe, and embed less their client calls, and outdir's Key and Hold;
-                    messaging.go: Identity, Usage, Profile, Inference, Batch, Done, the Counts
-                    below, and docinfer's Seam, Span, Source, and Line as Chunk
-job                 new: dispatch, then inference, under one job's context; messaging.go:
-                    Update, its Kind, Version, and Checkpoint
+                    its shapes, beside its other types: Identity, Usage, Profile, Inference,
+                    Batch, Done, the Counts below, and docinfer's Seam, Span, Source, and Line as
+                    Chunk, less the input's file fields, plus Digest and Stage, its Part a
+                    dispatch.Part, which drops outdir.Part's outcome
+job                 new: dispatch, then inference, under one job's context; its shapes, beside
+                    its other types: Update, its Kind, Version, and Checkpoint
 cmd/internal/       moved from the root's internal/docproc/{schema,rundir} [docproc]: packages of
   schema, rundir    this module, as "The nested modules" says
 internal/goldentest, kept: test helpers that call no model
@@ -1296,13 +1311,15 @@ cmd/docinfer   [docinfer]  cmd/docinfer, internal/docinfer/{app, apptest, config
                            implements infer.Cache over results/; its directory stays schema "1"
 ```
 
-`cmd/internal/schema` and `cmd/internal/rundir` are packages of the library's base module, with
-no module or tag of their own. Go's internal rule is by import path, so the nested `cmd/docproc`
-and `cmd/docinfer` import them and nothing outside `cmd/` can. They version with the library,
-which both commands require. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
-`Output`, `Identity` as its `Stage`, and `inspect.Flag`), its record bytes unchanged under
-schema "1". Its `Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`) moves to `cmd/docproc`'s
-`run`, its one caller, so the base module requires `golang.org/x/text` alone.
+`cmd/internal/schema` and `cmd/internal/rundir` are packages of the library's base module, with no
+module or tag of their own. Go's internal rule is by import path, so the nested `cmd/docproc` and
+`cmd/docinfer` import them and nothing outside `cmd/` can. They version with the library, which both
+commands require. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`, `Output`,
+`Identity` as its `Stage`, and `inspect.Flag`). Its record bytes stay unchanged under schema "1"
+because `cmd/docproc`'s run clears `Output.Path` and `Value` before it writes an output, as `job`
+does, since docproc's `schema.Output` has neither. Its `Statx` (`stat_linux.go`, on
+`golang.org/x/sys/unix`) moves to `cmd/docproc`'s `run`, its one caller, so the base module requires
+`golang.org/x/text` alone.
 
 ### Asked of go-ai
 
