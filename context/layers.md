@@ -189,8 +189,8 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
 - **office.** 98% of the model's text is in the Markdown: inline text 24,237 B (24,145
   duplicated), text cell values 5,547 B (5,505), numeric cell values 391 B (359), chart
   categories, names, and titles 3,288 B (all), comment anchors and authors 1,024 B (all), picture
-  alt text 797 B (all), sheet names 341 B (all); formulas 534 B (67, since Markdown shows a formula only without a value). The larger waste is
-  the model's shape: 564,912 B written indented is 182,072 B compact, so indentation is 382,840 B,
+  alt text 797 B (all), sheet names 341 B (all); formulas 534 B (67, since Markdown shows a
+  formula only without a value). The larger waste is the model's shape: 564,912 B written indented is 182,072 B compact, so indentation is 382,840 B,
   62% of the output; compact, the text block tree is 122,509 B beside sheet tables 40,506 B, media
   blocks 9,773 B, and charts 9,284 B. By family: docx 7.3%, xlsx 4.4%, pptx 3.4% duplicated.
 - **mail.** Body forms are the duplication: `text` 1,461,216 B, `rtf` 145,003 B, `derived.html`
@@ -647,10 +647,11 @@ their `event.Define[T]` calls. quarry has no events package: it is a library and
 CloudEvents itself, and go-core's `event` is the CloudEvents envelope alone. Its shapes live
 with their producers: `dispatch`'s part, output, and warning (above); `infer`'s inference texts,
 batches, chunks, done, and the identities and usage they record; `job`'s update, which composes
-them, and its checkpoint. docproc's `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`,
-`record.go`) move into `dispatch` and `inspect`; docinfer's (`internal/docinfer/outdir`) into
-`infer`. `cmd/internal/schema` aliases the moved types and keeps record bytes unchanged under
-schema "1". The shapes grow by addition only, as the tools' contracts do.
+them, and its checkpoint. docproc's `schema` shapes
+(`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move into `dispatch` and
+`inspect`; docinfer's (`internal/docinfer/outdir`) into `infer`. `cmd/internal/schema` aliases the
+moved types and keeps record bytes unchanged under schema "1". The shapes grow by addition only,
+as the tools' contracts do.
 
 ```go
 package infer // messaging.go
@@ -1034,19 +1035,20 @@ and ~/docs' 592 jobs make no streams to reap. `standards-lab/context/messaging.m
 stream conventions (an event's subject is its type; one owner's stream captures `<prefix>.>`)
 govern a web service's events for committed mutations of executed commands. A job's progress
 and result stream is a different use case, which those conventions don't govern. The browser
-never subscribes:
-Cerebro's events are service-to-service, and Athena relays its own stream ("Browser").
+never subscribes: Cerebro's events are service-to-service, and Athena relays its own stream
+("Browser").
 
 ### Events
 
 Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS headers
-(`standards-lab/context/messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id` is a UUIDv7,
-`subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed by the `id` as go-messaging keys it,
-deduplicates a retried append. Consumers
-de-duplicate through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
-`cerebro.job.<job>`, not its type ("Streams and subjects"). Cerebro's own `messaging.go` defines
-each type below with go-core's `event.Define[T]`: over quarry's `job.Update` for quarry's kinds,
-and over its own data types for the rest.
+(`standards-lab/context/messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id`
+is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
+by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
+through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
+`cerebro.job.<job>`, not its type ("Streams and subjects"). quarry declares no event types:
+Cerebro's own `messaging.go` defines each type below with go-core's `event.Define[T]`, over
+quarry's `job.Update` for the types that carry one of its update `Kind`s, and over Cerebro's own
+data types for the rest.
 
 ```text
 type                                 data                                        whose
@@ -1068,8 +1070,7 @@ cerebro.job.cancelled                {}                                         
 
 - **quarry's shapes pass through.** `job.Runner.Run`'s updates go out as they are made, each
   event's data quarry's `job.Update` JSON unchanged (`job.Version` "1"), one CloudEvents type
-  per `Kind`. Two
-  things change on the way: `Batch.Index` is renumbered across attempts, so a batch's id, job
+  per `Kind`. Two things change on the way: `Batch.Index` is renumbered across attempts, so a batch's id, job
   and index, stays unique, and quarry's `done` becomes no event of its own: its `Done` goes into
   the manifest.
 - **Cerebro's own** are the job's lifecycle, extraction, and the manifest. The job's state is
@@ -1101,19 +1102,19 @@ type Extracted struct {
 
 A result batch reaches the consumer as a `cerebro.job.batch` event: quarry's `infer.Batch`, its
 chunks' text, provenance, and base64 vectors. The consumer commits each batch in one
-transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7). The job ends with `completed`, whose
-data is the manifest:
+transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7). The job ends
+with `completed`, whose data is the manifest:
 
 ```go
 type Manifest struct {
-    Profile  infer.Profile // the resolved identity the consumer registers its space by
-    First    uint64        // the job's first event's sequence: 1
-    Last     uint64        // this event's sequence
-    Batches  int           // batch events in [First, Last]
-    Chunks   int
-    Digest   string        // SHA-256 over those batches' digests, in sequence order
-    Counts   infer.Counts  // quarry's Done.Counts, the last attempt's
-    Attempts int
+    Profile  infer.Profile `json:"profile"`  // the resolved identity the consumer registers its space by
+    First    uint64        `json:"first"`    // the job's first event's sequence: 1
+    Last     uint64        `json:"last"`     // this event's sequence
+    Batches  int           `json:"batches"`  // batch events in [First, Last]
+    Chunks   int           `json:"chunks"`
+    Digest   string        `json:"digest"`   // SHA-256 over those batches' digests, in sequence order
+    Counts   infer.Counts  `json:"counts"`   // quarry's Done.Counts, the last attempt's
+    Attempts int           `json:"attempts"`
 }
 ```
 
