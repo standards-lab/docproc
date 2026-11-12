@@ -1779,8 +1779,9 @@ dispatch            changed, as "Input from a stream, or a path", "Dispatch", "C
                     Item.Warning and Event.Warning, typed, in place of a warnings record output;
                     Item.After and Event.After, set by the mail stage; Part.ID, a repeated Where
                     suffixed; a seen part replays its entry's log by SHA-256, with no file, its
-                    Stages checked, a resumed input's replay skipping items to Input.After, and
-                    a miss prepared in place, the entries along its replay path dropped; a
+                    Stages checked, a resumed input's replay skipping its log's prefix
+                    ("Dispatch"), and a miss prepared in place, the entries along its replay
+                    path dropped; a
                     quarantined part's file kept only through Keep, where processing always
                     keeps it; a resumed input's entry never recorded; office's stage passes the
                     part's path, yields an xlsx's Markdown and typed cells per sheet, and makes
