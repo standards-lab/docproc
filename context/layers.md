@@ -550,6 +550,7 @@ func New(cfg Config) (*Dispatcher, error)
 func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, error]
 func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error]
 func (d *Dispatcher) Content() Content // Config.Content, for a host's own puts and reads
+func (d *Dispatcher) Index() Index     // Config.Index, for a host's drop of an entry
 
 func (e Event) Keep() // keep the output's file, or the part's, past the loop body
 type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, encrypted,
@@ -596,11 +597,10 @@ A part is seen when its entry's `Stages` each equal the current identity of the 
 name, one check per stage the subtree used. A replayed child recorded prepared, encrypted, no
 processor yet, or seen is looked up under its route's current stage and replays its own log; a
 child of any other outcome replays as recorded. A miss while replaying, a child whose entry is
-gone or not seen, a stage wired since for a child that had none, or a part whose recorded
-output's content is found missing from `Content` (deleted by hand, or swept early under clock
-skew), prepares that part in place, within the same dispatch, as a part not seen is prepared, and
-drops the entries along its replay path, from the input to the part, so no entry records a
-subtree it no longer matches. The part's events take its place in the replay's order.
+gone or not seen, or a stage wired since for a child that had none, prepares that child in
+place, within the same dispatch, as a part not seen is prepared, and drops the entries along
+its replay path, from the input to the child, so no entry records a subtree it no longer
+matches. The child's events take its place in the replay's order.
 
 `inspect.Options` is in no stage's identity: a part's flags are recorded by its SHA-256
 (`RecordFlags`), so a seen part keeps the verdict it was given when it was prepared, whatever
@@ -730,8 +730,13 @@ The host sweeps content by age, never by reference. Its retention is at least th
 retention plus the renew age plus the job stream's retention: every put an entry's preparation
 makes follows the entry's creation, from which its age runs ("Index"), and leaves its content
 younger than the renew age, so a content is never older than an entry naming it plus the renew
-age, however long the stage runs, and a replay never names a swept content. Cerebro's
-retentions are the `state` task's ("State and subjects").
+age, however long the stage runs, and no live entry names a swept content. Cerebro's retentions
+are the `state` task's ("State and subjects").
+
+A content missing within that bound, deleted by hand or swept early under clock skew, is outside
+the contract. docproc can't see one: a replay opens no content, its outputs carrying only their
+SHA-256. docinfer finds it when it opens the content, on a cache miss or to chunk its text, and
+its host acts on it ("One job, and its cancellation").
 
 `cmd/docproc`'s run directory holds its content in a `FileContent`; Cerebro's is blob storage
 through `docproc/storage`.
@@ -973,6 +978,10 @@ type Input struct {
     Event    dispatch.Event
     Metadata string // or the input's metadata text, Event then the depth-0 part's own event
 }
+// MissingError is Run's error for an input whose content Run's content misses: Event is the
+// input's, and Err is Content.Open's, which matches fs.ErrNotExist. Permanent doesn't report it.
+type MissingError struct { Event dispatch.Event; Err error }
+func (e *MissingError) Unwrap() error
 type Result struct { // one field is set
     Inference *Inference
     Progress  *Progress
@@ -1193,6 +1202,13 @@ inputs' content from it, and `Run` puts each inference text into it before its i
 quarantined part's file: its bytes stay within the job's input, which the caller holds. A process
 that dies leaves its files in the dispatcher's `Dir`, so a host empties its `Dir` when it starts: no
 job outlives its process, and Cerebro's work queue redelivers the job.
+
+A content the store misses ("Content") reaches `job` as the pipeline's `*docinfer.MissingError`.
+`job` drops the entry of the input's part, `Dispatcher.Index().Drop` on
+`dispatch.Key{SHA256: e.Part.SHA256, Stage: e.Stage}`, `e` the error's `Event`, and stops the
+attempt with the error, which is transient, so the work queue redelivers the job. The
+redelivery's replay finds that entry gone and prepares the part again in place ("Dispatch").
+`cmd/docinfer` has no index, and reports the miss as its run's error.
 
 Updates keep one order: an output's update precedes anything derived from it (its inference, the
 batches holding its chunks), and a part's update follows its outputs', warnings', and children's.
@@ -1758,7 +1774,8 @@ dispatch            changed, as "Input from a stream, or a path", "Dispatch", "C
                     "Index" state: Input.Reader, spooled, and Input.SHA256, checked
                     (ErrSHA256); Content, new, with FileContent (its renew age) and
                     MemoryContent, each output hashed and put, Config.Puts in flight, before it
-                    is recorded, Dispatcher.Content returning it, and Output.Ref gone;
+                    is recorded, Dispatcher.Content returning it, Dispatcher.Index returning
+                    Config.Index, and Output.Ref gone;
                     Item.Warning and Event.Warning, typed, in place of a warnings record output;
                     Item.After and Event.After, set by the mail stage; Part.ID, a repeated Where
                     suffixed; a seen part replays its entry's log by SHA-256, with no file, its
@@ -1808,21 +1825,21 @@ From the root's `internal/docinfer` and processing's model-calling tests, as
 
 ```text
 docinfer             new, the root package: Pipeline, Config, Bounds, Options, Extract, Input,
-                     Result, Cache, Key, FileCache, MemoryCache, and Permanent, from the
-                     spike's docinfer infer (sources.go, execute.go, and vision.go and
+                     Result, MissingError, Cache, Key, FileCache, MemoryCache, and Permanent, from
+                     the spike's docinfer infer (sources.go, execute.go, and vision.go and
                      transcription.go with visionSettings, transcriptionSettings, and each
-                     capability's orchestration), vision, transcribe, and embed, their go-ai
-                     calls kept and their concurrency moved into Bounds, and outdir's Key and
-                     Hold; Vision, Transcription, Extraction, and Embeddings over go-ai's
-                     client, with the go-ai mapping ("docinfer's go-ai use"). Extraction, its
-                     Progress, Options.Final, and the join of work in flight are new; Run takes
-                     the content store its inputs' content is opened from, and Input holds no
-                     file. Its shapes, beside its other types, with Version "1": Capability,
-                     Identity, Usage, Profile, Outcome, Inference and Progress (each naming its
-                     content by ContentSHA256), Batch (no index; its digest a method), Held, the Counts below, its Source less Ref and File, plus the
-                     source's part, stage, and output, and its Line as Chunk, embedding
-                     chunk.Chunk, less the input's file fields, its part, and its output, plus
-                     Digest, its source by index into the batch; a transcript's seams are
+                     capability's orchestration), vision, transcribe, and embed, their go-ai calls
+                     kept and their concurrency moved into Bounds, and outdir's Key and Hold;
+                     Vision, Transcription, Extraction, and Embeddings over go-ai's client, with the
+                     go-ai mapping ("docinfer's go-ai use"). Extraction, its Progress,
+                     Options.Final, and the join of work in flight are new; Run takes the content
+                     store its inputs' content is opened from, and Input holds no file. Its shapes,
+                     beside its other types, with Version "1": Capability, Identity, Usage, Profile,
+                     Outcome, Inference and Progress (each naming its content by ContentSHA256),
+                     Batch (no index; its digest a method), Held, the Counts below, its Source less
+                     Ref and File, plus the source's part, stage, and output, and its Line as Chunk,
+                     embedding chunk.Chunk, less the input's file fields, its part, and its output,
+                     plus Digest, its source by index into the batch; a transcript's seams are
                      docproc's audio.Seam
 chunk                moved from the root's internal/docinfer/chunk, which holds Version,
                      Chunk{Text, Start, End}, and Split; Chunk's Start and End become its Span,
@@ -1831,7 +1848,8 @@ chunk                moved from the root's internal/docinfer/chunk, which holds 
 job                  new: dispatch, then inference, under one job's context, Run taking the
                      input and the run's Options; the low watermark from Event.After; Update,
                      the Go side's one-of of what Run yields, with no JSON, kind, or job of its
-                     own; its shapes, beside its other types, under docinfer's Version:
+                     own; a missing content's part's entry dropped, its attempt stopped,
+                     transient; its shapes, beside its other types, under docinfer's Version:
                      Checkpoint and Done
 internal/            from the root's internal/docinfer/apptest: Serve and its replies, the fake
   endpointtest       OpenAI-compatible endpoint the pipeline's tests drive go-ai's client against
