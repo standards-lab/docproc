@@ -323,8 +323,7 @@ Every piece of text a file holds exists once: content in the Markdown text layer
 plain-text fields. docinfer embeds text and Markdown outputs only, never records
 (`spike-ai-pipeline/internal/docinfer/infer/sources.go`, `textKinds`), and chunks Markdown at its
 headings (`internal/docinfer/chunk/doc.go`), so the Markdown is the content's one path to
-inference. A field's outcome follows from that, the first
-that applies:
+inference. A field's outcome follows from that, the first that applies:
 
 - **Kept** when a consumer reads it (a processing package, or a capstone task), whether or not
   its text is in the Markdown, or when it is a label: plain text that names or annotates the
@@ -628,6 +627,7 @@ type Event struct {
     Warning  *Warning `json:"warning,omitempty"` // a warning's event
     After    uint64   `json:"after,omitzero"`    // an output's: the store's cursor, Item.After
     Outcome  Outcome  `json:"outcome,omitzero"`  // a part's own; seen on a replayed output's
+                                                // or warning's
     Recorded Outcome  `json:"recorded,omitzero"` // a seen event's: its entry's outcome
     Reason   string   `json:"reason,omitzero"`   // a failed part's holds Err's text
     Err      error    `json:"-"`
@@ -823,7 +823,7 @@ may not depend on docinfer either (`repository-topology.md`, "Adjacent libraries
 v1.ai.processing's pending edit amends it): an application SDK may not reach go-ai through it, and
 only the layers above go-ai's tier, such as Cerebro and go-web-service, may use it. It calls go-ai
 directly, with no adapter module between them ("docinfer's go-ai use"). It is built from the spike's
-docinfer, less its command's run directories, and holds until go-ai's library releases.
+docinfer, less its command's run directories.
 
 The modules:
 
@@ -927,7 +927,7 @@ type Config struct {
                                     // length fails the job, permanent
     Cache         Cache             // required
     Bounds        *Bounds           // required: the requests in flight, shared
-    Pending       int               // a job's inputs admitted and not yet done
+    Pending       int               // a job's inputs admitted and not yet finished
     EmbedBatch    int               // texts per Embed call
     BatchBytes    int               // a result batch's marshalled JSON's cap ("Batches as made")
     Join          audio.JoinRequest // how a part's window transcripts join
@@ -985,13 +985,13 @@ over the run directory's `FileContent`, its metadata text the spike's `metadataT
 
 Extraction runs a caller's prompt and JSON schema, the run's `Extract`, over each source text the
 pipeline chunks: each text and Markdown output, each vision text, and each joined transcript,
-once each, whole. It
-streams (`GenerateStream`), and the pipeline yields its deltas as `Progress`, coalesced to at
-most one a second per source text, each carrying the text since the last. Its result is an
-`Inference` of capability extraction, whose text is the JSON the schema describes; nothing
-decodes it. Its cache key is `Key(Identity{"extraction", model, settings}, content)`, whose
-settings hold the prompt's and the schema's SHA-256, its token bound, and its effort. Athena's
-summary chain maps onto it (`athena-mapping`).
+once each, whole. It streams (`GenerateStream`), and the pipeline yields its deltas as
+`Progress`, coalesced to at most one a second per source text, each carrying the text since the
+last. Its result is an `Inference` of capability extraction, whose text is the JSON the schema
+describes; nothing decodes it. Its cache key is
+`Key(Identity{"extraction", model, settings}, content)`, whose settings hold the prompt's and the
+schema's SHA-256, its token bound, and its effort. Athena's summary chain maps onto it
+(`athena-mapping`).
 
 `chunk` is the spike's docinfer chunk (`Version`, `Chunk`, and `Split`), plus `Splitter`, new: the
 pipeline's chunker, its `Bound` and its `Settings`. Its `Chunk` holds its offsets as a `Span`, the
@@ -1340,9 +1340,10 @@ type Extraction struct {
 func (x Extraction) Identity(e Extract) Identity // {extraction, Model, e hashed, MaxTokens, …}
 type Embeddings struct { Client *client.Client; Model string }
 func (e Embeddings) Identity() Identity // {embeddings, Model, ""}
-// Permanent reports whether an error Run yields is one no redelivery changes: a status the
-// table below marks permanent, a mismatched input (dispatch.ErrSHA256), a vector whose length
-// is not Config.Dimensions, or a run asking for extraction with no Config.Extraction.
+// Permanent reports whether an error Pipeline.Run or job.Runner.Run yields is one no
+// redelivery changes: a status the table below marks permanent, a mismatched input
+// (dispatch.ErrSHA256), a vector whose length is not Config.Dimensions, or a run asking for
+// extraction with no Config.Extraction.
 func Permanent(err error) bool
 ```
 
@@ -1449,9 +1450,9 @@ func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, e
   after a drop. `CompleteUpload` checks that the chunks cover the file, every byte from 0 to
   `Size` received, and queues the job, its input staged under its upload until the dispatcher's
   spool verifies the declared digest, then under `input/<sha256>`; the exact keys are the
-  `protocol` task's. Either way the job's input is durable, so any replica, on
-  any delivery, reads it: `dispatch.Input`'s `Reader` is always blob storage's reader, and its
-  `SHA256` the one `Submit` took or `OpenUpload` declared. The whole file is checked once, by the
+  `protocol` task's. Either way the job's input is durable, so any replica, on any delivery,
+  reads it: `dispatch.Input`'s `Reader` is always blob storage's reader, and its `SHA256` the
+  one `Submit` took or `OpenUpload` declared. The whole file is checked once, by the
   dispatcher's spool ("Input from a stream, or a path"); a mismatch is permanent, so the job
   fails at once. A staged input outlives the work queue's `MaxDeliver` deliveries of its job.
   `Submit`'s `ID` makes a retried Submit return the first one's job; its key's exact form is the
@@ -1470,10 +1471,10 @@ func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, e
 - **Fencing.** `CancelJob` appends `cancel_requested`. The replica running the job watches its
   subject through a headers-only consumer, so it reads each event's `type` and never its own
   batches' data back; it folds a `cancel_requested`, or a `started` newer than its own, and ends
-  the job's context. An append that fails its
-  expected-sequence check reads the subject's tail: a `cancel_requested` there ends the job's
-  context, and only `cancelled` follows; a `started` newer than its own means a redelivery holds
-  the job, and the replica ends the job's context and appends nothing more.
+  the job's context. An append that fails its expected-sequence check reads the subject's tail:
+  a `cancel_requested` there ends the job's context, and only `cancelled` follows; a `started`
+  newer than its own means a redelivery holds the job, and the replica ends the job's context
+  and appends nothing more.
 - **Outputs** are read by content: `GetOutput` streams, from docproc's `Content`, the content a
   SHA-256 names, an output's or an inference text's, records included.
 - **The profile** resolves to a `docinfer.Pipeline`'s models, settings, dimensions, and chunker,
@@ -1512,9 +1513,8 @@ JetStream        CEREBRO_WORK                cerebro.work: work-queue retention,
 Blob storage holds only large content: outputs, staged inputs, and uploads. JetStream persists
 to its own file storage, never to PostgreSQL. A job's events append to its subject directly,
 under the per-job expected-sequence check, which is their transaction; the outbox stays
-available for Cerebro's other events. The host sweeps content by age, with a retention longer
-than the job stream's, as "Content" bounds it. The names and retentions are the `state` task's
-to fix.
+available for Cerebro's other events. The host sweeps content by age, under "Content"'s bound.
+The names and retentions are the `state` task's to fix.
 
 Each job's events go on one subject of its own, `cerebro.job.<job>`, so the job has a gap-free
 sequence of its own: the expected-last-subject-sequence check guards one subject, and the
@@ -1537,14 +1537,13 @@ asks of it is under "Requests to go-messaging".
 Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS headers
 (`standards-lab/context/messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id`
 is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
-by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
+by the `id` as go-messaging keys it, de-duplicates a retried append. Consumers de-duplicate
 through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
 `cerebro.job.<job>`, not its type ("State and subjects"). Cerebro's `messaging.go` defines each
 type below with go-core's `event.Define[T]` over its own payload ("Event shapes"). The type and
-the subject carry
-the kind and the job, so no payload repeats them, and `dataschema` names the payload's shape and
-its producing package's `Version` (`dispatch.Version`, `docinfer.Version`, or Cerebro's own), its
-exact form the `events` task's.
+the subject carry the kind and the job, so no payload repeats them, and `dataschema` names the
+payload's shape and its producing package's `Version` (`dispatch.Version`, `docinfer.Version`, or
+Cerebro's own), its exact form the `events` task's.
 
 ```text
 type                                 data                                        whose
@@ -1672,8 +1671,8 @@ From spike-ai-pipeline-mail 0.3.1.
   the source text's sentences the Markdown lacks, as "docproc-mail" states: the text body's, or
   an RTF-only message's RTF text. The content rule is the one crate under `tools/` that
   docproc-onenote shares, and this task writes it; unit tests over a built RTF-only message
-  show the RTF's text. The goldens of
-  `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
+  show the RTF's text. The goldens of `generated/eml/03-html-inline-image`,
+  `generated/msg/03-html-inline-image`,
   `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
   `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
   append nothing: their text body differs from the HTML only in links written as `<url>` and a
@@ -1732,8 +1731,9 @@ document, picture,  kept
 audio               changed: Seam gains JSON tags (matched, matches, overlap, position), the
                     spike's docinfer outdir.Seam's names, so docinfer's inferences carry it
 office              changed: decodes the schema "2" document, sheet, and rows lines, each with its
-                    Markdown, streamed as records; Convert reads Request.Path, in place of its io.Reader, copying
-                    only a legacy document or an RTF, and returns a Stream in place of Result;
+                    Markdown, streamed as records; Convert reads Request.Path, in place of its
+                    io.Reader, copying only a legacy document or an RTF, and returns a Stream in
+                    place of Result;
                     Request.Format and the block tree's decoder go, since one run returns the
                     Markdown, properties, media, and sheets
 email               changed: Message.Markdown up, Address.SMTPAddress; Body, Conversation.HTML,
@@ -1803,11 +1803,9 @@ docinfer             new, the root package: Pipeline, Config, Bounds, Options, E
                      client, with the go-ai mapping ("docinfer's go-ai use"). Extraction, its
                      Progress, Options.Final, and the join of work in flight are new; Run takes
                      the content store its inputs' content is opened from, and Input holds no
-                     file. Its
-                     shapes, beside its other types, with Version "1": Capability, Identity,
-                     Usage, Profile, Outcome, Inference and Progress (each naming its content by
-                     ContentSHA256), Batch (no index; its digest
-                     a method), Held, the Counts below, its Source less Ref and File, plus the
+                     file. Its shapes, beside its other types, with Version "1": Capability,
+                     Identity, Usage, Profile, Outcome, Inference and Progress (each naming its
+                     content by ContentSHA256), Batch (no index; its digest a method), Held, the Counts below, its Source less Ref and File, plus the
                      source's part, stage, and output, and its Line as Chunk, embedding
                      chunk.Chunk, less the input's file fields, its part, and its output, plus
                      Digest, its source by index into the batch; a transcript's seams are
