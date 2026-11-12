@@ -235,6 +235,18 @@ returns by addition.
   go-ai, sharing `infer.Cache` under its own capability name; no spike has it.
 - Assumes the typed metadata shapes wait for the capstone's `metadata` task; until then,
   `Output.Meta` and the tools' records carry metadata.
+- Assumes Cerebro speaks Chat Completions to the gateway, and its consumer key is the bearer
+  token; a key in another header is v1.ai.client's to add if the gateway asks for one.
+- Assumes an `*APIError` of 408, 429, or 503 that outlasts the retry policy stops the job rather
+  than being recorded as refused, so the work queue's redelivery retries it.
+- Assumes Cerebro and `cmd/docinfer` each keep their own go-ai adapter, since quarry's library
+  stays free of go-ai and `cmd/docinfer` is quarry's one module that requires it.
+- Assumes extraction runs once per source text, whole, and relays its deltas coalesced to one
+  event a second; a text past the model's context is refused, recorded.
+- Assumes a job's events share one stream, each job on its own subject, rather than a stream per
+  job; the `state` task may revisit it.
+- Assumes the consumer stores chunks by their identity (job, part, source, index), so a batch a
+  redelivered job repeats changes nothing (the `chunks` task).
 
 ## quarry's API
 
@@ -660,11 +672,358 @@ since only docproc uses it.
 
 ## go-ai's surface
 
-Filled by slice 3.
+go-ai is built from spike-ai-pipeline-client v0.4.0, which the root's docinfer builds on. The
+names below are the spike's (the module root is package `client`); go-ai's own names are
+v1.ai.client's. Cerebro and `cmd/docinfer` call only what follows. The model gateway stays
+transparent to go-ai: go-ai sees an OpenAI-compatible base URL, and Cerebro speaks Chat
+Completions to it.
+
+### The client
+
+From `client.go`, `retry.go`, and `error.go`. docinfer builds one client per endpoint
+(`internal/docinfer/config/config.go`, `Endpoint.Client`) over one `http.Client` with a cloned
+default transport and no timeout (`app/infrastructure.go`).
+
+```go
+package client
+type TokenSource func(ctx context.Context) (string, error) // called once per attempt
+type Config struct {
+    BaseURL string        // the gateway's API root, such as "http://gateway:4000/v1"
+    Query   url.Values    // cmd/docinfer only: the router's {"autoload": "false"}
+    Token   TokenSource   // Cerebro's consumer key, as the bearer token
+    HTTP    *http.Client  // its transport's ResponseHeaderTimeout bounds the wait for a reply
+    Format  format.Format // Cerebro: completions.New(); cmd/docinfer: its endpoint's format
+    Retry   *RetryPolicy  // nil retries nothing
+}
+type RetryPolicy struct { MaxAttempts int; BaseDelay, MaxDelay time.Duration }
+func New(cfg Config) (*Client, error) // makes no request; safe for concurrent use
+
+// APIError is a non-2xx reply, returned wrapped, reached with errors.As.
+type APIError struct { Status int; Message, Type, Code string; Body []byte }
+```
+
+- **Retry.** A policy resends a request on a 408, 429, or 503 reply, or a connection failure
+  before any reply, honoring Retry-After, with full-jitter exponential backoff; never another
+  status, a started stream, or `Transcribe`. Cerebro sets one, since the gateway answers 429 and
+  503 at capacity (data-intelligence.md, "What it asks of the goals beneath it"); the spike
+  proves it by unit tests alone, and v1.ai.client proves it against the live gateway.
+- **Timeouts and cancellation** are the context's: each call takes the job's context, so
+  cancelling a job ends its requests (`stream.go` closes a stream's connection). go-ai sets no
+  limit of its own, and concurrency bounds stay the caller's, `infer.Pipeline`'s.
+- **The consumer key** is the bearer token `Token` returns. The gateway's keys carry the
+  priority between bulk work and chat ("Cerebro and Athena").
+
+### Generation: vision and extraction
+
+From `client.go`, `stream.go`, and `protocol/`. docinfer's vision sends one user message of the
+image, as a data URL, and the prompt, its reply capped and its reasoning effort none by default
+(`internal/docinfer/vision/vision.go`, `describe`).
+
+```go
+func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
+// GenerateStream is lazy: each range sends the request. Each pair is an event or an error; the
+// events run from ResponseCreated to one terminal event (completed, incomplete, failed).
+func (c *Client) GenerateStream(ctx context.Context, req *protocol.Request) iter.Seq2[protocol.Event, error]
+
+package protocol
+type Request struct {
+    Model           string
+    Instructions    string         // extraction: the caller's prompt
+    Input           []Item         // one Message{Role: RoleUser, Content: [InputImage?, InputText]}
+    Reasoning       ReasoningParam // {Effort}: vision's none
+    Text            TextParam      // {Format: JSONSchemaFormat}: extraction's schema
+    MaxOutputTokens int            // 0, or at least MinMaxOutputTokens (16)
+}
+type InputImage struct { ImageURL string } // DataURL(mediaType, data)
+type JSONSchemaFormat struct { Name string; Schema jsontext.Value; Strict bool }
+type Response struct {
+    Output []Item; Status Status; IncompleteDetails *IncompleteDetails
+    Error *ResponseError; Usage Usage // Usage{InputTokens, OutputTokens, …}
+}
+type Accumulator struct{ … } // Add(Event) error; Response() *Response, partial after a break
+// the events read: OutputTextDelta{Delta}, and the terminal ResponseCompleted,
+// ResponseIncomplete, ResponseFailed
+```
+
+A reply's text is the `OutputText` of its assistant messages, joined by a blank line, never its
+reasoning (docinfer's `text`). `StatusIncomplete` gives `infer.Text.Incomplete` its reason, such
+as `max_output_tokens`; any status but completed and incomplete is an error.
+
+Extraction streams: `GenerateStream`, folded by an `Accumulator`, whose `OutputTextDelta`s
+Cerebro relays as progress ("Events" below). Its output text is the JSON the schema describes,
+which Cerebro decodes; the client adds no decoding (`protocol/text.go`).
+
+### Embeddings and transcription
+
+From `embed.go` and `transcribe.go`; both go to OpenAI-compatible routes whatever the Format.
+
+```go
+type EmbeddingRequest struct { Model string; Input []string }
+type Embeddings struct { Vectors [][]float32; Usage EmbeddingUsage } // Vectors[i] is Input[i]'s
+type EmbeddingUsage struct { PromptTokens, TotalTokens int }
+func (c *Client) Embed(ctx context.Context, req *EmbeddingRequest) (*Embeddings, error)
+
+type TranscriptionRequest struct {
+    Model    string
+    File     io.Reader // the window, uploaded as it is read
+    FileName string    // the window's base name
+    Language, Prompt string
+}
+type Transcription struct { Text string; Usage TranscriptionUsage }
+type TranscriptionUsage struct { InputTokens, OutputTokens, TotalTokens int }
+func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Transcription, error)
+```
+
+`Transcribe` is never retried, since its file is a one-shot reader. Cerebro needs it retried
+against the gateway's 429 and 503, and the adapter can reopen the window's path but can't read
+the reply's Retry-After, which `APIError` doesn't carry. Open for v1.ai.client: a request that
+can reopen its clip, such as `TranscriptionRequest.Open func() (io.ReadCloser, error)`, so the
+client's one retry loop serves it.
+
+### The adapters
+
+go-ai's types meet quarry's `infer` interfaces in an adapter package of Cerebro's
+(`internal/model`) and another of `cmd/docinfer`'s, each its own. quarry's library imports no
+model client, and `cmd/docinfer` is the only quarry module that requires go-ai, so neither can
+share the other's. Each is about docinfer's `vision`, `transcribe`, and `embed` packages less
+their concurrency, which moves to `infer.Pipeline`.
+
+```go
+package model
+type Vision struct {
+    Client *client.Client; Model, Prompt string; MaxTokens int; Reasoning protocol.ReasoningEffort
+}
+func (v Vision) Identity() infer.Identity // {vision, Model, docinfer's visionSettings}
+func (v Vision) Describe(ctx context.Context, img infer.Image) (infer.Text, error)
+
+type Transcription struct { Client *client.Client; Model, Prompt, Language string }
+func (t Transcription) Identity() infer.Identity // {transcription, Model, transcriptionSettings}
+func (t Transcription) Transcribe(ctx context.Context, w infer.Window) (infer.Text, error)
+
+type Embeddings struct { Client *client.Client; Model string }
+func (e Embeddings) Identity() infer.Identity // {embeddings, Model}; the pipeline adds the chunker
+func (e Embeddings) Embed(ctx context.Context, texts []string) ([][]float32, infer.Usage, error)
+```
+
+| go-ai | `infer` |
+| --- | --- |
+| `protocol.Usage{InputTokens, OutputTokens}`, `TranscriptionUsage` | `Usage{Input, Output}` |
+| `EmbeddingUsage{PromptTokens}` | `Usage{Input}` |
+| `Response.IncompleteDetails.Reason` | `Text.Incomplete` |
+| `*APIError` of 408, 429, or 503, retries spent | the error, wrapped: it stops the job |
+| any other `*APIError` | `*RefusedError{Status, Message}`: recorded, held when 4xx |
+| a transport failure, a cancelled context | the error, wrapped: it stops the job |
+
+docinfer counts every `*APIError` as a rejection and holds a 4xx (`infer/execute.go`, `verdict`),
+which would hold a gateway's 429 as a verdict on the image. The adapter keeps the statuses
+`RetryPolicy` retries out of `RefusedError`, so a job the gateway turned away fails, the work
+queue redelivers it, and the cache replays what it finished. The settings strings are
+docinfer's, so `cmd/docinfer`'s held results stay valid.
+
+### Not Cerebro's surface
+
+Not called by Cerebro or `cmd/docinfer`, so not part of this surface: function tools, tool
+choice, `FunctionCall` and `FunctionCallOutput` items, the reasoning round trip (`Reasoning`
+items, `encrypted_content` envelopes), `ReasoningParam.Summary`, verbosity, image detail,
+`InputAudio` (Cerebro transcribes through `Transcribe`), the `Native` tiers, and the refusal
+events. `format/messages` and `format/responses` serve `cmd/docinfer`'s endpoints that name
+them; Cerebro uses `format/completions` alone. `Config.Query` is `cmd/docinfer`'s. go-ai's
+`/models` listing, its `tools/infer` CLI, and its harness-session surface are outside both.
 
 ## Cerebro's API and events
 
-Filled by slice 3.
+Cerebro's shapes below are what the capstone's design tasks start from: `protocol` settles the
+Queries and Commands and the upload protocol, `state` the streams and the fold, and `events` the
+event protocol (data-intelligence.md, "Design"). Its nested `client` module, tagged `client/vX`,
+holds these types and a Go client; Cerebro imports none of its consumers ("Cerebro and Athena",
+"API").
+
+### Queries and Commands
+
+Go Elemental Queries and Commands. Every Command that changes a job appends one event to the
+job's subject under an expected-last-sequence check, which is its transaction ("State").
+
+```go
+package client // capstone-cerebro/client
+type Extraction struct {
+    Name   string         // the schema's name, 1 to 64 letters, digits, _ and -
+    Prompt string
+    Schema jsontext.Value // a JSON Schema object
+}
+
+// Commands
+type Submit struct { // a small document, whole: protocol
+    Profile    string // a versioned processing profile in Cerebro's configuration, never a model
+    Name, MIME string
+    Content    []byte // at most Cerebro's configured small-document size
+    Extraction *Extraction
+}
+type OpenUpload struct { Name, MIME string; Size int64; SHA256 string }
+type AppendChunk struct { Upload string; Offset int64; SHA256 string; Bytes []byte }
+type CompleteUpload struct { Upload, Profile string; Extraction *Extraction }
+type AbortUpload struct { Upload string }
+type CancelJob struct { Job string }
+
+// Queries
+type GetJob struct { Job string }       // -> Job
+type GetUpload struct { Upload string } // -> Upload: the offset to resume from
+type ListProfiles struct{}              // -> []Profile
+
+type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time }
+type Profile struct { Name string; Resolved event.Profile } // quarry's resolved identity
+type Job struct {
+    ID, Profile, Name string; Size int64; SHA256 string
+    State    State  // queued, running, completed, failed, cancelled
+    Attempt  int    // the work queue's delivery, from 1
+    Sequence uint64 // the job's last event
+    Manifest *Manifest
+    Error    string
+}
+
+func (c *Client) Submit(ctx context.Context, cmd Submit) (Job, error)
+func (c *Client) OpenUpload(ctx context.Context, cmd OpenUpload) (Upload, error)
+func (c *Client) AppendChunk(ctx context.Context, cmd AppendChunk) (Upload, error)
+func (c *Client) CompleteUpload(ctx context.Context, cmd CompleteUpload) (Job, error)
+func (c *Client) AbortUpload(ctx context.Context, cmd AbortUpload) error
+func (c *Client) CancelJob(ctx context.Context, cmd CancelJob) (Job, error)
+func (c *Client) GetJob(ctx context.Context, q GetJob) (Job, error)
+func (c *Client) GetUpload(ctx context.Context, q GetUpload) (Upload, error)
+func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, error)
+```
+
+- **Small documents** arrive whole in `Submit`; Cerebro passes the bytes to `dispatch.Input`'s
+  `Reader`. A larger one goes through the upload: chunks wait in the object store, any replica
+  takes any chunk, a chunk whose digest doesn't match is refused, and `GetUpload` gives the
+  offset to resume from after a drop. `CompleteUpload` checks the whole file's digest and queues
+  the job over the object store's reader. The upload's shape graduates to go-web-sdk
+  (`chunked-upload-graduation`).
+- **A job** is one input, the unit of retry ("Distribution"). Its ID is a UUIDv7 Cerebro
+  assigns; `Submit` and `CompleteUpload` return it queued. `CancelJob` appends
+  `cancel_requested`. The replica running the job watches its subject, so it folds the cancel
+  and ends the job's context; an append racing the cancel fails its expected-sequence check, so
+  only `cancelled` follows it (quarry's "Per-job cancellation").
+- **The profile** resolves to an `infer.Pipeline`'s models, settings, and chunker, and to the
+  extraction model. A job records the resolved `event.Profile`, so the consumer registers the
+  matching embedding space ("Models and stages"; the `chunks` task). The `vision` task's prompt
+  and sampling live in a profile.
+- **Extraction** is optional, a caller's prompt and schema run by Cerebro on go-ai over each
+  source text the pipeline chunks: each text and Markdown output, by its `Ref`, and each
+  inference text. Its cache key is `infer.Key("extraction", model, settings, content)`, whose
+  settings hold the prompt's and schema's SHA-256, its token bound, and its effort. Athena's
+  summary chain maps onto it (`athena-mapping`).
+
+### Streams and subjects
+
+JetStream holds all of Cerebro's state, disposable; it owns no SQL ("State"). The stream and
+bucket names are the `state` task's to fix.
+
+```text
+CEREBRO_WORK     cerebro.work                work-queue retention: one message per job, {"job"}
+CEREBRO_JOBS     cerebro.job.<job>           every event of one job, on its own subject;
+                                             limits retention, max age the object store's TTL
+CEREBRO_UPLOADS  cerebro.upload.<upload>     an upload's opened, chunk, completed, aborted
+object store     upload/<upload>/<offset>    staged chunks
+                 cache/<infer.Key>           infer.Cache: held results, output/<sha256> texts
+```
+
+The job's "event stream" is a subject in one stream rather than a stream per job: the
+expected-last-subject-sequence check guards one subject, a consumer filters `cerebro.job.>` or
+one job's subject, and ~/docs' 592 jobs make no streams to reap. The browser never subscribes:
+Cerebro's events are service-to-service, and Athena relays its own stream ("Browser").
+
+### Events
+
+Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS headers
+(`messaging.md`, "Decisions"): `type` names it, `source` is `cerebro`, `id` is a UUIDv7,
+`subject` is the job's ID, and `Nats-Msg-Id` deduplicates a retried append. Consumers
+de-duplicate through go-messaging's inbox on `source` and `id`.
+
+```text
+type                                 data                                        whose
+cerebro.job.queued                   {profile, name, mime, size, sha256, extraction}  Cerebro's
+cerebro.job.started                  {attempt, replica}                          Cerebro's
+cerebro.job.part                     event.Event, kind part                       quarry's
+cerebro.job.output                   event.Event, kind output (Ref, no path)      quarry's
+cerebro.job.warning                  event.Event, kind warning                    quarry's
+cerebro.job.inference                event.Event, kind inference                  quarry's
+cerebro.job.batch                    event.Event, kind batch, Index renumbered    quarry's
+cerebro.job.checkpoint               event.Event, kind checkpoint                 quarry's
+cerebro.job.extraction.progress      {source, delta}                              Cerebro's
+cerebro.job.extracted                Extracted                                    Cerebro's
+cerebro.job.cancel_requested         {}                                           Cerebro's
+cerebro.job.completed                Manifest                                     Cerebro's
+cerebro.job.failed                   {attempt, error}                             Cerebro's
+cerebro.job.cancelled                {}                                           Cerebro's
+```
+
+- **quarry's shapes pass through.** `job.Runner.Run`'s events go out as they are made, their
+  data quarry's `event.Event` JSON unchanged (event "1"), one CloudEvents type per `Kind`. Two
+  things change on the way: `Batch.Index` is renumbered across attempts, so a batch's id, job
+  and index, stays unique, and quarry's `done` becomes no event of its own: its `Done` goes into
+  the manifest.
+- **Cerebro's own** are the job's lifecycle, extraction, and the manifest. The job's state is
+  the fold of its subject: queued, then running from `started`, then one of completed, failed,
+  or cancelled. A `failed` the work queue will redeliver is followed by another `started`.
+- **Extraction progress** relays the stream's `OutputTextDelta`s, coalesced to at most one event
+  a second per source text, each carrying the text since the last. `extracted` carries the
+  result:
+
+```go
+type Extracted struct {
+    Source  event.Source   // the text extracted from: an output's Ref, or an inference's
+    Content string         // the text's SHA-256
+    Name    string         // the extraction's
+    Outcome string         // extracted, incomplete, refused, held
+    Value   jsontext.Value `json:",omitzero"` // the JSON the schema describes
+    Error   string         `json:",omitzero"`
+    Usage   event.Usage
+    TookMS  int64
+}
+```
+
+- **Size.** Every event fits NATS's 1 MB `max_payload`: a batch closes at 512 KiB, an output
+  carries its `Ref`, never its text. An `inference` event's whole text, and an extraction's
+  value, may not; moving such a text to the object store by its digest is the `events` task's
+  (Assumptions).
+
+### Results and the manifest
+
+A result batch reaches the consumer as a `cerebro.job.batch` event: quarry's `event.Batch`, its
+chunks' text, provenance, and base64 vectors. The consumer commits each batch in one
+transaction, de-duplicated through its inbox (evidence 7). The job ends with `completed`, whose
+data is the manifest:
+
+```go
+type Manifest struct {
+    Profile  event.Profile // the resolved identity the consumer registers its space by
+    First    uint64        // the job's first event's sequence: 1
+    Last     uint64        // this event's sequence
+    Batches  int           // batch events in [First, Last]
+    Chunks   int
+    Digest   string        // SHA-256 over those batches' digests, in sequence order
+    Counts   event.Counts  // quarry's Done.Counts, the last attempt's
+    Attempts int
+}
+```
+
+The sequence range is settled here as Cerebro's own, as slice 2 left it. Each event carries the
+job's sequence, from 1 with no gap, in the CloudEvents `sequence` extension as a decimal string:
+the expected-last-subject-sequence check lets one appender write the subject at a time, so the
+job's sequence is contiguous whatever the stream's global sequence interleaves. The consumer
+checks completeness by holding every sequence from `First` to `Last` and by recomputing
+`Batches`, `Chunks`, and `Digest` over the batches it committed. Since a redelivered job's
+attempt replays content seen before, and a store resumes from its last checkpoint, the range and
+digest cover every attempt's batches, and the manifest's digest is Cerebro's, not quarry's
+`Done.Digest`, which covers one attempt.
+
+### Open
+
+- **Live sources.** `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it arrives,
+  but quarry's `job.Job` takes a `dispatch.Input`, a path or a spooled reader. Whether a live
+  source is a job, and through which Command, is the `protocol` task's.
+- **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
+  default the `protocol` task picks.
+- **Transcription retry** needs go-ai's change above (v1.ai.client).
 
 ## Changes per tool and per quarry package
 
