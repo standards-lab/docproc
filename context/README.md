@@ -25,7 +25,10 @@ schemas, and what each promotion changes from its spike.
 - **Media**: audio windows and pictures prepared for transcription and vision.
 - **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
   parts yielded as events (`layers.md`, "Dispatch", "Event shapes").
-- **Run state**: the content-addressed index, and the run directory's `rundir` and
-  `rundir/schema` (`layers.md`, "Index", "The nested modules").
+- **Stores**: the content store and the content-addressed index, interfaces with filesystem and
+  memory implementations, and their providers `docproc/storage` and `docproc/database`
+  (`layers.md`, "Content", "Index").
+- **Run directory**: `cmd/docproc`'s, read and written by `rundir` and `rundir/schema`
+  (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested
   modules").

@@ -29,11 +29,8 @@ the libraries, and `cmd/docproc` and `cmd/docinfer` their commands.
 
 Each tool runs as a process behind docproc's `tool` package (processing `tool/tool.go`), reads one
 input, and writes one contract to stdout: JSON Lines, schema "2", with Markdown inside it as the
-text layer. Every piece of text the input holds exists once: content in the Markdown text layer,
-labels as kept plain-text fields. A structured field is cut only when its text is already carried,
-in the Markdown or in a kept field, or it can't be plain text and has no processor. Content a tool
-reads that its Markdown lacks is rendered into the Markdown, never kept beside it as a duplicate
-field ("Consumers of structured text").
+text layer. Every piece of text the input holds exists once, by the rule "Consumers of structured
+text" states and applies field by field.
 
 ### Common envelope
 
@@ -313,10 +310,10 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
 ## Consumers of structured text
 
 Every piece of text a file holds exists once: content in the Markdown text layer, labels as kept
-plain-text fields. docinfer embeds text and
-Markdown outputs only, never records (`spike-ai-pipeline/internal/docinfer/infer/sources.go`,
-`textKinds`), and chunks Markdown at its headings (`internal/docinfer/chunk/doc.go`), so the
-Markdown is the content's one path to inference. A field's outcome follows from that, the first
+plain-text fields. docinfer embeds text and Markdown outputs only, never records
+(`spike-ai-pipeline/internal/docinfer/infer/sources.go`, `textKinds`), and chunks Markdown at its
+headings (`internal/docinfer/chunk/doc.go`), so the Markdown is the content's one path to
+inference. A field's outcome follows from that, the first
 that applies:
 
 - **Kept** when a consumer reads it (a processing package, or a capstone task), whether or not
@@ -891,7 +888,7 @@ func New(cfg Config) (*Pipeline, error)
 func (p *Pipeline) Profile() Profile
 // Run infers over one job's inputs and yields its inference texts, extraction progress,
 // batches, and counts as made.
-func (p *Pipeline) Run(ctx context.Context, opts Options, inputs iter.Seq2[Input, error]) iter.Seq2[Result, error]
+func (p *Pipeline) Run(ctx context.Context, inputs iter.Seq2[Input, error], opts Options) iter.Seq2[Result, error]
 
 type Options struct { // one run's
     Extract *Extract // a caller's prompt and schema; nil extracts nothing
@@ -1038,8 +1035,9 @@ type Batch struct {
     Parts   []dispatch.Part `json:"parts"`   // provenance: each, its parent and depth, where found
     Sources []Source        `json:"sources"`
     Chunks  []Chunk         `json:"chunks"`
-    Digest  string          `json:"digest"`  // SHA-256 over its chunks' digests, in order
 }
+// Digest is the SHA-256 over its chunks' digests, in order: derived, so no field holds it.
+func (b Batch) Digest() string
 // Source is the spike's docinfer outdir.Source, the text a chunk is cut from, less Ref and File,
 // its directories' paths, plus where the text sits.
 type Source struct {
@@ -1466,10 +1464,9 @@ Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS header
 is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
 by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
 through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
-`cerebro.job.<job>`, not its type ("State and subjects"). Neither docproc nor docinfer declares
-event types: Cerebro's own `messaging.go` defines each type below with go-core's
-`event.Define[T]` over its own payload, the producer's shape for what docproc and docinfer yield
-and Cerebro's own data types, beside its other types, for the rest. The type and the subject carry
+`cerebro.job.<job>`, not its type ("State and subjects"). Cerebro's `messaging.go` defines each
+type below with go-core's `event.Define[T]` over its own payload ("Event shapes"). The type and
+the subject carry
 the kind and the job, so no payload repeats them, and `dataschema` names the payload's shape and
 its producing package's `Version` (`dispatch.Version`, `docinfer.Version`, or Cerebro's own), its
 exact form the `events` task's.
@@ -1510,9 +1507,10 @@ cerebro.job.cancelled                {}                                         
 ### Results and the manifest
 
 A result batch reaches the consumer as a `cerebro.job.batch` event: docinfer's `Batch`, its
-chunks' text, provenance, and base64 vectors. The event also carries its batch's digest and chunk
-count as the CloudEvents extension attributes `batchdigest` and `batchchunks`, so the
-headers-only fold yields the manifest without reading a batch back. The consumer commits each
+chunks' text, provenance, and base64 vectors. The event also carries its batch's `Digest()` and
+chunk count as the CloudEvents extension attributes `batchdigest` and `batchchunks`, so the
+headers-only fold yields the manifest without reading a batch back. Both derive from the data,
+so the data holds neither again: a consumer that reads the batch recomputes them. The consumer commits each
 batch in one transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7).
 The job ends with `completed`, whose data is the manifest:
 
@@ -1659,9 +1657,10 @@ document, picture,  kept
 audio               changed: Seam gains JSON tags (matched, matches, overlap, position), the
                     spike's docinfer outdir.Seam's names, so docinfer's inferences carry it
 office              changed: decodes the schema "2" document, sheet, and rows lines, streamed as
-                    records; Convert reads Request.Path, copying only a legacy document or an
-                    RTF; Request.Format and the block tree's decoder go, since one run returns
-                    the Markdown, properties, media, and sheets
+                    records; Convert reads Request.Path, in place of its io.Reader, copying
+                    only a legacy document or an RTF, and returns a Stream in place of Result;
+                    Request.Format and the block tree's decoder go, since one run returns the
+                    Markdown, properties, media, and sheets
 email               changed: Message.Markdown up, Address.SMTPAddress; Body, Conversation.HTML,
                     and Folder.DisplayName go; Request.Attachments becomes Media
 onenote             changed: Page.Markdown, Page.Media, and Page.InkAlternatives decode the
@@ -1714,21 +1713,22 @@ From the root's `internal/docinfer` and processing's model-calling tests, as
 `docinfer/storage` as a nested module ("docinfer's API").
 
 ```text
-docinfer             new, the root package: Pipeline, Config, Bounds, Options, Extract, Cache,
-                     Held, Key, FileCache, MemoryCache, and Permanent, from the spike's docinfer
-                     infer (sources.go, execute.go, and vision.go and transcription.go with
-                     visionSettings, transcriptionSettings, and each capability's
-                     orchestration), vision, transcribe, and embed, their go-ai calls kept and
-                     their concurrency moved into Bounds, and outdir's Key and Hold; Vision,
-                     Transcription, Extraction, and Embeddings over go-ai's client, with the
-                     go-ai mapping ("docinfer's go-ai use"). Extraction, its Progress,
-                     Options.Final, and the join of work in flight are new. Its shapes, beside
-                     its other types, with Version "1": Capability, Identity, Usage, Profile,
-                     Outcome, Inference, Progress, Batch (no index), Held, the Counts below, its
-                     Source less Ref and File, plus the source's part, stage, and output, and
-                     its Line as Chunk, embedding chunk.Chunk, less the input's file fields, its
-                     part, and its output, plus Digest, its source by index into the batch; a
-                     transcript's seams are docproc's audio.Seam
+docinfer             new, the root package: Pipeline, Config, Bounds, Options, Extract, Input,
+                     Result, Cache, Key, FileCache, MemoryCache, and Permanent, from the
+                     spike's docinfer infer (sources.go, execute.go, and vision.go and
+                     transcription.go with visionSettings, transcriptionSettings, and each
+                     capability's orchestration), vision, transcribe, and embed, their go-ai
+                     calls kept and their concurrency moved into Bounds, and outdir's Key and
+                     Hold; Vision, Transcription, Extraction, and Embeddings over go-ai's
+                     client, with the go-ai mapping ("docinfer's go-ai use"). Extraction, its
+                     Progress, Options.Final, and the join of work in flight are new. Its
+                     shapes, beside its other types, with Version "1": Capability, Identity,
+                     Usage, Profile, Outcome, Inference, Progress, Batch (no index; its digest
+                     a method), Held, the Counts below, its Source less Ref and File, plus the
+                     source's part, stage, and output, and its Line as Chunk, embedding
+                     chunk.Chunk, less the input's file fields, its part, and its output, plus
+                     Digest, its source by index into the batch; a transcript's seams are
+                     docproc's audio.Seam
 chunk                moved from the root's internal/docinfer/chunk, which holds Version,
                      Chunk{Text, Start, End}, and Split; Chunk's Start and End become its Span,
                      outdir.Span moved here, and its fields gain JSON tags (text, span);
