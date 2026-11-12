@@ -15,8 +15,8 @@ go-ai ────────────────────────�
 ```
 
 docproc extracts and knows no model; docinfer infers over what docproc extracts, calling go-ai
-directly; Cerebro runs docinfer's jobs over docproc's dispatcher, stages, and index, which it
-wires, and calls go-ai itself only for extraction. Each signature or schema traces to a capstone
+directly; Cerebro runs docinfer's jobs over docproc's dispatcher, stages, and stores, which it
+wires, and builds the go-ai clients docinfer calls. Each signature or schema traces to a capstone
 task in `standards-lab/context/data-intelligence.md` ("Design") or to spike evidence.
 
 Spike paths are relative to `~/experiments/`. "processing" is spike-ai-pipeline-processing, whose
@@ -66,23 +66,25 @@ field ("Consumers of structured text").
 
 From spike-ai-pipeline-office 0.1.0 (`src/SpikeAiPipeline.Office/Model/Document.cs`, README "The
 JSON model"), which writes either the model (indented JSON) or Markdown, never both. docproc-ooxml
-writes a `document` line first, then one `sheet` line per xlsx sheet, in workbook order, so no
-line holds every sheet:
+writes a `document` line first, then, per xlsx sheet in workbook order, a `sheet` line and its
+`rows` lines, so no line holds a whole sheet's cells:
 
 ```text
-document  line, schema, format (docx|xlsx|pptx), properties?, markdown, media?
+document  line, schema, format (docx|xlsx|pptx), properties?, markdown?, media?
 properties  core?, app?, custom?: maps of the package's core, extended, and custom properties,
             each value typed as stored (string, number, boolean, ISO 8601 date)
 media[]   kind (picture|embedded|ole), file?, content_type?, part?, target?, prog_id?,
           section? | sheet? | slide?   in document order
-sheet     line, name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula?,
-          shared_from?, col_span?, row_span?
+sheet     line, name, hidden?, markdown?   an xlsx sheet's header: its sheet's Markdown
+rows      line, rows[]: row, cells[]: ref, value_type?, value?, formula?, shared_from?,
+          col_span?, row_span?   the sheet's next rows, in order
 ```
 
 - `markdown` is office's Markdown rendering (`Rendering/MarkdownRenderer.cs`, the goldens
   `test/SpikeAiPipeline.Office.Tests/Expected/*.md`): headings, lists, GFM tables, charts as
-  tables of their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. A
-  picture's image text is its `alt`, or its `title` when it has no `alt`
+  tables of their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. An
+  xlsx's Markdown is split by sheet: the `document` line holds the Markdown of no sheet, and each
+  `sheet` line its sheet's. A picture's image text is its `alt`, or its `title` when it has no `alt`
   (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
   `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
   its image's Markdown title, `![alt](file "title")`.
@@ -91,8 +93,9 @@ sheet     line, name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, f
   `prog_id` the object's), which office leaves unextracted (README "What office does not do").
   `part` is the package part, `target` a linked picture's URL; the placement is the docx section,
   xlsx sheet, or pptx slide index.
-- A `sheet` line keeps an xlsx sheet's typed cells, office's `TableCell` less its docx-only
-  fields.
+- A sheet's `rows` lines keep its typed cells, office's `TableCell` less its docx-only fields.
+  Each holds the sheet's next rows, in order, as many as keep the line within 256 KiB, and at
+  least one, so a line is bounded by the larger of 256 KiB and one row, never by the sheet.
 - Field names move to snake_case, as mail's and onenote's are.
 
 ### docproc-mail
@@ -115,9 +118,13 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
 
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
   `rtf`, and `derived.html` are cut (measured below). When the Markdown is made from HTML, stored
-  or recovered from the RTF, the tool appends the text body's sentences the Markdown lacks by the
-  content rule below, in order, as a paragraph escaped as a text body's Markdown is. A message
-  with an RTF body also stores a text body, so the text body stands for the RTF's text.
+  or recovered from the RTF, the tool appends the sentences of the message's source text that
+  the Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text
+  body's Markdown is. The source text is the text body; a message with an RTF body and no text
+  body has the RTF's text, read by the RTF specification: the body decompressed, control words
+  and ignorable groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as
+  line breaks, symbol words (`\rquote`, `\emdash`, …) as their characters, and `\'hh` decoded in
+  the `\ansicpg` code page. An RTF that encapsulates HTML (`\fromhtml`) has that HTML's text.
 - The content rule compares a source text with a Markdown text by standards alone, so no
   fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in one crate
   under `tools/` that docproc-mail and docproc-onenote both depend on. Its Unicode version, 16.0,
@@ -135,10 +142,12 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
     letter or digit (general categories L* and N*) is a word token; marks and format characters
     stay inside their word (WB4). The comparison is of words, and symbols, punctuation, and
     controls are not words. Word tokens compare case-sensitively.
-  - **Alignment.** The longest common subsequence of the two token sequences, ties broken to
-    the earliest match in the Markdown. Hirschberg's algorithm computes it in linear space, each
-    split taken at the earliest Markdown position that reaches the longest length, which gives
-    the same tie-break: for n source and m Markdown tokens, O(n·m) time and O(n + m) space.
+  - **Alignment.** A longest common subsequence of the two token sequences. The common prefix
+    and suffix are trimmed, and Myers' O((n + m)·D) algorithm with its linear-space refinement
+    (Myers 1986, section 4b) aligns the rest, for n source and m Markdown tokens and D edits
+    between them. Any longest common subsequence has the same length; where several tie, the
+    rule's is the one that algorithm returns, so every implementation appends the same
+    sentences.
   - **Units.** The source's sentences by Unicode sentence boundaries (UAX #29), a line break also
     ending one. Each sentence holding a token outside the alignment is appended, in order; the
     rest is already in the Markdown, so overlap is never written twice.
@@ -289,11 +298,8 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   a control and a symbol both only separate words, so `SharePoint` matches. No decoder
   correction applies: PT_STRING8 is read in its message's code page, and a MIME part's charset
   label as the WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
-  windows-1252). The RTF's text
-  (control words and ignorable groups, the font, color, and style tables among them, stripped;
-  `\par` and `\line` as line breaks; `\'hh` decoded in its `\ansicpg` code page; `\rquote` and
-  the other symbol words as their characters), compared the same way, lacks nothing where the
-  Markdown is made from it; beside a stored HTML body it lacks 28 B, the line
+  windows-1252). The RTF's text, read as "docproc-mail" states, compared the same way, lacks
+  nothing where the Markdown is made from it; beside a stored HTML body it lacks 28 B, the line
   `testMSG_chinese.msg`'s text body also holds.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
@@ -329,13 +335,13 @@ that applies:
 | ooxml | text block tree: heading, paragraph, list, docx table inlines; sections, notes, comments (author, anchor, replies) | none: `dispatch/office.go` never requests the model; the Markdown holds their text | **cut** |
 | ooxml | chart title, series names, categories, values | none; the Markdown's table holds them | **cut** |
 | ooxml | picture `alt` | none; it is the Markdown's image text | **cut** |
-| ooxml | picture `title` | none; the Markdown lacks it unless it is the image text (a picture without `alt`), and takes a title that differs from the image text as the image's title | into Markdown |
+| ooxml | picture `title` | none; the Markdown lacks it unless it is the image text, and takes it as "docproc-ooxml" states | into Markdown |
 | ooxml | sheet `name`, cell `value`, `formula` | `athena-mapping` (Athena's tabular rows into `sparse_rows` need typed cells); names and values are in the Markdown, a formula is its cell's expression, whose value the Markdown shows | kept |
 | ooxml | `media` (`file`, `part`, `target`, `prog_id`, placement) | office's stage (embedded and OLE media become child parts); references, not text, and a linked picture's `target` is also its Markdown image's source | added |
 | ooxml | `properties` | `metadata` | added |
 | mail | `markdown` | `dispatch/email.go` (`own`), `email/model.go` (`Conversation`) | kept |
 | mail | `body.html`, `body.derived.html` | none; `Conversation.HTML` copies `html` and nothing reads it; the Markdown is made from them | **cut** |
-| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line) | into Markdown |
+| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line), which the tool appends as "docproc-mail" states | into Markdown |
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | kept |
@@ -349,7 +355,7 @@ that applies:
 | onenote | page `title` | `dispatch/onenote.go` meta | kept |
 | onenote | runs' `text`, `latex`, `link`; list markers; table cells | none; the Markdown renders them, links as link targets | **cut** |
 | onenote | the title's date and time runs (`PageDateTime`) | none; the Markdown lacks them (538 B), and takes them under the title, joined by one space | into Markdown |
-| onenote | tag `label` | none; the Markdown renders it as a `[Label]` prefix, every tag's alike, a task tag's after its box (`- [ ] [To Do] …`), since the box carries the task state, not the label's words | into Markdown |
+| onenote | tag `label` | none; the Markdown renders it as "docproc-onenote" states, since a task box carries the task state, not the label's words | into Markdown |
 | onenote | image `alt_text` | none; it is the Markdown's image text | **cut** |
 | onenote | image `ocr_text` | none; 4,926 B is within `alt_text`, and the sentences the alt text lacks by the content rule (566 B) join the Markdown's image text, where `text-layer` reads it | into Markdown |
 | onenote | image `hyperlink` | none; the Markdown lacks it, and makes the image a link to it | into Markdown |
@@ -368,21 +374,33 @@ the OCR text the alt text lacks; no `ocr_text` field returns.
 ## docproc's API
 
 The library module, `github.com/standards-lab/docproc`, extracts: it inspects and routes each part
-of an input, reads it through its stage and the tools, and records what it prepared in its index.
-It requires `golang.org/x/text` only and depends on no model concept: no model client, no
-inference, no embedding. Inference is docinfer's ("docinfer's API"), and the imports run one way:
-docinfer imports docproc, and no docproc package imports docinfer. processing imports
-spike-ai-pipeline-client only from tests and the test helpers `internal/visiontest` and
-`internal/audiotest`, which move to docinfer with the tests that call a model. "Kept" below means
-processing's signature carries over as it is.
+of an input, reads it through its stage and the tools, stores each output's content, and records
+what it prepared in its index. It requires `golang.org/x/text` only and depends on no model
+concept: no model client, no inference, no embedding. Inference is docinfer's ("docinfer's API"),
+and the imports run one way: docinfer imports docproc, and no docproc package imports docinfer.
+processing imports spike-ai-pipeline-client only from tests and the test helpers
+`internal/visiontest` and `internal/audiotest`, which move to docinfer with the tests that call a
+model. "Kept" below means processing's signature carries over as it is.
 
 The modules:
 
 ```text
 github.com/standards-lab/docproc              the library below; requires golang.org/x/text only
+github.com/standards-lab/docproc/storage      Content over go-storage's Client; requires the
+                                              library and go-storage
+github.com/standards-lab/docproc/database     Index over go-database; requires the library and
+                                              go-database
 github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the library,
                                               go-cli-sdk, go-core, and golang.org/x/sys
 ```
+
+Each store is an interface the library declares (`dispatch.Content`, `dispatch.Index`), with a
+filesystem and a memory implementation in the base module on the standard library alone. A
+provider is a nested sub-module that implements one over a stack library: `storage` the content
+store over go-storage's `Client`, and `database` the index over go-database, one row per entry,
+its claims, leases, and fencing as conditional updates. Each provider pins only its own level,
+above the tier it depends on (`repository-topology.md`, "Adjacent libraries"), and the base
+module stays tier-free.
 
 The library's packages:
 
@@ -393,10 +411,11 @@ internal/cli               the tools' shared contract: exit codes, stderr lines,
 office, email, onenote     a tool's reader, decoding its schema "2"                         changed
 document, picture, audio,  the other formats, on their tools; audio's Seam JSON-tagged       kept
   media, sevenzip
-dispatch                   stages, the walk over an input's parts, the index; the shapes of  changed
-                             its events, parts, outputs, and warnings
+dispatch                   stages, the walk over an input's parts, the content store and     changed
+                             the index; the shapes of its events, parts, outputs, and
+                             warnings
 stages                     the stages wired over the host's tools                            moved from the spike's docproc
-rundir, rundir/schema      cmd/docproc's run directory: schema "1" shapes, read and written  moved from the spike's docproc
+rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and written         moved from the spike's docproc
 ```
 
 ### Inspection and routing
@@ -451,10 +470,11 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`. Each decodes its tool's
 schema "2" line by line (the contracts above), refuses another schema with `ErrSchema`, and keeps
 an unknown kind as an `Unknown*` value. `internal/cli` keeps exit codes 1 to 4 and the stderr
-parse. The readers' types follow the contracts: `office.Document` becomes the `document` line and
-`office.Sheet` the `sheet` line, `email.Message` takes `Markdown` up and `Address.SMTPAddress`,
-and `onenote.Page` takes `Markdown`, `Media`, and `InkAlternatives`. Each reader streams its
-tool's lines as records, office's included, so no reader holds a whole workbook.
+parse. The readers' types follow the contracts: `office.Document` becomes the `document` line,
+`office.Sheet` the `sheet` line and `office.Rows` a `rows` line, `email.Message` takes `Markdown`
+up and `Address.SMTPAddress`, and `onenote.Page` takes `Markdown`, `Media`, and
+`InkAlternatives`. Each reader streams its tool's lines as records, office's included, so no
+reader holds a whole sheet.
 
 ```go
 package email // onenote has the same shape
@@ -469,7 +489,7 @@ func NewConverter(ctx context.Context, cfg Config) (*Converter, error)
 // RTF is copied, into the LibreOffice conversion's input.
 func (c *Converter) Convert(ctx context.Context, req Request) (*Stream, error)
 type Request struct { Path, Dir, Name string; MetafileScale int } // Format goes
-func (s *Stream) Records() iter.Seq2[Record, error] // the document, then each sheet
+func (s *Stream) Records() iter.Seq2[Record, error] // the document, then each sheet and its rows
 ```
 
 ### Input from a stream, or a path
@@ -481,7 +501,7 @@ type Input struct {
     Reader io.Reader // or a stream, spooled into Config.Dir and hashed as it is copied,
                      // removed with the part
     SHA256 string    // the content's SHA-256 when the caller knows it: checked as the input is
-                     // spooled or read, a mismatch failing the input, never hashed twice
+                     // spooled or read, a mismatch an error matching ErrSHA256, never hashed twice
     Name   string    // the stored name, whose extension routing reads
     MIME   string    // the stored MIME type, if any
     After  uint64    // resume a store after this message, mail's --after
@@ -490,9 +510,13 @@ type Input struct {
 
 `Reader` and `SHA256` are new: processing's `Input` is a path alone. The stages read paths, since
 mail, onenote, qpdf, and ffprobe take one, and `office.Converter.Convert` takes the part's path in
-its `Request`. So one spool at the input serves every stage. Cerebro always passes the object
-store's reader of the job's staged input and the SHA-256 its Command checked ("Queries and
-Commands").
+its `Request`. So one spool at the input serves every stage. The spool's check is the input's one
+whole-file check: a mismatch stops the dispatch with an error matching `ErrSHA256`, which no
+redelivery changes. Cerebro always passes blob storage's reader of the job's staged input and its
+SHA-256 ("Queries and Commands").
+
+An input with `After` set is a resumed store: it is dispatched past that message, and its entry
+is never recorded, since it would hold only the messages past `After`.
 
 ### Dispatch
 
@@ -505,7 +529,10 @@ type Stage interface {
     Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error]
 }
 type Stages map[route.Route]Stage
-type Config struct { Stages Stages; Index Index; Dir string; Limits Limits; Inspect inspect.Options }
+type Config struct {
+    Stages Stages; Index Index; Content Content; Dir string; Limits Limits
+    Inspect inspect.Options
+}
 func New(cfg Config) (*Dispatcher, error)
 func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, error]
 func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error]
@@ -513,32 +540,58 @@ func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers i
 func (e Event) Keep() // keep the output's file, or the part's, past the loop body
 type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, encrypted,
                       // failed, limited
-type Item struct { Output *Output; Part *Found; Warning *Warning }
+type Item struct {
+    Output  *Output
+    Part    *Found
+    Warning *Warning
+    After   uint64 // a store's: set on a message's last output, the message's cursor
+}
 ```
 
 `Item.Warning` and `Event.Warning` are new. processing yields a tool's stderr warnings as a record
 output, but the common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed
 data, and warnings as data are docproc's. A warning's event carries its part and stage, as an
-output's does, and the index records it, so a seen part replays its warnings.
+output's does, and the index records it, so a seen part replays its warnings. `Item.After` and
+`Event.After` are new: the mail stage sets the cursor on each message's last output, so a host
+checkpoints a store by the outputs it has handled ("One job, and its cancellation").
 
-The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, so the index
-records every output with its content's digest. A seen part replays its whole subtree from the
-index: its outputs and warnings, then each child, in the order recorded, emitted as seen in turn
-with its own outputs, warnings, and children, then its own event. A child's event carries its
-`Child.Part`, its `Depth` set from the replaying walk, since the same content can sit at another
-depth. Before it replays anything, the dispatcher looks each descendant up, by its
-`Child.Part.SHA256`, under its `Part.ContentType.Route`'s current stage. A child's file exists only
-while its parent's stage runs, so when one misses, its stage's identity having changed since, the
-part is not seen: it is prepared again, and its children with it.
+The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, then puts its
+content into `Content`, and appends the output to the part's entry only after the put, so
+everything the index records is stored. A seen part replays its entry's log from the index, in
+the order it was prepared ("Index"), each output opened from `Content` into `Dir`, so a replayed
+output's event carries its file as a prepared one's does. A replayed output's or warning's event
+carries `Outcome` seen and the entry's outcome in `Recorded`, as processing marks a replayed
+output; a child's event carries its `Child.Part`, its `Depth` set from the replaying walk, since
+the same content can sit at another depth.
+
+A part is seen when its entry's `Stages` each equal the current identity of the stage of that
+name, one check per stage the subtree used. A replayed child recorded prepared, encrypted, no
+processor yet, or seen is looked up under its route's current stage and replays its own log; a
+child of any other outcome replays as recorded. A miss while replaying, an index entry or a
+content that has expired, or a stage wired since for a child that had none, drops the replayed
+part's entry, so the part is not seen again, and stops the dispatch with an error matching
+`ErrStale`: the redelivery prepares the part again, and its children with it.
+
+Each stage names where it found a part (`Found.Where`), stably across runs, as processing's do:
+mail's `<message>, attachment n`, a ZIP's `zip entry <name>`. The dispatcher keeps `Where` unique
+among a part's siblings: a `Where` a sibling already has gains ` (n)`, its occurrence among them
+from 2. A part's `ID` is the chain of `Where` from the input: the input's ID is `/`, and a found
+part's is its parent's ID followed by its `Where` as one more path segment, `%` and `/`
+percent-encoded, after a `/` unless the parent's ends in one. So the ID names one occurrence of
+content in the input, stable across runs, where the content's SHA-256 can't.
+
+A quarantined part's file is kept only when the caller calls `Keep` in its event, as any part's
+is; otherwise the dispatcher removes it with the part, its flags in the part's event.
 
 `dispatch` declares the JSON shapes of what it yields beside its other types, on the standard
 library alone: an event, its part, its stage's `Identity`, an output, a warning. `Event` is itself
 the shape, one for each of its three kinds: a part's own event, an output's, and a warning's,
 each setting only its own fields, so no parallel wire type copies it. `Part` takes the shape of
 the spike's docproc `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its
-local fields left out of the JSON; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move
-into its `ContentType`. `Identity` is the spike's docproc `schema.Stage` as JSON, so no `Stage`
-type is added; `Stage` stays the interface.
+local fields left out of the JSON, and gains `ID`, which `Parent` now carries in place of the
+parent's SHA-256; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move into its
+`ContentType`. `Identity` is the spike's docproc `schema.Stage` as JSON, so no `Stage` type is
+added; `Stage` stays the interface.
 
 ```go
 package dispatch
@@ -548,20 +601,22 @@ type Event struct {
     Stage    Identity `json:"stage,omitzero"`
     Output   *Output  `json:"output,omitempty"`  // an output's event
     Warning  *Warning `json:"warning,omitempty"` // a warning's event
-    Outcome  Outcome  `json:"outcome,omitzero"`  // a part's own event, from here down
-    Recorded Outcome  `json:"recorded,omitzero"`
+    After    uint64   `json:"after,omitzero"`    // an output's: the store's cursor, Item.After
+    Outcome  Outcome  `json:"outcome,omitzero"`  // a part's own; seen on a replayed output's
+    Recorded Outcome  `json:"recorded,omitzero"` // a seen event's: its entry's outcome
     Reason   string   `json:"reason,omitzero"`   // a failed part's holds Err's text
     Err      error    `json:"-"`
-    Outputs  int      `json:"outputs,omitzero"`
+    Outputs  int      `json:"outputs,omitzero"`  // a part's own, from here down
     Children int      `json:"children,omitzero"`
 }
 type Part struct {
+    ID          string         `json:"id"`              // the chain of Where from the input
     Name        string         `json:"name"`
     Size        int64          `json:"size"`
     SHA256      string         `json:"sha256"`
     ContentType ContentType    `json:"content_type"`
     Flags       []inspect.Flag `json:"flags,omitempty"`
-    Parent      string         `json:"parent,omitzero"`
+    Parent      string         `json:"parent,omitzero"` // its parent's ID
     Depth       int            `json:"depth"`
     Where       string         `json:"where,omitzero"`
     Path        string         `json:"-"` // its file, while its stage runs
@@ -584,10 +639,9 @@ type Output struct {
     Name      string            `json:"name,omitzero"`
     MediaType string            `json:"media_type,omitzero"`
     Meta      map[string]string `json:"meta,omitempty"`
-    SHA256    string            `json:"sha256"`       // its content's, by which it is stored
-    Ref       string            `json:"ref,omitzero"` // a host's own name: cmd/docproc's run path
-    Path      string            `json:"-"`            // local: its file, while its part runs
-    Value     []byte            `json:"-"`            // local: its bytes, when it has no file
+    SHA256    string            `json:"sha256"` // its content's, by which Content holds it
+    Path      string            `json:"-"`      // local: its file, while its part runs
+    Value     []byte            `json:"-"`      // local: its bytes, when it has no file
 }
 type Warning struct {
     Tool  string `json:"tool"`
@@ -598,9 +652,8 @@ type Warning struct {
 
 A count left out is zero, as the common envelope's absence rule has it. `Err` stays local: a
 failed part's `Reason` already holds its text, as processing sets both. `Output.Path` and `Value`
-never marshal: an output's content is found by its `SHA256`, in the host's content store
-(docinfer's `job.Outputs`), or by a host's `Ref`, so the index records an output without them and
-nothing clears them.
+never marshal: an output's content is found by its `SHA256` in `Content`, so the index records an
+output without them and nothing clears them.
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
 `cmd/docproc` and Cerebro wire the same stages from the tools a host holds:
@@ -612,31 +665,62 @@ func Build(ctx context.Context, lookup Lookup, exclude []route.Route) Set
 type Set struct { Stages dispatch.Stages; Tools []Tool; Rows []Row } // Row: route, wired|missing|excluded
 ```
 
+### Content
+
+The content store holds every output's content by its SHA-256, and a host puts its own texts in
+it the same way (docinfer's `job`, its inference texts). It is new: processing's caller stores an
+output and sets its `Ref`, which goes.
+
+```go
+package dispatch
+type Content interface {
+    // Put stores r's bytes as the content sha256 names. Content already held is kept, its
+    // retention renewed.
+    Put(ctx context.Context, sha256 string, r io.Reader) error
+    // Open opens the content sha256 names; a miss matches fs.ErrNotExist.
+    Open(ctx context.Context, sha256 string) (io.ReadCloser, error)
+}
+func NewFileContent(dir string) (*FileContent, error)
+func NewMemoryContent() *MemoryContent
+```
+
+`cmd/docproc`'s run directory holds its content in a `FileContent`; Cerebro's is blob storage
+through `docproc/storage`.
+
 ### Index
 
 The index is kept (processing `dispatch/index.go`, `memory.go`, `file.go`). It is
 content-addressed by a part's SHA-256 and its stage's identity. One claimant prepares the
 content, and every other claimant waits for its entry, so replicas sharing an index prepare
-content once. Cerebro backs it with JetStream (the capstone's `state` task); `MemoryIndex` and
+content once. Cerebro backs it with PostgreSQL through `docproc/database`; `MemoryIndex` and
 `FileIndex` stay for tests and `cmd/docproc`.
 
 ```go
 type Key struct { SHA256 string; Stage Identity }
 type Index interface {
     Lookup(ctx context.Context, key Key) (Entry, bool, error)
-    Outputs(ctx context.Context, key Key) iter.Seq2[Output, error]
-    Warnings(ctx context.Context, key Key) iter.Seq2[Warning, error]
-    Children(ctx context.Context, key Key) iter.Seq2[Child, error]
-    Claim(ctx context.Context, key Key) (token string, ok bool, err error)
+    Items(ctx context.Context, key Key) iter.Seq2[Recorded, error] // the log, in append order
+    Claim(ctx context.Context, key Key) (token string, lease time.Duration, ok bool, err error)
     Renew(ctx context.Context, key Key, token string) error
     Wait(ctx context.Context, key Key) (Entry, bool, error)
-    Append(ctx context.Context, key Key, token string, o Output) error
-    AppendWarning(ctx context.Context, key Key, token string, w Warning) error
-    AppendChild(ctx context.Context, key Key, token string, c Child) error
+    Append(ctx context.Context, key Key, token string, r Recorded) error
     Record(ctx context.Context, key Key, token string, e Entry) error
     Release(ctx context.Context, key Key, token string) error
+    Drop(ctx context.Context, key Key) error // a recorded entry, so its content is prepared again
     Flags(ctx context.Context, sha256 string) ([]inspect.Flag, bool, error)
     RecordFlags(ctx context.Context, sha256 string, flags []inspect.Flag) error
+}
+type Entry struct {
+    Outcome  Outcome    `json:"outcome"`
+    Reason   string     `json:"reason,omitzero"`
+    Outputs  int        `json:"outputs,omitzero"`
+    Children int        `json:"children,omitzero"`
+    Stages   []Identity `json:"stages"` // the distinct stages its subtree ran
+}
+type Recorded struct { // one item of an entry's log; one field is set
+    Output  *Output  `json:"output,omitempty"`
+    Warning *Warning `json:"warning,omitempty"`
+    Child   *Child   `json:"child,omitempty"`
 }
 type Child struct { // a found part, as its parent's entry records it
     Part    Part    `json:"part"`
@@ -644,17 +728,21 @@ type Child struct { // a found part, as its parent's entry records it
 }
 ```
 
-`Warnings` and `AppendWarning` record a part's warnings as `Outputs` and `Append` record its
-outputs. `Child` holds the found part's `Part` whole, in place of processing's `SHA256`, `Name`,
-`Where`, `Size`, and `Route`, so a replayed child's part is the part as found. The index records
-it as its JSON has it: `Path` and `After`, local, are never recorded.
+An entry's outputs, warnings, and children are one log, appended as the part's stage yields them
+and read back in that order, so a replay is the preparation's order. `Items` and `Append` replace
+processing's `Outputs`, `Children`, `Append`, and `AppendChild`. `Child` holds the found part's
+`Part` whole, in place of processing's `SHA256`, `Name`, `Where`, `Size`, and `Route`, so a
+replayed child's part is the part as found. The index records it as its JSON has it: `Path` and
+`After`, local, are never recorded.
 
-A claim is a lease, and every implementation honors one contract. A claim lasts the index's lease
-from its last `Claim` or `Renew`; the dispatcher renews it on a timer, at a third of the lease,
-for as long as the part's stage runs. A claim not renewed within its lease may be taken over by
-another claimant, and from then on the first token's `Renew`, `Append*`, and `Record` fail. Its
-dispatch then stops the part's stage, records nothing, and waits for the new claimant's entry, as
-any claimant that lost the claim waits. `FileIndex`'s lease is its stale duration.
+A claim is a lease, and every implementation honors one contract. `Claim` returns the lease with
+the token, since the lease belongs to the claim the index granted, and a provider that sets it
+per claim needs no second call. A claim lasts its lease from its last `Claim` or `Renew`; the
+dispatcher renews it on a timer, at a third of the lease, for as long as the part's stage runs.
+A claim not renewed within its lease may be taken over by another claimant, and from then on the
+first token's `Renew`, `Append`, and `Record` fail. Its dispatch then stops the part's stage,
+records nothing, and waits for the new claimant's entry, as any claimant that lost the claim
+waits. `FileIndex`'s lease is its stale duration.
 
 ### Event shapes
 
