@@ -217,10 +217,446 @@ returns by addition.
 - Assumes quarry's dispatch keeps asking each tool for its Markdown alone as the text it hands to
   inference, as processing's stages do.
 - Assumes Athena builds `sparse_rows` from typed cells, not from Markdown (`athena-mapping`).
+- Assumes quarry keeps processing's package names `office`, `email`, and `onenote`, not the
+  tools' names: each does more than decode its tool (LibreOffice's legacy conversion, threading).
+- Assumes docproc's `stages` belongs in the library, so Cerebro and docproc wire stages alike;
+  `cmd/internal` keeps only `schema` and `rundir`.
+- Assumes every stream input is spooled to scratch before its stages run, since every stage and
+  tool reads a path; no stage reads a stream directly.
+- Assumes one `infer.Pipeline` per replica, whose per-capability bounds every concurrent job
+  shares, rather than bounds per job.
+- Assumes a result batch closes at 512 KiB or when no embedded chunk is waiting; the capstone's
+  `events` task may tune the cap.
+- Assumes an `inference` event carries its text whole. An hours-long transcript could pass 1 MB,
+  and the `events` task may move such a text to the object store by its digest.
+- Assumes Cerebro sets the index's retention no longer than the cache's, so a seen part's output
+  `Ref` resolves; a miss fails the part, so it is reported, never dropped.
+- Assumes Cerebro's extraction stage (a caller's prompt and JSON schema) is Cerebro's own, on
+  go-ai, sharing `infer.Cache` under its own capability name; no spike has it.
+- Assumes the typed metadata shapes wait for the capstone's `metadata` task; until then,
+  `Output.Meta` and the tools' records carry metadata.
 
 ## quarry's API
 
-Filled by slice 2.
+The library module, `github.com/standards-lab/quarry`, requires `golang.org/x/text` only and
+imports no model client. processing already imports spike-ai-pipeline-client only from tests and
+the test helpers `internal/visiontest` and `internal/audiotest`; docinfer's client calls
+(`spike-ai-pipeline/internal/docinfer/{vision,transcribe,embed}`) move behind `infer`'s
+interfaces. `cmd/docinfer` implements them with go-ai and is the only module that imports it;
+Cerebro implements them with go-ai too. "Kept" below means processing's signature carries over
+as it is.
+
+```text
+route, inspect             what a file is, whether it is safe to open, which stage reads it  kept
+tool                       the exec and container runners                                    kept
+internal/cli               the tools' shared contract: exit codes, stderr lines, Spool       kept
+office, email, onenote     a tool's reader, decoding its schema "2"                         changed
+document, picture, audio,  the other formats, on their tools                                 kept
+  media, sevenzip
+dispatch                   stages, the walk over an input's parts, the index                 changed
+stages                     the stages wired over the host's tools                            moved from docproc
+chunk                      the chunker                                                       moved from docinfer
+infer                      the inference interfaces, the cache, the pipeline                 new, from docinfer
+event                      the exported event shapes                                         new, from docproc's schema
+job                        one job: dispatch, then inference, under the job's context        new
+```
+
+### Inspection and routing
+
+Kept (processing `route/route.go`, `route/identify.go`, `inspect/inspect.go`). The dispatcher
+runs both on every part before its stage, so a part event carries its route and flags; a caller
+calls them directly only to triage a file before queueing it.
+
+```go
+package route
+type Kind string   // the format a signature names; Unknown is ""
+type Route string  // document, office, vision, vision-converted, nested, onenote, archive,
+                   // audio, video, text; unrouted
+func Identify(head []byte) Kind                                // at most HeadLen (4096) bytes
+func File(path, name, mimeType string) (Route, string, error) // the route, and why
+
+package inspect
+type Verdict string // proceed | quarantine
+type Class string   // active | unsafe
+type Check string   // signature-mismatch, zip-traversal, zip-bomb, 7z-traversal, …
+type Flag struct { Check Check; Class Class; Evidence string }
+type Report struct { Kind route.Kind; Flags []Flag; Verdict Verdict }
+type Options struct { Policy map[Check]Verdict; BombRatio float64; BombSize uint64 }
+func Inspect(ctx context.Context, path, name string, opts Options) (Report, error)
+func CheckListing(kind route.Kind, size int64, entries []Listed, opts Options) (Report, error)
+```
+
+### Running the tools
+
+`tool` is kept (processing `tool/tool.go`, `tool/exec.go`, `tool/container.go`). Cerebro runs
+the exec runner inside an image that bundles the tools (`tool-packaging`). The container runner
+stays for hosts like docproc's, since it needs the docker socket (data-intelligence.md, "Missing
+layers").
+
+```go
+package tool
+type Spec struct {
+    Program string; VersionArgs []string; VersionPattern *regexp.Regexp
+    Minimum string; VersionExit int; KillAfter time.Duration
+}
+type Invocation struct {
+    Args []string; Dir string; Stdin io.Reader; Stdout, Stderr io.Writer; Usage *Usage
+}
+func NewExec(ctx context.Context, spec Spec) (*Tool, error)
+func NewScript(ctx context.Context, spec Spec, script string) (*Tool, error)
+func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*Tool, error)
+// Run runs once; ctx's end sends the process group SIGTERM, then SIGKILL after KillAfter.
+func (t *Tool) Run(ctx context.Context, inv Invocation) error
+```
+
+`office`, `email`, and `onenote` keep their readers over a `*tool.Tool`. Each decodes its tool's
+schema "2" line by line (the contracts above), refuses another schema with `ErrSchema`, and keeps
+an unknown kind as an `Unknown*` value. `internal/cli` keeps exit codes 1 to 4 and the stderr
+parse. The record types follow the contracts: `office.Document` becomes the `document` line,
+`email.Message` takes `Markdown` up and `Address.SMTPAddress`, and `onenote.Page` takes
+`Markdown` and `Media`.
+
+```go
+package email // onenote has the same shape
+func NewReader(cfg Config) (*Reader, error) // Config{Mail *tool.Tool}
+func (r *Reader) Read(ctx context.Context, req Request) (*Stream, error)
+type Request struct { Input string; Media string; After uint64 } // Attachments becomes Media (--media)
+func (s *Stream) Records() iter.Seq2[Record, error]
+
+package office
+func NewConverter(ctx context.Context, cfg Config) (*Converter, error)
+func (c *Converter) Convert(ctx context.Context, doc io.Reader, req Request) (*Result, error)
+```
+
+### Input from a stream, or a path
+
+```go
+package dispatch
+type Input struct {
+    Path   string    // a file the caller owns; the dispatcher never removes it
+    Reader io.Reader // or a stream, spooled into Config.Dir and hashed as it is copied,
+                     // removed with the part
+    Name   string    // the stored name, whose extension routing reads
+    MIME   string    // the stored MIME type, if any
+    After  uint64    // resume a store after this message, mail's --after
+}
+```
+
+`Reader` is new: processing's `Input` is a path alone. The stages read paths, since mail,
+onenote, qpdf, and ffprobe take one, and `office.Converter.Convert` already spools its reader
+through `internal/cli.Spool`. So one spool at the input serves every stage. Cerebro passes the
+object store's reader for a chunked upload, or the bytes of a small document's Command.
+
+### Dispatch
+
+Kept (processing `dispatch/dispatch.go`, `dispatch/stage.go`, `dispatch/pool.go`): `Dispatch`
+yields each output as its stage makes it, and each part's own event once its outcome is known.
+
+```go
+type Stage interface {
+    Identity() Identity // name, its tools' version, its configuration's hash
+    Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error]
+}
+type Stages map[route.Route]Stage
+type Config struct { Stages Stages; Index Index; Dir string; Limits Limits; Inspect inspect.Options }
+func New(cfg Config) (*Dispatcher, error)
+func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, error]
+func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error]
+
+type Event struct {
+    Part Part; Output *Output; Outcome Outcome; Reason string; Err error
+    Stage Identity; Recorded Outcome; Outputs, Children int
+}
+func (e Event) Keep() // keep the output's file, or the part's, past the loop body
+type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, encrypted,
+                      // failed, limited
+type Output struct {
+    Kind OutputKind // text, markdown, image, record, audio
+    Name, MediaType, Path string; Value []byte; Meta map[string]string; Ref string
+}
+type Item struct { Output *Output; Part *Found; Warning *Warning }
+type Warning struct { Tool, Where, What string }
+```
+
+`Item.Warning` is new. processing yields a tool's stderr warnings as a record output, but slice
+1's stderr line (`<tool>: warning: <where>: <what>`) parses to typed data, and warnings as data
+are quarry's.
+
+`stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
+docproc and Cerebro wire the same stages from the tools a host holds:
+
+```go
+package stages
+type Lookup func(program string) (string, error)
+func Build(ctx context.Context, lookup Lookup, exclude []route.Route) Set
+type Set struct { Stages dispatch.Stages; Tools []Tool; Rows []Row } // Row: route, wired|missing|excluded
+```
+
+### Index and cache
+
+The index is kept (processing `dispatch/index.go`, `memory.go`, `file.go`). It is
+content-addressed by a part's SHA-256 and its stage's identity. One claimant prepares the
+content, and every other claimant waits for its entry, so replicas sharing an index prepare
+content once. Cerebro backs it with JetStream (the capstone's `state` task); `MemoryIndex` and
+`FileIndex` stay for tests and docproc.
+
+```go
+type Key struct { SHA256 string; Stage Identity }
+type Index interface {
+    Lookup(ctx context.Context, key Key) (Entry, bool, error)
+    Outputs(ctx context.Context, key Key) iter.Seq2[Output, error]
+    Children(ctx context.Context, key Key) iter.Seq2[Child, error]
+    Claim(ctx context.Context, key Key) (token string, ok bool, err error)
+    Wait(ctx context.Context, key Key) (Entry, bool, error)
+    Append(ctx context.Context, key Key, token string, o Output) error
+    AppendChild(ctx context.Context, key Key, token string, c Child) error
+    Record(ctx context.Context, key Key, token string, e Entry) error
+    Release(ctx context.Context, key Key, token string) error
+    Flags(ctx context.Context, sha256 string) ([]inspect.Flag, bool, error)
+    RecordFlags(ctx context.Context, sha256 string, flags []inspect.Flag) error
+}
+```
+
+The cache is new. It generalizes docinfer's held results (`outdir.Dir.Held` and `Hold`, keyed by
+`outdir.Key`) to bytes behind an interface, and Cerebro backs it with its object store.
+
+```go
+package infer
+// Cache holds values by key; a miss is (nil, false, nil).
+type Cache interface {
+    Get(ctx context.Context, key string) ([]byte, bool, error)
+    Put(ctx context.Context, key string, value []byte) error
+}
+// Key is docinfer's outdir.Key, prefixed "<capability>/": the SHA-256 of the capability, the
+// model, the settings that change the result, and the content's SHA-256, length-prefixed.
+func Key(capability, model, settings, content string) string
+func NewMemoryCache() *MemoryCache
+```
+
+A held vision or transcription result holds its text inline, not as a file under docinfer's
+`texts/`. `job` also puts each text and Markdown output's bytes under `output/<sha256>` and sets
+the output's `Ref` to that key. A part the index reports seen therefore replays outputs whose
+text the cache still holds, which data-intelligence.md ("Caching") asks for: content seen before
+is replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its `results/`.
+
+### Inference interfaces
+
+quarry defines these, and any model client implements them. Each must be safe for concurrent
+use. The pipeline holds the concurrency bounds, the batching, the cache, and the retry of a
+rejected embedding batch one text at a time, all of which docinfer's `vision`, `transcribe`, and
+`embed` packages hold beside their client calls today.
+
+```go
+package infer
+type Identity = event.Identity // capability, model, and the settings that change its result
+type Usage = event.Usage       // tokens, as the reply reports them
+type Profile = event.Profile
+
+type Image struct { Path, MediaType, SHA256 string }
+type Window struct { Path, SHA256 string } // a 16 kHz mono WAV, audio's window
+type Text struct {
+    Text       string
+    Incomplete string // why the model stopped early, such as "max_output_tokens"
+    Usage      Usage
+}
+
+type Describer interface { // vision
+    Identity() Identity
+    Describe(ctx context.Context, img Image) (Text, error)
+}
+type Transcriber interface {
+    Identity() Identity
+    Transcribe(ctx context.Context, w Window) (Text, error)
+}
+type Embedder interface {
+    Identity() Identity
+    Embed(ctx context.Context, texts []string) ([][]float32, Usage, error) // one vector per text
+}
+type Chunker interface {
+    Settings() string // its version and bound, which key the held embeddings
+    Split(text string) []chunk.Chunk
+}
+
+// RefusedError is an implementation's error for an input the endpoint refused: recorded, not
+// fatal, and held in the cache when Status is 4xx. Any other error stops the job.
+type RefusedError struct { Status int; Message string }
+func (e *RefusedError) Is(target error) bool // matches ErrRefused
+```
+
+```go
+package chunk // docinfer's chunk, kept
+type Chunk struct { Text string; Start, End int } // the text's [Start, End) bytes
+const Version = "1"
+type Splitter struct { Bound int } // an infer.Chunker over Split
+func Split(text string, bound int) []Chunk
+```
+
+The pipeline is built once and runs many jobs. Its bounds are shared by every job it runs at
+once, so a replica bounds each capability as a whole ("Distribution": inference fans out inside
+a job, bounded per capability).
+
+```go
+type Config struct {
+    Vision        Describer   // nil skips images, counted
+    Transcription Transcriber // nil skips windows, counted
+    Embeddings    Embedder    // required
+    Chunker       Chunker     // required
+    Cache         Cache       // required
+    Concurrency   struct{ Vision, Transcription, Embeddings int }
+    EmbedBatch    int               // texts per Embed call
+    BatchBytes    int               // a result batch's cap; 512 KiB by default
+    Join          audio.JoinRequest // how a part's window transcripts join
+}
+func New(cfg Config) (*Pipeline, error)
+// Profile is the resolved identity each result records: the models, settings, and chunker.
+func (p *Pipeline) Profile() Profile
+// Run infers over one job's sources and yields inference, batch, and done events as made.
+func (p *Pipeline) Run(ctx context.Context, job string, sources iter.Seq2[Source, error]) iter.Seq2[event.Event, error]
+
+type Source struct {
+    Part   event.Part
+    Stage  event.Stage
+    Output event.Output // text or markdown: chunked; image: described; audio: transcribed, then joined
+    Path   string       // its file, until Done
+    Done   func()       // the pipeline is finished with Path
+}
+```
+
+The sources are docinfer's (`infer/sources.go`): text and Markdown outputs, never records, plus
+each image's vision text, each part's joined transcript, and one metadata text per input. `job`
+feeds `Run` from dispatch's events. `cmd/docinfer` feeds it from a docproc run directory through
+its `source` package and keeps its own directory's schema "1".
+
+### Batches as made
+
+docinfer runs each capability over every input in turn and writes `chunks.jsonl` whole at the
+end (`infer/execute.go`, `outdir.Dir.WriteChunks`). `Pipeline.Run` streams per job instead, in
+the order things are made:
+
+- an `inference` event as each image's text or each part's joined transcript is made, or read
+  from the cache;
+- a `batch` event once its chunks' embeddings complete. A batch is yielded when the next chunk
+  would pass `BatchBytes`, or when no embedded chunk is waiting, so it never waits to fill;
+- a `done` event last, with the counts and digests Cerebro's manifest is built from.
+
+The cap keeps a batch under NATS's default 1 MB `max_payload`: a 768-dimension vector is 4,096
+B in base64 (data-intelligence.md, "Results").
+
+### Event shapes
+
+`event` holds the shapes quarry exports, as JSON, on the standard library alone; `infer`
+aliases its `Identity`, `Usage`, and `Profile`. Its `Part`, `ContentType`, `Flag`, `Stage`,
+and `Output` are docproc's `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`,
+`record.go`) moved into the library. `cmd/internal/schema` uses them and keeps record bytes
+unchanged under schema "1". The shapes grow by addition only, as the tools' contracts do.
+
+```go
+package event
+const Version = "1"
+type Kind string // part, output, warning, inference, batch, checkpoint, done
+type Event struct {
+    Kind       Kind        `json:"kind"`
+    Job        string      `json:"job"`
+    Part       *Part       `json:"part,omitempty"`   // the part an event is of
+    Stage      *Stage      `json:"stage,omitempty"`
+    Output     *Output     `json:"output,omitempty"` // Ref, never a local path
+    Outcome    string      `json:"outcome,omitzero"` // a part's: dispatch.Outcome
+    Recorded   string      `json:"recorded,omitzero"`
+    Reason     string      `json:"reason,omitzero"`
+    Error      string      `json:"error,omitzero"`
+    Outputs    *int        `json:"outputs,omitempty"`
+    Children   *int        `json:"children,omitempty"`
+    Warning    *Warning    `json:"warning,omitempty"`
+    Inference  *Inference  `json:"inference,omitempty"`
+    Batch      *Batch      `json:"batch,omitempty"`
+    Checkpoint *Checkpoint `json:"checkpoint,omitempty"`
+    Done       *Done       `json:"done,omitempty"`
+}
+type Part struct {
+    Name string; Size int64; SHA256 string; ContentType ContentType; Flags []Flag
+    Parent string; Depth int; Where string
+}
+// Stage, Output, ContentType, Flag, Span, Source, Seam, and Counts are docproc's and docinfer's
+// shapes of those names, carried over.
+type Identity struct {
+    Capability string `json:"capability"` // vision | transcription | embeddings
+    Model      string `json:"model"`
+    Settings   string `json:"settings"`   // prompt, max tokens, effort; prompt, language; chunker
+}
+type Profile struct {
+    Vision        *Identity `json:"vision,omitempty"`
+    Transcription *Identity `json:"transcription,omitempty"`
+    Embeddings    Identity  `json:"embeddings"`
+    Dimensions    int       `json:"dimensions"` // measured from the vectors, as docinfer's Space
+    Chunker       string    `json:"chunker"`    // the Chunker's Settings
+}
+type Usage struct { Input, Output int }
+type Warning struct { Tool, Where, What string }
+type Inference struct {
+    Capability string   `json:"capability"`        // vision | transcription
+    Content    string   `json:"content"`           // the image's or windows' SHA-256
+    Outcome    string   `json:"outcome"`           // described, incomplete, refused, held
+    Text       string   `json:"text,omitzero"`     // whole
+    TextSHA256 string   `json:"text_sha256,omitzero"`
+    Seams      []Seam   `json:"seams,omitempty"`   // a transcript's, as audio.Join made them
+    Usage      Usage    `json:"usage,omitzero"`
+    TookMS     int64    `json:"took_ms"`
+}
+type Batch struct {
+    Index  int     `json:"index"`  // from 0 in the job; the batch's id is job and index
+    Chunks []Chunk `json:"chunks"`
+    Digest string  `json:"digest"` // SHA-256 over its chunks' digests, in order
+}
+type Chunk struct { // docinfer's outdir.Line, less the input's file fields
+    Digest string `json:"digest"` // SHA-256 of Text: the per-item digest
+    Text   string `json:"text"`
+    Index  int    `json:"index"`  // within its source text
+    Span   Span   `json:"span"`
+    Source Source `json:"source"` // output, metadata, vision, or transcript, and its ref
+    Part   Part   `json:"part"`   // provenance: the part, its parent and depth, where found
+    Stage  *Stage `json:"stage,omitempty"`
+    Output *Output `json:"output,omitempty"`
+    Vector string `json:"vector,omitzero"` // base64 little-endian float32, as returned
+    Error  string `json:"error,omitzero"`  // why the endpoint rejected it
+}
+type Checkpoint struct { After uint64 } // a store's cursor: the last message whose events are out
+type Done struct {
+    Profile Profile `json:"profile"` // the resolved identity the consumer registers its space by
+    Batches int     `json:"batches"`
+    Chunks  int     `json:"chunks"`
+    Digest  string  `json:"digest"`  // SHA-256 over the batches' digests, in order
+    Counts  Counts  `json:"counts"`  // docinfer's VisionCounts and TranscriptionCounts, and parts
+    Error   string  `json:"error,omitzero"`
+}
+```
+
+Batch ids, per-item digests, provenance, warnings, and the profile are quarry's, as slice 1
+keeps them out of the tools. The manifest's sequence range is Cerebro's, from its job stream.
+
+### Per-job cancellation
+
+```go
+package job
+type Job struct { ID string; Input dispatch.Input }
+type Config struct {
+    Dispatcher      *dispatch.Dispatcher
+    Pipeline        *infer.Pipeline
+    Cache           infer.Cache
+    CheckpointEvery int // messages between a store's checkpoints
+}
+func New(cfg Config) (*Runner, error)
+// Run dispatches one job's input and infers over it, yielding its events in order: each part
+// and output as dispatched, then inference and batches as made, and done last.
+func (r *Runner) Run(ctx context.Context, j Job) iter.Seq2[event.Event, error]
+```
+
+A job is cancelled through `Run`'s context, which is the job's own. Its end stops the job's tool
+runs (`tool.Run`'s SIGTERM, then SIGKILL), its index waits and claims, and its model calls,
+since each interface method takes the context. It removes the job's files and yields
+`ctx.Err()` alone, last. Other jobs on the same `Runner` go on. Stopping the loop early does the
+same. processing's `Dispatch` already behaves this way per call. Two things change: docinfer's
+single run-wide context becomes one per job, and `Pool` keeps one context for all its inputs,
+since only docproc uses it.
 
 ## go-ai's surface
 
