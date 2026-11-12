@@ -102,8 +102,9 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
   appends what the Markdown lacks. The Markdown is rendered to plain text by CommonMark's
   semantics: a link reads as its text, an image as its alt text, emphasis and backslash escapes
   are removed, and link and image destinations and autolinks are URLs. Both sides are normalized
-  to Unicode NFC and split into word tokens: a word is a maximal run of letters and digits
-  (general categories L* and N*), and symbols (S*), punctuation (P*), controls and format
+  to Unicode NFC and split into word tokens: a word is a maximal run of letters, marks, and
+  digits (general categories L*, M*, and N*), a mark joining its base as Unicode's word
+  segmentation (UAX #29) has it, and symbols (S*), punctuation (P*), controls and format
   characters (C*), and separators only separate words, since the comparison is of words and
   those are not words. A URL is one token (a URL in angle brackets keeps no whitespace, RFC 3986
   appendix C). Tokens compare case-sensitively. The text body's tokens are aligned in order with
@@ -245,8 +246,8 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
   it is made from the text body, nothing is. Compared by quarry-mail's content rule instead
-  (CommonMark plain text, NFC, letter-and-digit words aligned in order), the units it appends
-  are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
+  (CommonMark plain text, NFC, words of letters, marks, and digits aligned in order), the units
+  it appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
   `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
   inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
   log book.", where the HTML shows the image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg`
@@ -1250,8 +1251,8 @@ From spike-ai-pipeline-mail 0.3.1.
   are still decoded, since the Markdown is made from them.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
   the text body's content the Markdown lacks, by the schema's content rule (CommonMark plain
-  text, NFC, letter-and-digit words aligned in order), appended by sentence or line as a
-  paragraph, escaped as a text body's Markdown is. The goldens of
+  text, NFC, words of letters, marks, and digits aligned in order), appended by sentence or
+  line as a paragraph, escaped as a text body's Markdown is. The goldens of
   `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
   `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
   `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
