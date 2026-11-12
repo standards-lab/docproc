@@ -98,20 +98,28 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
 
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
   `rtf`, and `derived.html` are cut (measured below). When the Markdown is made from HTML, stored
-  or recovered from the RTF, the tool compares the text body's content with the Markdown's and
-  appends what the Markdown lacks. The Markdown is rendered to plain text by CommonMark's
-  semantics: a link reads as its text, an image as its alt text, emphasis and backslash escapes
-  are removed, and link and image destinations and autolinks are URLs. Both sides are normalized
-  to Unicode NFC and split into word tokens: a word is a maximal run of letters, marks, and
-  digits (general categories L*, M*, and N*), a mark joining its base as Unicode's word
-  segmentation (UAX #29) has it, and symbols (S*), punctuation (P*), controls and format
-  characters (C*), and separators only separate words, since the comparison is of words and
-  those are not words. A URL is one token (a URL in angle brackets keeps no whitespace, RFC 3986
-  appendix C). Tokens compare case-sensitively. The text body's tokens are aligned in order with
-  the Markdown's; each text-body unit holding a token the Markdown lacks,
-  the sentence when its line holds more than one and else the line, is appended in order as a
-  paragraph, escaped as a text body's Markdown is. A message with an RTF body also stores a text
-  body, so the text body stands for the RTF's text.
+  or recovered from the RTF, the tool appends the text body's sentences the Markdown lacks by the
+  content rule below, in order, as a paragraph escaped as a text body's Markdown is. A message
+  with an RTF body also stores a text body, so the text body stands for the RTF's text.
+- The content rule compares a source text with a Markdown text by standards alone, so no
+  fixture tunes it; quarry-onenote's OCR text follows it too.
+  - **Plain text.** Both are normalized to Unicode NFC. The Markdown is read by CommonMark's
+    semantics: a link as its text followed by its destination as one URL token, an image as its
+    alt text followed by its destination, emphasis and backslash escapes removed.
+  - **URLs.** In plain text, a URL is a `<scheme:…>` in angle brackets, its whitespace removed
+    (RFC 3986 appendix C), or a GFM extended autolink (`www.`, `http://`, `https://`, with the
+    extension's domain and trailing-punctuation rules, a `www.` link taking `http:`). URL tokens
+    compare after RFC 3986 §6.2.2 syntax-based normalization: scheme and host case-insensitive,
+    percent-encoding normalized, dot segments removed.
+  - **Words.** The rest splits at Unicode word boundaries (UAX #29), and a segment holding a
+    letter or digit (general categories L* and N*) is a word token; marks and format characters
+    stay inside their word (WB4). The comparison is of words, and symbols, punctuation, and
+    controls are not words. Word tokens compare case-sensitively.
+  - **Alignment.** The longest common subsequence of the two token sequences, ties broken to
+    the earliest match in the Markdown.
+  - **Units.** The source's sentences by Unicode sentence boundaries (UAX #29), a line break also
+    ending one. Each sentence holding a token outside the alignment is appended, in order; the
+    rest is already in the Markdown, so overlap is never written twice.
 - `smtp_address` is an Exchange (`EX`) address's SMTP address (`PidTagSmtpAddress`), which schema
   "1" leaves out (README "Known limits").
 - `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
@@ -136,12 +144,13 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
 - `content` (containers, outlines, paragraphs, runs, tables, tags), the page's `ink` record, and
   `ink_text` are cut: their text is in `markdown`, and the media they hold move to `media`.
 - The Markdown gains the text the spike reads but leaves out of it. The title's date and time
-  paragraphs (`PageDateTime`) follow the title heading as one line. An image's `ocr_text`, when
-  its `alt_text` doesn't hold it, follows the alt text in the image's Markdown text, as OneNote's
-  own alt text holds most of it (4,926 of 5,572 B). An image's `hyperlink` makes the image a link,
-  `[![alt](file)](hyperlink)`. A To Do tag's label "To Do" is carried by its task box (`- [ ]`),
-  so writing it would duplicate it; a To Do tag with another label keeps its `[Label]` after the
-  box.
+  paragraphs (`PageDateTime`) follow the title heading as one line, the paragraphs joined by one
+  space. An image's `ocr_text` sentences that its `alt_text` lacks, by quarry-mail's content
+  rule, follow the alt text in the image's Markdown text; OneNote's own alt text holds most of it
+  (4,926 of 5,572 B). An image's `hyperlink` makes the image a link, `[![alt](file)](hyperlink)`.
+  Every tag's label is written the same way, as `[Label]` before its item's text, a task tag's
+  after its task box (`- [ ] [To Do] …`): the box carries the task state, not the label's
+  words.
 - `ink_alternatives` is a label kept as a plain-text field: the recognizer's alternates, which the
   Markdown leaves out; the words they belong to are the ink image's alt text in the Markdown
   (`![ink: <words>](<file>.svg)`), in the same order.
@@ -246,8 +255,8 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
   it is made from the text body, nothing is. Compared by quarry-mail's content rule instead
-  (CommonMark plain text, NFC, words of letters, marks, and digits aligned in order), the units
-  it appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
+  (UAX #29 by uniseg 0.10.1 on Unicode 16.0, CommonMark by markdown-it-py), the sentences it
+  appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
   `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
   inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
   log book.", where the HTML shows the image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg`
@@ -268,8 +277,9 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
   79 B (8). The run text missing, 538 B, is every title's date and time paragraphs; the
-  `ocr_text` missing, 646 B, is OCR text no alt text holds; the tag labels missing, 30 B, are
-  "To Do", which the Markdown writes as a task box. No image carries a `hyperlink`. Media
+  `ocr_text` missing, 646 B, is OCR text no alt text holds, of which the content rule appends
+  566 B, the sentences of 6 images, whitespace collapsed; the tag labels missing, 30 B, are
+  "To Do", which the spike writes only as a task box. No image carries a `hyperlink`. Media
   written over mail and onenote: 235 MB.
 
 ## Consumers of structured text
@@ -316,15 +326,15 @@ that applies:
 | onenote | `markdown` | `dispatch/onenote.go` (`page`) | kept |
 | onenote | page `title` | `dispatch/onenote.go` meta | kept |
 | onenote | runs' `text`, `latex`, `link`; list markers; table cells | none; the Markdown renders them, links as link targets | **cut** |
-| onenote | the title's date and time runs (`PageDateTime`) | none; the Markdown lacks them (538 B), and takes them under the title | into Markdown |
-| onenote | tag `label` | none; the Markdown renders it as a `[Label]` prefix; a To Do tag's label "To Do" is carried by its task box (`- [ ]`), so writing it would duplicate it, and a To Do tag with another label gains its `[Label]` | into Markdown |
+| onenote | the title's date and time runs (`PageDateTime`) | none; the Markdown lacks them (538 B), and takes them under the title, joined by one space | into Markdown |
+| onenote | tag `label` | none; the Markdown renders it as a `[Label]` prefix, every tag's alike, a task tag's after its box (`- [ ] [To Do] …`), since the box carries the task state, not the label's words | into Markdown |
 | onenote | image `alt_text` | none; it is the Markdown's image text | **cut** |
-| onenote | image `ocr_text` | none; 4,926 B is within `alt_text`, and the rest (646 B) joins the Markdown's image text, where `text-layer` reads it | into Markdown |
+| onenote | image `ocr_text` | none; 4,926 B is within `alt_text`, and the sentences the alt text lacks by the content rule (566 B) join the Markdown's image text, where `text-layer` reads it | into Markdown |
 | onenote | image `hyperlink` | none; the Markdown lacks it, and makes the image a link to it | into Markdown |
 | onenote | image `printout_page`, ink `strokes` and `bounds` | none; not plain text, and vision reads every image and ink SVG | **cut** |
 | onenote | `ink_text` words | none; they are the ink image's alt text in the Markdown (`![ink: <words>](<file>.svg)`) | **cut** |
 | onenote | `ink_text` `alternatives` | `metadata`; the recognizer's alternates, a label the Markdown leaves out | kept, a label, as `ink_alternatives` |
-| onenote | `ink_text` `language` | none; a language tag, not text | **cut** |
+| onenote | `ink_text` `language` | none; a Windows LCID number (`u16`, `model.rs`), not text: it can't be plain text and has no processor | **cut** |
 | onenote | media `filename` | `dispatch/onenote.go` (`Found` name) | kept |
 | onenote | notebook `name`; section and group `path` | `dispatch/onenote.go` meta, `metadata` | kept |
 | onenote | page `author`, times | `metadata` | kept |
@@ -1250,9 +1260,10 @@ From spike-ai-pipeline-mail 0.3.1.
 - **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
   are still decoded, since the Markdown is made from them.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
-  the text body's content the Markdown lacks, by the schema's content rule (CommonMark plain
-  text, NFC, words of letters, marks, and digits aligned in order), appended by sentence or
-  line as a paragraph, escaped as a text body's Markdown is. The goldens of
+  the text body's sentences the Markdown lacks, by the schema's content rule (CommonMark plain
+  text, NFC, UAX #29 words and sentences, GFM autolinks and RFC 3986 URLs, longest common
+  subsequence), appended in order as a paragraph, escaped as a text body's Markdown is. The
+  goldens of
   `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
   `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
   `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
@@ -1275,16 +1286,17 @@ From spike-ai-pipeline-onenote 0.1.0.
 
 - **Toolchain.** typed-path held at 0.12.4; it moves to 0.13.0 only with onenote_parser.
 - **Cut.** A page's `content` (containers, outlines, paragraphs, runs, tables, tags), its `ink`
-  record, and `ink_text`'s words and `language`; image `alt_text`, `ocr_text`, `hyperlink`,
-  `printout_page`; ink `strokes` and `bounds`; section and section group `display_name`.
+  record, and `ink_text`'s words and `language` (a Windows LCID number, not text); image
+  `alt_text`, `ocr_text`, `hyperlink`, `printout_page`; ink `strokes` and `bounds`; section and
+  section group `display_name`.
 - **Into the Markdown.** The title's date and time paragraphs, as one line under the title
-  heading; an image's `ocr_text` its `alt_text` doesn't hold, after the alt text in the image's
-  Markdown text; an image's `hyperlink`, as a link around the image; a To Do tag's label other
-  than "To Do", as `[Label]` after its task box, whose `- [ ]` carries "To Do" itself. The golden
-  of every fixture with pages (all but the refused `Encryption.one`) shows the date and time, and
-  interop's `FileSyncWOPI_OneNoteWithODB.one` the OCR text; no fixture holds a hyperlinked image
-  or a relabeled To Do tag, so unit tests over a built page show those, as `markdown.rs`'s own
-  tests build one.
+  heading, joined by one space; an image's `ocr_text` sentences its `alt_text` lacks by
+  quarry-mail's content rule, after the alt text in the image's Markdown text; an image's
+  `hyperlink`, as a link around the image; every tag's label as `[Label]`, a task tag's after
+  its task box (`- [ ] [To Do] …`). The golden of every fixture with pages (all but the refused
+  `Encryption.one`) shows the date and time, and interop's `FileSyncWOPI_OneNoteWithODB.one` the
+  OCR text; no fixture holds a hyperlinked image, so unit tests over a built page show it, as
+  `markdown.rs`'s own tests build one.
 - **Kept.** `ink_text`'s `alternatives`, a label, as the page's `ink_alternatives`, each with its
   word's index among the page's recognized words; `handwriting_recognition.one`'s golden shows them.
 - **Added.** A page's `media`, flattened: each image, embedded file, and ink SVG that `content`
