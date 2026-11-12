@@ -41,7 +41,11 @@ text" states and applies field by field.
 - **Absence.** A field with no value, or an empty list, is left out, never `null`.
 - **Text layer.** A line that holds text carries it as `markdown`: docproc-ooxml's `document`,
   docproc-mail's `message`, docproc-onenote's `page`. Literal text is escaped by htmd's rules, which
-  mail's and onenote's Markdown share (onenote README, "Markdown").
+  mail's and onenote's Markdown share (onenote README, "Markdown"), and docproc-ooxml's matches
+  (onenote `src/markdown.rs`, `escape`): a backslash before each of ``\ * _ ` [ ] | ~ & $``,
+  and before `<` when what follows could open an HTML tag, comment, or instruction (a letter,
+  `/` then a letter or nothing, `!`, `?`, or the text's end); at a line's start, before a first
+  `-`, `=`, `+`, `#`, or `>`, and before the `.` or `)` after one to nine digits.
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
   line that names it. Its name is the lowercase hex SHA-256 of its bytes plus `.` and the stored
@@ -69,7 +73,7 @@ writes a `document` line first, then, per xlsx sheet in workbook order, a `sheet
 ```text
 document  line, schema, format (docx|xlsx|pptx), properties?, markdown?, media?
 properties  core?, app?, custom?: maps of the package's core, extended, and custom properties,
-            each value typed as stored (string, number, boolean, ISO 8601 date)
+            each value typed as stored, by the rule below
 media[]   kind (picture|embedded|ole), file?, content_type?, part?, target?, prog_id?,
           section? | sheet? | slide?   in document order
 sheet     line, name, hidden?, markdown?   an xlsx sheet's header: its heading and its table's
@@ -85,16 +89,28 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   Markdown is split along its lines, and each sheet's text exists once: the `document` line holds
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
-  header row, which only the `sheet` line carries. The lines' Markdown, joined in order, is
-  office's whole rendering. A picture's image text is its `alt`, or its `title` when it has no
+  header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables and its
+  pictures' links, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
+  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The
+  lines' Markdown fragments concatenate in order with nothing between them, each ending in its
+  own newlines, into office's whole rendering. A picture's image text is its `alt`, or its `title` when it has no
   `alt` (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
   `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
   its image's Markdown title, `![alt](file "title")`.
 - `media` holds every picture office writes (`Media` blocks, `Reading/MediaStore.cs`), plus
-  embedded packages (`embedded`, the part as stored) and OLE objects (`ole`, the native payload,
-  `prog_id` the object's), which office leaves unextracted (README "What office does not do").
-  `part` is the package part, `target` a linked picture's URL; the placement is the docx section,
-  xlsx sheet, or pptx slide index.
+  embedded packages (`embedded`, the part as stored) and OLE objects (`ole`, the part as stored,
+  its compound file unwrapped by docproc, `prog_id` from the element naming its relationship),
+  which office leaves unextracted (README "What office does not do"). Each is found through its
+  story part's, sheet's, or slide's own embedded-package and embedded-object relationships; a
+  chart's embedded source workbook is never media. The Markdown links a payload as
+  `[<prog_id, or the part's file name>](<file>)` after its preview picture. `part` is the
+  package part, `target` a linked picture's URL; the placement is the docx section, the ordinal
+  of the xlsx sheet's `sheet` line, or the pptx slide index.
+- `properties` is read from the three parts as XML. A core value is a string as stored, dates
+  included; an extended value is a number when it is all digits, else a string; a custom value
+  takes its variant's type, a file time as its stored ISO 8601 text. Keys keep their stored
+  order, and a repeated key keeps its first value with a warning. A part that can't be parsed is
+  a warning, never a refusal. The thumbnail is not media.
 - A sheet's `rows` lines keep its typed cells, office's `TableCell` less its docx-only fields.
   Each holds the sheet's next rows, in order, with their Markdown, as many as keep the line
   within 256 KiB, and at least one, so a line is bounded by the larger of 256 KiB and one row,
@@ -1694,33 +1710,92 @@ per fixture, compared byte for byte, which tests its determinism.
 
 ### docproc-ooxml [ooxml]
 
-From spike-ai-pipeline-office 0.1.0.
+From spike-ai-pipeline-office 0.1.0, settled in `design.md`, "docproc-ooxml".
 
 - **Toolchain.** .NET 10 to .NET 11 (`Directory.Build.props`' `net10.0`, mise's `dotnet`
-  10.0.400), and System.CommandLine 2.0.14 to 3.0.0, done first. The publish's
-  `-p:NuGetAudit=false`, which the ILCompiler 10.0.13 advisory forces under .NET 10, goes with
-  the move. DocumentFormat.OpenXml 3.5.1 stays.
+  10.0.400). System.CommandLine goes: the arguments (one input, `--media`, `--version`,
+  `--help`) are parsed by hand, the usage text a constant, so DocumentFormat.OpenXml 3.5.1,
+  kept, is the only package.
+- **Audit.** NuGet's audit is off in the check's and the release's builds and runs in
+  `currency`, so a published advisory fails no build; the publish's `-p:NuGetAudit=false`, which
+  the ILCompiler 10.0.13 advisory forced under .NET 10, goes.
+- **Layout.** Nested as `tools/ooxml/`: `src/`, `test/`, `fixtures/` with `generate.py`, its own
+  `mise.toml` (toolchain pins; tasks `check`, `currency`, `fixtures`, `golden`), `CHANGELOG.md`,
+  `README.md`, and `.gitignore`. Names: `DocprocOoxml.slnx`, `src/Docproc.Ooxml`, namespace
+  `Docproc.Ooxml`, binary `docproc-ooxml`, and "docproc-ooxml" for "office" in messages and the
+  README.
+- **Left in the spike.** The baseline harness, `bench/` and its tests, with Markdig,
+  `scripts/baseline.sh`, and `docs/findings/`; the acceptance rerun over ~/docs measures from then
+  on.
+- **CI and release.** docproc's root `mise run check` runs each tool's own check: the root
+  `mise.toml` pins the tools' toolchains and loops a `TOOLS` list beside `GO_MODULES`. This task
+  builds docproc's CI, a tool-by-runner matrix on native x64 and arm64 runners, and the one root
+  workflow that releases a `tools/*/v*` tag, deriving the directory, changelog, and version
+  (`${TAG##*/v}`) from the tag and writing `docproc-ooxml-v<version>-<rid>.tar.gz` with
+  `SHA256SUMS` and the repository's LICENSE. mail and onenote add a matrix row each.
+- **glibc.** The README states the binary's glibc floor, and the release job checks it on the
+  built binary.
 - **One run.** `--format json|markdown` goes: one run writes the compact `document` line, then
   each xlsx sheet's `sheet` and `rows` lines ("docproc-ooxml"), where office writes one
   rendering, its JSON indented (indentation is 62% of its output, measured above). No line holds
   a whole sheet's cells, so a reader streams it.
+- **Streaming.** Each worksheet part is read twice, forward-only: a validate pass that writes
+  nothing collects each sheet's used columns, shared-formula anchors, merges, and media hashes;
+  a write pass emits the `sheet` line and each `rows` line as its rows are read. docx and pptx
+  keep the whole-model path. Acceptance measures peak memory over ~/docs.
+- **Drawings.** A sheet's chart tables and picture links move onto its closing `rows` line, and
+  the lines' Markdown concatenates with nothing between ("docproc-ooxml").
+- **Writer.** The model's types become internal and lose their JSON attributes, converters, and
+  source-generated context; one `Utf8JsonWriter` writer spells out each line's fields in order
+  and measures a `rows` line against 256 KiB. `InlineText.Of`, `OfficeReader.Read`, and
+  `Cli.Version` become internal, visible to the tests.
 - **Cut.** The block tree (headings, paragraphs, lists, docx tables, their inlines), sections,
   headers and footers, notes, comments, chart blocks, and picture `alt` and `title`; their text is
   the Markdown's.
 - **Into the Markdown.** A picture's `title`, which office's renderer leaves out, as
   "docproc-ooxml" states. The goldens of `media.python-docx.docx`, `sections.python-docx.docx`,
   and `slide-objects.python-pptx.pptx` show it.
+- **Links.** External hyperlinks render as `[text](target)` in docx, xlsx, and pptx, an internal
+  anchor staying text. Each unread kind a document holds (text boxes, equations, SmartArt, pptx
+  comments, xlsx notes) gets one warning, such as `slide 4: comments not read`; reading them is
+  backlog.
+- **Escaping.** `MarkdownRenderer.Escape` takes the envelope's list ("Common envelope"), where
+  office escapes `<` and `>` everywhere and leaves `$`.
+- **Chart in a cell.** A chart in a docx table cell renders as its own chunk after the table, its
+  title left in the cell, where office keeps the title alone.
+- **Footnote labels.** A paragraph renders as segments, each text run escaped and each label
+  appended, in place of office's U+E000 placeholders.
+- **Elapsed time.** A value in an elapsed format (`[h]`, `[m]`, `[s]`) stays a number, as stored,
+  where office writes a date in 1900 past a day.
+- **`_xHHHH_`.** Shared and inline strings decode SpreadsheetML's escapes, `_x005F_` the escaped
+  underscore, with a generated fixture cell.
+- **Refusals.** A path that isn't a regular file is refused as "not a file"; the main part's
+  exact content type decides the format, so xlsb is "not a docx, xlsx, or pptx package".
 - **Kept.** The sheets' cells, in `rows` lines, as office's `TableCell` less its docx-only
   fields; the Markdown renderer, its xlsx Markdown split by sheet.
-- **Added.** `properties` (core, app, custom, typed as stored); `media` as one list in document
-  order, each with its placement (section, sheet, or slide); `embedded` packages and `ole`
-  payloads with `prog_id` written as stored, which office leaves unextracted.
+- **Properties.** `properties` (core, app, custom), read by "docproc-ooxml"'s rule.
+- **Embedded and OLE.** `media` as one list in document order, each with its placement (section,
+  `sheet` line ordinal, or slide); `embedded` packages and `ole` parts as stored, with `prog_id`,
+  found through each story part's, sheet's, and slide's relationships, a chart's source workbook
+  left out, and linked in the Markdown after the preview picture. Generated xlsx and pptx
+  fixtures gain an embedded package and an OLE object.
 - **Envelope.** `line` and `schema` "2"; snake_case names (office's are camelCase); media names
   keep the stored extension only when it is 1 to 8 ASCII letters and digits, where `MediaStore`
   keeps `Path.GetExtension` whole.
-- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture;
-  an xlsx fixture's `.jsonl` holds its `document` line, then each sheet's `sheet` and `rows`
-  lines; a unit test over a built sheet past the bound shows the split.
+- **stderr and exit codes.** One stderr writer, the tool's name one constant, writes
+  `error:` for codes 1 to 4, usage included, where office writes `refused:`, `failed:`, and
+  `media not written:`; `<where>` is a place in the document (`section 3`, `sheet 2` by ordinal),
+  never the input path. An I/O error on stdout, a broken pipe included, exits 1, where office
+  exits 4 or 0; the entry point catches every fault, so none leaves as 134.
+- **UTF-8.** stdout and stderr are written as UTF-8 bytes to the raw streams, never through
+  `Console.Out`, so the locale can't change them; a CLI test runs a non-ASCII fixture under
+  `LC_ALL=en_US.ISO-8859-1` against its golden.
+- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture,
+  all 72, the 30 real-world files included, compared on the published binary with no shared-file
+  fallback; a `golden` task re-records them and the check never does. An xlsx fixture's `.jsonl`
+  holds its `document` line, then each sheet's `sheet` and `rows` lines; a unit test over a built
+  sheet past the bound shows the split. The `truth.json` tests stay, as tests of the internal
+  model.
 
 ### docproc-mail [mail]
 
@@ -1787,7 +1862,8 @@ route               kept
 inspect             changed: Flag gains JSON tags (check, class, evidence), the spike's docproc
                     schema.Flag
 tool                kept
-internal/cli        kept: exit codes 1 to 4, the stderr parse, Spool
+internal/cli        changed: exit codes 1 to 4, the stderr parse, and Spool kept; its Labels list,
+                    office's alone, goes, since docproc-ooxml writes `error:`
 document, picture,  kept
   media, sevenzip
 audio               changed: Seam gains JSON tags (matched, matches, overlap, position), the
@@ -1842,6 +1918,10 @@ postgres (module)   new: dispatch.Index in PostgreSQL over sqlate, an entry's ro
                     log items' rows, its claims, leases, and fencing as conditional statements,
                     and its migrations
 ```
+
+docproc's root `mise run check` runs each tool's check through `TOOLS` beside `GO_MODULES`
+(ooxml wires it); this task adds CI's Go job and the releases of the Go modules beside ooxml's
+`tools/*/v*` workflow.
 
 processing's `onenote.Medium.Where` names a medium's outline path, from the walk. The contract's
 media carry no placement, so docproc's `Where` names the medium's page and its index in `media`.

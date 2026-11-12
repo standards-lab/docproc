@@ -13,7 +13,8 @@ Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml
 v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc,
 and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) states the
 boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) as signatures and
-schemas, and what each promotion changes from its spike.
+schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
+review's settled design and disposition for each evaluated finding.
 
 ## Capability map
 
