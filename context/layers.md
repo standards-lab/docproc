@@ -115,8 +115,8 @@ page      line, id, section, level, title?, creation_time?, modification_time?, 
           markdown?, media?, ink_alternatives?
 media[]   kind (image|embedded_file|ink), file?, filename?, size?, extension?, type?
           in the order processing's Page.Media walks them (onenote/media.go)
-ink_alternatives[]  word (its index among the page's recognized ink words, from 0),
-                    alternatives   for each word the recognizer gave alternates
+ink_alternatives[]  word (its index among the page's recognized ink words, from 0), alternatives[]
+                    (strings, best first)   one per word the recognizer gave alternates
 ```
 
 - `content` (containers, outlines, paragraphs, runs, tables, tags), the page's `ink` record, and
@@ -224,21 +224,23 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   56,631 B, `html` 50,332 B. A `.msg` is 78% duplicated (RTF and the HTML recovered from it), a
   `.pst` 46%, an mbox 31%, an `.eml` 7%. `transport_headers` is 1,305,095 B, 26% of the output;
   114,724 B of it repeats the parsed subject, addresses, and threading fields.
-- **mail's text body against the Markdown.** The span is a line of the text body, whitespace
-  collapsed and trimmed, compared with its message's Markdown by the duplication rule above. Of
-  1,235,972 B of text-body lines, 19,149 B in 15 messages are not in the Markdown by that rule,
-  all where the Markdown is made from HTML; where it is made from the text body, nothing is.
-  Reading the Markdown's links as their text (with and without `<url>`) and dropping emphasis
-  markers leaves 2,949 B in 11 messages, of which 2,654 B differ only in presentation: a space
-  before the punctuation after a link, a linked image's alt text, a text body's `™` decoded as
-  `\x99`. The text the Markdown lacks is 295 B in 7 messages, each a text body that says what its
-  HTML doesn't: cpython's `msg_10.eml` (143 B, the encodings its text parts name) and
-  `msg_15.eml` (18 B), the generated inline-image message as `.eml`, `.msg`, and in `mailbox.pst`
-  (30 B each, "It is taped into the log book.", where the HTML shows the image), POI's
-  `ASCII_UTF-8_CP1252_LCID1031_HTML.msg` (16 B), and Tika's `testMSG_chinese.msg` (28 B). The
-  RTF's text, its control words and font, color, and style tables stripped and its lines compared
-  the same way, lacks nothing where the Markdown is made from it; beside a stored HTML body it
-  lacks 28 B, the line `testMSG_chinese.msg`'s text body also holds.
+- **mail's text body against the Markdown.** The span is a line of the text body (split at line
+  feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
+  message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
+  15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
+  it is made from the text body, nothing is. Reading the Markdown as its text (an image as its alt
+  text, a link as its text both with and without ` <url>` after it), dropping `*` and `_` from the
+  Markdown and the line, and U+FFFD from the line, leaves 2,949 B in 11 messages, of which 2,654 B
+  differ only in presentation: a space before the punctuation after a link, a linked image's alt
+  text, a text body's `™` decoded as `\x99`. The text the Markdown lacks is 295 B in 7 messages,
+  each a text body that says what its HTML doesn't: cpython's `msg_10.eml` (143 B, the encodings its
+  text parts name) and `msg_15.eml` (18 B), the generated inline-image message as `.eml`, `.msg`,
+  and in `mailbox.pst` (30 B each, "It is taped into the log book.", where the HTML shows the
+  image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg` (16 B), and Tika's `testMSG_chinese.msg`
+  (28 B). The RTF's text (control words and ignorable groups, the font, color, and style tables among
+  them, stripped; `\par` and `\line` as line breaks; `\'hh` decoded in its `\ansicpg` code page),
+  its lines compared the same way, lacks nothing where the Markdown is made from it; beside a stored
+  HTML body it lacks 28 B, the line `testMSG_chinese.msg`'s text body also holds.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
@@ -252,14 +254,16 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
 Every piece of text a file holds reaches the Markdown text layer, once. docinfer embeds text and
 Markdown outputs only, never records (`spike-ai-pipeline/internal/docinfer/infer/sources.go`,
 `textKinds`), and chunks Markdown at its headings (`internal/docinfer/chunk/doc.go`), so the
-Markdown is the text's one path to inference. A field follows from that:
+Markdown is the text's one path to inference. A field's outcome follows from that, the first
+that applies:
 
+- **Kept** when a consumer reads it (a processing package, or a capstone task), whether or not
+  its text is in the Markdown, or when it is plain text that labels the content rather than
+  being it, which the Markdown leaves out.
 - **Cut** when its text is already in the Markdown, or equals another kept field: duplication.
 - **Into Markdown** when its tool reads text the Markdown lacks: the tool renders the text into
   the Markdown, and the field is then cut, since the Markdown carries it. A link target the
   Markdown lacks is text, rendered as a Markdown link.
-- **Kept** when a consumer reads it (a processing package, or a capstone task), or when it is
-  plain text that labels the content rather than being it, which the Markdown leaves out.
 - **Cut** when it can't be plain text and has no processor.
 
 | Tool | Field | Consumer | |
