@@ -84,11 +84,12 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   of their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. An xlsx's
   Markdown is split along its lines, and each sheet's text exists once: the `document` line holds
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
-  delimiter row, and each `rows` line the Markdown table rows of the rows it carries. The lines'
-  Markdown, joined in order, is office's whole rendering. A picture's image text is its `alt`, or
-  its `title` when it has no `alt` (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a
-  title-only picture is `![title](file)`. A `title` that differs from the image text, which office
-  leaves out, becomes its image's Markdown title, `![alt](file "title")`.
+  delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
+  header row, which only the `sheet` line carries. The lines' Markdown, joined in order, is
+  office's whole rendering. A picture's image text is its `alt`, or its `title` when it has no
+  `alt` (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
+  `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
+  its image's Markdown title, `![alt](file "title")`.
 - `media` holds every picture office writes (`Media` blocks, `Reading/MediaStore.cs`), plus
   embedded packages (`embedded`, the part as stored) and OLE objects (`ole`, the native payload,
   `prog_id` the object's), which office leaves unextracted (README "What office does not do").
@@ -394,8 +395,8 @@ The modules:
 github.com/standards-lab/docproc              the library below; requires golang.org/x/text only
 github.com/standards-lab/docproc/storage      Content over go-storage's Client; requires the
                                               library and go-storage
-github.com/standards-lab/docproc/postgres     Index over PostgreSQL through go-database; requires
-                                              the library and go-database
+github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqlate; requires the
+                                              library, sqlate, and sqlate/postgres
 github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the library,
                                               go-cli-sdk, go-core, and golang.org/x/sys
 ```
@@ -403,10 +404,15 @@ github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the 
 Each store is an interface the library declares (`dispatch.Content`, `dispatch.Index`), with a
 filesystem and a memory implementation in the base module on the standard library alone. A
 provider is a nested sub-module named for its target system that implements one over a stack
-library: `storage` the content store in object storage over go-storage's `Client` and its
-providers, and `postgres` the index in PostgreSQL over go-database ("Index"). Each provider pins
-only its own level, above the tier it depends on (`repository-topology.md`, "Adjacent libraries",
-as v1.ai.processing's pending edit amends it), and the base module stays tier-free.
+or adjacent library: `storage` the content store in object storage over go-storage's `Client`
+and its providers, and `postgres` the index in PostgreSQL ("Index"). `postgres` takes a
+`sqlate.Session`, as go-messaging's `postgres` does, and requires sqlate for its statements and
+migrations and sqlate's `postgres` for the dialect; the pool behind the session is the host's,
+which Cerebro opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
+go-database. A provider over a tier pins only its own level, above that tier
+(`repository-topology.md`, "Adjacent libraries", as v1.ai.processing's pending edit amends it):
+`storage` sits above go-storage's, `postgres` depends on no tier, and the base module stays
+tier-free.
 
 The library's packages:
 
@@ -564,11 +570,13 @@ output's does, and the index records it, so a seen part replays its warnings. `I
 checkpoints a store by the outputs it has handled ("One job, and its cancellation").
 
 office's stage yields a docx's or pptx's Markdown as one Markdown output, named `document`, and
-an xlsx's per sheet: the `document` line's Markdown as that output, then each sheet's as one
-Markdown output named for the sheet, its `sheet` line's Markdown followed by its `rows` lines',
-and the sheet's typed cells as one record output, its `rows` lines as JSON Lines. The stage
-writes a sheet's outputs to their files as its lines stream, so nothing holds a whole sheet, and
-each reaches `Content` as any output's file does.
+an xlsx's per sheet: the `document` line's Markdown as that output, then two outputs for each
+sheet, both named `sheet/<n>`, n the sheet's index as `media` places it: a Markdown output, its
+`sheet` line's Markdown followed by its `rows` lines', and a record output, its `rows` lines as
+JSON Lines, each without its `markdown`, so each sheet's text exists once in `Content`. Each
+sheet output's `Meta` holds the sheet's name under `sheet`, so no sheet's name collides with
+`document`. The stage writes a sheet's outputs to their files as its lines stream, so nothing
+holds a whole sheet, and each reaches `Content` as any output's file does.
 
 The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, then puts its
 content into `Content`, and appends the output to the part's entry only after the put, so
@@ -580,16 +588,19 @@ only when it needs the bytes. A replayed output's or warning's event carries `Ou
 the entry's outcome in `Recorded`, as processing marks a replayed output. A replayed child's
 part is its recorded `Part` with its `ID`, `Parent`, and `Depth` the replaying walk's: its
 parent's ID followed by its recorded `Where`, since the same content can sit at another place.
-A replay of a resumed input skips the items whose `Recorded.After` is at most `Input.After`.
+A replay of a resumed input skips its log's prefix: every item through the last item whose
+`Recorded.After` is nonzero and at most `Input.After`, so an item with no `After` is skipped only
+when it precedes that item.
 
 A part is seen when its entry's `Stages` each equal the current identity of the stage of that
 name, one check per stage the subtree used. A replayed child recorded prepared, encrypted, no
 processor yet, or seen is looked up under its route's current stage and replays its own log; a
 child of any other outcome replays as recorded. A miss while replaying, a child whose entry is
-gone or not seen, or a stage wired since for a child that had none, prepares that child in
-place, within the same dispatch, as a part not seen is prepared, and drops the entries along
-its replay path, from the input to the child, so no entry records a subtree it no longer
-matches. The child's events take its place in the replay's order.
+gone or not seen, a stage wired since for a child that had none, or a part whose recorded
+output's content is found missing from `Content` (deleted by hand, or swept early under clock
+skew), prepares that part in place, within the same dispatch, as a part not seen is prepared, and
+drops the entries along its replay path, from the input to the part, so no entry records a
+subtree it no longer matches. The part's events take its place in the replay's order.
 
 `inspect.Options` is in no stage's identity: a part's flags are recorded by its SHA-256
 (`RecordFlags`), so a seen part keeps the verdict it was given when it was prepared, whatever
@@ -716,9 +727,10 @@ the renew age, and its age restarts. A put is all or nothing: `FileContent` writ
 file in its directory and renames it, and a reader never sees part of a content.
 
 The host sweeps content by age, never by reference. Its retention is at least the index entries'
-retention plus the renew age plus the job stream's retention: an entry is recorded only after
-its outputs' puts, each of which leaves its content younger than the renew age, so a content
-any live entry or job event names is held, and a replay never names a swept content. Cerebro's
+retention plus the renew age plus the job stream's retention: every put an entry's preparation
+makes follows the entry's creation, from which its age runs ("Index"), and leaves its content
+younger than the renew age, so a content is never older than an entry naming it plus the renew
+age, however long the stage runs, and a replay never names a swept content. Cerebro's
 retentions are the `state` task's ("State and subjects").
 
 `cmd/docproc`'s run directory holds its content in a `FileContent`; Cerebro's is blob storage
@@ -789,7 +801,8 @@ and one row per log item, keyed by its entry, the token that appended it, and it
 the log. A claim, a renewal, an append, and a record are each one conditional statement on the
 entry's current token, so fencing is the database's. The module ships its schema's migrations,
 as go-messaging's `postgres` does, and the host applies them. The host sweeps entries by age,
-with `Drop`; the retention is the `state` task's, under "Content"'s bound.
+with `Drop`; the retention is the `state` task's, under "Content"'s bound. An entry's age runs
+from its creation, its first claim, and neither a replay nor `Record` refreshes it.
 
 ### Event shapes
 
@@ -829,15 +842,16 @@ The modules:
 
 ```text
 github.com/standards-lab/docinfer               the library below; requires docproc and go-ai
-github.com/standards-lab/docinfer/postgres      Cache over PostgreSQL through go-database;
-                                                requires the library and go-database
+github.com/standards-lab/docinfer/postgres      Cache over PostgreSQL through sqlate; requires
+                                                the library, sqlate, and sqlate/postgres
 github.com/standards-lab/docinfer/cmd/docinfer  the docinfer command; requires the library,
                                                 docproc, go-ai, go-cli-sdk, and go-core
 ```
 
 The base module declares `Cache` with a filesystem and a memory implementation on the standard
-library, and `postgres` is its provider, named for its target system as docproc's are
-("docproc's API"). Among the tiers the base module depends on go-ai alone.
+library, and `postgres` is its provider, named for its target system and taking a
+`sqlate.Session` as docproc's is ("docproc's API"). Among the tiers the base module depends on
+go-ai alone.
 
 The library's packages:
 
@@ -1353,8 +1367,8 @@ func Permanent(err error) bool
 | `EmbeddingUsage{PromptTokens}` | `Usage{Input}` |
 | `Response.IncompleteDetails.Reason` | `Source.Incomplete`; the inference's outcome `incomplete` |
 | `*APIError` 400, 413, 415, or 422 | refused: the inference's outcome `refused`, or the chunk's `Error`; recorded and held |
-| `*APIError` 401, 403, 404, or any other 4xx but 408 and 429 | permanent: the error, wrapped, stops the job, and `Permanent` reports it |
-| `*APIError` 408, 429, or any 5xx but 500, retries spent | the error, wrapped: it stops the job, and a redelivery retries it |
+| `*APIError` 401, 403, 404, 501, 505, or any other 4xx but 408 and 429 | permanent: the error, wrapped, stops the job, and `Permanent` reports it |
+| `*APIError` 408, 429, or any 5xx but 500, 501, and 505, retries spent | the error, wrapped: it stops the job, and a redelivery retries it |
 | `*APIError` 500, retries spent | the error, wrapped: it stops the job; on the last delivery (`Options.Final`), the item's outcome `failed`, or the chunk's `Error`, recorded, never held, and the job goes on |
 | a transport failure, a cancelled context | the error, wrapped: it stops the job |
 
@@ -1364,10 +1378,10 @@ records a 5xx as a hole in the run. docinfer refuses only the statuses that judg
 (the table's refused row); a status that judges the caller or the route fails the same way on
 every delivery, so it ends the job at once (the permanent row). A job the gateway turned away,
 or failed transiently, stops, the work queue redelivers it, and the cache replays what it
-finished; a 502, 503, or 504 is the gateway's or an upstream's, never the item's. Only the last
-delivery records an item's 500, so one item a model can't answer never holds the rest back. The
-pipeline keys held embeddings by the embedder's identity with the chunker's `Settings` as its
-settings, the settings strings the spike's.
+finished (the redelivery row), since such a status is the gateway's or an upstream's, never the
+item's. Only the last delivery records an item failed (the `Options.Final` row), so one item a
+model can't answer never holds the rest back. The pipeline keys held embeddings by the embedder's
+identity with the chunker's `Settings` as its settings, the settings strings the spike's.
 
 Cerebro, per profile, builds a go-ai client over the gateway and sets `docinfer.Vision`,
 `Transcription`, `Extraction`, and `Embeddings` into a `docinfer.Config`, over its replica's one
@@ -1777,7 +1791,7 @@ internal/goldentest, kept: test helpers that call no model
 internal/visiontest, moved to docinfer [the docinfer goal], with the integration and findings
   audiotest          tests that call a model, since docproc depends on no model client
 storage (module)    new: dispatch.Content in object storage over go-storage's Client
-postgres (module)   new: dispatch.Index in PostgreSQL over go-database, an entry's row and its
+postgres (module)   new: dispatch.Index in PostgreSQL over sqlate, an entry's row and its
                     log items' rows, its claims, leases, and fencing as conditional statements,
                     and its migrations
 ```
@@ -1823,7 +1837,7 @@ internal/            from the root's internal/docinfer/apptest: Serve and its re
   endpointtest       OpenAI-compatible endpoint the pipeline's tests drive go-ai's client against
 internal/visiontest, moved from processing, with the integration and findings tests that call a
   audiotest          model
-postgres (module)    new: docinfer.Cache in PostgreSQL over go-database, one row per key, a
+postgres (module)    new: docinfer.Cache in PostgreSQL over sqlate, one row per key, a
                      batch's Get one query, and its migrations
 ```
 
