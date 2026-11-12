@@ -98,13 +98,15 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
 
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
   `rtf`, and `derived.html` are cut (measured below). When the Markdown is made from HTML, stored
-  or recovered from the RTF, the tool compares the text body with it line by line, as the
-  measurement does, and appends each line the Markdown lacks, in order, as a paragraph escaped as
-  a text body's Markdown is. The comparison reads both as text: the Markdown's links as their
-  text and its images, linked ones too, as their alt text; `*` and `_` dropped from both, and
-  U+FFFD from the line; a bare `<url>` or url in the line matching the target of the link before
-  it; no space before the punctuation after a link; and the text body's cp1252 C1 bytes read as
-  their Windows-1252 characters (`\x99` as `™`). A message with an RTF body also stores a text
+  or recovered from the RTF, the tool compares the text body's content with the Markdown's and
+  appends what the Markdown lacks. The Markdown is rendered to plain text by CommonMark's
+  semantics: a link reads as its text, an image as its alt text, emphasis and backslash escapes
+  are removed, and link and image destinations and autolinks are URLs. Both sides are normalized
+  to Unicode NFKC and split into word tokens, runs of letters and digits, with a URL one token
+  (a URL in angle brackets keeps no whitespace, RFC 3986 appendix C). The text body's tokens are
+  aligned in order with the Markdown's; each text-body unit holding a token the Markdown lacks,
+  the sentence when its line holds more than one and else the line, is appended in order as a
+  paragraph, escaped as a text body's Markdown is. A message with an RTF body also stores a text
   body, so the text body stands for the RTF's text.
 - `smtp_address` is an Exchange (`EX`) address's SMTP address (`PidTagSmtpAddress`), which schema
   "1" leaves out (README "Known limits").
@@ -138,7 +140,7 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
   box.
 - `ink_alternatives` is a label kept as a plain-text field: the recognizer's alternates, which the
   Markdown leaves out; the words they belong to are the ink image's alt text in the Markdown
-  (`![ink: Hello World Hello World](….svg)`), in the same order.
+  (`![ink: <words>](<file>.svg)`), in the same order.
 
 ### Versioning
 
@@ -239,20 +241,25 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
-  it is made from the text body, nothing is. Reading the Markdown's links as their text and its
-  images as their alt text, and dropping `*` and `_` from the Markdown and the line and U+FFFD
-  from the line, leaves 2,949 B in 11 messages, of which 2,654 B differ only in presentation: a
-  bare `<url>` or url after a link's text, a space before the punctuation after a link, a linked
-  image's alt text, a text body's `™` as the cp1252 byte `\x99`. With those read as text too, the
-  normalization quarry-mail's rule states, the text the Markdown lacks is 295 B in 7 messages,
-  each a text body that says what its HTML doesn't: cpython's `msg_10.eml` (143 B, the encodings its
-  text parts name) and `msg_15.eml` (18 B), the generated inline-image message as `.eml`, `.msg`,
-  and in `mailbox.pst` (30 B each, "It is taped into the log book.", where the HTML shows the
-  image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg` (16 B), and Tika's `testMSG_chinese.msg`
-  (28 B). The RTF's text (control words and ignorable groups, the font, color, and style tables among
-  them, stripped; `\par` and `\line` as line breaks; `\'hh` decoded in its `\ansicpg` code page),
-  its lines compared the same way, lacks nothing where the Markdown is made from it; beside a stored
-  HTML body it lacks 28 B, the line `testMSG_chinese.msg`'s text body also holds.
+  it is made from the text body, nothing is. Compared by quarry-mail's content rule instead
+  (CommonMark plain text, NFKC, word tokens aligned in order), the units it appends are 684 B in
+  10 messages. 295 B in 7 messages are text bodies that say what their HTML doesn't: cpython's
+  `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
+  inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
+  log book.", where the HTML shows the image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg`
+  (16 B), and Tika's `testMSG_chinese.msg` (28 B). 389 B in 3 messages are the sentence of Outlook
+  2003's welcome message that names `SharePoint™ Services`, once in Tika's `test-outlook2003.msg`
+  (49 B) and twice in libyal's `outlook.pst` (170 B each): its stored text body holds U+0099
+  where its HTML holds `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code unit 0x0099), a
+  character the sending client mis-decoded, not one quarry-mail decodes. No decoder correction
+  applies: PT_STRING8 is read in its message's code page, and a MIME part's charset label as the
+  WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
+  windows-1252), so the rule appends those sentences as the text body holds them. The RTF's text
+  (control words and ignorable groups, the font, color, and style tables among them, stripped;
+  `\par` and `\line` as line breaks; `\'hh` decoded in its `\ansicpg` code page; `\rquote` and
+  the other symbol words as their characters), compared the same way, lacks nothing where the
+  Markdown is made from it; beside a stored HTML body it lacks 28 B, the line
+  `testMSG_chinese.msg`'s text body also holds.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
@@ -292,7 +299,7 @@ that applies:
 | ooxml | `properties` | `metadata` | added |
 | mail | `markdown` | `dispatch/email.go` (`own`), `email/model.go` (`Conversation`) | kept |
 | mail | `body.html`, `body.derived.html` | none; `Conversation.HTML` copies `html` and nothing reads it; the Markdown is made from them | **cut** |
-| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line) | into Markdown |
+| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 684 B of text bodies beside an HTML body (and 28 B of RTF, the same line) | into Markdown |
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | kept |
@@ -311,7 +318,7 @@ that applies:
 | onenote | image `ocr_text` | none; 4,926 B is within `alt_text`, and the rest (646 B) joins the Markdown's image text, where `text-layer` reads it | into Markdown |
 | onenote | image `hyperlink` | none; the Markdown lacks it, and makes the image a link to it | into Markdown |
 | onenote | image `printout_page`, ink `strokes` and `bounds` | none; not plain text, and vision reads every image and ink SVG | **cut** |
-| onenote | `ink_text` words | none; they are the ink image's alt text in the Markdown (`![ink: Hello World Hello World](….svg)`) | **cut** |
+| onenote | `ink_text` words | none; they are the ink image's alt text in the Markdown (`![ink: <words>](<file>.svg)`) | **cut** |
 | onenote | `ink_text` `alternatives` | `metadata`; the recognizer's alternates, a label the Markdown leaves out | kept, a label, as `ink_alternatives` |
 | onenote | `ink_text` `language` | none; a language tag, not text | **cut** |
 | onenote | media `filename` | `dispatch/onenote.go` (`Found` name) | kept |
@@ -1239,14 +1246,14 @@ From spike-ai-pipeline-mail 0.3.1.
 - **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
   are still decoded, since the Markdown is made from them.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
-  each line of the text body it lacks under the schema's normalization (links, images, and
-  emphasis read as text; bare URLs matching link targets; no space before punctuation after a
-  link; cp1252 C1 bytes read as Windows-1252), appended in order as a paragraph, escaped as a
-  text body's Markdown is. The goldens of `generated/eml/03-html-inline-image`,
+  the text body's content the Markdown lacks, by the schema's content rule (CommonMark plain
+  text, NFKC, word tokens aligned in order), appended by sentence or line as a paragraph, escaped
+  as a text body's Markdown is. The goldens of `generated/eml/03-html-inline-image`,
   `generated/msg/03-html-inline-image`, `generated/pst/mailbox`,
-  `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and `msg/tika-testMSG_chinese` show it, and
-  `msg/tika-test-outlook2003`, whose text body differs from its HTML only in presentation, is
-  expected to append nothing under that normalization.
+  `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and `msg/tika-testMSG_chinese` show it.
+  `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s show the sentence whose stored text
+  holds U+0099 where the HTML holds `™`, appended as stored; their links, written as `<url>` in
+  the text body, append nothing.
 - **Kept.** The store's `display_name`, a label kept as metadata.
 - **Moved.** `body.derived.markdown` up to the message's `markdown`.
 - **Added.** `smtp_address` on an Exchange (`EX`) address, from `PidTagSmtpAddress`.
