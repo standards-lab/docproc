@@ -26,7 +26,7 @@ schemas, and what each promotion changes from its spike.
 - **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
   parts yielded as events (`layers.md`, "Dispatch", "Event shapes").
 - **Stores**: the content store and the content-addressed index, interfaces with filesystem and
-  memory implementations, and their providers `docproc/storage` and `docproc/database`
+  memory implementations, and their providers `docproc/storage` and `docproc/postgres`
   (`layers.md`, "Content", "Index").
 - **Run directory**: `cmd/docproc`'s, read and written by `rundir` and `rundir/schema`
   (`layers.md`, "The nested modules").
