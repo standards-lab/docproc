@@ -71,9 +71,10 @@ sheets[]  name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula
 
 From spike-ai-pipeline-mail 0.3.1 (`src/model.rs`, README "Schema \"1\"", goldens
 `tests/golden/{msg,pst,generated}/`; `.eml` and mbox scored against
-`tests/fixtures/mime/truth.json`). Lines `store` and `skipped` keep their schema "1" fields, and
-`folder` keeps them less `display_name`, which is always its `path`'s last name (58 of 58 folders
-in the run below). A message changes:
+`tests/fixtures/mime/truth.json`). Line `skipped` keeps its schema "1" fields; `store` keeps them
+less `display_name`, a .pst's name that no processing package reads; and `folder` keeps them less
+`display_name`, which is always its `path`'s last name (58 of 58 folders in the run below). A
+message changes:
 
 ```text
 message   line, id?, folder?, class?, subject?, sender?, to?, cc?, bcc?, submit_time?,
@@ -81,7 +82,7 @@ message   line, id?, folder?, class?, subject?, sender?, to?, cc?, bcc?, submit_
           transport_headers?, message_id?, in_reply_to?, references?, conversation_topic?,
           conversation_index?, markdown?, attachments?
 address   name?, address?, address_type?, smtp_address?
-attachment  file?, filename?, mime_type?, content_id?, inline, method, size?, message?
+attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, message?
 ```
 
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
@@ -162,8 +163,8 @@ Markdown made from it, and counts whole. The fields counted:
   the enumerations and references `type`, `format`, `schema`, `contentType`, `source`, `target`,
   `valueType`, `ref`, `sharedFrom`, `chartType`, `kind`, and a media block's `name`.
 - **mail**: each message's (nested ones included) `subject`, `transport_headers`,
-  `conversation_topic`, attachment `filename`, and body forms; addresses and folder paths are not
-  counted.
+  `conversation_topic`, attachment `filename`, and body forms; addresses, folder paths, and the
+  `store` line's `display_name` (one per .pst) are not counted.
 - **onenote**: each page's `title`, `author`, and every string under `content` and `ink_text`
   except `kind`, `style`, `file`, `extension`, `font_color`, `highlight`, `math`, `shape`,
   `status`, `completed_time`, `type`, `number`, `prefix`, `suffix`, `bullet`, `id`, `section`, and
@@ -214,19 +215,22 @@ headings (`internal/docinfer/chunk/doc.go`), so the Markdown is the text's one c
 | mail | `markdown` | `dispatch/email.go` (`own`), `email/model.go` (`Conversation`) | kept |
 | mail | `body.text`, `body.html`, `body.rtf`, `body.derived.html` | none; `Conversation.HTML` copies `html` and nothing reads it | **cut** |
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | kept |
+| mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | kept |
 | mail | `transport_headers` | `metadata`: typed mail metadata is quarry's and Cerebro's, built from the raw headers | kept |
 | mail | address `name`, `address`, `smtp_address` | `email/model.go` (participants), `metadata` | kept |
 | mail | attachment `filename` | `email/route.go`, `dispatch/email.go` (`Found` name) | kept |
 | mail | folder `path` | `dispatch/email.go` meta | kept |
 | mail | folder `display_name` | none; it is `path`'s last name | **cut** |
+| mail | store `display_name` | none; `email/model.go` decodes it and `dispatch/email.go` passes the store through | **cut** |
 | onenote | `markdown` | `dispatch/onenote.go` (`page`) | kept |
 | onenote | page `title` | `dispatch/onenote.go` meta | kept |
 | onenote | runs' `text`, `latex`, `link`; tag `label`; list markers; table cells | none; the Markdown renders them | **cut** |
 | onenote | image `alt_text`, `hyperlink`, `ocr_text` | none; `ocr_text` is within `alt_text`, and vision reads every image | **cut** |
 | onenote | `ink_text` (words, `alternatives`, `language`) | none; the words are the Markdown's ink link text | **cut** |
 | onenote | media `filename` | `dispatch/onenote.go` (`Found` name) | kept |
-| onenote | `author`, times; notebook `name`; section and group `path` | `dispatch/onenote.go` meta, `metadata` | kept |
+| onenote | notebook `name`; section and group `path` | `dispatch/onenote.go` meta, `metadata` | kept |
+| onenote | page `author`, times | `metadata` | kept |
 | onenote | section and group `display_name` | none; it is `path`'s last name | **cut** |
 
 `text-layer` is the one task that may want `ocr_text` back, as an image's existing text layer; it
@@ -1092,8 +1096,8 @@ From spike-ai-pipeline-mail 0.3.1.
 
 - **Toolchain.** The fixture generator's MimeKit 4.18.2 to 5.0.0, its fixture truth unchanged.
   The Rust crates stay.
-- **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
-  are still decoded, since the Markdown is made from them.
+- **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder and store `display_name`. RTF
+  and HTML are still decoded, since the Markdown is made from them.
 - **Moved.** `body.derived.markdown` up to the message's `markdown`.
 - **Added.** `smtp_address` on an Exchange (`EX`) address, from `PidTagSmtpAddress`.
 - **Flags.** `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
