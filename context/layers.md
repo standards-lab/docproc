@@ -1,15 +1,28 @@
 # layers
 
-This note states, as signatures and schemas, the boundaries between the four layers of Cerebro's
-stack: the system tools (quarry-ooxml, quarry-mail, quarry-onenote), quarry (the Go processing
-library), go-ai (the model client), and Cerebro (the data-intelligence capstone's processing
-service). Each signature or schema traces to a capstone task in
-`standards-lab/context/data-intelligence.md` ("Design") or to spike evidence.
+This note states, as signatures and schemas, the boundaries between the five layers of Cerebro's
+stack: the system tools (quarry-ooxml, quarry-mail, quarry-onenote), quarry (the Go extraction
+library), docinfer (the Go inference library), go-ai (the model client), and Cerebro (the
+data-intelligence capstone's processing service). Each arrow points from a layer to a layer that
+uses it:
+
+```text
+system tools ──► quarry ──► docinfer ──► Cerebro
+                               ▲            ▲
+go-ai ─────────────────────────┴────────────┘
+```
+
+quarry extracts and knows no model; docinfer infers over what quarry extracts, calling go-ai
+directly; Cerebro runs docinfer's jobs, and calls go-ai itself only for extraction. Each signature
+or schema traces to a capstone task in `standards-lab/context/data-intelligence.md` ("Design") or
+to spike evidence. quarry is to be renamed docproc (its tools docproc-ooxml, docproc-mail, and
+docproc-onenote) through `plan` once this task merges; this note keeps the name quarry.
 
 Spike paths are relative to `~/experiments/`. "processing" is spike-ai-pipeline-processing, whose
 `office`, `email`, `onenote`, and `dispatch` packages are the consumers the tools are measured
-against. docproc and docinfer are the commands under spike-ai-pipeline's `internal/docproc` and
-`internal/docinfer`; "the root" is spike-ai-pipeline.
+against. "the root" is spike-ai-pipeline, and "the spike's docproc" and "the spike's docinfer" are
+the commands under its `internal/docproc` and `internal/docinfer`; docinfer alone is the library,
+and `cmd/docinfer` its command.
 
 ## The tool contract
 
@@ -45,8 +58,8 @@ field ("Consumers of structured text").
   meanings (office, mail, and onenote READMEs, "Usage").
 - **Determinism.** The same input gives byte-identical stdout and media, proven by committed
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
-- **Out of the tools.** Batch IDs, per-item digests, provenance, warnings as data, and typed
-  metadata are quarry's and Cerebro's.
+- **Out of the tools.** Warnings as data are quarry's; per-item digests and provenance
+  docinfer's; batch IDs Cerebro's; typed metadata quarry's and Cerebro's.
 
 ### quarry-ooxml
 
@@ -353,24 +366,21 @@ the OCR text the alt text lacks; no `ocr_text` field returns.
 
 ## quarry's API
 
-The library module, `github.com/standards-lab/quarry`, requires `golang.org/x/text` only and
-imports no model client. processing imports spike-ai-pipeline-client only from tests and
-the test helpers `internal/visiontest` and `internal/audiotest`; docinfer's client calls
-(`spike-ai-pipeline/internal/docinfer/{vision,transcribe,embed}`) move behind `infer`'s
-interfaces. quarry's nested module `model` (`github.com/standards-lab/quarry/model`) implements
-them with go-ai, and Cerebro and `cmd/docinfer` both import it ("The adapter"). "Kept" below
-means processing's signature carries over as it is.
+The library module, `github.com/standards-lab/quarry`, extracts: it inspects and routes each part
+of an input, reads it through its stage and the tools, and records what it prepared in its index.
+It requires `golang.org/x/text` only and depends on no model concept: no model client, no
+inference, no embedding. Inference is docinfer's ("docinfer's API"), and the imports run one way:
+docinfer imports quarry, and no quarry package imports docinfer. processing imports
+spike-ai-pipeline-client only from tests and the test helpers `internal/visiontest` and
+`internal/audiotest`, which move to docinfer with the tests that call a model. "Kept" below means
+processing's signature carries over as it is.
 
 The modules:
 
 ```text
-github.com/standards-lab/quarry               the library below; requires golang.org/x/text only.
-                                              Its cmd/internal/{schema,rundir} are packages of it
-github.com/standards-lab/quarry/model         the go-ai adapter; requires the library and go-ai
-github.com/standards-lab/quarry/cmd/docproc   the docproc command; requires the library,
-                                              go-cli-sdk, go-core, and golang.org/x/sys
-github.com/standards-lab/quarry/cmd/docinfer  the docinfer command; requires the library, model,
-                                              and go-ai
+github.com/standards-lab/quarry              the library below; requires golang.org/x/text only
+github.com/standards-lab/quarry/cmd/docproc  the docproc command; requires the library,
+                                             go-cli-sdk, go-core, and golang.org/x/sys
 ```
 
 The library's packages:
@@ -383,21 +393,17 @@ office, email, onenote     a tool's reader, decoding its schema "2"             
 document, picture, audio,  the other formats, on their tools                                 kept
   media, sevenzip
 dispatch                   stages, the walk over an input's parts, the index; the shapes of  changed
-                             parts, outputs, and warnings
+                             its events, parts, outputs, and warnings
 stages                     the stages wired over the host's tools                            moved from docproc
-chunk                      the chunker                                                       moved from docinfer
-infer                      the inference interfaces, the cache, the pipeline; the shapes of  new, from docinfer
-                             its results
-job                        one job: dispatch, then inference, under the job's context; its   new
-                             updates
+rundir, rundir/schema      a docproc run directory: its schema "1" shapes, read and written  moved from docproc
 ```
 
 ### Inspection and routing
 
 Kept (processing `route/route.go`, `route/identify.go`, `inspect/inspect.go`). The dispatcher
-runs both on every part before its stage, so a part update carries its route and flags; a caller
+runs both on every part before its stage, so a part's event carries its route and flags; a caller
 calls them directly only to triage a file before queueing it. `inspect.Flag` gains JSON tags
-(`check`, `class`, `evidence`, docproc's `schema.Flag`), since a part's shape carries it.
+(`check`, `class`, `evidence`, the spike's docproc `schema.Flag`), since a part's shape carries it.
 
 ```go
 package route
@@ -503,10 +509,6 @@ func New(cfg Config) (*Dispatcher, error)
 func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, error]
 func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error]
 
-type Event struct {
-    Part Part; Output *Output; Warning *Warning; Outcome Outcome; Reason string; Err error
-    Stage Identity; Recorded Outcome; Outputs, Children int
-}
 func (e Event) Keep() // keep the output's file, or the part's, past the loop body
 type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, encrypted,
                       // failed, limited
@@ -527,14 +529,29 @@ while its parent's stage runs, so when one misses, its stage's identity having c
 part is not seen: it is prepared again, and its children with it.
 
 `dispatch` declares the JSON shapes of what it yields beside its other types, on the standard
-library alone: a part, its stage's `Identity`, an output, a warning. `Part` takes the shape of
-docproc's `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its local fields
-left out of the JSON; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move into its
-`ContentType`. `Identity` is docproc's `schema.Stage` as JSON, so no `Stage` type is added;
-`Stage` stays the interface.
+library alone: an event, its part, its stage's `Identity`, an output, a warning. `Event` is itself
+the shape, one for each of its three kinds: a part's own event, an output's, and a warning's,
+each setting only its own fields, so no parallel wire type copies it. `Part` takes the shape of
+the spike's docproc `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its
+local fields left out of the JSON; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move
+into its `ContentType`. `Identity` is the spike's docproc `schema.Stage` as JSON, so no `Stage`
+type is added; `Stage` stays the interface.
 
 ```go
 package dispatch
+const Version = "1" // of the shapes below, grown by addition only
+type Event struct {
+    Part     Part     `json:"part"`
+    Stage    Identity `json:"stage,omitzero"`
+    Output   *Output  `json:"output,omitempty"`  // an output's event
+    Warning  *Warning `json:"warning,omitempty"` // a warning's event
+    Outcome  Outcome  `json:"outcome,omitzero"`  // a part's own event, from here down
+    Recorded Outcome  `json:"recorded,omitzero"`
+    Reason   string   `json:"reason,omitzero"`   // a failed part's holds Err's text
+    Err      error    `json:"-"`
+    Outputs  int      `json:"outputs,omitzero"`
+    Children int      `json:"children,omitzero"`
+}
 type Part struct {
     Name        string         `json:"name"`
     Size        int64          `json:"size"`
@@ -554,6 +571,11 @@ type ContentType struct {
     Stored      string      `json:"stored,omitzero"`   // the stored MIME type
     Detected    string      `json:"detected,omitzero"` // an input's sniffed MIME type, docproc's
 }
+type Identity struct {
+    Name    string `json:"name"`
+    Version string `json:"version"`
+    Config  string `json:"config"`
+}
 type Output struct {
     Kind      OutputKind        `json:"kind"` // text, markdown, image, record, audio
     Name      string            `json:"name,omitzero"`
@@ -571,9 +593,11 @@ type Warning struct {
 }
 ```
 
-`Output.Path` and `Value` never marshal: an output's content is found by its `SHA256`, in
-`job.Outputs`, or by a host's `Ref`, so the index records an output without them and nothing
-clears them.
+A count left out is zero, as the common envelope's absence rule has it. `Err` stays local: a
+failed part's `Reason` already holds its text, as processing sets both. `Output.Path` and `Value`
+never marshal: an output's content is found by its `SHA256`, in the host's content store
+(docinfer's `job.Outputs`), or by a host's `Ref`, so the index records an output without them and
+nothing clears them.
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
 docproc and Cerebro wire the same stages from the tools a host holds:
@@ -585,7 +609,7 @@ func Build(ctx context.Context, lookup Lookup, exclude []route.Route) Set
 type Set struct { Stages dispatch.Stages; Tools []Tool; Rows []Row } // Row: route, wired|missing|excluded
 ```
 
-### Index and cache
+### Index
 
 The index is kept (processing `dispatch/index.go`, `memory.go`, `file.go`). It is
 content-addressed by a part's SHA-256 and its stage's identity. One claimant prepares the
@@ -627,95 +651,111 @@ another claimant, and from then on the first token's `Renew`, `Append*`, and `Re
 dispatch then stops the part's stage, records nothing, and waits for the new claimant's entry, as
 any claimant that lost the claim waits. `FileIndex`'s lease is its stale duration.
 
-The cache is new. It generalizes docinfer's held results (`outdir.Dir.Held` and `Hold`, keyed by
-`outdir.Key`) to bytes behind an interface. Every held value is one image's, window's, chunk's,
-or extraction's result, bounded by its token cap, so the cache suits a key-value store, and
-Cerebro backs it with a JetStream KV bucket.
+### Event shapes
+
+The package that produces a change owns its event kinds and their data types: the kinds in its
+`messaging.go`, the data types beside its other types, as JSON on the standard library alone.
+go-web-service's `domain/organization/messaging.go` and `domain/document/messaging.go` hold only
+their `event.Define[T]` calls and a `Recorder` alias, over data types in the package's
+`entities.go` (`OrganizationData`, `OrganizationDeletedData`, `LogoUploadedData`,
+`LogoDeletedData`; `DirectoryData`, `DirectoryDeletedData`, `FileUploadedData`,
+`FileDeletedData`), and `admin/database/messaging.go` defines its events over `string`. No
+separate events package exists; go-core's `event` is the CloudEvents envelope alone.
+
+quarry and docinfer are libraries that emit no CloudEvents themselves, so neither declares event
+kinds or has a `messaging.go`. Their shapes sit in their producing packages' ordinary files, each
+package's `Version` naming their version: quarry's are `dispatch`'s (above), and docinfer's are
+its root package's and `job`'s ("docinfer's API"). Cerebro's `messaging.go` declares its
+`cerebro.job.*` kinds, each over one of these or over its own data types ("Events"). The spike's
+docproc `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move
+into `dispatch` and `inspect`, and `rundir/schema` aliases them ("The nested modules"); the
+spike's docinfer `outdir` shapes move into docinfer. The shapes grow by addition only, as the
+tools' contracts do.
+
+## docinfer's API
+
+docinfer (`github.com/standards-lab/docinfer`) infers over what quarry extracts: it describes
+images, transcribes audio, chunks and embeds text, holds results in a cache, and runs one job's
+dispatch and inference together. It is an adjacent library that depends on quarry and on go-ai,
+an infrastructure library; depending on go-ai pins it above go-ai's tier, so only layers above
+that tier, such as Cerebro and go-web-service, may use it. It calls go-ai directly, with no adapter
+module between them ("docinfer's go-ai use"). It is built from the spike's docinfer, less its
+command's run directories, and holds until go-ai's library releases.
+
+The modules:
+
+```text
+github.com/standards-lab/docinfer               the library below; requires quarry and go-ai
+github.com/standards-lab/docinfer/cmd/docinfer  the docinfer command; requires the library,
+                                                quarry, go-ai, go-cli-sdk, and go-core
+```
+
+The library's packages:
+
+```text
+docinfer               the pipeline over go-ai, the cache, batches as made;       new, from the spike's docinfer
+                         the shapes of its results
+chunk                  the chunker                                                moved from the spike's docinfer
+job                    one job: dispatch, then inference, under its context;      new
+                         the content store; its updates
+internal/endpointtest  a fake OpenAI-compatible endpoint for go-ai's client       from the spike's docinfer apptest
+internal/visiontest,   the model-calling test helpers                             moved from processing
+  audiotest
+```
+
+The inference package is the module's root, `docinfer`, so a caller writes `docinfer.Pipeline`
+and `docinfer.Batch`, not `infer.Pipeline` under a module already named for inference. `chunk`
+stands alone, and the root imports it. `job` composes quarry's dispatcher with the pipeline,
+which `cmd/docinfer` runs without it, so the root never imports `job`. The imports run one way:
+the root imports quarry's `dispatch` and `audio` and go-ai's `client` and `protocol`; `job`
+imports `dispatch` and the root.
+
+### The cache
+
+The cache generalizes the spike's docinfer held results (`outdir.Dir.Held` and `Hold`, keyed by
+`outdir.Key`) to bytes behind an interface, the seam a host backs. Every held value is one
+image's, window's, chunk's, or extraction's result, bounded by its token cap, so the cache suits a
+key-value store, and Cerebro backs it with a JetStream KV bucket.
 
 ```go
-package infer
+package docinfer
 type Cache interface {
     // Get returns keys' values in one round trip, values[i] keys[i]'s, nil for a miss; a held
     // value is never empty.
     Get(ctx context.Context, keys ...string) ([][]byte, error)
     Put(ctx context.Context, key string, value []byte) error
 }
-// Key is docinfer's outdir.Key, prefixed "<capability>/": the SHA-256 of the identity's
-// capability, model, and settings, and the content's SHA-256, length-prefixed.
+// Key is the spike's docinfer outdir.Key, prefixed "<capability>/": the SHA-256 of the
+// identity's capability, model, and settings, and the content's SHA-256, length-prefixed.
 func Key(id Identity, content string) string
 func NewMemoryCache() *MemoryCache
 ```
 
-A held vision or transcription result holds its text inline, not as a file under docinfer's
-`texts/`. Content lives apart from the cache, under one key scheme each: `job` puts every
-output's content, and every inference text, into its `Outputs` by SHA-256, and the cache holds
-results by `Key` alone. A part the index reports seen therefore replays outputs whose content
-`Outputs` still holds, which data-intelligence.md ("Caching") asks for: content seen before is
-replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its `results/`.
+A held vision or transcription result holds its text inline, not as a file under the spike's
+docinfer `texts/`. Content lives apart from the cache, under one key scheme each: `job` puts
+every output's content, and every inference text, into its `Outputs` by SHA-256, and the cache
+holds results by `Key` alone. A part quarry's index reports seen therefore replays outputs whose
+content `Outputs` still holds, which data-intelligence.md ("Caching") asks for: content seen
+before is replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its
+`results/`.
 
-### Inference interfaces
+### The pipeline
 
-quarry defines these, and any model client implements them. Each must be safe for concurrent
-use. The pipeline holds the concurrency bounds, the batching, the cache, and the retry of a
-rejected embedding batch one text at a time, all of which docinfer's `vision`, `transcribe`, and
-`embed` packages hold beside their client calls.
-
-```go
-package infer
-// Identity, Usage, and Profile are infer's own, beside its other types ("Event shapes").
-type Image struct { Path, MediaType, SHA256 string }
-type Window struct { Path, SHA256 string } // a 16 kHz mono WAV, audio's window
-type Text struct {
-    Text       string
-    Incomplete string // why the model stopped early, such as "max_output_tokens"
-    Usage      Usage
-}
-
-type Describer interface { // vision
-    Identity() Identity
-    Describe(ctx context.Context, img Image) (Text, error)
-}
-type Transcriber interface {
-    Identity() Identity
-    Transcribe(ctx context.Context, w Window) (Text, error)
-}
-type Embedder interface {
-    Identity() Identity
-    Embed(ctx context.Context, texts []string) ([][]float32, Usage, error) // one vector per text
-}
-type Chunker interface {
-    Settings() string // its version and bound, which key the held embeddings
-    Split(text string) []chunk.Chunk
-}
-
-// RefusedError is an implementation's error for an input the endpoint refused, a verdict on the
-// content: recorded, not fatal, and always held in the cache. Any other error stops the job.
-var ErrRefused = errors.New("infer: refused")
-type RefusedError struct { Message string }
-func (e *RefusedError) Is(target error) bool // matches ErrRefused
-```
-
-`infer` knows no transport: an implementation decides which of its failures are verdicts on the
-content, as the adapter's 4xx test does in `model` ("The adapter").
+The pipeline holds the concurrency bounds, the batching, the cache, the go-ai calls and the
+mapping of their failures, and the retry of a rejected embedding batch one text at a time, which
+the spike's docinfer `vision`, `transcribe`, and `embed` packages hold. It is configured with
+go-ai's client per capability ("docinfer's go-ai use"). docinfer declares no `Describer`,
+`Transcriber`, or `Embedder`: its tests drive go-ai's client against a fake OpenAI-compatible
+endpoint, as the spike's docinfer `apptest.Serve` does, which tests the go-ai mapping too, where
+a fake behind an interface would skip it.
 
 ```go
-package chunk // docinfer's chunk, kept
-type Chunk struct { Text string; Start, End int } // the text's [Start, End) bytes
-const Version = "1"
-type Splitter struct { Bound int } // an infer.Chunker over Split
-func Split(text string, bound int) []Chunk
-```
-
-The pipeline is built once and runs many jobs. Its bounds are shared by every job it runs at
-once, so a replica bounds each capability as a whole ("Distribution": inference fans out inside
-a job, bounded per capability).
-
-```go
+package docinfer
 type Config struct {
-    Vision                   Describer         // nil skips images, counted
-    Transcription            Transcriber       // nil skips windows, counted
-    Embeddings               Embedder          // required
-    Chunker                  Chunker           // required
+    Vision                   *Vision           // nil skips images, counted
+    Transcription            *Transcription    // nil skips windows, counted
+    Embeddings               Embeddings        // required
+    Chunker                  chunk.Splitter    // required: its Bound
     Dimensions               int               // required: the embedding space's; a vector of
                                                // another length is an error that stops the job
     Cache                    Cache             // required
@@ -744,19 +784,36 @@ type Input struct {
 type Result struct { Inference *Inference; Batch *Batch; Done *Done } // one is set
 ```
 
-The inputs are docinfer's sources (`infer/sources.go`): text and Markdown outputs, never records,
-plus each image's vision text, each part's joined transcript, and one metadata text per input.
-`infer.Input` is docinfer's source under another name, since `Source` is a chunk's origin in
-infer's shapes, and it carries dispatch's event as it is. `job` feeds `Run` from dispatch's
-events. `cmd/docinfer` feeds it from a docproc run directory through its `source` package, its
-metadata text docinfer's `metadataText`, and keeps its own directory's schema "1". `infer`
-imports `dispatch` and never the reverse.
+The pipeline is built once and runs many jobs. Its bounds are shared by every job it runs at
+once, so a replica bounds each capability as a whole ("Distribution": inference fans out inside
+a job, bounded per capability). Each go-ai call takes the job's context, and the client is safe
+for concurrent use.
+
+The inputs are the spike's docinfer sources (`infer/sources.go`): text and Markdown outputs,
+never records, plus each image's vision text, each part's joined transcript, and one metadata
+text per input. `Input` is the spike's source under another name, since `Source` is a chunk's
+origin in docinfer's shapes, and it carries dispatch's event as it is. `job` feeds `Run` from
+dispatch's events. `cmd/docinfer` feeds it from a docproc run directory through its `source`
+package, which reads it with quarry's `rundir`, its metadata text the spike's `metadataText`, and
+keeps its own directory's schema "1".
+
+`chunk` is the spike's docinfer chunk, kept, its `Splitter` the pipeline's chunker:
+
+```go
+package chunk
+type Chunk struct { Text string; Start, End int } // the text's [Start, End) bytes
+const Version = "1"
+type Splitter struct { Bound int }
+func (s Splitter) Settings() string // Version and Bound, which key the held embeddings
+func (s Splitter) Split(text string) []Chunk
+func Split(text string, bound int) []Chunk
+```
 
 ### Batches as made
 
-docinfer runs each capability over every input in turn and writes `chunks.jsonl` whole at the
-end (`infer/execute.go`, `outdir.Dir.WriteChunks`). `Pipeline.Run` streams per job instead, in
-the order things are made:
+The spike's docinfer runs each capability over every input in turn and writes `chunks.jsonl`
+whole at the end (`infer/execute.go`, `outdir.Dir.WriteChunks`). `Pipeline.Run` streams per job
+instead, in the order things are made:
 
 - an `Inference` as each image's text or each part's joined transcript is made, or read from the
   cache;
@@ -771,31 +828,18 @@ the pipeline has yet to read.
 The cap keeps a batch under NATS's default 1 MB `max_payload`: a 768-dimension vector is 4,096
 B in base64 (data-intelligence.md, "Results").
 
-### Event shapes
+A batch carries no index. It is identified by its job and the sequence of the event that carries
+it, both Cerebro's ("Results and the manifest"), so nothing renumbers batches across attempts.
+Nothing needs one within an attempt either: `Done.Digest` runs over the batches in the order
+`Run` yields them, and `cmd/docinfer` writes chunks, not batches.
 
-The package that produces a change owns its event kinds and their data types: the kinds in its
-`messaging.go`, the data types beside its other types, as JSON on the standard library alone.
-go-web-service's `domain/organization/messaging.go` and `domain/document/messaging.go` hold only
-their `event.Define[T]` calls and a `Recorder` alias, over data types in the package's
-`entities.go` (`OrganizationData`, `OrganizationDeletedData`, `LogoUploadedData`,
-`LogoDeletedData`; `DirectoryData`, `DirectoryDeletedData`, `FileUploadedData`,
-`FileDeletedData`), and `admin/database/messaging.go` defines its events over `string`. No
-separate events package exists; go-core's `event` is the CloudEvents envelope alone.
-
-quarry is a library that emits no CloudEvents itself, so it declares no event kinds and has no
-`messaging.go`. Its shapes sit in their producing packages' ordinary files: `dispatch`'s part,
-output, and warning (above); `infer`'s inference texts, batches, chunks, done, and the identities
-and usage they record; `job`'s `Update`, which composes them, its checkpoint, and its done.
-Cerebro's `messaging.go` declares its `cerebro.job.*` kinds over these and over its own data
-types ("Events"). docproc's `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`,
-`record.go`) move into `dispatch` and `inspect`, and docinfer's (`internal/docinfer/outdir`) into
-`infer`; `cmd/internal/schema` aliases them ("The nested modules"). The shapes grow by addition
-only, as the tools' contracts do.
+### docinfer's shapes
 
 ```go
-package infer
-// Span and Seam are docinfer's outdir shapes of those names, carried over; Counts is under
-// "Changes per tool and per quarry package".
+package docinfer
+const Version = "1" // of the shapes below and job's, grown by addition only
+// Span and Seam are the spike's docinfer outdir shapes of those names, carried over; Counts is
+// under "docinfer's packages".
 type Capability string // vision, transcription, embeddings; or a caller's own, as extraction
 type Identity struct {
     Capability Capability `json:"capability"`
@@ -808,7 +852,7 @@ type Profile struct {
     Transcription *Identity `json:"transcription,omitempty"`
     Embeddings    Identity  `json:"embeddings"`
     Dimensions    int       `json:"dimensions"` // declared: Config.Dimensions, checked per vector
-    Chunker       string    `json:"chunker"`    // the Chunker's Settings
+    Chunker       string    `json:"chunker"`    // the Splitter's Settings
 }
 type Usage struct {
     Input  int `json:"input"`
@@ -830,14 +874,13 @@ type Inference struct {
 // Batch holds its chunks, and each part and source text they come from once, by index: a text's
 // or a part's SHA-256 can't name an occurrence, since the same content in two places is two.
 type Batch struct {
-    Index   int             `json:"index"`   // from 0 in the job; the batch's id is job and index
     Parts   []dispatch.Part `json:"parts"`   // provenance: each, its parent and depth, where found
     Sources []Source        `json:"sources"`
     Chunks  []Chunk         `json:"chunks"`
     Digest  string          `json:"digest"`  // SHA-256 over its chunks' digests, in order
 }
-// Source is docinfer's outdir.Source, the text a chunk is cut from, less Ref and File, its
-// directories' paths, which stay in cmd/docinfer's outdir, plus where the text sits.
+// Source is the spike's docinfer outdir.Source, the text a chunk is cut from, less Ref and File,
+// its directories' paths, which stay in cmd/docinfer's outdir, plus where the text sits.
 type Source struct {
     Kind       string             `json:"kind"`   // output, metadata, vision, or transcript
     SHA256     string             `json:"sha256"` // the whole text's, as Outputs holds it
@@ -847,9 +890,9 @@ type Source struct {
     Output     *dispatch.Output   `json:"output,omitempty"` // the output it is, or the image or
                                                             // first window its inference read
 }
-// Chunk is docinfer's outdir.Line less the input's file fields (Input, File, ContentType) and its
-// Part and Output, which its Source holds, plus Digest. outdir.Part's outcome leaves in the
-// part's own update, not on each chunk.
+// Chunk is the spike's docinfer outdir.Line less the input's file fields (Input, File,
+// ContentType) and its Part and Output, which its Source holds, plus Digest. outdir.Part's
+// outcome leaves in the part's own event, not on each chunk.
 type Chunk struct {
     Digest string `json:"digest"` // SHA-256 of Text: the per-item digest
     Text   string `json:"text"`
@@ -865,49 +908,16 @@ type Done struct {
     Digest  string `json:"digest"`  // SHA-256 over the batches' digests, in order
     Counts  Counts `json:"counts"`
 }
-
-package job
-const Version = "1" // of Update and the shapes it carries
-type Kind string    // part, output, warning, inference, batch, checkpoint, done
-type Update struct {
-    Kind       Kind               `json:"kind"`
-    Job        string             `json:"job"`
-    Part       *dispatch.Part     `json:"part,omitempty"`   // the part an update is of
-    Stage      *dispatch.Identity `json:"stage,omitempty"`
-    Output     *dispatch.Output   `json:"output,omitempty"` // its content in Outputs by SHA256
-    Outcome    string             `json:"outcome,omitzero"` // a part's: dispatch.Outcome
-    Recorded   string             `json:"recorded,omitzero"`
-    Reason     string             `json:"reason,omitzero"`
-    Error      string             `json:"error,omitzero"`
-    Outputs    *int               `json:"outputs,omitempty"`
-    Children   *int               `json:"children,omitempty"`
-    Warning    *dispatch.Warning  `json:"warning,omitempty"`
-    Inference  *infer.Inference   `json:"inference,omitempty"`
-    Batch      *infer.Batch       `json:"batch,omitempty"`
-    Checkpoint *Checkpoint        `json:"checkpoint,omitempty"`
-    Done       *Done              `json:"done,omitempty"`
-}
-type Checkpoint struct { // a store's cursor, a low watermark
-    After uint64 `json:"after"` // the last message, in read order, whose updates, and every
-                                // earlier message's, are out, their batches included
-}
-type Done struct { // one attempt's
-    Parts   map[dispatch.Outcome]int `json:"parts"`   // by outcome, every depth
-    Outputs int                      `json:"outputs"` // output updates
-    infer.Done                                       // inline: batches, chunks, digest, counts
-}
 ```
 
-The imports run one way: `infer` imports `dispatch`, and `job` imports both, so no shape's
-package imports its consumer's. Batch ids, per-item digests, provenance, warnings, and the
-profile are quarry's, as the common envelope keeps them out of the tools. The manifest's
-sequence range is Cerebro's, from its job stream.
+Per-item digests, provenance, and the profile are docinfer's, and warnings quarry's, as the
+common envelope keeps them out of the tools. A batch's identity and the manifest's sequence range
+are Cerebro's, from its job stream.
 
 ### One job, and its cancellation
 
 ```go
 package job
-type Job struct { ID string; Input dispatch.Input }
 // Outputs holds content by its SHA-256: every output's, and every inference text.
 type Outputs interface {
     Put(ctx context.Context, sha256 string, r io.Reader) error // content already held is kept
@@ -915,23 +925,44 @@ type Outputs interface {
 }
 type Config struct {
     Dispatcher      *dispatch.Dispatcher
-    Pipeline        *infer.Pipeline
+    Pipeline        *docinfer.Pipeline
     Outputs         Outputs
     CheckpointEvery int // messages between a store's checkpoints
 }
 func New(cfg Config) (*Runner, error)
 // Run dispatches one job's input and infers over it, yielding its updates as made, in the order
-// below, and done last. It composes dispatch's events and the pipeline's results into Updates
-// stamped with the job's ID.
-func (r *Runner) Run(ctx context.Context, j Job) iter.Seq2[Update, error]
+// below, and done last.
+func (r *Runner) Run(ctx context.Context, in dispatch.Input) iter.Seq2[Update, error]
+
+// Update is one thing Run yields; one field is set. It is the Go side's one-of alone: each
+// field's type is its own JSON shape, so Update has none.
+type Update struct {
+    Event      *dispatch.Event     // a part's own, an output's, or a warning's
+    Inference  *docinfer.Inference
+    Batch      *docinfer.Batch
+    Checkpoint *Checkpoint
+    Done       *Done
+}
+type Checkpoint struct { // a store's cursor, a low watermark
+    After uint64 `json:"after"` // the last message, in read order, whose updates, and every
+                                // earlier message's, are out, their batches included
+}
+type Done struct { // one attempt's
+    Parts   map[dispatch.Outcome]int `json:"parts"`   // by outcome, every depth
+    Outputs int                      `json:"outputs"` // output events
+    docinfer.Done                                    // inline: batches, chunks, digest, counts
+}
 ```
+
+A job's ID is its host's: `Run` takes the input alone, and Cerebro names the job in each event's
+subject. `Update` carries no kind, since the field set names it, and no job.
 
 `Run` puts each output's content into `Outputs` before its update is yielded, and each inference
 text before its inference's. An output whose event carries no file, one a seen part replays, is
 opened from `Outputs` into the job's scratch for the pipeline, and a miss fails its part. The
 files `job` keeps for the pipeline it removes when the pipeline is done with them. A quarantined
 part's file is never kept: the dispatcher removes it with the part, its flags in the part's
-update, and its bytes stay within the job's input, which the caller holds. A process that dies
+event, and its bytes stay within the job's input, which the caller holds. A process that dies
 leaves its files in the dispatcher's `Dir`, so a host empties its `Dir` when it starts: no job
 outlives its process, and Cerebro's work queue redelivers the job.
 
@@ -941,35 +972,35 @@ Nothing else is promised: inference and batches interleave with dispatch's updat
 made. A checkpoint's `After` is a low watermark, so a store resumed after it repeats no message
 whose batches are out and skips none whose batches are not.
 
-The metadata text of a job's input is docinfer's `metadataText` over what a stream has: its
-lines `file name`, `size`, `kind`, `route`, `route reason`, `stored MIME type`, and `detected MIME
-type`, from the depth-0 part, in docinfer's order and form. `job` feeds it to the pipeline as the
-`Metadata` of the depth-0 part's own event.
+The metadata text of a job's input is the spike's docinfer `metadataText` over what a stream has:
+its lines `file name`, `size`, `kind`, `route`, `route reason`, `stored MIME type`, and `detected
+MIME type`, from the depth-0 part, in the spike's order and form. `job` feeds it to the pipeline
+as the `Metadata` of the depth-0 part's own event.
 
 `job` threads no mail. A store's message and conversation records are record outputs, held in
-`Outputs` like any other, and carry the threading keys; a consumer threads them with
+`Outputs` like any other, and carry the threading keys; a consumer threads them with quarry's
 `email.Threader`, so no Threader state joins the checkpoint.
 
 A job is cancelled through `Run`'s context, which is the job's own. Its end stops the job's tool
-runs (`tool.Run`'s SIGTERM, then SIGKILL), its index waits and claims, and its model calls,
-since each interface method takes the context. It removes the job's files and yields
-`ctx.Err()` alone, last. Other jobs on the same `Runner` go on. Stopping the loop early does the
-same. processing's `Dispatch` behaves this way per call. docinfer's single run-wide context
-becomes one per job; `Pool` keeps one context for all its inputs, since only docproc uses it.
+runs (`tool.Run`'s SIGTERM, then SIGKILL), its index waits and claims, and its go-ai calls, since
+each takes the context. It removes the job's files and yields `ctx.Err()` alone, last. Other jobs
+on the same `Runner` go on. Stopping the loop early does the same. processing's `Dispatch`
+behaves this way per call. The spike's docinfer single run-wide context becomes one per job;
+quarry's `Pool` keeps one context for all its inputs, since only docproc uses it.
 
 ## go-ai's surface
 
-go-ai is built from spike-ai-pipeline-client v0.4.0, which docinfer builds on. The
+go-ai is built from spike-ai-pipeline-client v0.4.0, which the spike's docinfer builds on. The
 names below are the spike's (the module root is package `client`); go-ai's own names are
-v1.ai.client's. Cerebro and `cmd/docinfer`, through quarry's `model` and Cerebro's extraction,
-call only what follows. The model gateway stays transparent to go-ai: go-ai sees an
-OpenAI-compatible base URL, and Cerebro speaks Chat Completions to it.
+v1.ai.client's. docinfer (its pipeline and `cmd/docinfer`) and Cerebro's extraction call only
+what follows. The model gateway stays transparent to go-ai: go-ai sees an OpenAI-compatible base
+URL, and Cerebro speaks Chat Completions to it.
 
 ### The client
 
-From `client.go`, `retry.go`, and `error.go`. docinfer builds one client per endpoint
-(`internal/docinfer/config/config.go`, `Endpoint.Client`) over one `http.Client` with a cloned
-default transport and no timeout (`app/infrastructure.go`).
+From `client.go`, `retry.go`, and `error.go`. The spike's docinfer builds one client per
+endpoint (`internal/docinfer/config/config.go`, `Endpoint.Client`) over one `http.Client` with a
+cloned default transport and no timeout (`app/infrastructure.go`).
 
 ```go
 package client
@@ -996,15 +1027,15 @@ type APIError struct { Status int; Message, Type, Code string; Body []byte }
   proves it by unit tests alone; proving it against the live gateway is asked of v1.ai.client.
 - **Timeouts and cancellation** are the context's: each call takes the job's context, so
   cancelling a job ends its requests (`stream.go` closes a stream's connection). go-ai sets no
-  limit of its own, and concurrency bounds stay the caller's, `infer.Pipeline`'s.
+  limit of its own, and concurrency bounds stay the caller's, `docinfer.Pipeline`'s.
 - **The consumer key** is the bearer token `Token` returns. The gateway's keys carry the
   priority between bulk work and chat ("Cerebro and Athena").
 
 ### Generation: vision and extraction
 
-From `client.go`, `stream.go`, and `protocol/`. docinfer's vision sends one user message of the
-image, as a data URL, and the prompt, its reply capped and its reasoning effort none by default
-(`internal/docinfer/vision/vision.go`, `describe`).
+From `client.go`, `stream.go`, and `protocol/`. The spike's docinfer vision sends one user
+message of the image, as a data URL, and the prompt, its reply capped and its reasoning effort
+none by default (`internal/docinfer/vision/vision.go`, `describe`).
 
 ```go
 func (c *Client) Generate(ctx context.Context, req *protocol.Request) (*protocol.Response, error)
@@ -1033,8 +1064,9 @@ type Accumulator struct{ … } // Add(Event) error; Response() *Response, partia
 ```
 
 A reply's text is the `OutputText` of its assistant messages, joined by a blank line, never its
-reasoning (docinfer's `text`). `StatusIncomplete` gives `infer.Text.Incomplete` its reason, such
-as `max_output_tokens`; any status but completed and incomplete is an error.
+reasoning (the spike's docinfer `text`). `StatusIncomplete` gives the reason a source's
+`Incomplete` records, such as `max_output_tokens`; any status but completed and incomplete is an
+error.
 
 Extraction streams: `GenerateStream`, folded by an `Accumulator`, whose `OutputTextDelta`s
 Cerebro relays as progress ("Events" below). Its output text is the JSON the schema describes,
@@ -1062,65 +1094,59 @@ func (c *Client) Transcribe(ctx context.Context, req *TranscriptionRequest) (*Tr
 ```
 
 `Transcribe` is never retried, since its file is a one-shot reader. Cerebro needs it retried
-against the gateway's 429 and 503, and the adapter can reopen the window's path but can't read
-the reply's Retry-After, which `APIError` doesn't carry. The fix is asked of v1.ai.client
-("Requests to go-ai").
+against the gateway's 429 and 503, and docinfer can reopen the window's path but can't read the
+reply's Retry-After, which `APIError` doesn't carry. The fix is asked of v1.ai.client ("Requests
+to go-ai").
 
-### The adapter
+### docinfer's go-ai use
 
-go-ai's types meet quarry's `infer` interfaces in one adapter, quarry's nested module `model`
-(`github.com/standards-lab/quarry/model`), which requires the library and go-ai. Cerebro and
-`cmd/docinfer` both import it, and the library stays free of go-ai. It is docinfer's
-`vision`, `transcribe`, and `embed` packages less their concurrency, which moves to
-`infer.Pipeline`.
+docinfer's pipeline calls go-ai's client itself, one configuration per capability. It is the
+spike's docinfer `vision`, `transcribe`, and `embed` packages, their concurrency moved into
+`Pipeline`. The go-ai mapping that a `model` adapter module would have held lives here, in
+docinfer, beside the calls it maps.
 
 ```go
-package model // github.com/standards-lab/quarry/model
+package docinfer
 type Vision struct {
     Client *client.Client; Model, Prompt string; MaxTokens int; Reasoning protocol.ReasoningEffort
 }
-func (v Vision) Identity() infer.Identity // {vision, Model, docinfer's visionSettings}
-func (v Vision) Describe(ctx context.Context, img infer.Image) (infer.Text, error)
-
+func (v Vision) Identity() Identity // {vision, Model, the spike's visionSettings}
 type Transcription struct { Client *client.Client; Model, Prompt, Language string }
-func (t Transcription) Identity() infer.Identity // {transcription, Model, transcriptionSettings}
-func (t Transcription) Transcribe(ctx context.Context, w infer.Window) (infer.Text, error)
-
+func (t Transcription) Identity() Identity // {transcription, Model, transcriptionSettings}
 type Embeddings struct { Client *client.Client; Model string }
-func (e Embeddings) Identity() infer.Identity // {embeddings, Model, ""}
-func (e Embeddings) Embed(ctx context.Context, texts []string) ([][]float32, infer.Usage, error)
+func (e Embeddings) Identity() Identity // {embeddings, Model, ""}
 ```
 
-| go-ai | `infer` |
+| go-ai | docinfer |
 | --- | --- |
 | `protocol.Usage{InputTokens, OutputTokens}`, `TranscriptionUsage` | `Usage{Input, Output}` |
 | `EmbeddingUsage{PromptTokens}` | `Usage{Input}` |
-| `Response.IncompleteDetails.Reason` | `Text.Incomplete` |
-| `*APIError` of a 4xx other than 408 and 429 | `*RefusedError{Message}`: recorded and held |
+| `Response.IncompleteDetails.Reason` | `Source.Incomplete`; the inference's outcome `incomplete` |
+| `*APIError` of a 4xx other than 408 and 429 | refused: the inference's outcome `refused`, or the chunk's `Error`; recorded and held |
 | any other `*APIError` (408, 429, every 5xx), retries spent | the error, wrapped: it stops the job |
 | a transport failure, a cancelled context | the error, wrapped: it stops the job |
 
-docinfer counts every `*APIError` as a rejection and holds a 4xx (`infer/execute.go`, `verdict`),
-which would hold a gateway's 429 as a verdict on the image, and records a 5xx as a hole in the
-run. The adapter's 4xx test, in `model`, takes only a verdict on the content as a refusal; a job
-the gateway turned away or failed stops, the work queue redelivers it, and the cache replays what
-it finished. The pipeline keys held embeddings by the embedder's identity with the chunker's
-`Settings` as its settings, and the settings strings are docinfer's, so `cmd/docinfer`'s held
-results stay valid.
+The spike's docinfer counts every `*APIError` as a rejection and holds a 4xx
+(`infer/execute.go`, `verdict`), which would hold a gateway's 429 as a verdict on the image, and
+records a 5xx as a hole in the run. docinfer's 4xx test takes only a verdict on the content as a
+refusal; a job the gateway turned away or failed stops, the work queue redelivers it, and the
+cache replays what it finished. The pipeline keys held embeddings by the embedder's identity with
+the chunker's `Settings` as its settings, and the settings strings are the spike's, so
+`cmd/docinfer`'s held results stay valid.
 
-Cerebro only wires the adapter: per profile, it builds a go-ai client over the gateway and sets
-`model.Vision`, `model.Transcription`, and `model.Embeddings` into an `infer.Config`.
-`cmd/docinfer` does the same per endpoint of its configuration. Extraction is Cerebro's own and
-calls go-ai directly (Assumptions).
+Cerebro, per profile, builds a go-ai client over the gateway and sets `docinfer.Vision`,
+`Transcription`, and `Embeddings` into a `docinfer.Config`; `cmd/docinfer` does the same per
+endpoint of its configuration. Extraction is Cerebro's own and calls go-ai directly
+(Assumptions).
 
 ### What neither caller uses
 
-Cerebro and `cmd/docinfer` call none of the following, so none is part of this surface:
-function tools, tool choice, `FunctionCall` and `FunctionCallOutput` items, the reasoning round
-trip (`Reasoning` items, `encrypted_content` envelopes), `ReasoningParam.Summary`, verbosity,
-image detail, `InputAudio` (Cerebro transcribes through `Transcribe`), the `Native` tiers, and
-the refusal events. `format/messages` and `format/responses` serve `cmd/docinfer`'s endpoints that name
-them; Cerebro uses `format/completions` alone. `Config.Query` is `cmd/docinfer`'s. go-ai's
+docinfer and Cerebro call none of the following, so none is part of this surface: function
+tools, tool choice, `FunctionCall` and `FunctionCallOutput` items, the reasoning round trip
+(`Reasoning` items, `encrypted_content` envelopes), `ReasoningParam.Summary`, verbosity, image
+detail, `InputAudio` (docinfer transcribes through `Transcribe`), the `Native` tiers, and the
+refusal events. `format/messages` and `format/responses` serve `cmd/docinfer`'s endpoints that
+name them; Cerebro uses `format/completions` alone. `Config.Query` is `cmd/docinfer`'s. go-ai's
 `/models` listing, its `tools/infer` CLI, and its harness-session surface are outside both.
 
 ## Cerebro's API and events
@@ -1165,7 +1191,7 @@ type GetOutput struct { Job, SHA256 string } // -> a content the job's updates n
 type ListProfiles struct{}              // -> []Profile
 
 type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time } // Expires in UTC
-type Profile struct { Name string; Resolved infer.Profile } // quarry's resolved identity
+type Profile struct { Name string; Resolved docinfer.Profile } // docinfer's resolved identity
 type Job struct {
     ID, Profile, Name string; Size int64; SHA256 string
     State    State  // queued, running, completed, failed, cancelled
@@ -1202,19 +1228,19 @@ func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, e
   `cancel_requested`. The replica running the job watches its subject through a headers-only
   consumer, so it reads each event's `type` and never its own batches' data back; it folds the
   cancel and ends the job's context. An append racing the cancel fails its expected-sequence
-  check, which also tells the replica of the cancel, so only `cancelled` follows it (quarry's
+  check, which also tells the replica of the cancel, so only `cancelled` follows it (docinfer's
   "One job, and its cancellation").
 - **Outputs** are read by content: `GetOutput` streams `output/<sha256>` for a SHA-256 one of the
   job's updates names, an output's or an inference text's, records included.
-- **The profile** resolves to an `infer.Pipeline`'s models, settings, dimensions, and chunker,
-  and to the extraction model. Each attempt's `started` carries the resolved `infer.Profile`,
+- **The profile** resolves to a `docinfer.Pipeline`'s models, settings, dimensions, and chunker,
+  and to the extraction model. Each attempt's `started` carries the resolved `docinfer.Profile`,
   before any batch, so the consumer registers the matching embedding space ("Models and stages";
   the `chunks` task). The profile declares its embedding dimensions, and the pipeline checks
   every vector against them. The `vision` task's prompt and sampling live in a profile.
 - **Extraction** is optional, a caller's prompt and schema run by Cerebro on go-ai over each
   source text the pipeline chunks: each text and Markdown output, and each inference text, by
-  its SHA-256. Its cache key is `infer.Key(infer.Identity{"extraction", model, settings},
-  content)`, whose settings hold the prompt's and schema's SHA-256, its token bound, and its
+  its SHA-256. Its cache key is `docinfer.Key(docinfer.Identity{"extraction", model,
+  settings}, content)`, whose settings hold the prompt's and schema's SHA-256, its token bound, and its
   effort. Athena's summary chain maps onto it (`athena-mapping`).
 
 ### Streams and subjects
@@ -1230,7 +1256,7 @@ CEREBRO_UPLOADS  cerebro.upload.<upload>     an upload's opened, chunk, complete
 object store     input/<sha256>              a Submit's staged input
                  upload/<upload>/<offset>    staged chunks
                  output/<sha256>             job.Outputs: outputs' content and inference texts
-KV bucket        <infer.Key>                 infer.Cache: held results
+KV bucket        <docinfer.Key>              docinfer.Cache: held results
 ```
 
 Each job's events go on one subject of its own, `cerebro.job.<job>`, so the job has a gap-free
@@ -1244,6 +1270,13 @@ progress and result stream is a different use case, which those conventions don'
 browser never subscribes: Cerebro's events are service-to-service, and Athena relays its own stream
 ("Browser").
 
+go-messaging doesn't carry this yet: its NATS provider publishes each event on `Subject: e.Type`
+(`go-messaging/nats/broker.go`, `Publish`) and filters a durable consumer by types
+(`nats/source.go`, `FilterSubjects: sub.Types`). Cerebro's job stream asks of it a publish on a
+subject the caller names, a consumer filtered by subject, the `sequence` extension carried, and
+events delivered in order within a delivery group. These are queued as data-intelligence.md's
+asks of go-messaging, sized by the capstone's `state` and `events` tasks, not changed now.
+
 ### Events
 
 Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS headers
@@ -1251,21 +1284,24 @@ Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS header
 is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
 by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
 through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
-`cerebro.job.<job>`, not its type ("Streams and subjects"). quarry declares no event types:
-Cerebro's own `messaging.go` defines each type below with go-core's `event.Define[T]`, over
-quarry's `job.Update` for the types that carry one of its update `Kind`s, and over Cerebro's own
-data types, beside its other types, for the rest.
+`cerebro.job.<job>`, not its type ("Streams and subjects"). Neither quarry nor docinfer declares
+event types: Cerebro's own `messaging.go` defines each type below with go-core's
+`event.Define[T]` over its own payload, the producer's shape for what quarry and docinfer yield
+and Cerebro's own data types, beside its other types, for the rest. The type and the subject carry
+the kind and the job, so no payload repeats them, and `dataschema` names the payload's shape and
+its producing package's `Version` (`dispatch.Version`, `docinfer.Version`, or Cerebro's own), its
+exact form the `events` task's.
 
 ```text
 type                                 data                                        whose
 cerebro.job.queued                   {profile, name, mime, size, sha256, extraction}  Cerebro's
 cerebro.job.started                  {attempt, replica, profile}                 Cerebro's
-cerebro.job.part                     job.Update, kind part                        quarry's
-cerebro.job.output                   job.Update, kind output (SHA256, no path)    quarry's
-cerebro.job.warning                  job.Update, kind warning                     quarry's
-cerebro.job.inference                job.Update, kind inference                   quarry's
-cerebro.job.batch                    job.Update, kind batch, Index renumbered     quarry's
-cerebro.job.checkpoint               job.Update, kind checkpoint                  quarry's
+cerebro.job.part                     dispatch.Event, a part's own                 quarry's
+cerebro.job.output                   dispatch.Event, an output's (SHA256, no path) quarry's
+cerebro.job.warning                  dispatch.Event, a warning's                  quarry's
+cerebro.job.inference                docinfer.Inference                           docinfer's
+cerebro.job.batch                    docinfer.Batch                               docinfer's
+cerebro.job.checkpoint               job.Checkpoint                               docinfer's
 cerebro.job.extraction.progress      {content, delta}                             Cerebro's
 cerebro.job.extracted                Extracted                                    Cerebro's
 cerebro.job.cancel_requested         {}                                           Cerebro's
@@ -1275,11 +1311,12 @@ cerebro.job.failed                   {attempt, error}                           
 cerebro.job.cancelled                {}                                           Cerebro's
 ```
 
-- **quarry's updates pass through.** `job.Runner.Run`'s updates go out as they are made, one
-  CloudEvents type per `Kind`, each event's data quarry's `job.Update` JSON (`job.Version` "1"),
-  with two exceptions. `Batch.Index` is renumbered across attempts, so a batch's id, job and
-  index, stays unique. quarry's `done` update becomes no event of its own: its `Done` goes into
-  the manifest's entry for its attempt.
+- **docinfer's updates pass through.** `job.Runner.Run`'s updates go out as they are made, each
+  as the type its set field names, its data that field's JSON unchanged: a dispatch event is a
+  part's own, an output's, or a warning's by which of its fields is set. A warning is defined
+  over `dispatch.Event`, not `dispatch.Warning`, since a warning alone names no part. The one
+  exception is `done`, which becomes no event of its own: its `job.Done` goes into the manifest's
+  entry for its attempt.
 - **Cerebro's own** are the job's lifecycle, extraction, and the manifest. The job's state is
   the fold of its subject: queued, then running from `started`, then one of completed, failed,
   or cancelled. An attempt that fails while the work queue has deliveries left appends
@@ -1297,7 +1334,7 @@ type Extracted struct {
     Held    bool           `json:"held,omitzero"`  // read from the cache, not asked of the model
     Value   jsontext.Value `json:"value,omitzero"` // the JSON the schema describes
     Error   string         `json:"error,omitzero"`
-    Usage   infer.Usage    `json:"usage,omitzero"`
+    Usage   docinfer.Usage `json:"usage,omitzero"`
     TookMS  int64          `json:"took_ms"`
 }
 ```
@@ -1309,7 +1346,7 @@ type Extracted struct {
 
 ### Results and the manifest
 
-A result batch reaches the consumer as a `cerebro.job.batch` event: quarry's `infer.Batch`, its
+A result batch reaches the consumer as a `cerebro.job.batch` event: docinfer's `Batch`, its
 chunks' text, provenance, and base64 vectors. The consumer commits each batch in one
 transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7). The job ends
 with `completed`, whose data is the manifest:
@@ -1325,18 +1362,18 @@ type Manifest struct {
 }
 type Attempt struct {
     Attempt int       `json:"attempt"`
-    Done    *job.Done `json:"done,omitempty"` // quarry's; nil for an attempt that ended without one
+    Done    *job.Done `json:"done,omitempty"` // docinfer's; nil for an attempt that ended without one
 }
 ```
 
 Each event carries the job's sequence, from 1 with no gap, in the CloudEvents `sequence`
 extension as a decimal string. The expected-last-subject-sequence check lets one appender write
 the subject at a time, so the job's sequence is contiguous whatever the stream's global sequence
-interleaves. The consumer
-checks completeness by holding every sequence from `First` to `Last` and by recomputing
+interleaves. A batch is identified by its job and its event's sequence, which no attempt reuses,
+so docinfer numbers no batches and nothing renumbers them. The consumer checks completeness by holding every sequence from `First` to `Last` and by recomputing
 `Batches`, `Chunks`, and `Digest` over the batches it committed. Since a redelivered job's
 attempt replays content seen before, and a store resumes from its last checkpoint, the range and
-digest cover every attempt's batches, and the manifest's digest is Cerebro's, not quarry's
+digest cover every attempt's batches, and the manifest's digest is Cerebro's, not docinfer's
 `Done.Digest`, which covers one attempt. Counts are reported per attempt, never summed: an
 attempt that failed reports none, so a sum would count some attempts and not others. The digest
 covers the chunks' digests, which cover their text, and not their vectors: it proves which
@@ -1344,17 +1381,17 @@ chunks arrived, and a vector is checked by its length against the profile's dime
 
 ### Open questions
 
-- **Live sources.** `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it arrives,
-  but quarry's `job.Job` takes a `dispatch.Input`, a path or a spooled reader. Whether a live
-  source is a job, and through which Command, is the `protocol` task's.
+- **Live sources.** quarry's `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it
+  arrives, but docinfer's `job.Runner.Run` takes a `dispatch.Input`, a path or a spooled reader.
+  Whether a live source is a job, and through which Command, is the `protocol` task's.
 - **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
   default the `protocol` task picks.
 - **Transcription retry** needs go-ai's change ("Requests to go-ai").
 
-## Changes per tool and per quarry package
+## Changes per tool and per package
 
 What each promotion changes from its spike, derived from the sections above; the task that
-builds it is in brackets. Every tool moves to schema "2" and the common envelope, and each
+builds it is in brackets, or the docinfer goal for docinfer's. Every tool moves to schema "2" and the common envelope, and each
 re-records its goldens under "2" as one `.jsonl` and one `.stderr` per fixture, compared byte for
 byte, which tests its determinism.
 
@@ -1449,11 +1486,13 @@ From spike-ai-pipeline-onenote 0.1.0.
 ### quarry's packages [library]
 
 From spike-ai-pipeline-processing v0.9.0, as `github.com/standards-lab/quarry`, requiring
-`golang.org/x/text` alone.
+`golang.org/x/text` alone. quarry loses what the earlier design gave it of inference: no
+`infer`, `chunk`, or `job` package, no `model` module, and no `cmd/docinfer`, all docinfer's.
 
 ```text
 route               kept
-inspect             changed: Flag gains JSON tags (check, class, evidence), docproc's schema.Flag
+inspect             changed: Flag gains JSON tags (check, class, evidence), the spike's docproc
+                    schema.Flag
 tool                kept
 internal/cli        kept: exit codes 1 to 4, the stderr parse, Spool
 document, picture,  kept
@@ -1474,44 +1513,62 @@ dispatch            changed: Input.Reader, spooled, and Input.SHA256, checked; I
                     the part's path and makes embedded and OLE media child parts; Pool keeps
                     one context for its inputs. Index gains Renew, under the lease contract,
                     and Warnings and AppendWarning; Child carries ContentType for Route;
-                    FileIndex renews its claims. Its shapes, beside its other types: Part takes
-                    docproc's schema.Part shape, its Kind, Route, Reason, and MIME moving into
-                    the new ContentType; Output takes docproc's JSON names, Path and Value
-                    never marshalled; Warning {tool, where, what} is new, parsed from the
-                    envelope's stderr line, since docproc's schema has no Warning type and
-                    processing carries tool warnings as []string (email.Stream.Warnings,
-                    office.Result.Warnings)
+                    FileIndex renews its claims. Its shapes, beside its other types, with
+                    Version "1": Event gains JSON tags, Err left out; Part takes the spike's
+                    docproc schema.Part shape, its Kind, Route, Reason, and MIME moving into
+                    the new ContentType; Identity takes schema.Stage's JSON names; Output takes
+                    docproc's JSON names, Path and Value never marshalled; Warning {tool,
+                    where, what} is new, parsed from the envelope's stderr line, since the
+                    spike's docproc schema has no Warning type and processing carries tool
+                    warnings as []string (email.Stream.Warnings, office.Result.Warnings)
 stages              moved from the root's internal/docproc/stages, less WriteTable
-chunk               moved from the root's internal/docinfer/chunk, unchanged
-infer               new: the interfaces, Cache, Key, and Pipeline, from docinfer's infer, vision,
-                    transcribe, and embed less their client calls, and outdir's Key and Hold;
-                    its shapes, beside its other types: Capability, Identity, Usage, Profile,
-                    Outcome, Inference, Batch, Done, the Counts below, docinfer's Seam and Span,
-                    its Source less Ref and File, plus the source's part, stage, and output,
-                    and its Line as Chunk, less the input's file fields, its part, and its
-                    output, plus Digest, its source by index into the batch
-job                 new: dispatch, then inference, under one job's context; Outputs, the
-                    content store; its shapes, beside its other types: Update, its Kind,
-                    Version, Checkpoint, and Done
-cmd/internal/       moved from the root's internal/docproc/{schema,rundir} [docproc]: packages of
-  schema, rundir    this module, as "The nested modules" says
+rundir,             moved from the root's internal/docproc/{rundir,schema} [docproc]: public
+  rundir/schema     packages of this module, as "The nested modules" says
 internal/goldentest, kept: test helpers that call no model
   mediatest, textscore,
   corpustest
-internal/visiontest, moved to cmd/docinfer [docinfer], with the integration and findings tests
-  audiotest          that call a model, since the library's module requires no client
+internal/visiontest, moved to docinfer [the docinfer goal], with the integration and findings
+  audiotest          tests that call a model, since quarry depends on no model client
 ```
 
 processing's `onenote.Medium.Where` names a medium's outline path, from the walk. The contract's
 media carry no placement, so quarry's `Where` names the medium's page and its index in `media`.
 An optional placement field returns by addition if the `design` task asks for one.
 
-`infer.Counts` carries docinfer's `outdir.Counts` per job, counting occurrences rather than
+### docinfer's packages [the docinfer goal]
+
+From the root's `internal/docinfer` and processing's model-calling tests, as
+`github.com/standards-lab/docinfer`, requiring quarry and go-ai.
+
+```text
+docinfer             new, the root package: Pipeline, Config, Cache, Key, and MemoryCache, from
+                     the spike's docinfer infer (sources, execute), vision, transcribe, and embed,
+                     their go-ai calls kept and their concurrency moved into Pipeline, and
+                     outdir's Key and Hold; Vision, Transcription, and Embeddings over go-ai's
+                     client, with the go-ai mapping (a 4xx other than 408 and 429 refused,
+                     anything else stopping the job; usage; incomplete). Its shapes, beside its
+                     other types, with Version "1": Capability, Identity, Usage, Profile,
+                     Outcome, Inference, Batch (no index), Done, the Counts below, the spike's
+                     Seam and Span, its Source less Ref and File, plus the source's part, stage,
+                     and output, and its Line as Chunk, less the input's file fields, its part,
+                     and its output, plus Digest, its source by index into the batch
+chunk                moved from the root's internal/docinfer/chunk; Splitter gains Settings,
+                     its Version and Bound
+job                  new: dispatch, then inference, under one job's context, Run taking the
+                     input alone; Outputs, the content store; Update, the Go side's one-of of
+                     what Run yields, with no JSON, kind, or job of its own; its shapes, beside
+                     its other types: Checkpoint and Done
+internal/            from the root's internal/docinfer/apptest: Serve and its replies, the fake
+  endpointtest       OpenAI-compatible endpoint the pipeline's tests drive go-ai's client against
+internal/visiontest, moved from processing, with the integration and findings tests that call a
+  audiotest          model
+```
+
+`Counts` carries the spike's docinfer `outdir.Counts` per job, counting occurrences rather than
 distinct content: each image, window, and chunk as often as the job holds it, and the cache hits
 among them, so no count needs a set of every digest the job saw. `Chunks` and `Lines` go, since
-`Done.Chunks` counts the chunks in the batches (an `infer.Chunk` is one chunk in one place);
-`Outputs` and the parts by outcome are dispatch's facts, in `job.Done`. Each `Usage` is less
-`Total`.
+`Done.Chunks` counts the chunks in the batches (a `Chunk` is one chunk in one place); `Outputs`
+and the parts by outcome are dispatch's facts, in `job.Done`. Each `Usage` is less `Total`.
 
 ```go
 type Counts struct {
@@ -1537,40 +1594,47 @@ type TranscriptionCounts struct { // each window under its outcome
 type Tokens struct { Vision, Transcription *Usage; Embeddings Usage }
 ```
 
-`Embedded` and `Rejected` add up to `Done.Chunks`. The JSON names are docinfer's, snake_case
+`Embedded` and `Rejected` add up to `Done.Chunks`. The JSON names are the spike's, snake_case
 (`seams_matched`).
 
 ### The nested modules
 
 From the spike root's `cmd/` and `internal/`; the third column names the spike packages each
-module is built from.
+module is built from. Each command is a nested module of its library's repository, so neither
+library requires go-cli-sdk or go-core.
 
 ```text
-model          [docinfer]  internal/docinfer/{vision, transcribe, embed}'s client calls, as the
-                           adapter above; requires the library and go-ai
-cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report}; requires
-                           the library, go-cli-sdk, go-core, and golang.org/x/sys; wires the
-                           library's stages, keeps WriteTable; run takes schema's Statx, on
-                           golang.org/x/sys; its report is the reports task's [reports]
-cmd/docinfer   [docinfer]  cmd/docinfer, internal/docinfer/{app, apptest, config, models,
-                           outdir, source, report}; requires the library, model, and go-ai;
-                           wires model's adapter where vision, transcribe, and embed were; infer
-                           keeps its commands and feeds Pipeline.Run from source; outdir
-                           implements infer.Cache over results/; its directory stays schema "1"
+quarry/cmd/docproc     [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
+                                   requires quarry, go-cli-sdk, go-core, and golang.org/x/sys;
+                                   wires quarry's stages, keeps WriteTable; run takes schema's
+                                   Statx, on golang.org/x/sys; its report is the reports task's
+                                   [reports]
+docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
+                        goal]      models, outdir, source, report}; requires docinfer, quarry,
+                                   go-ai, go-cli-sdk, and go-core; builds docinfer.Vision,
+                                   Transcription, and Embeddings per endpoint where vision,
+                                   transcribe, and embed were; infer keeps its commands and
+                                   feeds Pipeline.Run from source; outdir implements
+                                   docinfer.Cache over results/; its directory stays schema "1"
 ```
 
-`cmd/internal/schema` and `cmd/internal/rundir` are packages of the library's base module, with
-no module or tag of their own. Go's internal rule is by import path, so the nested `cmd/docproc`
-and `cmd/docinfer` import them and nothing outside `cmd/` can. They version with the library,
-which both commands require. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
-`Identity` as its `Stage`, and `inspect.Flag`). Its `Output` stays docproc's own, since
-`dispatch.Output` carries a `sha256` that docproc's schema "1" record lacks, so its record bytes
-stay unchanged. Its `Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`) moves to
-`cmd/docproc`'s `run`, its one caller, so the base module requires `golang.org/x/text` alone.
+`rundir` and `rundir/schema` are public packages of quarry's base module, with no module or tag
+of their own. `cmd/docinfer`, in docinfer's repository, reads docproc's run directory through
+them, and Go's internal rule is by import path, so quarry's `cmd/internal` would bar it. They
+version with the library, which both commands require. `schema` aliases the moved shapes
+(`dispatch.Part`, `ContentType`, `Identity` as its `Stage`, and `inspect.Flag`). Its `Output`
+stays the spike's docproc own, since `dispatch.Output` carries a `sha256` that docproc's schema
+"1" record lacks, so its record bytes stay unchanged. Its `Statx` (`stat_linux.go`, on
+`golang.org/x/sys/unix`) moves to `cmd/docproc`'s `run`, its one caller, so the base module
+requires `golang.org/x/text` alone.
+
+`cmd/docinfer`'s tests write the run directories they read with `rundir`, rather than running
+docproc's app, which is internal to `cmd/docproc`; its `apptest` takes the `Recorder` it used
+from the spike's docproc `apptest` as its own.
 
 ### Requests to go-ai
 
-Requests to v1.ai.client, which `docinfer` and the capstone build on:
+Requests to v1.ai.client, which docinfer and the capstone build on:
 
 - A transcription request that can reopen its clip, such as `TranscriptionRequest.Open func()
   (io.ReadCloser, error)`, so `Transcribe` joins the one retry loop and honors Retry-After; or,
@@ -1578,9 +1642,16 @@ Requests to v1.ai.client, which `docinfer` and the capstone build on:
 - `RetryPolicy`'s retry of 408, 429, and 503 proven against the live gateway, not by unit tests
   alone.
 - The surface above kept: `Generate`, `GenerateStream` with `Accumulator`, `Embed`,
-  `Transcribe`, `*APIError`'s `Status` and `Message`, the usage fields the adapter maps, and
+  `Transcribe`, `*APIError`'s `Status` and `Message`, the usage fields docinfer maps, and
   `Config.Query` and the three formats for `cmd/docinfer`.
 - A consumer key in a header other than the bearer token, only if the gateway asks for one.
+
+### Requests to go-messaging
+
+Queued as data-intelligence.md's asks, not changed now ("Streams and subjects"): a publish on a
+subject the caller names, where the NATS provider publishes on the event's type; a durable
+consumer filtered by subject, where it filters by types; the CloudEvents `sequence` extension
+carried; and events delivered in order within a delivery group.
 
 ## Assumptions
 
@@ -1589,11 +1660,14 @@ Requests to v1.ai.client, which `docinfer` and the capstone build on:
 - Assumes Athena builds `sparse_rows` from typed cells, not from Markdown (`athena-mapping`).
 - Assumes quarry keeps processing's package names `office`, `email`, and `onenote`, not the
   tools' names: each does more than decode its tool (LibreOffice's legacy conversion, threading).
-- Assumes docproc's `stages` belongs in the library, so Cerebro and docproc wire stages alike;
-  `cmd/internal` keeps only `schema` and `rundir`.
+- Assumes the spike's docproc `stages` belongs in quarry, so Cerebro and docproc wire stages
+  alike, and its `schema` and `rundir` become quarry's public `rundir` and `rundir/schema`, so
+  `cmd/docinfer` in docinfer's repository reads a docproc run directory.
+- Assumes inference needs nothing of quarry beyond dispatch's events and shapes and `audio`'s
+  join, so quarry depends on no model concept and imports no docinfer package.
 - Assumes every stream input is spooled to scratch before its stages run, since every stage and
   tool reads a path; no stage reads a stream directly.
-- Assumes one `infer.Pipeline` per replica, whose per-capability bounds every concurrent job
+- Assumes one `docinfer.Pipeline` per replica, whose per-capability bounds every concurrent job
   shares, rather than bounds per job.
 - Assumes a result batch closes at 512 KiB or when no embedded chunk is waiting; the capstone's
   `events` task may tune the cap.
@@ -1602,7 +1676,7 @@ Requests to v1.ai.client, which `docinfer` and the capstone build on:
 - Assumes Cerebro sets the index's retention no longer than `job.Outputs`', so a seen part's
   output resolves by its SHA-256; a miss fails the part, so it is reported, never dropped.
 - Assumes Cerebro's extraction stage (a caller's prompt and JSON schema) is Cerebro's own, on
-  go-ai, sharing `infer.Cache` under its own capability name; no spike has it.
+  go-ai, sharing `docinfer.Cache` under its own capability name; no spike has it.
 - Assumes the typed metadata shapes wait for the capstone's `metadata` task; until then,
   `Output.Meta` and the tools' lines carry metadata.
 - Assumes Cerebro speaks Chat Completions to the gateway, and its consumer key is the bearer
@@ -1612,5 +1686,9 @@ Requests to v1.ai.client, which `docinfer` and the capstone build on:
   redelivery retries it.
 - Assumes extraction runs once per source text, whole, and relays its deltas coalesced to one
   event a second; a text past the model's context is refused, recorded.
+- Assumes go-ai's library releases before docinfer is built; the docinfer goal holds until it
+  does.
+- Assumes go-messaging gains per-subject publish and filter, the `sequence` extension, and
+  ordering within a delivery group before Cerebro's `events` task builds on it.
 - Assumes the consumer stores chunks by their identity (job, part, source, index), so a batch a
   redelivered job repeats changes nothing (the `chunks` task).
