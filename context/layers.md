@@ -66,8 +66,10 @@ sheets[]  name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula
 - `markdown` is office's Markdown rendering (`Rendering/MarkdownRenderer.cs`, the goldens
   `test/SpikeAiPipeline.Office.Tests/Expected/*.md`): headings, lists, GFM tables, charts as
   tables of their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. A
-  picture's `title`, which office leaves out, becomes its image's Markdown title,
-  `![alt](file "title")`.
+  picture's image text is its `alt`, or its `title` when it has no `alt`
+  (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
+  `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
+  its image's Markdown title, `![alt](file "title")`.
 - `media` holds every picture office writes (`Media` blocks, `Reading/MediaStore.cs`), plus
   embedded packages (`embedded`, the part as stored) and OLE objects (`ole`, the native payload,
   `prog_id` the object's), which office leaves unextracted (README "What office does not do").
@@ -97,9 +99,13 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
   `rtf`, and `derived.html` are cut (measured below). When the Markdown is made from HTML, stored
   or recovered from the RTF, the tool compares the text body with it line by line, as the
-  measurement does with links and emphasis read as their text, and appends each line the
-  Markdown lacks, in order, as a paragraph escaped as a text body's Markdown is. A message with
-  an RTF body also stores a text body, so the text body stands for the RTF's text.
+  measurement does, and appends each line the Markdown lacks, in order, as a paragraph escaped as
+  a text body's Markdown is. The comparison reads both as text: the Markdown's links as their
+  text and its images, linked ones too, as their alt text; `*` and `_` dropped from both, and
+  U+FFFD from the line; a bare `<url>` or url in the line matching the target of the link before
+  it; no space before the punctuation after a link; and the text body's cp1252 C1 bytes read as
+  their Windows-1252 characters (`\x99` as `™`). A message with an RTF body also stores a text
+  body, so the text body stands for the RTF's text.
 - `smtp_address` is an Exchange (`EX`) address's SMTP address (`PidTagSmtpAddress`), which schema
   "1" leaves out (README "Known limits").
 - `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
@@ -127,11 +133,12 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
   paragraphs (`PageDateTime`) follow the title heading as one line. An image's `ocr_text`, when
   its `alt_text` doesn't hold it, follows the alt text in the image's Markdown text, as OneNote's
   own alt text holds most of it (4,926 of 5,572 B). An image's `hyperlink` makes the image a link,
-  `[![alt](file)](hyperlink)`. A To Do tag's task box stands for the label "To Do"; a To Do tag
-  with another label keeps its `[Label]` after the box.
+  `[![alt](file)](hyperlink)`. A To Do tag's label "To Do" is carried by its task box (`- [ ]`),
+  so writing it would duplicate it; a To Do tag with another label keeps its `[Label]` after the
+  box.
 - `ink_alternatives` is a label kept as a plain-text field: the recognizer's alternates, which the
-  Markdown leaves out; the words they belong to are the Markdown's ink link text, in the same
-  order.
+  Markdown leaves out; the words they belong to are the ink image's alt text in the Markdown
+  (`![ink: Hello World Hello World](….svg)`), in the same order.
 
 ### Versioning
 
@@ -232,11 +239,12 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
-  it is made from the text body, nothing is. Reading the Markdown as its text (an image as its alt
-  text, a link as its text both with and without ` <url>` after it), dropping `*` and `_` from the
-  Markdown and the line, and U+FFFD from the line, leaves 2,949 B in 11 messages, of which 2,654 B
-  differ only in presentation: a space before the punctuation after a link, a linked image's alt
-  text, a text body's `™` decoded as `\x99`. The text the Markdown lacks is 295 B in 7 messages,
+  it is made from the text body, nothing is. Reading the Markdown's links as their text and its
+  images as their alt text, and dropping `*` and `_` from the Markdown and the line and U+FFFD
+  from the line, leaves 2,949 B in 11 messages, of which 2,654 B differ only in presentation: a
+  bare `<url>` or url after a link's text, a space before the punctuation after a link, a linked
+  image's alt text, a text body's `™` as the cp1252 byte `\x99`. With those read as text too, the
+  normalization quarry-mail's rule states, the text the Markdown lacks is 295 B in 7 messages,
   each a text body that says what its HTML doesn't: cpython's `msg_10.eml` (143 B, the encodings its
   text parts name) and `msg_15.eml` (18 B), the generated inline-image message as `.eml`, `.msg`,
   and in `mailbox.pst` (30 B each, "It is taped into the log book.", where the HTML shows the
@@ -278,7 +286,7 @@ that applies:
 | ooxml | text block tree: heading, paragraph, list, docx table inlines; sections, notes, comments (author, anchor, replies) | none: `dispatch/office.go` never requests the model; the Markdown holds their text | **cut** |
 | ooxml | chart title, series names, categories, values | none; the Markdown's table holds them | **cut** |
 | ooxml | picture `alt` | none; it is the Markdown's image text | **cut** |
-| ooxml | picture `title` | none; the Markdown lacks it, and takes it as the image's title | into Markdown |
+| ooxml | picture `title` | none; the Markdown lacks it unless it is the image text (a picture without `alt`), and takes a title that differs from the image text as the image's title | into Markdown |
 | ooxml | sheet `name`, cell `value`, `formula` | `athena-mapping` (Athena's tabular rows into `sparse_rows` need typed cells); names and values are in the Markdown, a formula is its cell's expression, whose value the Markdown shows | kept |
 | ooxml | `media` (`file`, `part`, `target`, `prog_id`, placement) | office's stage (embedded and OLE media become child parts); references, not text, and a linked picture's `target` is also its Markdown image's source | added |
 | ooxml | `properties` | `metadata` | added |
@@ -298,12 +306,12 @@ that applies:
 | onenote | page `title` | `dispatch/onenote.go` meta | kept |
 | onenote | runs' `text`, `latex`, `link`; list markers; table cells | none; the Markdown renders them, links as link targets | **cut** |
 | onenote | the title's date and time runs (`PageDateTime`) | none; the Markdown lacks them (538 B), and takes them under the title | into Markdown |
-| onenote | tag `label` | none; the Markdown renders it as a `[Label]` prefix, a To Do's as its task box; a To Do tag with another label gains its `[Label]` | into Markdown |
+| onenote | tag `label` | none; the Markdown renders it as a `[Label]` prefix; a To Do tag's label "To Do" is carried by its task box (`- [ ]`), so writing it would duplicate it, and a To Do tag with another label gains its `[Label]` | into Markdown |
 | onenote | image `alt_text` | none; it is the Markdown's image text | **cut** |
 | onenote | image `ocr_text` | none; 4,926 B is within `alt_text`, and the rest (646 B) joins the Markdown's image text, where `text-layer` reads it | into Markdown |
 | onenote | image `hyperlink` | none; the Markdown lacks it, and makes the image a link to it | into Markdown |
 | onenote | image `printout_page`, ink `strokes` and `bounds` | none; not plain text, and vision reads every image and ink SVG | **cut** |
-| onenote | `ink_text` words | none; they are the Markdown's ink link text | **cut** |
+| onenote | `ink_text` words | none; they are the ink image's alt text in the Markdown (`![ink: Hello World Hello World](….svg)`) | **cut** |
 | onenote | `ink_text` `alternatives` | `metadata`; the recognizer's alternates, a label the Markdown leaves out | kept, a label, as `ink_alternatives` |
 | onenote | `ink_text` `language` | none; a language tag, not text | **cut** |
 | onenote | media `filename` | `dispatch/onenote.go` (`Found` name) | kept |
@@ -1208,9 +1216,11 @@ From spike-ai-pipeline-office 0.1.0.
 - **Cut.** The block tree (headings, paragraphs, lists, docx tables, their inlines), sections,
   headers and footers, notes, comments, chart blocks, and picture `alt` and `title`; their text is
   the Markdown's.
-- **Into the Markdown.** A picture's `title` as its image's Markdown title, `![alt](file
-  "title")`, which office's renderer leaves out. The goldens of `media.python-docx.docx`,
-  `sections.python-docx.docx`, and `slide-objects.python-pptx.pptx` show it.
+- **Into the Markdown.** A picture's `title`, when it differs from the image text, as its
+  image's Markdown title, `![alt](file "title")`, which office's renderer leaves out; a
+  title-only picture keeps `![title](file)`, its title already the image text. The goldens of
+  `media.python-docx.docx`, `sections.python-docx.docx`, and `slide-objects.python-pptx.pptx`
+  show it.
 - **Kept.** `sheets`, as office's `TableCell` less its docx-only fields; the Markdown renderer.
 - **Added.** `properties` (core, app, custom, typed as stored); `media` as one list in document
   order, each with its placement (section, sheet, or slide); `embedded` packages and `ole`
@@ -1229,19 +1239,24 @@ From spike-ai-pipeline-mail 0.3.1.
 - **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
   are still decoded, since the Markdown is made from them.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
-  each line of the text body it lacks, compared with links and emphasis read as their text,
-  appended in order as a paragraph, escaped as a text body's Markdown is. The goldens of
+  each line of the text body it lacks under the schema's normalization (links, images, and
+  emphasis read as text; bare URLs matching link targets; no space before punctuation after a
+  link; cp1252 C1 bytes read as Windows-1252), appended in order as a paragraph, escaped as a
+  text body's Markdown is. The goldens of `generated/eml/03-html-inline-image`,
   `generated/msg/03-html-inline-image`, `generated/pst/mailbox`,
   `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and `msg/tika-testMSG_chinese` show it, and
-  `msg/tika-test-outlook2003`, whose text body differs from its HTML only in presentation, shows
-  nothing appended. cpython's `msg_10.eml` and `msg_15.eml` show it in `truth.json`.
+  `msg/tika-test-outlook2003`, whose text body differs from its HTML only in presentation, is
+  expected to append nothing under that normalization.
 - **Kept.** The store's `display_name`, a label kept as metadata.
 - **Moved.** `body.derived.markdown` up to the message's `markdown`.
 - **Added.** `smtp_address` on an Exchange (`EX`) address, from `PidTagSmtpAddress`.
 - **Flags.** `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
 - **Envelope.** `schema` "2". The Markdown links an inline image by its attachment's `file`, the
   envelope's media rule, where mail's keeps the `cid:` source as written.
-- **Goldens.** `tests/golden/{msg,pst,generated}/` re-recorded under "2".
+- **Goldens.** `tests/golden/{msg,pst,generated}/` re-recorded under "2". `.eml` goldens are
+  added for the MIME path, `tests/golden/generated/eml/`, one per message the generator writes
+  to `tests/fixtures/generated/eml/`; `03-html-inline-image`, which ~/docs also holds as `.eml`,
+  shows the appended line "It is taped into the log book."
 
 ### quarry-onenote [onenote]
 
@@ -1254,10 +1269,11 @@ From spike-ai-pipeline-onenote 0.1.0.
 - **Into the Markdown.** The title's date and time paragraphs, as one line under the title
   heading; an image's `ocr_text` its `alt_text` doesn't hold, after the alt text in the image's
   Markdown text; an image's `hyperlink`, as a link around the image; a To Do tag's label other
-  than "To Do", as `[Label]` after its task box. Every fixture's golden shows the date and
-  time, and interop's `FileSyncWOPI_OneNoteWithODB.one` the OCR text; no fixture holds a
-  hyperlinked image or a relabeled To Do tag, so unit tests over a built page show those, as
-  `markdown.rs`'s own tests build one.
+  than "To Do", as `[Label]` after its task box, whose `- [ ]` carries "To Do" itself. The golden
+  of every fixture with pages (all but the refused `Encryption.one`) shows the date and time, and
+  interop's `FileSyncWOPI_OneNoteWithODB.one` the OCR text; no fixture holds a hyperlinked image
+  or a relabeled To Do tag, so unit tests over a built page show those, as `markdown.rs`'s own
+  tests build one.
 - **Kept.** `ink_text`'s `alternatives`, a label, as the page's `ink_alternatives`, each with its
   word's index among the page's recognized words; `handwriting_recognition.one`'s golden shows them.
 - **Added.** A page's `media`, flattened: each image, embedded file, and ink SVG that `content`
