@@ -1326,10 +1326,10 @@ name them; Cerebro uses `format/completions` alone. `Config.Query` is `cmd/docin
 ## Cerebro's API and events
 
 Cerebro's shapes below are what the capstone's design tasks start from: `protocol` settles the
-Queries and Commands and the upload protocol, `state` the streams and the fold, and `events` the
-event protocol (data-intelligence.md, "Design"). Its nested `client` module, tagged `client/vX`,
-holds these types and a Go client; Cerebro imports none of its consumers ("Cerebro and Athena",
-"API").
+Queries and Commands and the upload protocol, `state` the stores, streams, and the fold, and
+`events` the event protocol (data-intelligence.md, "Design"). Its nested `client` module, tagged
+`client/vX`, holds these types and a Go client; Cerebro imports none of its consumers ("Cerebro
+and Athena", "API").
 
 ### Queries and Commands
 
@@ -1338,11 +1338,6 @@ job's subject under an expected-last-sequence check, which is its transaction ("
 
 ```go
 package client // capstone-cerebro/client
-type Extraction struct {
-    Name   string         // the schema's name, 1 to 64 letters, digits, _ and -
-    Prompt string
-    Schema jsontext.Value // a JSON Schema object
-}
 
 // Commands
 type Submit struct { // a small document, whole: protocol
@@ -1350,18 +1345,18 @@ type Submit struct { // a small document, whole: protocol
     Profile    string // a versioned processing profile in Cerebro's configuration, never a model
     Name, MIME string
     Content    []byte // at most Cerebro's configured small-document size
-    Extraction *Extraction
+    Extraction *docinfer.Extract
 }
 type OpenUpload struct { Name, MIME string; Size int64; SHA256 string }
 type AppendChunk struct { Upload string; Offset int64; SHA256 string; Bytes []byte }
-type CompleteUpload struct { Upload, Profile string; Extraction *Extraction }
+type CompleteUpload struct { Upload, Profile string; Extraction *docinfer.Extract }
 type AbortUpload struct { Upload string }
 type CancelJob struct { Job string }
 
 // Queries
 type GetJob struct { Job string }       // -> Job
 type GetUpload struct { Upload string } // -> Upload: the offset to resume from
-type GetOutput struct { Job, SHA256 string } // -> a content the job's updates name, streamed
+type GetOutput struct { SHA256 string } // -> the content a job's update names, streamed
 type ListProfiles struct{}              // -> []Profile
 
 type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time } // Expires in UTC
@@ -1388,68 +1383,81 @@ func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, e
 ```
 
 - **Small documents** arrive whole in `Submit`, a one-call upload: Cerebro stages the bytes in
-  the object store at `input/<sha256>` before it returns the job queued. A larger one goes
-  through the upload: chunks wait in the object store, any replica takes any chunk, a chunk whose
-  digest doesn't match is refused, and `GetUpload` gives the offset to resume from after a drop.
-  `CompleteUpload` checks the whole file's digest and queues the job. Either way the job's input
-  is durable, so any replica, on any delivery, reads it: `dispatch.Input`'s `Reader` is always
-  the object store's reader, and its `SHA256` the digest the Command checked. A staged input
-  outlives the work queue's `MaxDeliver` deliveries of its job. `Submit`'s `ID` makes a retried
-  Submit return the first one's job; its key's exact form is the `protocol` task's. The upload's
-  shape graduates to go-web-sdk (`chunked-upload-graduation`).
+  blob storage at `input/<sha256>`, hashing them as it writes, before it returns the job queued.
+  A larger one goes through the upload: chunks wait in blob storage, any replica takes any chunk,
+  a chunk whose digest doesn't match is refused, and `GetUpload` gives the offset to resume from
+  after a drop. `CompleteUpload` checks that the chunks cover the file, every byte from 0 to
+  `Size` received, and queues the job. Either way the job's input is durable, so any replica, on
+  any delivery, reads it: `dispatch.Input`'s `Reader` is always blob storage's reader, and its
+  `SHA256` the one `Submit` took or `OpenUpload` declared. The whole file is checked once, by the
+  dispatcher's spool ("Input from a stream, or a path"); a mismatch is permanent, so the job
+  fails at once. A staged input outlives the work queue's `MaxDeliver` deliveries of its job.
+  `Submit`'s `ID` makes a retried Submit return the first one's job; its key's exact form is the
+  `protocol` task's. The upload's shape graduates to go-web-sdk (`chunked-upload-graduation`).
 - **A job** is one input, the unit of retry ("Distribution"). Its ID is a UUIDv7 Cerebro
-  assigns; `Submit` and `CompleteUpload` return it queued. `CancelJob` appends
-  `cancel_requested`. The replica running the job watches its subject through a headers-only
-  consumer, so it reads each event's `type` and never its own batches' data back; it folds the
-  cancel and ends the job's context. An append racing the cancel fails its expected-sequence
-  check, which also tells the replica of the cancel, so only `cancelled` follows it (docinfer's
-  "One job, and its cancellation").
-- **Outputs** are read by content: `GetOutput` streams `output/<sha256>` for a SHA-256 one of the
-  job's updates names, an output's or an inference text's, records included.
+  assigns; `Submit` and `CompleteUpload` return it queued. The replica running the job extends
+  its work-queue delivery while the job runs (an in-progress acknowledgement), so a long job
+  isn't redelivered under it. It runs `job.Runner.Run` with `docinfer.Options.Final` set on the
+  work queue's last delivery, and on a redelivery resumes a store from its last checkpoint
+  (docinfer's "One job, and its cancellation").
+- **Fencing.** `CancelJob` appends `cancel_requested`. The replica running the job watches its
+  subject through a headers-only consumer, so it reads each event's `type` and never its own
+  batches' data back; it folds the cancel and ends the job's context. An append that fails its
+  expected-sequence check reads the subject's tail: a `cancel_requested` there ends the job's
+  context, and only `cancelled` follows; a `started` newer than its own means a redelivery holds
+  the job, and the replica ends the job's context and appends nothing more.
+- **Outputs** are read by content: `GetOutput` streams, from docproc's `Content`, the content a
+  SHA-256 names, an output's or an inference text's, records included.
 - **The profile** resolves to a `docinfer.Pipeline`'s models, settings, dimensions, and chunker,
-  and to the extraction model. Each attempt's `started` carries the resolved `docinfer.Profile`,
-  before any batch, so the consumer registers the matching embedding space ("Models and stages";
-  the `chunks` task). The profile declares its embedding dimensions, and the pipeline checks
-  every vector against them. The `vision` task's prompt and sampling live in a profile.
-- **Extraction** is optional, a caller's prompt and schema run by Cerebro on go-ai over each
-  source text the pipeline chunks: each text and Markdown output, and each inference text, by
-  its SHA-256. Its cache key is `docinfer.Key(docinfer.Identity{"extraction", model,
-  settings}, content)`, whose settings hold the prompt's and schema's SHA-256, its token bound,
-  and its effort. Athena's summary chain maps onto it (`athena-mapping`).
+  the extraction model among them. Each attempt's `started` carries the resolved
+  `docinfer.Profile`, before any batch, so the consumer registers the matching embedding space
+  ("Models and stages"; the `chunks` task). The profile declares its embedding dimensions, and
+  the pipeline checks every vector against them. The `vision` task's prompt and sampling live in
+  a profile.
+- **Extraction** is optional: a caller's `docinfer.Extract`, which docinfer runs (docinfer's
+  "The pipeline").
 
-### Streams and subjects
+### State and subjects
 
-JetStream holds all of Cerebro's state, disposable; it owns no SQL ("State"). The stream and
-bucket names are the `state` task's to fix.
+Cerebro holds only its jobs, its uploads, and each job's event stream. docproc's index and
+content store and docinfer's cache are facets of its internal state, behind the libraries'
+interfaces and wired to their providers at its composition root; it holds no state for an
+external service. It runs three stores ("State"):
 
 ```text
-CEREBRO_WORK     cerebro.work                work-queue retention: one message per job, {"job"}
-CEREBRO_JOBS     cerebro.job.<job>           every event of one job, on its own subject;
-                                             limits retention, max age the object store's TTL
-CEREBRO_UPLOADS  cerebro.upload.<upload>     an upload's opened, chunk, completed, aborted
-object store     input/<sha256>              a Submit's staged input
-                 upload/<upload>/<offset>    staged chunks
-                 output/<sha256>             job.Outputs: outputs' content and inference texts
-KV bucket        <docinfer.Key>              docinfer.Cache: held results
+blob storage     input/<sha256>              a job's staged input
+                 upload/<upload>/<offset>    an upload's staged chunks
+                 content/<sha256>            docproc's Content, through docproc/storage
+                 cache/<docinfer.Key>        docinfer's Cache, through docinfer/storage
+PostgreSQL       docproc's index             one row per entry, through docproc/database
+                 go-messaging's outbox and inbox, through go-messaging/postgres, where used
+JetStream        CEREBRO_WORK                cerebro.work: work-queue retention, one message
+(file storage)                               per job, {"job"}
+                 CEREBRO_JOBS                cerebro.job.<job>: every event of one job, on its
+                                             own subject; limits retention
+                 CEREBRO_UPLOADS             cerebro.upload.<upload>: an upload's opened, chunk,
+                                             completed, and aborted, if the upload keeps a stream
 ```
 
+JetStream persists to its own file storage, never to PostgreSQL. The names and retentions are
+the `state` task's to fix. Whether a job's events go through go-messaging's outbox or append to
+the stream directly is the `events` task's.
+
 Each job's events go on one subject of its own, `cerebro.job.<job>`, so the job has a gap-free
-sequence of its own: the expected-last-subject-sequence check guards one subject, and the manifest's
-range is that subject's ("Results and the manifest"). The subjects share one stream rather than a
-stream per job: a consumer filters `cerebro.job.>` or one job's subject, and ~/docs' 592 files,
-data-intelligence.md's 592 jobs, make no streams to reap. `standards-lab/context/messaging.md`'s
-subject and stream conventions (an event's subject is its type; one owner's stream captures
-`<prefix>.>`) govern a web service's events for committed mutations of executed commands. A job's
-progress and result stream is a different use case, which those conventions don't govern. The
-browser never subscribes: Cerebro's events are service-to-service, and Athena relays its own stream
-("Browser").
+sequence of its own: the expected-last-subject-sequence check guards one subject, and the
+manifest's range is that subject's ("Results and the manifest"). The subjects share one stream
+rather than a stream per job: a consumer filters `cerebro.job.>` or one job's subject, and
+~/docs' 592 files, data-intelligence.md's 592 jobs, make no streams to reap.
+`standards-lab/context/messaging.md`'s subject and stream conventions (an event's subject is its
+type; one owner's stream captures `<prefix>.>`) govern a web service's events for committed
+mutations of executed commands. A job's progress and result stream is a different use case,
+which those conventions don't govern. The browser never subscribes: Cerebro's events are
+service-to-service, and Athena relays its own stream ("Browser").
 
 go-messaging doesn't carry this yet: its NATS provider publishes each event on `Subject: e.Type`
 (`go-messaging/nats/broker.go`, `Publish`) and filters a durable consumer by types
-(`nats/source.go`, `FilterSubjects: sub.Types`). Cerebro's job stream asks of it a publish on a
-subject the caller names, a consumer filtered by subject, the `sequence` extension carried, and
-events delivered in order within a delivery group. These are queued as data-intelligence.md's
-asks of go-messaging, sized by the capstone's `state` and `events` tasks, not changed now.
+(`nats/source.go`, `FilterSubjects: sub.Types`), and a delivery lasts its `AckWait`. What Cerebro
+asks of it is under "Requests to go-messaging".
 
 ### Events
 
@@ -1458,7 +1466,7 @@ Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS header
 is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
 by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
 through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
-`cerebro.job.<job>`, not its type ("Streams and subjects"). Neither docproc nor docinfer declares
+`cerebro.job.<job>`, not its type ("State and subjects"). Neither docproc nor docinfer declares
 event types: Cerebro's own `messaging.go` defines each type below with go-core's
 `event.Define[T]` over its own payload, the producer's shape for what docproc and docinfer yield
 and Cerebro's own data types, beside its other types, for the rest. The type and the subject carry
@@ -1474,10 +1482,9 @@ cerebro.job.part                     dispatch.Event, a part's own               
 cerebro.job.output                   dispatch.Event, an output's (SHA256, no path) docproc's
 cerebro.job.warning                  dispatch.Event, a warning's                  docproc's
 cerebro.job.inference                docinfer.Inference                           docinfer's
-cerebro.job.batch                    docinfer.Batch                               docinfer's
+cerebro.job.progress                 docinfer.Progress                            docinfer's
+cerebro.job.batch                    docinfer.Batch; batchdigest, batchchunks     docinfer's
 cerebro.job.checkpoint               job.Checkpoint                               docinfer's
-cerebro.job.extraction.progress      {content, delta}                             Cerebro's
-cerebro.job.extracted                Extracted                                    Cerebro's
 cerebro.job.cancel_requested         {}                                           Cerebro's
 cerebro.job.completed                Manifest                                     Cerebro's
 cerebro.job.attempt.failed           {attempt, error}                             Cerebro's
@@ -1491,52 +1498,33 @@ cerebro.job.cancelled                {}                                         
   over `dispatch.Event`, not `dispatch.Warning`, since a warning alone names no part. The one
   exception is `done`, which becomes no event of its own: its `job.Done` goes into the manifest's
   entry for its attempt.
-- **Cerebro's own** are the job's lifecycle, extraction, and the manifest. The job's state is
-  the fold of its subject: queued, then running from `started`, then one of completed, failed,
-  or cancelled. An attempt that fails while the work queue has deliveries left appends
-  `attempt.failed`, and the redelivery's `started` follows; `failed` is terminal, the deliveries
-  spent.
-- **Extraction progress** relays the stream's `OutputTextDelta`s, coalesced to at most one event
-  a second per source text, each carrying the text since the last. `extracted` carries the
-  result:
-
-```go
-type Extracted struct {
-    Content string         `json:"content"`        // the source text's SHA-256, as Outputs holds it
-    Name    string         `json:"name"`           // the extraction's
-    Outcome string         `json:"outcome"`        // extracted, incomplete, refused
-    Held    bool           `json:"held,omitzero"`  // read from the cache, not asked of the model
-    Value   jsontext.Value `json:"value,omitzero"` // the JSON the schema describes
-    Error   string         `json:"error,omitzero"`
-    Usage   docinfer.Usage `json:"usage,omitzero"`
-    TookMS  int64          `json:"took_ms"`
-}
-```
-
-- **Size.** Every event fits NATS's 1 MB `max_payload`: a batch closes at 512 KiB, and an
-  output and an inference carry their content's SHA-256, never the content. An extraction's
-  value may not fit; moving it to the object store by its digest is the `events` task's
-  (Assumptions).
+- **Cerebro's own** are the job's lifecycle and the manifest. The job's state is the fold of its
+  subject: queued, then running from `started`, then one of completed, failed, or cancelled. An
+  attempt that fails while the work queue has deliveries left appends `attempt.failed`, and the
+  redelivery's `started` follows. `failed` is terminal: appended once the deliveries are spent,
+  or at once on an error `docinfer.Permanent` reports.
+- **Size.** Every event fits NATS's 1 MB `max_payload`: a batch closes at its cap ("Batches as
+  made"), and an output and an inference, an extraction's included, carry their content's
+  SHA-256, never the content.
 
 ### Results and the manifest
 
 A result batch reaches the consumer as a `cerebro.job.batch` event: docinfer's `Batch`, its
-chunks' text, provenance, and base64 vectors. The consumer commits each batch in one
-transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7). The job ends
-with `completed`, whose data is the manifest:
+chunks' text, provenance, and base64 vectors. The event also carries its batch's digest and chunk
+count as the CloudEvents extension attributes `batchdigest` and `batchchunks`, so the
+headers-only fold yields the manifest without reading a batch back. The consumer commits each
+batch in one transaction, de-duplicated through its inbox (data-intelligence.md's evidence 7).
+The job ends with `completed`, whose data is the manifest:
 
 ```go
-type Manifest struct {
-    First    uint64    `json:"first"`    // the job's first event's sequence: 1
-    Last     uint64    `json:"last"`     // this event's sequence
-    Batches  int       `json:"batches"`  // batch events in [First, Last], every attempt's
-    Chunks   int       `json:"chunks"`
+type Manifest struct { // its range: every sequence from 1 through the completed event's own
+    Batches  int       `json:"batches"`  // the batch events in the range, every attempt's
+    Chunks   int       `json:"chunks"`   // the chunks those batches hold
     Digest   string    `json:"digest"`   // SHA-256 over those batches' digests, in sequence order
     Attempts []Attempt `json:"attempts"` // one per started, in order
 }
 type Attempt struct {
-    Attempt int       `json:"attempt"`
-    Done    *job.Done `json:"done,omitempty"` // docinfer's; nil for an attempt that ended without one
+    Done *job.Done `json:"done,omitempty"` // docinfer's; nil for an attempt that ended without one
 }
 ```
 
@@ -1545,14 +1533,13 @@ extension as a decimal string. The expected-last-subject-sequence check lets one
 the subject at a time, so the job's sequence is contiguous whatever the stream's global sequence
 interleaves. A batch is identified by its job and its event's sequence, which no attempt reuses,
 so docinfer numbers no batches and nothing renumbers them. The consumer checks completeness by
-holding every sequence from `First` to `Last` and by recomputing `Batches`, `Chunks`, and
-`Digest` over the batches it committed. Since a redelivered job's
-attempt replays content seen before, and a store resumes from its last checkpoint, the range and
-digest cover every attempt's batches, and the manifest's digest is Cerebro's, not docinfer's
-`Done.Digest`, which covers one attempt. Counts are reported per attempt, never summed: an
-attempt that failed reports none, so a sum would count some attempts and not others. The digest
-covers the chunks' digests, which cover their text, and not their vectors: it proves which
-chunks arrived, and a vector is checked by its length against the profile's dimensions.
+holding every sequence from 1 through the `completed` event's own and by recomputing `Batches`,
+`Chunks`, and `Digest` over the batches it committed. Since a redelivered job's attempt replays
+content seen before, and a store resumes from its last checkpoint, the range and digest cover
+every attempt's batches. Counts are reported per attempt, never summed: an attempt that failed
+reports none, so a sum would count some attempts and not others. The digest covers the chunks'
+digests, which cover their text, and not their vectors: it proves which chunks arrived, and a
+vector is checked by its length against the profile's dimensions.
 
 ### Open questions
 
