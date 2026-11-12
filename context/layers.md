@@ -1,33 +1,31 @@
 # layers
 
 This note states, as signatures and schemas, the boundaries between the five layers of Cerebro's
-stack: the system tools (quarry-ooxml, quarry-mail, quarry-onenote), quarry (the Go extraction
+stack: the system tools (docproc-ooxml, docproc-mail, docproc-onenote), docproc (the Go extraction
 library), docinfer (the Go inference library), go-ai (the model client), and Cerebro (the
 data-intelligence capstone's processing service). Each arrow points from a layer to a layer that
 uses it:
 
 ```text
-system tools ──► quarry ──► docinfer ──► Cerebro
+system tools ──► docproc ──► docinfer ──► Cerebro
                                ▲            ▲
 go-ai ─────────────────────────┴────────────┘
 ```
 
-quarry extracts and knows no model; docinfer infers over what quarry extracts, calling go-ai
-directly; Cerebro runs docinfer's jobs over quarry's dispatcher, stages, and index, which it
-wires, and calls go-ai itself only for extraction. Each signature
-or schema traces to a capstone task in `standards-lab/context/data-intelligence.md` ("Design") or
-to spike evidence. quarry is to be renamed docproc (its tools docproc-ooxml, docproc-mail, and
-docproc-onenote) through `plan` once this task merges; this note keeps the name quarry.
+docproc extracts and knows no model; docinfer infers over what docproc extracts, calling go-ai
+directly; Cerebro runs docinfer's jobs over docproc's dispatcher, stages, and index, which it
+wires, and calls go-ai itself only for extraction. Each signature or schema traces to a capstone
+task in `standards-lab/context/data-intelligence.md` ("Design") or to spike evidence.
 
 Spike paths are relative to `~/experiments/`. "processing" is spike-ai-pipeline-processing, whose
 `office`, `email`, `onenote`, and `dispatch` packages are the consumers the tools are measured
 against. "the root" is spike-ai-pipeline, and "the spike's docproc" and "the spike's docinfer" are
-the commands under its `internal/docproc` and `internal/docinfer`; docinfer alone is the library,
-and `cmd/docinfer` its command.
+the commands under its `internal/docproc` and `internal/docinfer`; docproc and docinfer alone are
+the libraries, and `cmd/docproc` and `cmd/docinfer` their commands.
 
 ## The tool contract
 
-Each tool runs as a process behind quarry's `tool` package (processing `tool/tool.go`), reads one
+Each tool runs as a process behind docproc's `tool` package (processing `tool/tool.go`), reads one
 input, and writes one contract to stdout: JSON Lines, schema "2", with Markdown inside it as the
 text layer. Every piece of text the input holds exists once: content in the Markdown text layer,
 labels as kept plain-text fields. A structured field is cut only when its text is already carried,
@@ -38,12 +36,12 @@ field ("Consumers of structured text").
 ### Common envelope
 
 - **Lines.** stdout holds JSON Lines and nothing else, one compact object per line. Each line's
-  `line` names its kind; the first line carries `schema` (`"2"`) and the input's kind. quarry
+  `line` names its kind; the first line carries `schema` (`"2"`) and the input's kind. docproc
   decodes line by line, keeping a line, block, or container of an unknown kind as an `Unknown*`
   value, as processing's `office/model.go`, `email/model.go`, and `onenote/model.go` do.
 - **Absence.** A field with no value, or an empty list, is left out, never `null`.
-- **Text layer.** A line that holds text carries it as `markdown`: quarry-ooxml's `document`,
-  quarry-mail's `message`, quarry-onenote's `page`. Literal text is escaped by htmd's rules, which
+- **Text layer.** A line that holds text carries it as `markdown`: docproc-ooxml's `document`,
+  docproc-mail's `message`, docproc-onenote's `page`. Literal text is escaped by htmd's rules, which
   mail's and onenote's Markdown share (onenote README, "Markdown").
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
@@ -59,13 +57,13 @@ field ("Consumers of structured text").
   meanings (office, mail, and onenote READMEs, "Usage").
 - **Determinism.** The same input gives byte-identical stdout and media, proven by committed
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
-- **Out of the tools.** Warnings as data are quarry's; per-item digests and provenance
-  docinfer's; batch IDs Cerebro's; typed metadata quarry's and Cerebro's.
+- **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
+  docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
 
-### quarry-ooxml
+### docproc-ooxml
 
 From spike-ai-pipeline-office 0.1.0 (`src/SpikeAiPipeline.Office/Model/Document.cs`, README "The
-JSON model"), which writes either the model (indented JSON) or Markdown, never both. quarry-ooxml
+JSON model"), which writes either the model (indented JSON) or Markdown, never both. docproc-ooxml
 writes a `document` line first, then one `sheet` line per xlsx sheet, in workbook order, so no
 line holds every sheet:
 
@@ -95,7 +93,7 @@ sheet     line, name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, f
   fields.
 - Field names move to snake_case, as mail's and onenote's are.
 
-### quarry-mail
+### docproc-mail
 
 From spike-ai-pipeline-mail 0.3.1 (`src/model.rs`, README "Schema \"1\"", goldens
 `tests/golden/{msg,pst,generated}/`; `.eml` and mbox scored against
@@ -119,8 +117,8 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
   content rule below, in order, as a paragraph escaped as a text body's Markdown is. A message
   with an RTF body also stores a text body, so the text body stands for the RTF's text.
 - The content rule compares a source text with a Markdown text by standards alone, so no
-  fixture tunes it; quarry-onenote's OCR text follows it too. It is written once, in one crate
-  under `tools/` that quarry-mail and quarry-onenote both depend on. Its Unicode version, 16.0,
+  fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in one crate
+  under `tools/` that docproc-mail and docproc-onenote both depend on. Its Unicode version, 16.0,
   is part of schema "2": the normalization, word, and sentence boundaries are Unicode 16.0's, and
   another version is a change of meaning.
   - **Plain text.** Both are normalized to Unicode NFC. The Markdown is read by CommonMark's
@@ -146,11 +144,11 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
   "1" leaves out (README "Known limits").
 - `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
 
-### quarry-onenote
+### docproc-onenote
 
 From spike-ai-pipeline-onenote 0.1.0 (`src/model.rs`, README "Schema \"1\""). It commits no golden
 outputs: its tests check JSON-pointer expectations (`tests/fixtures/{sections,notebooks,content}.json`)
-and run-to-run byte identity, so quarry-onenote adds goldens. Lines `notebook` and `skipped` keep
+and run-to-run byte identity, so docproc-onenote adds goldens. Lines `notebook` and `skipped` keep
 their schema "1" fields, and `section_group` and `section` keep them less `display_name`, which
 duplicates their `path`'s last name (16 of 16). A page changes:
 
@@ -167,7 +165,7 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
   `ink_text` are cut: their text is in `markdown`, and the media they hold move to `media`.
 - The Markdown gains the text the spike reads but leaves out of it. The title's date and time
   paragraphs (`PageDateTime`) follow the title heading as one line, the paragraphs joined by one
-  space. An image's `ocr_text` sentences that its `alt_text` lacks, by quarry-mail's content
+  space. An image's `ocr_text` sentences that its `alt_text` lacks, by docproc-mail's content
   rule, follow the alt text in the image's Markdown text; OneNote's own alt text holds most of it
   (4,926 of 5,572 B). An image's `hyperlink` makes the image a link, `[![alt](file)](hyperlink)`.
   Every tag's label is written the same way, as `[Label]` before its item's text, a task tag's
@@ -276,7 +274,7 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
-  it is made from the text body, nothing is. Compared by quarry-mail's content rule instead
+  it is made from the text body, nothing is. Compared by docproc-mail's content rule instead
   (UAX #29 by uniseg 0.10.1 on Unicode 16.0, CommonMark by markdown-it-py), the sentences it
   appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
   `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
@@ -285,7 +283,7 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   (16 B), and Tika's `testMSG_chinese.msg` (28 B). Outlook 2003's welcome message, once in
   Tika's `test-outlook2003.msg` and twice in libyal's `outlook.pst`, appends nothing: its stored
   text body holds U+0099 where its HTML holds `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code
-  unit 0x0099), a character the sending client mis-decoded, not one quarry-mail decodes, and as
+  unit 0x0099), a character the sending client mis-decoded, not one docproc-mail decodes, and as
   a control and a symbol both only separate words, so `SharePoint` matches. No decoder
   correction applies: PT_STRING8 is read in its message's code page, and a MIME part's charset
   label as the WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
@@ -339,7 +337,7 @@ that applies:
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | kept |
-| mail | `transport_headers` | `metadata`: typed mail metadata is quarry's and Cerebro's, built from the raw headers | kept |
+| mail | `transport_headers` | `metadata`: typed mail metadata is docproc's and Cerebro's, built from the raw headers | kept |
 | mail | address `name`, `address`, `smtp_address` | `email/model.go` (participants), `metadata` | kept |
 | mail | attachment `filename` | `email/route.go`, `dispatch/email.go` (`Found` name) | kept |
 | mail | folder `path` | `dispatch/email.go` meta | kept |
@@ -365,13 +363,13 @@ that applies:
 `text-layer` reads an image's OCR text from the Markdown's image text, where the tool renders
 the OCR text the alt text lacks; no `ocr_text` field returns.
 
-## quarry's API
+## docproc's API
 
-The library module, `github.com/standards-lab/quarry`, extracts: it inspects and routes each part
+The library module, `github.com/standards-lab/docproc`, extracts: it inspects and routes each part
 of an input, reads it through its stage and the tools, and records what it prepared in its index.
 It requires `golang.org/x/text` only and depends on no model concept: no model client, no
 inference, no embedding. Inference is docinfer's ("docinfer's API"), and the imports run one way:
-docinfer imports quarry, and no quarry package imports docinfer. processing imports
+docinfer imports docproc, and no docproc package imports docinfer. processing imports
 spike-ai-pipeline-client only from tests and the test helpers `internal/visiontest` and
 `internal/audiotest`, which move to docinfer with the tests that call a model. "Kept" below means
 processing's signature carries over as it is.
@@ -379,9 +377,9 @@ processing's signature carries over as it is.
 The modules:
 
 ```text
-github.com/standards-lab/quarry              the library below; requires golang.org/x/text only
-github.com/standards-lab/quarry/cmd/docproc  the docproc command; requires the library,
-                                             go-cli-sdk, go-core, and golang.org/x/sys
+github.com/standards-lab/docproc              the library below; requires golang.org/x/text only
+github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the library,
+                                              go-cli-sdk, go-core, and golang.org/x/sys
 ```
 
 The library's packages:
@@ -395,8 +393,8 @@ document, picture, audio,  the other formats, on their tools; audio's Seam JSON-
   media, sevenzip
 dispatch                   stages, the walk over an input's parts, the index; the shapes of  changed
                              its events, parts, outputs, and warnings
-stages                     the stages wired over the host's tools                            moved from docproc
-rundir, rundir/schema      a docproc run directory: its schema "1" shapes, read and written  moved from docproc
+stages                     the stages wired over the host's tools                            moved from the spike's docproc
+rundir, rundir/schema      cmd/docproc's run directory: schema "1" shapes, read and written  moved from the spike's docproc
 ```
 
 ### Inspection and routing
@@ -429,8 +427,8 @@ func CheckListing(kind route.Kind, size int64, entries []Listed, opts Options) (
 
 `tool` is kept (processing `tool/tool.go`, `tool/exec.go`, `tool/container.go`). Cerebro runs
 the exec runner inside an image that bundles the tools (`tool-packaging`). The container runner
-stays for hosts like docproc's, since it needs the docker socket (data-intelligence.md, "Missing
-layers").
+stays for hosts like `cmd/docproc`'s, since it needs the docker socket (data-intelligence.md,
+"Missing layers").
 
 ```go
 package tool
@@ -518,7 +516,7 @@ type Item struct { Output *Output; Part *Found; Warning *Warning }
 
 `Item.Warning` and `Event.Warning` are new. processing yields a tool's stderr warnings as a record
 output, but the common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed
-data, and warnings as data are quarry's. A warning's event carries its part and stage, as an
+data, and warnings as data are docproc's. A warning's event carries its part and stage, as an
 output's does, and the index records it, so a seen part replays its warnings.
 
 The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, so the index
@@ -570,7 +568,7 @@ type ContentType struct {
     Route       route.Route `json:"route,omitzero"`
     RouteReason string      `json:"route_reason,omitzero"`
     Stored      string      `json:"stored,omitzero"`   // the stored MIME type
-    Detected    string      `json:"detected,omitzero"` // an input's sniffed MIME type, docproc's
+    Detected    string      `json:"detected,omitzero"` // cmd/docproc's: an input's sniffed type
 }
 type Identity struct {
     Name    string `json:"name"`
@@ -583,7 +581,7 @@ type Output struct {
     MediaType string            `json:"media_type,omitzero"`
     Meta      map[string]string `json:"meta,omitempty"`
     SHA256    string            `json:"sha256"`       // its content's, by which it is stored
-    Ref       string            `json:"ref,omitzero"` // a host's own name: docproc's run path
+    Ref       string            `json:"ref,omitzero"` // a host's own name: cmd/docproc's run path
     Path      string            `json:"-"`            // local: its file, while its part runs
     Value     []byte            `json:"-"`            // local: its bytes, when it has no file
 }
@@ -601,7 +599,7 @@ never marshal: an output's content is found by its `SHA256`, in the host's conte
 nothing clears them.
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
-docproc and Cerebro wire the same stages from the tools a host holds:
+`cmd/docproc` and Cerebro wire the same stages from the tools a host holds:
 
 ```go
 package stages
@@ -616,7 +614,7 @@ The index is kept (processing `dispatch/index.go`, `memory.go`, `file.go`). It i
 content-addressed by a part's SHA-256 and its stage's identity. One claimant prepares the
 content, and every other claimant waits for its entry, so replicas sharing an index prepare
 content once. Cerebro backs it with JetStream (the capstone's `state` task); `MemoryIndex` and
-`FileIndex` stay for tests and docproc.
+`FileIndex` stay for tests and `cmd/docproc`.
 
 ```go
 type Key struct { SHA256 string; Stage Identity }
@@ -663,9 +661,9 @@ their `event.Define[T]` calls and a `Recorder` alias, over data types in the pac
 `FileDeletedData`), and `admin/database/messaging.go` defines its events over `string`. No
 separate events package exists; go-core's `event` is the CloudEvents envelope alone.
 
-quarry and docinfer are libraries that emit no CloudEvents themselves, so neither declares event
+docproc and docinfer are libraries that emit no CloudEvents themselves, so neither declares event
 kinds or has a `messaging.go`. Their shapes sit in their producing packages' ordinary files:
-quarry's are `dispatch`'s (above), versioned by `dispatch.Version`, and docinfer's are its root
+docproc's are `dispatch`'s (above), versioned by `dispatch.Version`, and docinfer's are its root
 package's and `job`'s ("docinfer's API"), both versioned by `docinfer.Version`. Cerebro's
 `messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own data
 types ("Events"). The spike's docproc `schema` shapes
@@ -675,9 +673,9 @@ shapes move into docinfer. The shapes grow by addition only, as the tools' contr
 
 ## docinfer's API
 
-docinfer (`github.com/standards-lab/docinfer`) infers over what quarry extracts: it describes
+docinfer (`github.com/standards-lab/docinfer`) infers over what docproc extracts: it describes
 images, transcribes audio, chunks and embeds text, holds results in a cache, and runs one job's
-dispatch and inference together. It is an adjacent library that depends on quarry and on go-ai,
+dispatch and inference together. It is an adjacent library that depends on docproc and on go-ai,
 an infrastructure library; depending on go-ai pins it above go-ai's tier, so only layers above
 that tier, such as Cerebro and go-web-service, may use it. It calls go-ai directly, with no adapter
 module between them ("docinfer's go-ai use"). It is built from the spike's docinfer, less its
@@ -686,9 +684,9 @@ command's run directories, and holds until go-ai's library releases.
 The modules:
 
 ```text
-github.com/standards-lab/docinfer               the library below; requires quarry and go-ai
+github.com/standards-lab/docinfer               the library below; requires docproc and go-ai
 github.com/standards-lab/docinfer/cmd/docinfer  the docinfer command; requires the library,
-                                                quarry, go-ai, go-cli-sdk, and go-core
+                                                docproc, go-ai, go-cli-sdk, and go-core
 ```
 
 The library's packages:
@@ -706,9 +704,9 @@ internal/visiontest,   the model-calling test helpers                           
 
 The inference package is the module's root, `docinfer`, so a caller writes `docinfer.Pipeline`
 and `docinfer.Batch`, not `infer.Pipeline` under a module already named for inference. `chunk`
-stands alone, and the root imports it. `job` composes quarry's dispatcher with the pipeline,
+stands alone, and the root imports it. `job` composes docproc's dispatcher with the pipeline,
 which `cmd/docinfer` runs without it, so the root never imports `job`. The imports run one way:
-the root imports quarry's `dispatch` and `audio` and go-ai's `client` and `protocol`; `job`
+the root imports docproc's `dispatch` and `audio` and go-ai's `client` and `protocol`; `job`
 imports `dispatch` and the root.
 
 ### The cache
@@ -735,7 +733,7 @@ func NewMemoryCache() *MemoryCache
 A held vision or transcription result holds its text inline, not as a file under the spike's
 docinfer `texts/`. Content lives apart from the cache, under one key scheme each: `job` puts
 every output's content, and every inference text, into its `Outputs` by SHA-256, and the cache
-holds results by `Key` alone. A part quarry's index reports seen therefore replays outputs whose
+holds results by `Key` alone. A part docproc's index reports seen therefore replays outputs whose
 content `Outputs` still holds, which data-intelligence.md ("Caching") asks for: content seen
 before is replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its
 `results/`.
@@ -794,8 +792,8 @@ The inputs are the spike's docinfer sources (`infer/sources.go`): text and Markd
 never records, plus each image's vision text, each part's joined transcript, and one metadata
 text per input. `Input` is the spike's source under another name, since `Source` is a chunk's
 origin in docinfer's shapes, and it carries dispatch's event as it is. `job` feeds `Run` from
-dispatch's events. `cmd/docinfer` feeds it from a docproc run directory through its `source`
-package, which reads it with quarry's `rundir`, its metadata text the spike's `metadataText`, and
+dispatch's events. `cmd/docinfer` feeds it from a `cmd/docproc` run directory through its `source`
+package, which reads it with docproc's `rundir`, its metadata text the spike's `metadataText`, and
 keeps its own directory's schema "1".
 
 `chunk` is the spike's docinfer chunk, kept, its `Splitter` the pipeline's chunker:
@@ -839,7 +837,7 @@ Nothing needs one within an attempt either: `Done.Digest` runs over the batches 
 ```go
 package docinfer
 const Version = "1" // of the shapes below and job's, grown by addition only
-// Span is the spike's docinfer outdir.Span, carried over; a transcript's seams are quarry's
+// Span is the spike's docinfer outdir.Span, carried over; a transcript's seams are docproc's
 // audio.Seam, whose JSON names are outdir.Seam's; Counts is under "docinfer's packages".
 type Capability string // vision, transcription, embeddings; or a caller's own, as extraction
 type Identity struct {
@@ -911,7 +909,7 @@ type Done struct {
 }
 ```
 
-Per-item digests, provenance, and the profile are docinfer's, and warnings quarry's, as the
+Per-item digests, provenance, and the profile are docinfer's, and warnings docproc's, as the
 common envelope keeps them out of the tools. A batch's identity and the manifest's sequence range
 are Cerebro's, from its job stream.
 
@@ -979,7 +977,7 @@ MIME type`, from the depth-0 part, in the spike's order and form. `job` feeds it
 as the `Metadata` of the depth-0 part's own event.
 
 `job` threads no mail. A store's message and conversation records are record outputs, held in
-`Outputs` like any other, and carry the threading keys; a consumer threads them with quarry's
+`Outputs` like any other, and carry the threading keys; a consumer threads them with docproc's
 `email.Threader`, so no Threader state joins the checkpoint.
 
 A job is cancelled through `Run`'s context, which is the job's own. Its end stops the job's tool
@@ -987,7 +985,7 @@ runs (`tool.Run`'s SIGTERM, then SIGKILL), its index waits and claims, and its g
 each takes the context. It removes the job's files and yields `ctx.Err()` alone, last. Other jobs
 on the same `Runner` go on. Stopping the loop early does the same. processing's `Dispatch`
 behaves this way per call. The spike's docinfer single run-wide context becomes one per job;
-quarry's `Pool` keeps one context for all its inputs, since only docproc uses it.
+docproc's `Pool` keeps one context for all its inputs, since only `cmd/docproc` uses it.
 
 ## go-ai's surface
 
@@ -1284,9 +1282,9 @@ Each event is a CloudEvents 1.0 event in binary mode, its attributes NATS header
 is a UUIDv7, `subject` is the job's ID, and `Nats-Msg-Id`, the length-prefixed `source` followed
 by the `id` as go-messaging keys it, deduplicates a retried append. Consumers de-duplicate
 through go-messaging's inbox on `source` and `id`. Its NATS subject is its job's,
-`cerebro.job.<job>`, not its type ("Streams and subjects"). Neither quarry nor docinfer declares
+`cerebro.job.<job>`, not its type ("Streams and subjects"). Neither docproc nor docinfer declares
 event types: Cerebro's own `messaging.go` defines each type below with go-core's
-`event.Define[T]` over its own payload, the producer's shape for what quarry and docinfer yield
+`event.Define[T]` over its own payload, the producer's shape for what docproc and docinfer yield
 and Cerebro's own data types, beside its other types, for the rest. The type and the subject carry
 the kind and the job, so no payload repeats them, and `dataschema` names the payload's shape and
 its producing package's `Version` (`dispatch.Version`, `docinfer.Version`, or Cerebro's own), its
@@ -1296,9 +1294,9 @@ exact form the `events` task's.
 type                                 data                                        whose
 cerebro.job.queued                   {profile, name, mime, size, sha256, extraction}  Cerebro's
 cerebro.job.started                  {attempt, replica, profile}                 Cerebro's
-cerebro.job.part                     dispatch.Event, a part's own                 quarry's
-cerebro.job.output                   dispatch.Event, an output's (SHA256, no path) quarry's
-cerebro.job.warning                  dispatch.Event, a warning's                  quarry's
+cerebro.job.part                     dispatch.Event, a part's own                 docproc's
+cerebro.job.output                   dispatch.Event, an output's (SHA256, no path) docproc's
+cerebro.job.warning                  dispatch.Event, a warning's                  docproc's
 cerebro.job.inference                docinfer.Inference                           docinfer's
 cerebro.job.batch                    docinfer.Batch                               docinfer's
 cerebro.job.checkpoint               job.Checkpoint                               docinfer's
@@ -1382,7 +1380,7 @@ chunks arrived, and a vector is checked by its length against the profile's dime
 
 ### Open questions
 
-- **Live sources.** quarry's `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it
+- **Live sources.** docproc's `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it
   arrives, but docinfer's `job.Runner.Run` takes a `dispatch.Input`, a path or a spooled reader.
   Whether a live source is a job, and through which Command, is the `protocol` task's.
 - **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
@@ -1396,7 +1394,7 @@ builds it is in brackets, or the docinfer goal for docinfer's. Every tool moves 
 the common envelope, and each re-records its goldens under "2" as one `.jsonl` and one `.stderr`
 per fixture, compared byte for byte, which tests its determinism.
 
-### quarry-ooxml [ooxml]
+### docproc-ooxml [ooxml]
 
 From spike-ai-pipeline-office 0.1.0.
 
@@ -1427,7 +1425,7 @@ From spike-ai-pipeline-office 0.1.0.
 - **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture;
   an xlsx fixture's `.jsonl` holds its `document` line, then its `sheet` lines.
 
-### quarry-mail [mail]
+### docproc-mail [mail]
 
 From spike-ai-pipeline-mail 0.3.1.
 
@@ -1440,7 +1438,7 @@ From spike-ai-pipeline-mail 0.3.1.
   text, NFC, UAX #29 words and sentences, GFM autolinks and RFC 3986 URLs, longest common
   subsequence by Hirschberg's algorithm, Unicode 16.0), appended in order as a paragraph,
   escaped as a text body's Markdown is. The rule is the one crate under `tools/` that
-  quarry-onenote shares, and this task writes it. The goldens of
+  docproc-onenote shares, and this task writes it. The goldens of
   `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
   `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
   `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
@@ -1457,7 +1455,7 @@ From spike-ai-pipeline-mail 0.3.1.
   to `tests/fixtures/generated/eml/`; `03-html-inline-image`, which ~/docs also holds as `.eml`,
   shows the appended line "It is taped into the log book."
 
-### quarry-onenote [onenote]
+### docproc-onenote [onenote]
 
 From spike-ai-pipeline-onenote 0.1.0.
 
@@ -1484,9 +1482,9 @@ From spike-ai-pipeline-onenote 0.1.0.
 - **Goldens.** Added, since the spike commits none. Each fixture gains a `.jsonl` and `.stderr`; the
   JSON-pointer expectations in `tests/fixtures/*.json` stay as the readable checks.
 
-### quarry's packages [library]
+### docproc's packages [library]
 
-From spike-ai-pipeline-processing v0.9.0, as `github.com/standards-lab/quarry`, requiring
+From spike-ai-pipeline-processing v0.9.0, as `github.com/standards-lab/docproc`, requiring
 `golang.org/x/text` alone. It holds no inference: the pipeline, `chunk`, `job`, and
 `cmd/docinfer` are docinfer's.
 
@@ -1530,17 +1528,17 @@ internal/goldentest, kept: test helpers that call no model
   mediatest, textscore,
   corpustest
 internal/visiontest, moved to docinfer [the docinfer goal], with the integration and findings
-  audiotest          tests that call a model, since quarry depends on no model client
+  audiotest          tests that call a model, since docproc depends on no model client
 ```
 
 processing's `onenote.Medium.Where` names a medium's outline path, from the walk. The contract's
-media carry no placement, so quarry's `Where` names the medium's page and its index in `media`.
+media carry no placement, so docproc's `Where` names the medium's page and its index in `media`.
 An optional placement field returns by addition if the `design` task asks for one.
 
 ### docinfer's packages [the docinfer goal]
 
 From the root's `internal/docinfer` and processing's model-calling tests, as
-`github.com/standards-lab/docinfer`, requiring quarry and go-ai.
+`github.com/standards-lab/docinfer`, requiring docproc and go-ai.
 
 ```text
 docinfer             new, the root package: Pipeline, Config, Cache, Key, and MemoryCache, from
@@ -1551,7 +1549,7 @@ docinfer             new, the root package: Pipeline, Config, Cache, Key, and Me
                      anything else stopping the job; usage; incomplete). Its shapes, beside its
                      other types, with Version "1": Capability, Identity, Usage, Profile,
                      Outcome, Inference, Batch (no index), Done, the Counts below, the spike's
-                     Span (its Seam is quarry's audio.Seam), its Source less Ref and File, plus
+                     Span (its Seam is docproc's audio.Seam), its Source less Ref and File, plus
                      the source's part, stage, and output, and its Line as Chunk, less the
                      input's file fields, its part, and its output, plus Digest, its source by
                      index into the batch
@@ -1607,14 +1605,14 @@ module is built from. Each command is a nested module of its library's repositor
 library requires go-cli-sdk or go-core.
 
 ```text
-quarry/cmd/docproc     [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
-                                   requires quarry, go-cli-sdk, go-core, and golang.org/x/sys;
-                                   wires quarry's stages, keeps WriteTable; run takes schema's
+docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
+                                   requires docproc, go-cli-sdk, go-core, and golang.org/x/sys;
+                                   wires docproc's stages, keeps WriteTable; run takes schema's
                                    Statx, on golang.org/x/sys; its report is the reports task's
                                    [reports]
 docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
                         goal]      infer, models, outdir, source, report}; requires docinfer,
-                                   quarry, go-ai, go-cli-sdk, and go-core; builds
+                                   docproc, go-ai, go-cli-sdk, and go-core; builds
                                    docinfer.Vision, Transcription, and Embeddings per endpoint
                                    where vision, transcribe, and embed were; infer keeps its run
                                    command (commands.go, progress.go), its execute and sources
@@ -1623,18 +1621,18 @@ docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest
                                    directory stays schema "1"
 ```
 
-`rundir` and `rundir/schema` are public packages of quarry's base module, with no module or tag
-of their own. `cmd/docinfer`, in docinfer's repository, reads docproc's run directory through
-them, and Go's internal rule is by import path, so quarry's `cmd/internal` would bar it. They
+`rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
+of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory through
+them, and Go's internal rule is by import path, so docproc's `cmd/internal` would bar it. They
 version with the library, which both commands require. `schema` aliases the moved shapes
 (`dispatch.Part`, `ContentType`, `Identity` as its `Stage`, and `inspect.Flag`). Its `Output`
-stays the spike's docproc own, since `dispatch.Output` carries a `sha256` that docproc's schema
-"1" record lacks, so its record bytes stay unchanged. Its `Statx` (`stat_linux.go`, on
+stays the spike's docproc own, since `dispatch.Output` carries a `sha256` that `cmd/docproc`'s
+schema "1" record lacks, so its record bytes stay unchanged. Its `Statx` (`stat_linux.go`, on
 `golang.org/x/sys/unix`) moves to `cmd/docproc`'s `run`, its one caller, so the base module
 requires `golang.org/x/text` alone.
 
 `cmd/docinfer`'s tests write the run directories they read with `rundir`, rather than running
-docproc's app, which is internal to `cmd/docproc`; its `apptest` takes the `Recorder` it used
+`cmd/docproc`'s app, which is internal to it; its `apptest` takes the `Recorder` it used
 from the spike's docproc `apptest` as its own.
 
 ### Requests to go-ai
@@ -1660,16 +1658,16 @@ carried; and events delivered in order within a delivery group.
 
 ## Assumptions
 
-- Assumes quarry's dispatch keeps asking each tool for its Markdown alone as the text it hands to
+- Assumes docproc's dispatch keeps asking each tool for its Markdown alone as the text it hands to
   inference, as processing's stages do.
 - Assumes Athena builds `sparse_rows` from typed cells, not from Markdown (`athena-mapping`).
-- Assumes quarry keeps processing's package names `office`, `email`, and `onenote`, not the
+- Assumes docproc keeps processing's package names `office`, `email`, and `onenote`, not the
   tools' names: each does more than decode its tool (LibreOffice's legacy conversion, threading).
-- Assumes the spike's docproc `stages` belongs in quarry, so Cerebro and docproc wire stages
-  alike, and its `schema` and `rundir` become quarry's public `rundir` and `rundir/schema`, so
-  `cmd/docinfer` in docinfer's repository reads a docproc run directory.
-- Assumes inference needs nothing of quarry beyond `dispatch` (its dispatcher, events, and
-  shapes), `audio`'s join and its `Seam`, and, for `cmd/docinfer`, `rundir`, so quarry depends on
+- Assumes the spike's docproc `stages` belongs in docproc, so Cerebro and `cmd/docproc` wire stages
+  alike, and its `schema` and `rundir` become docproc's public `rundir` and `rundir/schema`, so
+  `cmd/docinfer` in docinfer's repository reads a `cmd/docproc` run directory.
+- Assumes inference needs nothing of docproc beyond `dispatch` (its dispatcher, events, and
+  shapes), `audio`'s join and its `Seam`, and, for `cmd/docinfer`, `rundir`, so docproc depends on
   no model concept and imports no docinfer package.
 - Assumes every stream input is spooled to scratch before its stages run, since every stage and
   tool reads a path; no stage reads a stream directly.

@@ -1,6 +1,6 @@
-# quarry
+# docproc
 
-The processing library adjacent to Go Elemental, with the system tools it runs nested under
+The extraction library adjacent to Go Elemental, with the system tools it runs nested under
 `tools/`, a `code` project managed with the marathon workflow.
 
 - [`context/README.md`](context/README.md): the working context.
