@@ -38,7 +38,8 @@ field ("Consumers of structured text").
   Markdown links it by that name. Without `--media` nothing is written to disk and the names stand.
   A linked or by-reference target is named, never fetched.
 - **stderr.** One line each: `<tool>: warning: <where>: <what>`, and for exit codes 1 to 4
-  `<tool>: error: <reason>`.
+  `<tool>: error: <reason>`. `<where>` never holds `": "`, so a warning line splits at its first
+  three.
 - **Exit codes.** 0 read, skipped items included; 1 stdout or media not written; 2 usage; 3
   refused before any output; 4 a fault of the tool's own. All three spikes use these
   meanings (office, mail, and onenote READMEs, "Usage").
@@ -51,15 +52,16 @@ field ("Consumers of structured text").
 
 From spike-ai-pipeline-office 0.1.0 (`src/SpikeAiPipeline.Office/Model/Document.cs`, README "The
 JSON model"), which writes either the model (indented JSON) or Markdown, never both. quarry-ooxml
-writes one line per document:
+writes a `document` line first, then one `sheet` line per xlsx sheet, in workbook order, so no
+line holds every sheet:
 
 ```text
-document  line, schema, format (docx|xlsx|pptx), properties?, markdown, media?, sheets?
+document  line, schema, format (docx|xlsx|pptx), properties?, markdown, media?
 properties  core?, app?, custom?: maps of the package's core, extended, and custom properties,
             each value typed as stored (string, number, boolean, ISO 8601 date)
 media[]   kind (picture|embedded|ole), file?, content_type?, part?, target?, prog_id?,
           section? | sheet? | slide?   in document order
-sheets[]  name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula?,
+sheet     line, name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula?,
           shared_from?, col_span?, row_span?
 ```
 
@@ -75,7 +77,8 @@ sheets[]  name, hidden?, rows[]: row, cells[]: ref, value_type?, value?, formula
   `prog_id` the object's), which office leaves unextracted (README "What office does not do").
   `part` is the package part, `target` a linked picture's URL; the placement is the docx section,
   xlsx sheet, or pptx slide index.
-- `sheets` keeps an xlsx's typed cells, office's `TableCell` less its docx-only fields.
+- A `sheet` line keeps an xlsx sheet's typed cells, office's `TableCell` less its docx-only
+  fields.
 - Field names move to snake_case, as mail's and onenote's are.
 
 ### quarry-mail
@@ -102,7 +105,10 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
   content rule below, in order, as a paragraph escaped as a text body's Markdown is. A message
   with an RTF body also stores a text body, so the text body stands for the RTF's text.
 - The content rule compares a source text with a Markdown text by standards alone, so no
-  fixture tunes it; quarry-onenote's OCR text follows it too.
+  fixture tunes it; quarry-onenote's OCR text follows it too. It is written once, in one crate
+  under `tools/` that quarry-mail and quarry-onenote both depend on. Its Unicode version, 16.0,
+  is part of schema "2": the normalization, word, and sentence boundaries are Unicode 16.0's, and
+  another version is a change of meaning.
   - **Plain text.** Both are normalized to Unicode NFC. The Markdown is read by CommonMark's
     semantics: a link as its text followed by its destination as one URL token, an image as its
     alt text followed by its destination, emphasis and backslash escapes removed.
@@ -116,7 +122,9 @@ attachment  file?, filename?, mime_type?, content_id?, inline, method?, size?, m
     stay inside their word (WB4). The comparison is of words, and symbols, punctuation, and
     controls are not words. Word tokens compare case-sensitively.
   - **Alignment.** The longest common subsequence of the two token sequences, ties broken to
-    the earliest match in the Markdown.
+    the earliest match in the Markdown. Hirschberg's algorithm computes it in linear space, each
+    split taken at the earliest Markdown position that reaches the longest length, which gives
+    the same tie-break: for n source and m Markdown tokens, O(n·m) time and O(n + m) space.
   - **Units.** The source's sentences by Unicode sentence boundaries (UAX #29), a line break also
     ending one. Each sentence holding a token outside the alignment is appended, in order; the
     rest is already in the Markdown, so overlap is never written twice.
@@ -436,9 +444,10 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`. Each decodes its tool's
 schema "2" line by line (the contracts above), refuses another schema with `ErrSchema`, and keeps
 an unknown kind as an `Unknown*` value. `internal/cli` keeps exit codes 1 to 4 and the stderr
-parse. The readers' types follow the contracts: `office.Document` becomes the `document` line,
-`email.Message` takes `Markdown` up and `Address.SMTPAddress`, and `onenote.Page` takes
-`Markdown`, `Media`, and `InkAlternatives`.
+parse. The readers' types follow the contracts: `office.Document` becomes the `document` line and
+`office.Sheet` the `sheet` line, `email.Message` takes `Markdown` up and `Address.SMTPAddress`,
+and `onenote.Page` takes `Markdown`, `Media`, and `InkAlternatives`. Each reader streams its
+tool's lines as records, office's included, so no reader holds a whole workbook.
 
 ```go
 package email // onenote has the same shape
@@ -449,7 +458,11 @@ func (s *Stream) Records() iter.Seq2[Record, error]
 
 package office
 func NewConverter(ctx context.Context, cfg Config) (*Converter, error)
-func (c *Converter) Convert(ctx context.Context, doc io.Reader, req Request) (*Result, error)
+// Convert reads the document at req.Path, which the caller owns; only a legacy document or an
+// RTF is copied, into the LibreOffice conversion's input.
+func (c *Converter) Convert(ctx context.Context, req Request) (*Stream, error)
+type Request struct { Path, Dir, Name string; MetafileScale int } // Format goes
+func (s *Stream) Records() iter.Seq2[Record, error] // the document, then each sheet
 ```
 
 ### Input from a stream, or a path
@@ -460,16 +473,19 @@ type Input struct {
     Path   string    // a file the caller owns; the dispatcher never removes it
     Reader io.Reader // or a stream, spooled into Config.Dir and hashed as it is copied,
                      // removed with the part
+    SHA256 string    // the content's SHA-256 when the caller knows it: checked as the input is
+                     // spooled or read, a mismatch failing the input, never hashed twice
     Name   string    // the stored name, whose extension routing reads
     MIME   string    // the stored MIME type, if any
     After  uint64    // resume a store after this message, mail's --after
 }
 ```
 
-`Reader` is new: processing's `Input` is a path alone. The stages read paths, since mail,
-onenote, qpdf, and ffprobe take one, and `office.Converter.Convert` spools its reader
-through `internal/cli.Spool`. So one spool at the input serves every stage. Cerebro passes the
-object store's reader for a chunked upload, or the bytes of a small document's Command.
+`Reader` and `SHA256` are new: processing's `Input` is a path alone. The stages read paths, since
+mail, onenote, qpdf, and ffprobe take one, and `office.Converter.Convert` takes the part's path in
+its `Request`. So one spool at the input serves every stage. Cerebro always passes the object
+store's reader of the job's staged input and the SHA-256 its Command checked ("Queries and
+Commands").
 
 ### Dispatch
 
@@ -488,7 +504,7 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, er
 func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error]
 
 type Event struct {
-    Part Part; Output *Output; Outcome Outcome; Reason string; Err error
+    Part Part; Output *Output; Warning *Warning; Outcome Outcome; Reason string; Err error
     Stage Identity; Recorded Outcome; Outputs, Children int
 }
 func (e Event) Keep() // keep the output's file, or the part's, past the loop body
@@ -497,9 +513,18 @@ type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, e
 type Item struct { Output *Output; Part *Found; Warning *Warning }
 ```
 
-`Item.Warning` is new. processing yields a tool's stderr warnings as a record output, but the
-common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed data, and
-warnings as data are quarry's.
+`Item.Warning` and `Event.Warning` are new. processing yields a tool's stderr warnings as a record
+output, but the common envelope's stderr line (`<tool>: warning: <where>: <what>`) parses to typed
+data, and warnings as data are quarry's. A warning's event carries its part and stage, as an
+output's does, and the index records it, so a seen part replays its warnings.
+
+The dispatcher hashes each output as its stage yields it, filling `Output.SHA256`, so the index
+records every output with its content's digest. A seen part replays its whole subtree from the
+index: its outputs and warnings, then each child, in the order recorded, emitted as seen in turn
+with its own outputs, warnings, and children, then its own event. Before it replays anything, the
+dispatcher looks each descendant up under its route's current stage. A child's file exists only
+while its parent's stage runs, so when one misses, its stage's identity having changed since, the
+part is not seen: it is prepared again, and its children with it.
 
 `dispatch` declares the JSON shapes of what it yields beside its other types, on the standard
 library alone: a part, its stage's `Identity`, an output, a warning. `Part` takes the shape of
@@ -534,9 +559,10 @@ type Output struct {
     Name      string            `json:"name,omitzero"`
     MediaType string            `json:"media_type,omitzero"`
     Meta      map[string]string `json:"meta,omitempty"`
-    Ref       string            `json:"ref"`
-    Path      string            `json:"path,omitzero"`  // local: an update carries Ref, never Path
-    Value     []byte            `json:"value,omitzero"` // local, as Path
+    SHA256    string            `json:"sha256"`       // its content's, by which it is stored
+    Ref       string            `json:"ref,omitzero"` // a host's own name: docproc's run path
+    Path      string            `json:"-"`            // local: its file, while its part runs
+    Value     []byte            `json:"-"`            // local: its bytes, when it has no file
 }
 type Warning struct {
     Tool  string `json:"tool"`
@@ -545,8 +571,9 @@ type Warning struct {
 }
 ```
 
-`Output.Path` and `Value` keep their JSON, since `FileIndex` persists outputs with them; `job`
-clears both before an output leaves in an update.
+`Output.Path` and `Value` never marshal: an output's content is found by its `SHA256`, in
+`job.Outputs`, or by a host's `Ref`, so the index records an output without them and nothing
+clears them.
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
 docproc and Cerebro wire the same stages from the tools a host holds:
@@ -571,39 +598,60 @@ type Key struct { SHA256 string; Stage Identity }
 type Index interface {
     Lookup(ctx context.Context, key Key) (Entry, bool, error)
     Outputs(ctx context.Context, key Key) iter.Seq2[Output, error]
+    Warnings(ctx context.Context, key Key) iter.Seq2[Warning, error]
     Children(ctx context.Context, key Key) iter.Seq2[Child, error]
     Claim(ctx context.Context, key Key) (token string, ok bool, err error)
+    Renew(ctx context.Context, key Key, token string) error
     Wait(ctx context.Context, key Key) (Entry, bool, error)
     Append(ctx context.Context, key Key, token string, o Output) error
+    AppendWarning(ctx context.Context, key Key, token string, w Warning) error
     AppendChild(ctx context.Context, key Key, token string, c Child) error
     Record(ctx context.Context, key Key, token string, e Entry) error
     Release(ctx context.Context, key Key, token string) error
     Flags(ctx context.Context, sha256 string) ([]inspect.Flag, bool, error)
     RecordFlags(ctx context.Context, sha256 string, flags []inspect.Flag) error
 }
+type Child struct { // a found part, as its parent's entry records it
+    SHA256 string; Name, Where string; Size int64; ContentType ContentType; Outcome Outcome
+}
 ```
 
+`Warnings` and `AppendWarning` record a part's warnings as `Outputs` and `Append` record its
+outputs. `Child` carries the found part's `ContentType` in place of processing's `Route`, so a
+replayed child's part is whole.
+
+A claim is a lease, and every implementation honors one contract. A claim lasts the index's lease
+from its last `Claim` or `Renew`; the dispatcher renews it on a timer, at a third of the lease,
+for as long as the part's stage runs. A claim not renewed within its lease may be taken over by
+another claimant, and from then on the first token's `Renew`, `Append*`, and `Record` fail. Its
+dispatch then stops the part's stage, records nothing, and waits for the new claimant's entry, as
+any claimant that lost the claim waits. `FileIndex`'s lease is its stale duration.
+
 The cache is new. It generalizes docinfer's held results (`outdir.Dir.Held` and `Hold`, keyed by
-`outdir.Key`) to bytes behind an interface, and Cerebro backs it with its object store.
+`outdir.Key`) to bytes behind an interface. Every held value is one image's, window's, chunk's,
+or extraction's result, bounded by its token cap, so the cache suits a key-value store, and
+Cerebro backs it with a JetStream KV bucket.
 
 ```go
 package infer
-// Cache holds values by key; a miss is (nil, false, nil).
 type Cache interface {
-    Get(ctx context.Context, key string) ([]byte, bool, error)
+    // Get returns keys' values in one round trip, values[i] keys[i]'s, nil for a miss; a held
+    // value is never empty.
+    Get(ctx context.Context, keys ...string) ([][]byte, error)
     Put(ctx context.Context, key string, value []byte) error
 }
-// Key is docinfer's outdir.Key, prefixed "<capability>/": the SHA-256 of the capability, the
-// model, the settings that change the result, and the content's SHA-256, length-prefixed.
-func Key(capability, model, settings, content string) string
+// Key is docinfer's outdir.Key, prefixed "<capability>/": the SHA-256 of the identity's
+// capability, model, and settings, and the content's SHA-256, length-prefixed.
+func Key(id Identity, content string) string
 func NewMemoryCache() *MemoryCache
 ```
 
 A held vision or transcription result holds its text inline, not as a file under docinfer's
-`texts/`. `job` also puts each text and Markdown output's bytes under `output/<sha256>` and sets
-the output's `Ref` to that key. A part the index reports seen therefore replays outputs whose
-text the cache still holds, which data-intelligence.md ("Caching") asks for: content seen before
-is replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its `results/`.
+`texts/`. Content lives apart from the cache, under one key scheme each: `job` puts every
+output's content, and every inference text, into its `Outputs` by SHA-256, and the cache holds
+results by `Key` alone. A part the index reports seen therefore replays outputs whose content
+`Outputs` still holds, which data-intelligence.md ("Caching") asks for: content seen before is
+replayed, not recomputed. `cmd/docinfer`'s `outdir` implements `Cache` over its `results/`.
 
 ### Inference interfaces
 
@@ -640,12 +688,15 @@ type Chunker interface {
     Split(text string) []chunk.Chunk
 }
 
-// RefusedError is an implementation's error for an input the endpoint refused: recorded, not
-// fatal, and held in the cache when Status is 4xx. Any other error stops the job.
+// RefusedError is an implementation's error for an input the endpoint refused, a verdict on the
+// content: recorded, not fatal, and always held in the cache. Any other error stops the job.
 var ErrRefused = errors.New("infer: refused")
-type RefusedError struct { Status int; Message string }
+type RefusedError struct { Message string }
 func (e *RefusedError) Is(target error) bool // matches ErrRefused
 ```
+
+`infer` knows no transport: an implementation decides which of its failures are verdicts on the
+content, as the adapter's 4xx test does in `model` ("The adapter").
 
 ```go
 package chunk // docinfer's chunk, kept
@@ -661,28 +712,34 @@ a job, bounded per capability).
 
 ```go
 type Config struct {
-    Vision        Describer   // nil skips images, counted
-    Transcription Transcriber // nil skips windows, counted
-    Embeddings    Embedder    // required
-    Chunker       Chunker     // required
-    Cache         Cache       // required
-    Concurrency   struct{ Vision, Transcription, Embeddings int }
-    EmbedBatch    int               // texts per Embed call
-    BatchBytes    int               // a result batch's cap; 512 KiB by default
-    Join          audio.JoinRequest // how a part's window transcripts join
+    Vision                   Describer         // nil skips images, counted
+    Transcription            Transcriber       // nil skips windows, counted
+    Embeddings               Embedder          // required
+    Chunker                  Chunker           // required
+    Dimensions               int               // required: the embedding space's; a vector of
+                                               // another length is an error that stops the job
+    Cache                    Cache             // required
+    VisionConcurrency        int
+    TranscriptionConcurrency int
+    EmbeddingsConcurrency    int
+    Pending                  int               // a job's inputs admitted and not yet done
+    EmbedBatch               int               // texts per Embed call
+    BatchBytes               int               // a result batch's cap; 512 KiB by default
+    Join                     audio.JoinRequest // how a part's window transcripts join
 }
 func New(cfg Config) (*Pipeline, error)
-// Profile is the resolved identity each result records: the models, settings, and chunker.
+// Profile is the resolved identity: the models, settings, dimensions, and chunker, known before
+// any job runs.
 func (p *Pipeline) Profile() Profile
 // Run infers over one job's inputs and yields its inference texts, batches, and done as made.
 func (p *Pipeline) Run(ctx context.Context, inputs iter.Seq2[Input, error]) iter.Seq2[Result, error]
 
 type Input struct {
-    Part   dispatch.Part
-    Stage  dispatch.Identity
-    Output dispatch.Output // text or markdown: chunked; image: described; audio: transcribed, then joined
-    Path   string          // its file, until Done
-    Done   func()          // the pipeline is finished with Path
+    // Event is an output's event: text or markdown chunked; image described; audio transcribed,
+    // then joined per part. Its Output's Path, or Value, holds the content until Done.
+    Event    dispatch.Event
+    Metadata string // or the input's metadata text, Event then the depth-0 part's own event
+    Done     func() // the pipeline is finished with the content
 }
 type Result struct { Inference *Inference; Batch *Batch; Done *Done } // one is set
 ```
@@ -690,8 +747,9 @@ type Result struct { Inference *Inference; Batch *Batch; Done *Done } // one is 
 The inputs are docinfer's sources (`infer/sources.go`): text and Markdown outputs, never records,
 plus each image's vision text, each part's joined transcript, and one metadata text per input.
 `infer.Input` is docinfer's source under another name, since `Source` is a chunk's origin in
-infer's shapes. `job` feeds `Run` from dispatch's events. `cmd/docinfer` feeds it from a docproc
-run directory through its `source` package and keeps its own directory's schema "1". `infer`
+infer's shapes, and it carries dispatch's event as it is. `job` feeds `Run` from dispatch's
+events. `cmd/docinfer` feeds it from a docproc run directory through its `source` package, its
+metadata text docinfer's `metadataText`, and keeps its own directory's schema "1". `infer`
 imports `dispatch` and never the reverse.
 
 ### Batches as made
@@ -705,6 +763,10 @@ the order things are made:
 - a `Batch` once its chunks' embeddings complete. A batch is yielded when the next chunk would
   pass `BatchBytes`, or when no embedded chunk is waiting, so it never waits to fill;
 - a `Done` last, with the counts and digests Cerebro's manifest is built from.
+
+`Run` pulls its next input only while fewer than `Pending` of the job's inputs are admitted and
+not done, so a slow model holds the job's dispatch back rather than filling scratch with files
+the pipeline has yet to read.
 
 The cap keeps a batch under NATS's default 1 MB `max_payload`: a 768-dimension vector is 4,096
 B in base64 (data-intelligence.md, "Results").
@@ -723,71 +785,85 @@ separate events package exists; go-core's `event` is the CloudEvents envelope al
 quarry is a library that emits no CloudEvents itself, so it declares no event kinds and has no
 `messaging.go`. Its shapes sit in their producing packages' ordinary files: `dispatch`'s part,
 output, and warning (above); `infer`'s inference texts, batches, chunks, done, and the identities
-and usage they record; `job`'s `Update`, which composes them, and its checkpoint. Cerebro's
-`messaging.go` declares its `cerebro.job.*` kinds over these and over its own data types
-("Events"). docproc's `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`,
+and usage they record; `job`'s `Update`, which composes them, its checkpoint, and its done.
+Cerebro's `messaging.go` declares its `cerebro.job.*` kinds over these and over its own data
+types ("Events"). docproc's `schema` shapes (`spike-ai-pipeline/internal/docproc/schema/part.go`,
 `record.go`) move into `dispatch` and `inspect`, and docinfer's (`internal/docinfer/outdir`) into
 `infer`; `cmd/internal/schema` aliases them ("The nested modules"). The shapes grow by addition
 only, as the tools' contracts do.
 
 ```go
 package infer
-// Span, Source, and Seam are docinfer's outdir shapes of those names, carried over; Counts is
-// under "Changes per tool and per quarry package".
+// Span and Seam are docinfer's outdir shapes of those names, carried over; Counts is under
+// "Changes per tool and per quarry package".
+type Capability string // vision, transcription, embeddings; or a caller's own, as extraction
 type Identity struct {
-    Capability string `json:"capability"` // vision | transcription | embeddings
-    Model      string `json:"model"`
-    Settings   string `json:"settings"`   // prompt, max tokens, effort; prompt, language; chunker
+    Capability Capability `json:"capability"`
+    Model      string     `json:"model"`
+    Settings   string     `json:"settings"` // vision: prompt, max tokens, effort; transcription:
+                                            // prompt, language; embeddings: none
 }
 type Profile struct {
     Vision        *Identity `json:"vision,omitempty"`
     Transcription *Identity `json:"transcription,omitempty"`
     Embeddings    Identity  `json:"embeddings"`
-    Dimensions    int       `json:"dimensions"` // measured from the vectors, as docinfer's Space
+    Dimensions    int       `json:"dimensions"` // declared: Config.Dimensions, checked per vector
     Chunker       string    `json:"chunker"`    // the Chunker's Settings
 }
 type Usage struct {
     Input  int `json:"input"`
     Output int `json:"output"`
 }
+type Outcome string // described, incomplete, refused
 type Inference struct {
-    Capability string   `json:"capability"`        // vision | transcription
-    Content    string   `json:"content"`           // the image's or windows' SHA-256
-    Outcome    string   `json:"outcome"`           // described, incomplete, refused, held
-    Text       string   `json:"text,omitzero"`     // whole
-    TextSHA256 string   `json:"text_sha256,omitzero"`
-    Seams      []Seam   `json:"seams,omitempty"`   // a transcript's, as audio.Join made them
-    Usage      Usage    `json:"usage,omitzero"`
-    TookMS     int64    `json:"took_ms"`
+    Capability Capability `json:"capability"`          // vision | transcription
+    Part       string     `json:"part"`                // its part's SHA-256
+    Content    []string   `json:"content"`             // an image's SHA-256, or windows' in order
+    Outcome    Outcome    `json:"outcome"`
+    Held       bool       `json:"held,omitzero"`       // read from the cache, not asked of a model
+    TextSHA256 string     `json:"text_sha256,omitzero"` // the text, in job's Outputs
+    Text       string     `json:"-"`                   // local: job puts it in Outputs
+    Seams      []Seam     `json:"seams,omitempty"`     // a transcript's, as audio.Join made them
+    Usage      Usage      `json:"usage,omitzero"`
+    TookMS     int64      `json:"took_ms"`
 }
+// Batch holds its chunks, and each part and source text they come from once, by index: a text's
+// or a part's SHA-256 can't name an occurrence, since the same content in two places is two.
 type Batch struct {
-    Index  int     `json:"index"`  // from 0 in the job; the batch's id is job and index
-    Chunks []Chunk `json:"chunks"`
-    Digest string  `json:"digest"` // SHA-256 over its chunks' digests, in order
+    Index   int             `json:"index"`   // from 0 in the job; the batch's id is job and index
+    Parts   []dispatch.Part `json:"parts"`   // provenance: each, its parent and depth, where found
+    Sources []Source        `json:"sources"`
+    Chunks  []Chunk         `json:"chunks"`
+    Digest  string          `json:"digest"`  // SHA-256 over its chunks' digests, in order
 }
-// Chunk is docinfer's outdir.Line less the input's file fields (Input, File, ContentType), plus
-// Digest and Stage, its Part dispatch.Part in place of outdir.Part (schema.Part plus kind, route,
-// and outcome): kind and route sit in the part's ContentType, and its outcome leaves in the
+// Source is docinfer's outdir.Source, the text a chunk is cut from, less Ref and File, its
+// directories' paths, which stay in cmd/docinfer's outdir, plus where the text sits.
+type Source struct {
+    Kind       string             `json:"kind"`   // output, metadata, vision, or transcript
+    SHA256     string             `json:"sha256"` // the whole text's, as Outputs holds it
+    Incomplete string             `json:"incomplete,omitzero"`
+    Part       int                `json:"part"`   // an index into the batch's Parts
+    Stage      *dispatch.Identity `json:"stage,omitempty"`
+    Output     *dispatch.Output   `json:"output,omitempty"` // the output it is, or the image or
+                                                            // first window its inference read
+}
+// Chunk is docinfer's outdir.Line less the input's file fields (Input, File, ContentType) and its
+// Part and Output, which its Source holds, plus Digest. outdir.Part's outcome leaves in the
 // part's own update, not on each chunk.
 type Chunk struct {
-    Digest string             `json:"digest"` // SHA-256 of Text: the per-item digest
-    Text   string             `json:"text"`
-    Index  int                `json:"index"`  // within its source text
-    Span   Span               `json:"span"`
-    Source Source             `json:"source"` // output, metadata, vision, or transcript, and its ref
-    Part   dispatch.Part      `json:"part"`   // provenance: the part, its parent and depth, where found
-    Stage  *dispatch.Identity `json:"stage,omitempty"`
-    Output *dispatch.Output   `json:"output,omitempty"`
-    Vector string             `json:"vector,omitzero"` // base64 little-endian float32, as returned
-    Error  string             `json:"error,omitzero"`  // why the endpoint rejected it
+    Digest string `json:"digest"` // SHA-256 of Text: the per-item digest
+    Text   string `json:"text"`
+    Index  int    `json:"index"`  // within its source text
+    Span   Span   `json:"span"`
+    Source int    `json:"source"` // an index into the batch's Sources
+    Vector string `json:"vector,omitzero"` // base64 little-endian float32, as returned
+    Error  string `json:"error,omitzero"`  // why the endpoint rejected it
 }
 type Done struct {
-    Profile Profile `json:"profile"` // the resolved identity the consumer registers its space by
-    Batches int     `json:"batches"`
-    Chunks  int     `json:"chunks"`
-    Digest  string  `json:"digest"`  // SHA-256 over the batches' digests, in order
-    Counts  Counts  `json:"counts"`  // parts by outcome, and docinfer's counts
-    Error   string  `json:"error,omitzero"`
+    Batches int    `json:"batches"`
+    Chunks  int    `json:"chunks"`  // in the batches
+    Digest  string `json:"digest"`  // SHA-256 over the batches' digests, in order
+    Counts  Counts `json:"counts"`
 }
 
 package job
@@ -798,7 +874,7 @@ type Update struct {
     Job        string             `json:"job"`
     Part       *dispatch.Part     `json:"part,omitempty"`   // the part an update is of
     Stage      *dispatch.Identity `json:"stage,omitempty"`
-    Output     *dispatch.Output   `json:"output,omitempty"` // Ref, never Path or Value
+    Output     *dispatch.Output   `json:"output,omitempty"` // its content in Outputs by SHA256
     Outcome    string             `json:"outcome,omitzero"` // a part's: dispatch.Outcome
     Recorded   string             `json:"recorded,omitzero"`
     Reason     string             `json:"reason,omitzero"`
@@ -809,10 +885,16 @@ type Update struct {
     Inference  *infer.Inference   `json:"inference,omitempty"`
     Batch      *infer.Batch       `json:"batch,omitempty"`
     Checkpoint *Checkpoint        `json:"checkpoint,omitempty"`
-    Done       *infer.Done        `json:"done,omitempty"`
+    Done       *Done              `json:"done,omitempty"`
 }
-type Checkpoint struct { // a store's cursor
-    After uint64 `json:"after"` // the last message whose updates are out
+type Checkpoint struct { // a store's cursor, a low watermark
+    After uint64 `json:"after"` // the last message, in read order, whose updates, and every
+                                // earlier message's, are out, their batches included
+}
+type Done struct { // one attempt's
+    Parts   map[dispatch.Outcome]int `json:"parts"`   // by outcome, every depth
+    Outputs int                      `json:"outputs"` // output updates
+    infer.Done                                       // inline: batches, chunks, digest, counts
 }
 ```
 
@@ -821,23 +903,52 @@ package imports its consumer's. Batch ids, per-item digests, provenance, warning
 profile are quarry's, as the common envelope keeps them out of the tools. The manifest's
 sequence range is Cerebro's, from its job stream.
 
-### Per-job cancellation
+### One job, and its cancellation
 
 ```go
 package job
 type Job struct { ID string; Input dispatch.Input }
+// Outputs holds content by its SHA-256: every output's, and every inference text.
+type Outputs interface {
+    Put(ctx context.Context, sha256 string, r io.Reader) error // content already held is kept
+    Open(ctx context.Context, sha256 string) (io.ReadCloser, error) // a miss matches fs.ErrNotExist
+}
 type Config struct {
     Dispatcher      *dispatch.Dispatcher
     Pipeline        *infer.Pipeline
-    Cache           infer.Cache
+    Outputs         Outputs
     CheckpointEvery int // messages between a store's checkpoints
 }
 func New(cfg Config) (*Runner, error)
-// Run dispatches one job's input and infers over it, yielding its updates in order: each part
-// and output as dispatched, then inference and batches as made, and done last. It composes
-// dispatch's events and the pipeline's results into Updates stamped with the job's ID.
+// Run dispatches one job's input and infers over it, yielding its updates as made, in the order
+// below, and done last. It composes dispatch's events and the pipeline's results into Updates
+// stamped with the job's ID.
 func (r *Runner) Run(ctx context.Context, j Job) iter.Seq2[Update, error]
 ```
+
+`Run` puts each output's content into `Outputs` before its update is yielded, and each inference
+text before its inference's. An output whose event carries no file, one a seen part replays, is
+opened from `Outputs` into the job's scratch for the pipeline, and a miss fails its part. The
+files `job` keeps for the pipeline it removes when the pipeline is done with them. A quarantined
+part's file is never kept: the dispatcher removes it with the part, its flags in the part's
+update, and its bytes stay within the job's input, which the caller holds. A process that dies
+leaves its files in the dispatcher's `Dir`, so a host empties its `Dir` when it starts: no job
+outlives its process, and Cerebro's work queue redelivers the job.
+
+Updates keep one order: an output's update precedes anything derived from it (its inference, the
+batches holding its chunks), and a part's update follows its outputs', warnings', and children's.
+Nothing else is promised: inference and batches interleave with dispatch's updates as they are
+made. A checkpoint's `After` is a low watermark, so a store resumed after it repeats no message
+whose batches are out and skips none whose batches are not.
+
+The metadata text of a job's input is docinfer's `metadataText` over what a stream has: its
+lines `file name`, `size`, `kind`, `route`, `route reason`, `stored MIME type`, and `detected MIME
+type`, from the depth-0 part, in docinfer's order and form. `job` feeds it to the pipeline as the
+`Metadata` of the depth-0 part's own event.
+
+`job` threads no mail. A store's message and conversation records are record outputs, held in
+`Outputs` like any other, and carry the threading keys; a consumer threads them with
+`email.Threader`, so no Threader state joins the checkpoint.
 
 A job is cancelled through `Run`'s context, which is the job's own. Its end stops the job's tool
 runs (`tool.Run`'s SIGTERM, then SIGKILL), its index waits and claims, and its model calls,
@@ -976,7 +1087,7 @@ func (t Transcription) Identity() infer.Identity // {transcription, Model, trans
 func (t Transcription) Transcribe(ctx context.Context, w infer.Window) (infer.Text, error)
 
 type Embeddings struct { Client *client.Client; Model string }
-func (e Embeddings) Identity() infer.Identity // {embeddings, Model}; the pipeline adds the chunker
+func (e Embeddings) Identity() infer.Identity // {embeddings, Model, ""}
 func (e Embeddings) Embed(ctx context.Context, texts []string) ([][]float32, infer.Usage, error)
 ```
 
@@ -985,15 +1096,17 @@ func (e Embeddings) Embed(ctx context.Context, texts []string) ([][]float32, inf
 | `protocol.Usage{InputTokens, OutputTokens}`, `TranscriptionUsage` | `Usage{Input, Output}` |
 | `EmbeddingUsage{PromptTokens}` | `Usage{Input}` |
 | `Response.IncompleteDetails.Reason` | `Text.Incomplete` |
-| `*APIError` of 408, 429, or 503, retries spent | the error, wrapped: it stops the job |
-| any other `*APIError` | `*RefusedError{Status, Message}`: recorded, held when 4xx |
+| `*APIError` of a 4xx other than 408 and 429 | `*RefusedError{Message}`: recorded and held |
+| any other `*APIError` (408, 429, every 5xx), retries spent | the error, wrapped: it stops the job |
 | a transport failure, a cancelled context | the error, wrapped: it stops the job |
 
 docinfer counts every `*APIError` as a rejection and holds a 4xx (`infer/execute.go`, `verdict`),
-which would hold a gateway's 429 as a verdict on the image. The adapter keeps the statuses
-`RetryPolicy` retries out of `RefusedError`, so a job the gateway turned away fails, the work
-queue redelivers it, and the cache replays what it finished. The settings strings are
-docinfer's, so `cmd/docinfer`'s held results stay valid.
+which would hold a gateway's 429 as a verdict on the image, and records a 5xx as a hole in the
+run. The adapter's 4xx test, in `model`, takes only a verdict on the content as a refusal; a job
+the gateway turned away or failed stops, the work queue redelivers it, and the cache replays what
+it finished. The pipeline keys held embeddings by the embedder's identity with the chunker's
+`Settings` as its settings, and the settings strings are docinfer's, so `cmd/docinfer`'s held
+results stay valid.
 
 Cerebro only wires the adapter: per profile, it builds a go-ai client over the gateway and sets
 `model.Vision`, `model.Transcription`, and `model.Embeddings` into an `infer.Config`.
@@ -1033,6 +1146,7 @@ type Extraction struct {
 
 // Commands
 type Submit struct { // a small document, whole: protocol
+    ID         string // the caller's idempotency ID
     Profile    string // a versioned processing profile in Cerebro's configuration, never a model
     Name, MIME string
     Content    []byte // at most Cerebro's configured small-document size
@@ -1047,6 +1161,7 @@ type CancelJob struct { Job string }
 // Queries
 type GetJob struct { Job string }       // -> Job
 type GetUpload struct { Upload string } // -> Upload: the offset to resume from
+type GetOutput struct { Job, SHA256 string } // -> a content the job's updates name, streamed
 type ListProfiles struct{}              // -> []Profile
 
 type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time } // Expires in UTC
@@ -1068,29 +1183,39 @@ func (c *Client) AbortUpload(ctx context.Context, cmd AbortUpload) error
 func (c *Client) CancelJob(ctx context.Context, cmd CancelJob) (Job, error)
 func (c *Client) GetJob(ctx context.Context, q GetJob) (Job, error)
 func (c *Client) GetUpload(ctx context.Context, q GetUpload) (Upload, error)
+func (c *Client) GetOutput(ctx context.Context, q GetOutput) (io.ReadCloser, error)
 func (c *Client) ListProfiles(ctx context.Context, q ListProfiles) ([]Profile, error)
 ```
 
-- **Small documents** arrive whole in `Submit`; Cerebro passes the bytes to `dispatch.Input`'s
-  `Reader`. A larger one goes through the upload: chunks wait in the object store, any replica
-  takes any chunk, a chunk whose digest doesn't match is refused, and `GetUpload` gives the
-  offset to resume from after a drop. `CompleteUpload` checks the whole file's digest and queues
-  the job over the object store's reader. The upload's shape graduates to go-web-sdk
-  (`chunked-upload-graduation`).
+- **Small documents** arrive whole in `Submit`, a one-call upload: Cerebro stages the bytes in
+  the object store at `input/<sha256>` before it returns the job queued. A larger one goes
+  through the upload: chunks wait in the object store, any replica takes any chunk, a chunk whose
+  digest doesn't match is refused, and `GetUpload` gives the offset to resume from after a drop.
+  `CompleteUpload` checks the whole file's digest and queues the job. Either way the job's input
+  is durable, so any replica, on any delivery, reads it: `dispatch.Input`'s `Reader` is always
+  the object store's reader, and its `SHA256` the digest the Command checked. A staged input
+  outlives the work queue's `MaxDeliver` deliveries of its job. `Submit`'s `ID` makes a retried
+  Submit return the first one's job; its key's exact form is the `protocol` task's. The upload's
+  shape graduates to go-web-sdk (`chunked-upload-graduation`).
 - **A job** is one input, the unit of retry ("Distribution"). Its ID is a UUIDv7 Cerebro
   assigns; `Submit` and `CompleteUpload` return it queued. `CancelJob` appends
-  `cancel_requested`. The replica running the job watches its subject, so it folds the cancel
-  and ends the job's context; an append racing the cancel fails its expected-sequence check, so
-  only `cancelled` follows it (quarry's "Per-job cancellation").
-- **The profile** resolves to an `infer.Pipeline`'s models, settings, and chunker, and to the
-  extraction model. A job records the resolved `infer.Profile`, so the consumer registers the
-  matching embedding space ("Models and stages"; the `chunks` task). The `vision` task's prompt
-  and sampling live in a profile.
+  `cancel_requested`. The replica running the job watches its subject through a headers-only
+  consumer, so it reads each event's `type` and never its own batches' data back; it folds the
+  cancel and ends the job's context. An append racing the cancel fails its expected-sequence
+  check, which also tells the replica of the cancel, so only `cancelled` follows it (quarry's
+  "One job, and its cancellation").
+- **Outputs** are read by content: `GetOutput` streams `output/<sha256>` for a SHA-256 one of the
+  job's updates names, an output's or an inference text's, records included.
+- **The profile** resolves to an `infer.Pipeline`'s models, settings, dimensions, and chunker,
+  and to the extraction model. Each attempt's `started` carries the resolved `infer.Profile`,
+  before any batch, so the consumer registers the matching embedding space ("Models and stages";
+  the `chunks` task). The profile declares its embedding dimensions, and the pipeline checks
+  every vector against them. The `vision` task's prompt and sampling live in a profile.
 - **Extraction** is optional, a caller's prompt and schema run by Cerebro on go-ai over each
-  source text the pipeline chunks: each text and Markdown output, by its `Ref`, and each
-  inference text. Its cache key is `infer.Key("extraction", model, settings, content)`, whose
-  settings hold the prompt's and schema's SHA-256, its token bound, and its effort. Athena's
-  summary chain maps onto it (`athena-mapping`).
+  source text the pipeline chunks: each text and Markdown output, and each inference text, by
+  its SHA-256. Its cache key is `infer.Key(infer.Identity{"extraction", model, settings},
+  content)`, whose settings hold the prompt's and schema's SHA-256, its token bound, and its
+  effort. Athena's summary chain maps onto it (`athena-mapping`).
 
 ### Streams and subjects
 
@@ -1102,8 +1227,10 @@ CEREBRO_WORK     cerebro.work                work-queue retention: one message p
 CEREBRO_JOBS     cerebro.job.<job>           every event of one job, on its own subject;
                                              limits retention, max age the object store's TTL
 CEREBRO_UPLOADS  cerebro.upload.<upload>     an upload's opened, chunk, completed, aborted
-object store     upload/<upload>/<offset>    staged chunks
-                 cache/<infer.Key>           infer.Cache: held results, output/<sha256> texts
+object store     input/<sha256>              a Submit's staged input
+                 upload/<upload>/<offset>    staged chunks
+                 output/<sha256>             job.Outputs: outputs' content and inference texts
+KV bucket        <infer.Key>                 infer.Cache: held results
 ```
 
 Each job's events go on one subject of its own, `cerebro.job.<job>`, so the job has a gap-free
@@ -1132,17 +1259,18 @@ data types, beside its other types, for the rest.
 ```text
 type                                 data                                        whose
 cerebro.job.queued                   {profile, name, mime, size, sha256, extraction}  Cerebro's
-cerebro.job.started                  {attempt, replica}                          Cerebro's
+cerebro.job.started                  {attempt, replica, profile}                 Cerebro's
 cerebro.job.part                     job.Update, kind part                        quarry's
-cerebro.job.output                   job.Update, kind output (Ref, no path)       quarry's
+cerebro.job.output                   job.Update, kind output (SHA256, no path)    quarry's
 cerebro.job.warning                  job.Update, kind warning                     quarry's
 cerebro.job.inference                job.Update, kind inference                   quarry's
 cerebro.job.batch                    job.Update, kind batch, Index renumbered     quarry's
 cerebro.job.checkpoint               job.Update, kind checkpoint                  quarry's
-cerebro.job.extraction.progress      {source, delta}                              Cerebro's
+cerebro.job.extraction.progress      {content, delta}                             Cerebro's
 cerebro.job.extracted                Extracted                                    Cerebro's
 cerebro.job.cancel_requested         {}                                           Cerebro's
 cerebro.job.completed                Manifest                                     Cerebro's
+cerebro.job.attempt.failed           {attempt, error}                             Cerebro's
 cerebro.job.failed                   {attempt, error}                             Cerebro's
 cerebro.job.cancelled                {}                                           Cerebro's
 ```
@@ -1151,20 +1279,22 @@ cerebro.job.cancelled                {}                                         
   CloudEvents type per `Kind`, each event's data quarry's `job.Update` JSON (`job.Version` "1"),
   with two exceptions. `Batch.Index` is renumbered across attempts, so a batch's id, job and
   index, stays unique. quarry's `done` update becomes no event of its own: its `Done` goes into
-  the manifest.
+  the manifest's entry for its attempt.
 - **Cerebro's own** are the job's lifecycle, extraction, and the manifest. The job's state is
   the fold of its subject: queued, then running from `started`, then one of completed, failed,
-  or cancelled. A `failed` the work queue will redeliver is followed by another `started`.
+  or cancelled. An attempt that fails while the work queue has deliveries left appends
+  `attempt.failed`, and the redelivery's `started` follows; `failed` is terminal, the deliveries
+  spent.
 - **Extraction progress** relays the stream's `OutputTextDelta`s, coalesced to at most one event
   a second per source text, each carrying the text since the last. `extracted` carries the
   result:
 
 ```go
 type Extracted struct {
-    Source  infer.Source   `json:"source"`         // the text extracted from: an output's Ref, or an inference's
-    Content string         `json:"content"`        // the text's SHA-256
+    Content string         `json:"content"`        // the source text's SHA-256, as Outputs holds it
     Name    string         `json:"name"`           // the extraction's
-    Outcome string         `json:"outcome"`        // extracted, incomplete, refused, held
+    Outcome string         `json:"outcome"`        // extracted, incomplete, refused
+    Held    bool           `json:"held,omitzero"`  // read from the cache, not asked of the model
     Value   jsontext.Value `json:"value,omitzero"` // the JSON the schema describes
     Error   string         `json:"error,omitzero"`
     Usage   infer.Usage    `json:"usage,omitzero"`
@@ -1172,9 +1302,9 @@ type Extracted struct {
 }
 ```
 
-- **Size.** Every event fits NATS's 1 MB `max_payload`: a batch closes at 512 KiB, an output
-  carries its `Ref`, never its text. An `inference` event's whole text, and an extraction's
-  value, may not; moving such a text to the object store by its digest is the `events` task's
+- **Size.** Every event fits NATS's 1 MB `max_payload`: a batch closes at 512 KiB, and an
+  output and an inference carry their content's SHA-256, never the content. An extraction's
+  value may not fit; moving it to the object store by its digest is the `events` task's
   (Assumptions).
 
 ### Results and the manifest
@@ -1186,14 +1316,16 @@ with `completed`, whose data is the manifest:
 
 ```go
 type Manifest struct {
-    Profile  infer.Profile `json:"profile"`  // the resolved identity the consumer registers its space by
-    First    uint64        `json:"first"`    // the job's first event's sequence: 1
-    Last     uint64        `json:"last"`     // this event's sequence
-    Batches  int           `json:"batches"`  // batch events in [First, Last]
-    Chunks   int           `json:"chunks"`
-    Digest   string        `json:"digest"`   // SHA-256 over those batches' digests, in sequence order
-    Counts   infer.Counts  `json:"counts"`   // quarry's Done.Counts, the last attempt's
-    Attempts int           `json:"attempts"`
+    First    uint64    `json:"first"`    // the job's first event's sequence: 1
+    Last     uint64    `json:"last"`     // this event's sequence
+    Batches  int       `json:"batches"`  // batch events in [First, Last], every attempt's
+    Chunks   int       `json:"chunks"`
+    Digest   string    `json:"digest"`   // SHA-256 over those batches' digests, in sequence order
+    Attempts []Attempt `json:"attempts"` // one per started, in order
+}
+type Attempt struct {
+    Attempt int       `json:"attempt"`
+    Done    *job.Done `json:"done,omitempty"` // quarry's; nil for an attempt that ended without one
 }
 ```
 
@@ -1205,7 +1337,10 @@ checks completeness by holding every sequence from `First` to `Last` and by reco
 `Batches`, `Chunks`, and `Digest` over the batches it committed. Since a redelivered job's
 attempt replays content seen before, and a store resumes from its last checkpoint, the range and
 digest cover every attempt's batches, and the manifest's digest is Cerebro's, not quarry's
-`Done.Digest`, which covers one attempt.
+`Done.Digest`, which covers one attempt. Counts are reported per attempt, never summed: an
+attempt that failed reports none, so a sum would count some attempts and not others. The digest
+covers the chunks' digests, which cover their text, and not their vectors: it proves which
+chunks arrived, and a vector is checked by its length against the profile's dimensions.
 
 ### Open questions
 
@@ -1231,9 +1366,10 @@ From spike-ai-pipeline-office 0.1.0.
   10.0.400), and System.CommandLine 2.0.14 to 3.0.0, done first. The publish's
   `-p:NuGetAudit=false`, which the ILCompiler 10.0.13 advisory forces under .NET 10, goes with
   the move. DocumentFormat.OpenXml 3.5.1 stays.
-- **One run.** `--format json|markdown` goes: one compact `document` line holds the Markdown and
-  the model, where office writes one rendering, its JSON indented (indentation is 62% of its
-  output, measured above).
+- **One run.** `--format json|markdown` goes: a compact `document` line holds the Markdown,
+  properties, and media, then one `sheet` line per xlsx sheet holds its cells, where office
+  writes one rendering, its JSON indented (indentation is 62% of its output, measured above). No
+  line holds a whole workbook, so a reader streams it.
 - **Cut.** The block tree (headings, paragraphs, lists, docx tables, their inlines), sections,
   headers and footers, notes, comments, chart blocks, and picture `alt` and `title`; their text is
   the Markdown's.
@@ -1242,14 +1378,16 @@ From spike-ai-pipeline-office 0.1.0.
   title-only picture keeps `![title](file)`, its title already the image text. The goldens of
   `media.python-docx.docx`, `sections.python-docx.docx`, and `slide-objects.python-pptx.pptx`
   show it.
-- **Kept.** `sheets`, as office's `TableCell` less its docx-only fields; the Markdown renderer.
+- **Kept.** The sheets' cells, one `sheet` line each, as office's `TableCell` less its docx-only
+  fields; the Markdown renderer.
 - **Added.** `properties` (core, app, custom, typed as stored); `media` as one list in document
   order, each with its placement (section, sheet, or slide); `embedded` packages and `ole`
   payloads with `prog_id` written as stored, which office leaves unextracted.
 - **Envelope.** `line` and `schema` "2"; snake_case names (office's are camelCase); media names
   keep the stored extension only when it is 1 to 8 ASCII letters and digits, where `MediaStore`
   keeps `Path.GetExtension` whole.
-- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture.
+- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture;
+  an xlsx fixture's `.jsonl` holds its `document` line, then its `sheet` lines.
 
 ### quarry-mail [mail]
 
@@ -1262,8 +1400,9 @@ From spike-ai-pipeline-mail 0.3.1.
 - **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF,
   the text body's sentences the Markdown lacks, by the schema's content rule (CommonMark plain
   text, NFC, UAX #29 words and sentences, GFM autolinks and RFC 3986 URLs, longest common
-  subsequence), appended in order as a paragraph, escaped as a text body's Markdown is. The
-  goldens of
+  subsequence by Hirschberg's algorithm, Unicode 16.0), appended in order as a paragraph,
+  escaped as a text body's Markdown is. The rule is the one crate under `tools/` that
+  quarry-onenote shares, and this task writes it. The goldens of
   `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
   `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
   `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
@@ -1290,8 +1429,8 @@ From spike-ai-pipeline-onenote 0.1.0.
   `alt_text`, `ocr_text`, `hyperlink`, `printout_page`; ink `strokes` and `bounds`; section and
   section group `display_name`.
 - **Into the Markdown.** The title's date and time paragraphs, as one line under the title
-  heading, joined by one space; an image's `ocr_text` sentences its `alt_text` lacks by
-  quarry-mail's content rule, after the alt text in the image's Markdown text; an image's
+  heading, joined by one space; an image's `ocr_text` sentences its `alt_text` lacks by the
+  content rule's shared crate, after the alt text in the image's Markdown text; an image's
   `hyperlink`, as a link around the image; every tag's label as `[Label]`, a task tag's after
   its task box (`- [ ] [To Do] …`). The golden of every fixture with pages (all but the refused
   `Encryption.one`) shows the date and time, and interop's `FileSyncWOPI_OneNoteWithODB.one` the
@@ -1320,31 +1459,40 @@ internal/cli        kept: exit codes 1 to 4, the stderr parse, Spool
 document, picture,  kept
   audio, media,
   sevenzip
-office              changed: decodes the schema "2" document line; Request.Format and the block
-                    tree's decoder go, since one run returns the Markdown, properties, media, and
-                    sheets
+office              changed: decodes the schema "2" document and sheet lines, streamed as records;
+                    Convert reads Request.Path, copying only a legacy document or an RTF;
+                    Request.Format and the block tree's decoder go, since one run returns the
+                    Markdown, properties, media, and sheets
 email               changed: Message.Markdown up, Address.SMTPAddress; Body, Conversation.HTML,
                     and Folder.DisplayName go; Request.Attachments becomes Media
 onenote             changed: Page.Markdown, Page.Media, and Page.InkAlternatives decode the
                     tool's fields; content.go's decoder and media.go's walk go
-dispatch            changed: Input.Reader, spooled; Item.Warning, typed, in place of a warnings
-                    record output; office's stage makes embedded and OLE media child parts;
-                    Pool keeps one context for its inputs; its shapes, beside its other types:
-                    Part takes docproc's schema.Part shape, its Kind, Route, Reason, and MIME
-                    moving into the new ContentType; Output takes docproc's JSON names; Warning
-                    {tool, where, what} is new, parsed from the envelope's stderr line, since
-                    docproc's schema has no Warning type and processing carries tool warnings as
-                    []string (email.Stream.Warnings, office.Result.Warnings)
+dispatch            changed: Input.Reader, spooled, and Input.SHA256, checked; Item.Warning and
+                    Event.Warning, typed, in place of a warnings record output; each output
+                    hashed into Output.SHA256; a seen part replays its whole subtree, or is
+                    prepared again when a descendant's stage changed; office's stage passes
+                    the part's path and makes embedded and OLE media child parts; Pool keeps
+                    one context for its inputs. Index gains Renew, under the lease contract,
+                    and Warnings and AppendWarning; Child carries ContentType for Route;
+                    FileIndex renews its claims. Its shapes, beside its other types: Part takes
+                    docproc's schema.Part shape, its Kind, Route, Reason, and MIME moving into
+                    the new ContentType; Output takes docproc's JSON names, Path and Value
+                    never marshalled; Warning {tool, where, what} is new, parsed from the
+                    envelope's stderr line, since docproc's schema has no Warning type and
+                    processing carries tool warnings as []string (email.Stream.Warnings,
+                    office.Result.Warnings)
 stages              moved from the root's internal/docproc/stages, less WriteTable
 chunk               moved from the root's internal/docinfer/chunk, unchanged
 infer               new: the interfaces, Cache, Key, and Pipeline, from docinfer's infer, vision,
                     transcribe, and embed less their client calls, and outdir's Key and Hold;
-                    its shapes, beside its other types: Identity, Usage, Profile, Inference,
-                    Batch, Done, the Counts below, and docinfer's Seam, Span, Source, and Line as
-                    Chunk, less the input's file fields, plus Digest and Stage, its Part a
-                    dispatch.Part, which drops outdir.Part's outcome
-job                 new: dispatch, then inference, under one job's context; its shapes, beside
-                    its other types: Update, its Kind, Version, and Checkpoint
+                    its shapes, beside its other types: Capability, Identity, Usage, Profile,
+                    Outcome, Inference, Batch, Done, the Counts below, docinfer's Seam and Span,
+                    its Source less Ref and File, plus the source's part, stage, and output,
+                    and its Line as Chunk, less the input's file fields, its part, and its
+                    output, plus Digest, its source by index into the batch
+job                 new: dispatch, then inference, under one job's context; Outputs, the
+                    content store; its shapes, beside its other types: Update, its Kind,
+                    Version, Checkpoint, and Done
 cmd/internal/       moved from the root's internal/docproc/{schema,rundir} [docproc]: packages of
   schema, rundir    this module, as "The nested modules" says
 internal/goldentest, kept: test helpers that call no model
@@ -1358,20 +1506,20 @@ processing's `onenote.Medium.Where` names a medium's outline path, from the walk
 media carry no placement, so quarry's `Where` names the medium's page and its index in `media`.
 An optional placement field returns by addition if the `design` task asks for one.
 
-`infer.Counts` carries docinfer's `outdir.Counts` per job, less `Lines`, which `Done.Chunks`
-counts (an `infer.Chunk` is one chunk in one place), with each `Usage` less `Total`, and with the
-job's parts by outcome:
+`infer.Counts` carries docinfer's `outdir.Counts` per job, counting occurrences rather than
+distinct content: each image, window, and chunk as often as the job holds it, and the cache hits
+among them, so no count needs a set of every digest the job saw. `Chunks` and `Lines` go, since
+`Done.Chunks` counts the chunks in the batches (an `infer.Chunk` is one chunk in one place);
+`Outputs` and the parts by outcome are dispatch's facts, in `job.Done`. Each `Usage` is less
+`Total`.
 
 ```go
 type Counts struct {
-    Parts         map[string]int       `json:"parts"`    // by dispatch.Outcome, every depth
-    Outputs       int                  `json:"outputs"`  // output events
     Texts         int                  `json:"texts"`    // text and Markdown outputs chunked
-    Metadata      int                  `json:"metadata"` // metadata texts, one per input
-    Chunks        int                  `json:"chunks"`   // distinct chunks, by content
-    Held          int                  `json:"held"`     // distinct chunks the cache held
-    Embedded      int                  `json:"embedded"`
-    Rejected      int                  `json:"rejected"` // this job or held
+    Metadata      int                  `json:"metadata"` // metadata texts: one per job
+    Embedded      int                  `json:"embedded"` // chunks with a vector
+    Rejected      int                  `json:"rejected"` // chunks the endpoint rejected
+    Held          int                  `json:"held"`     // of those, read from the cache
     Requests      int                  `json:"requests"` // embeddings requests sent
     Images        int                  `json:"images"`   // image outputs, vision run or not
     Vision        *VisionCounts        `json:"vision,omitempty"` // nil when skipped
@@ -1379,17 +1527,18 @@ type Counts struct {
     Transcription *TranscriptionCounts `json:"transcription,omitempty"`
     Tokens        Tokens               `json:"tokens"`   // this job's requests only
 }
-type VisionCounts struct {
-    Images, Held, Described, Incomplete, Empty, Refused, Requests, Texts int
+type VisionCounts struct { // each image under its outcome; Empty of the Incomplete
+    Described, Incomplete, Empty, Refused, Held, Requests int
 }
-type TranscriptionCounts struct {
-    Distinct, Held, Transcribed, Failed, Requests, Transcripts int
-    SeamsMatched, SeamsUnmatched                               int
+type TranscriptionCounts struct { // each window under its outcome
+    Transcribed, Failed, Held, Requests, Transcripts int
+    SeamsMatched, SeamsUnmatched                     int
 }
 type Tokens struct { Vision, Transcription *Usage; Embeddings Usage }
 ```
 
-The JSON names are docinfer's, snake_case (`seams_matched`).
+`Embedded` and `Rejected` add up to `Done.Chunks`. The JSON names are docinfer's, snake_case
+(`seams_matched`).
 
 ### The nested modules
 
@@ -1410,15 +1559,14 @@ cmd/docinfer   [docinfer]  cmd/docinfer, internal/docinfer/{app, apptest, config
                            implements infer.Cache over results/; its directory stays schema "1"
 ```
 
-`cmd/internal/schema` and `cmd/internal/rundir` are packages of the library's base module, with no
-module or tag of their own. Go's internal rule is by import path, so the nested `cmd/docproc` and
-`cmd/docinfer` import them and nothing outside `cmd/` can. They version with the library, which both
-commands require. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`, `Output`,
-`Identity` as its `Stage`, and `inspect.Flag`). Its record bytes stay unchanged under schema "1"
-because `cmd/docproc`'s run clears `Output.Path` and `Value` before it writes an output, as `job`
-does, since docproc's `schema.Output` has neither. Its `Statx` (`stat_linux.go`, on
-`golang.org/x/sys/unix`) moves to `cmd/docproc`'s `run`, its one caller, so the base module requires
-`golang.org/x/text` alone.
+`cmd/internal/schema` and `cmd/internal/rundir` are packages of the library's base module, with
+no module or tag of their own. Go's internal rule is by import path, so the nested `cmd/docproc`
+and `cmd/docinfer` import them and nothing outside `cmd/` can. They version with the library,
+which both commands require. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
+`Identity` as its `Stage`, and `inspect.Flag`). Its `Output` stays docproc's own, since
+`dispatch.Output` carries a `sha256` that docproc's schema "1" record lacks, so its record bytes
+stay unchanged. Its `Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`) moves to
+`cmd/docproc`'s `run`, its one caller, so the base module requires `golang.org/x/text` alone.
 
 ### Requests to go-ai
 
@@ -1449,18 +1597,19 @@ Requests to v1.ai.client, which `docinfer` and the capstone build on:
   shares, rather than bounds per job.
 - Assumes a result batch closes at 512 KiB or when no embedded chunk is waiting; the capstone's
   `events` task may tune the cap.
-- Assumes an `inference` event carries its text whole. An hours-long transcript could pass 1 MB,
-  and the `events` task may move such a text to the object store by its digest.
-- Assumes Cerebro sets the index's retention no longer than the cache's, so a seen part's output
-  `Ref` resolves; a miss fails the part, so it is reported, never dropped.
+- Assumes an extraction's value fits an event; the `events` task may move a larger one to the
+  object store by its digest.
+- Assumes Cerebro sets the index's retention no longer than `job.Outputs`', so a seen part's
+  output resolves by its SHA-256; a miss fails the part, so it is reported, never dropped.
 - Assumes Cerebro's extraction stage (a caller's prompt and JSON schema) is Cerebro's own, on
   go-ai, sharing `infer.Cache` under its own capability name; no spike has it.
 - Assumes the typed metadata shapes wait for the capstone's `metadata` task; until then,
   `Output.Meta` and the tools' lines carry metadata.
 - Assumes Cerebro speaks Chat Completions to the gateway, and its consumer key is the bearer
   token; a key in another header is v1.ai.client's to add if the gateway asks for one.
-- Assumes an `*APIError` of 408, 429, or 503 that outlasts the retry policy stops the job rather
-  than being recorded as refused, so the work queue's redelivery retries it.
+- Assumes a 4xx other than 408 and 429 is the endpoint's verdict on the content, recorded and
+  held, and every other failure, every 5xx among them, stops the job, so the work queue's
+  redelivery retries it.
 - Assumes extraction runs once per source text, whole, and relays its deltas coalesced to one
   event a second; a text past the model's context is refused, recorded.
 - Assumes the consumer stores chunks by their identity (job, part, source, index), so a batch a
