@@ -1,12 +1,13 @@
+using System.Buffers;
 using System.Security.Cryptography;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>The embedded media a conversion found, by file name: the lowercase hex SHA-256 of
-/// the bytes and the part's stored extension, so each distinct content is one file however many
-/// parts or blocks hold it. The bytes are kept as stored, never converted.</summary>
+/// <summary>The embedded media a conversion found, by file name (<see cref="NameOf"/>), so each
+/// distinct content is one file however many parts or blocks hold it. The bytes are kept as
+/// stored, never converted.</summary>
 internal sealed class MediaStore
 {
     private readonly Dictionary<string, byte[]> files = new(StringComparer.Ordinal);
@@ -29,10 +30,26 @@ internal sealed class MediaStore
             stream.CopyTo(buffer);
             bytes = buffer.ToArray();
         }
-        var name = Convert.ToHexStringLower(SHA256.HashData(bytes)) + Path.GetExtension(part.Uri.OriginalString);
+        var name = NameOf(bytes, part.Uri.OriginalString);
         files.TryAdd(name, bytes);
         return parts[part.Uri] = (name, part.ContentType);
     }
+
+    /// <summary>A payload's media name, by the envelope (context/layers.md, "Common envelope"):
+    /// the lowercase hex SHA-256 of its bytes, then <c>.</c> and the stored name's extension, as
+    /// stored, when that is 1 to 8 ASCII letters and digits. Its cases are
+    /// tools/envelope/cases.json's.</summary>
+    internal static string NameOf(ReadOnlySpan<byte> bytes, string storedName)
+    {
+        var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        var extension = Path.GetExtension(storedName.AsSpan());
+        return extension.Length is >= 2 and <= 9 && !extension[1..].ContainsAnyExcept(ExtensionCharacters)
+            ? $"{hash}{extension}"
+            : hash;
+    }
+
+    private static readonly SearchValues<char> ExtensionCharacters =
+        SearchValues.Create("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz");
 
     /// <summary>The media block of a picture the given part relates to by id, its bytes added,
     /// with no location, which the caller gives: an embedded picture's file, or a linked

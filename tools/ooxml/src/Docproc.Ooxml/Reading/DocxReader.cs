@@ -2,6 +2,7 @@ using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Writing;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
@@ -99,7 +100,7 @@ internal static partial class DocxReader
         {
             return true;
         }
-        context.Warnings.Add($"a {story} reference of type \"{type.InnerText}\" in section {section + 1} was skipped: no {story} has that type");
+        context.Warnings.Add(new Warning($"section {section + 1}", $"a {story} reference of type \"{type.InnerText}\" was skipped: no {story} has that type"));
         return false;
     }
 

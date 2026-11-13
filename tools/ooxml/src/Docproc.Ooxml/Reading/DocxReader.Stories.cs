@@ -1,6 +1,7 @@
 using System.Text;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Writing;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 using W15 = DocumentFormat.OpenXml.Office2013.Word;
 
@@ -31,8 +32,8 @@ internal static partial class DocxReader
 
         public CommentSet Comments { get; } = new(main);
 
-        /// <summary>What the conversion skipped, each a line for stderr.</summary>
-        public List<string> Warnings { get; } = [];
+        /// <summary>What the conversion skipped, each a warning for stderr.</summary>
+        public List<Warning> Warnings { get; } = [];
     }
 
     /// <summary>A notes part's footnotes or endnotes, each read when the text first references

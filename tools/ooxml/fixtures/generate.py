@@ -22,6 +22,13 @@ alternative text, so those are patched in as raw XML too; python-pptx has no API
 for hidden slides, slide order, a paragraph's own bullet, or pictures'
 alternative text, so those are set on its XML.
 
+The refused set, in generated/refused/, holds documents docproc-ooxml refuses,
+each a python-docx document LibreOffice stores in another form, with no ground
+truth: <name>.libreoffice.<extension>. LibreOffice encrypts an OOXML package
+when it stores one with a password, which --convert-to can't pass, so that
+file is stored by a Python macro run inside LibreOffice (STORE_MACRO); the
+generator needs nothing beyond LibreOffice for it.
+
 Run it through `mise run fixtures`; the check never runs it. It rewrites the
 generated set and the checksum section of fixtures/README.md.
 """
@@ -30,6 +37,7 @@ import datetime
 import hashlib
 import io
 import json
+import os
 import pathlib
 import shutil
 import struct
@@ -1819,6 +1827,121 @@ def slide_objects() -> Deck:
 PPTX_FIXTURES = [slides, bullets, groups, slide_objects]
 
 
+# The refused set: documents docproc-ooxml refuses, each a python-docx document that LibreOffice
+# stores in another form. Their goldens pin the refusal's reason and exit code; they have no truth.
+REFUSED = GENERATED / "refused"
+
+# The password the encrypted fixture is stored with, so a person can open it.
+PASSWORD = "docproc"
+
+
+@dataclass
+class Refused:
+    """A refused fixture: its name, extension, the LibreOffice filter that stores it, and the
+    password it is encrypted with, if any."""
+
+    name: str
+    extension: str
+    filter: str
+    password: str | None = None
+
+    @property
+    def path(self) -> pathlib.Path:
+        return REFUSED / f"{self.name}.libreoffice.{self.extension}"
+
+
+REFUSED_FIXTURES = [
+    # An OOXML package encrypted with a password: an OLE compound file whose root holds the
+    # EncryptionInfo and EncryptedPackage streams ([MS-OFFCRYPTO] 2.3.4.4).
+    Refused("encrypted", "docx", "MS Word 2007 XML", PASSWORD),
+    # A legacy Word 97-2003 document: an OLE compound file with no EncryptedPackage stream.
+    Refused("legacy", "doc", "MS Word 97"),
+]
+
+
+def refused_source(path: pathlib.Path, name: str) -> None:
+    doc = docx.Document()
+    doc.add_heading(f"The {name} fixture", 1)
+    doc.add_paragraph("docproc-ooxml refuses this document before any output.")
+    doc.save(path)
+
+
+# A Python macro LibreOffice runs in its own interpreter: it opens FIXTURE_SOURCE hidden and
+# stores it as FIXTURE_TARGET through FIXTURE_FILTER, with FIXTURE_PASSWORD when set, then ends
+# LibreOffice. It reads its arguments from the environment, since a script URL passes none.
+STORE_MACRO = """\
+import os
+
+import uno
+from com.sun.star.beans import PropertyValue
+
+
+def _prop(name, value):
+    p = PropertyValue()
+    p.Name = name
+    p.Value = value
+    return p
+
+
+def store(*args):
+    desktop = XSCRIPTCONTEXT.getDesktop()
+    source = uno.systemPathToFileUrl(os.environ["FIXTURE_SOURCE"])
+    doc = desktop.loadComponentFromURL(source, "_blank", 0, (_prop("Hidden", True),))
+    props = [_prop("FilterName", os.environ["FIXTURE_FILTER"])]
+    if os.environ.get("FIXTURE_PASSWORD"):
+        props.append(_prop("Password", os.environ["FIXTURE_PASSWORD"]))
+    doc.storeToURL(uno.systemPathToFileUrl(os.environ["FIXTURE_TARGET"]), tuple(props))
+    doc.close(True)
+    desktop.terminate()
+"""
+
+
+def store(source: pathlib.Path, target: pathlib.Path, filter: str, password: str | None) -> None:
+    """Store source as target through LibreOffice headless, in a throwaway profile holding the
+    store macro, with the filter and password given."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmpdir = pathlib.Path(tmp)
+        scripts = tmpdir / "profile" / "user" / "Scripts" / "python"
+        scripts.mkdir(parents=True)
+        (scripts / "store.py").write_text(STORE_MACRO)
+        stored = tmpdir / target.name
+        # LibreOffice runs its own Python, and crashes when the interpreter of the virtual
+        # environment uv runs this script in comes first on PATH, so that directory is left out.
+        env = dict(os.environ)
+        if venv := os.environ.get("VIRTUAL_ENV"):
+            path = env.get("PATH", "").split(os.pathsep)
+            env["PATH"] = os.pathsep.join(p for p in path if p != str(pathlib.Path(venv) / "bin"))
+        env |= {
+            "FIXTURE_SOURCE": str(source),
+            "FIXTURE_TARGET": str(stored),
+            "FIXTURE_FILTER": filter,
+            "FIXTURE_PASSWORD": password or "",
+        }
+        subprocess.run(
+            [
+                "soffice",
+                f"-env:UserInstallation={(tmpdir / 'profile').as_uri()}",
+                "--headless",
+                "vnd.sun.star.script:store.py$store?language=Python&location=user",
+            ],
+            check=True,
+            capture_output=True,
+            env=env,
+        )
+        if not stored.exists():
+            raise RuntimeError(f"LibreOffice stored no {target.name}")
+        shutil.move(stored, target)
+
+
+def write_refused(fixture: Refused) -> pathlib.Path:
+    REFUSED.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory() as tmp:
+        source = pathlib.Path(tmp) / f"{fixture.name}.python-docx.docx"
+        refused_source(source, fixture.name)
+        store(source, fixture.path, fixture.filter, fixture.password)
+    return fixture.path
+
+
 def soffice_version() -> str:
     out = subprocess.run(["soffice", "--version"], check=True, capture_output=True, text=True)
     return out.stdout.strip()
@@ -1870,12 +1993,16 @@ def main(names: list[str]) -> int:
         fixture = build()
         builds[fixture.name] = build
         kinds[fixture.name] = (fixture.writer, fixture.extension)
-    unknown = [name for name in names if name not in builds]
+    refused = {fixture.name: fixture for fixture in REFUSED_FIXTURES}
+    unknown = [name for name in names if name not in builds and name not in refused]
     if unknown:
-        print(f"generate: no such fixture: {', '.join(unknown)}; the fixtures are {', '.join(builds)}", file=sys.stderr)
+        print(f"generate: no such fixture: {', '.join(unknown)}; the fixtures are {', '.join([*builds, *refused])}", file=sys.stderr)
         return 1
     written = []
-    for name in names or builds:
+    for name in names or [*builds, *refused]:
+        if name in refused:
+            written.append(write_refused(refused[name]))
+            continue
         fixture = builds[name]()
         out = GENERATED / fixture.extension
         out.mkdir(parents=True, exist_ok=True)
@@ -1898,6 +2025,7 @@ def main(names: list[str]) -> int:
     for name, (writer, extension) in kinds.items():
         suffixes = (f"{writer}.{extension}", f"libreoffice.{extension}", "truth.json", "libreoffice.truth.json")
         files += [GENERATED / extension / f"{name}.{suffix}" for suffix in suffixes]
+    files += [fixture.path for fixture in REFUSED_FIXTURES]
     update_readme(soffice_version(), [path for path in files if path.exists()])
     for path in written:
         print(f"{sha256(path)}  {path.relative_to(ROOT)}")

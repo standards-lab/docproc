@@ -5,34 +5,40 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml;
 
-/// <summary>The CLI: one document in, its lines on stdout.</summary>
+/// <summary>The CLI: one document in, its lines on stdout. Its exit codes are the envelope's
+/// (context/layers.md, "Common envelope"; tools/envelope/cases.json), and stdout and stderr take
+/// bytes, never text, so the locale can't change them.</summary>
 internal static class Cli
 {
-    /// <summary>The document was converted and written to stdout.</summary>
+    /// <summary>The document was read and its lines written to stdout, skipped items
+    /// included.</summary>
     public const int Converted = 0;
 
-    /// <summary>The document was converted but its media could not be written to the media
-    /// directory; the reason went to stderr and nothing to stdout.</summary>
-    public const int MediaNotWritten = 1;
+    /// <summary>stdout or the media could not be written: an I/O error, a broken pipe included.
+    /// The reason went to stderr.</summary>
+    public const int NotWritten = 1;
 
-    /// <summary>The arguments were wrong; usage went to stderr.</summary>
+    /// <summary>The arguments were wrong; the reason went to stderr.</summary>
     public const int UsageError = 2;
 
-    /// <summary>The document was refused (missing, unreadable, not docx, xlsx, or pptx,
-    /// encrypted or legacy, malformed, or past a limit of docproc-ooxml's); the reason went to stderr
-    /// and nothing to stdout.</summary>
+    /// <summary>The document was refused before any output (not a file, unreadable, not docx,
+    /// xlsx, or pptx, encrypted or legacy, malformed, or past a limit of docproc-ooxml's); the
+    /// reason went to stderr and nothing to stdout.</summary>
     public const int Refused = 3;
 
-    /// <summary>The conversion failed in a way docproc-ooxml doesn't expect of any document: a fault
-    /// of its own, never the document's; the error went to stderr and nothing to stdout.</summary>
+    /// <summary>A fault of docproc-ooxml's own, never the document's; the reason went to
+    /// stderr.</summary>
     public const int Failed = 4;
+
+    /// <summary>The schema of the lines docproc-ooxml writes, which <c>--version</c> states on its
+    /// second line.</summary>
+    public const string Schema = "2";
 
     /// <summary>The CLI's version, from its assembly.</summary>
     internal static string Version =>
         typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
-    /// <summary>The usage text, written to stdout for <c>--help</c> and to stderr after a usage
-    /// error.</summary>
+    /// <summary>The usage text, written to stdout for <c>--help</c>.</summary>
     public const string Usage = """
         Usage:
           docproc-ooxml <input> [--media <dir>]
@@ -49,33 +55,55 @@ internal static class Cli
         Options:
           --media <dir>    The directory embedded media are written to, each once, named by the
                            SHA-256 of its bytes.
-          --version        Print the version and exit.
+          --version        Print the version, then the schema, and exit.
           --help           Print this usage and exit.
+
+        Exit codes: 0 converted, 1 stdout or media not written, 2 usage, 3 refused before any
+        output, 4 a fault of docproc-ooxml's own. stderr holds one line each:
+        `docproc-ooxml: warning: <where>: <what>` or `docproc-ooxml: error: <reason>`.
 
         """;
 
-    /// <summary>Runs the CLI on the given arguments and returns its exit code.</summary>
-    public static int Run(string[] args, TextWriter stdout, TextWriter stderr)
+    /// <summary>Runs the CLI on the given arguments and returns its exit code. Nothing leaves it
+    /// as an exception: a fault of its own is exit code 4, so none leaves the process as an
+    /// abort.</summary>
+    public static int Run(string[] args, Stream stdout, Stream stderr)
     {
-        if (!Parse(args, out var parsed, out var error))
+        var errors = new Stderr(stderr);
+        try
         {
-            stderr.WriteLine(error);
-            stderr.WriteLine();
-            stderr.Write(Usage);
-            return UsageError;
+            if (!Parse(args, out var parsed, out var error))
+            {
+                errors.Error(error);
+                return UsageError;
+            }
+            return parsed.Command switch
+            {
+                Command.Help => Write(stdout, Usage, errors),
+                Command.Version => Write(stdout, $"{Version}\nschema {Schema}\n", errors),
+                _ => Convert(parsed.Input!, parsed.Media, stdout, errors),
+            };
         }
-        switch (parsed.Command)
+        catch (Exception e)
         {
-            case Command.Help:
-                stdout.Write(Usage);
-                stdout.Flush();
-                return Converted;
-            case Command.Version:
-                stdout.WriteLine(Version);
-                stdout.Flush();
-                return Converted;
-            default:
-                return Convert(parsed.Input!, parsed.Media, stdout, stderr);
+            errors.Error($"an unexpected {e.GetType().FullName}: {e.Message}");
+            return Failed;
+        }
+    }
+
+    // stdout's one write: an I/O error, a broken pipe included, is exit code 1.
+    private static int Write(Stream stdout, string text, Stderr errors)
+    {
+        try
+        {
+            stdout.Write(Encoding.UTF8.GetBytes(text));
+            stdout.Flush();
+            return Converted;
+        }
+        catch (IOException e)
+        {
+            errors.Error($"stdout not written: {e.Message}");
+            return NotWritten;
         }
     }
 
@@ -104,7 +132,7 @@ internal static class Cli
             {
                 if (input is not null)
                 {
-                    error = $"Unexpected argument '{arg}': only one input is converted.";
+                    error = "more than one input: only one is converted";
                     return false;
                 }
                 input = arg;
@@ -122,7 +150,7 @@ internal static class Cli
                 case "--help" or "--version" when equals < 0:
                     if (args.Length != 1)
                     {
-                        error = $"Option '{name}' is given alone.";
+                        error = $"option '{name}' is given alone";
                         return false;
                     }
                     action = name == "--help" ? Command.Help : Command.Version;
@@ -139,44 +167,28 @@ internal static class Cli
                     }
                     else
                     {
-                        error = $"Option '{name}' needs a value.";
+                        error = $"option '{name}' needs a value";
                         return false;
                     }
                     if (media is not null)
                     {
-                        error = $"Option '{name}' is given more than once.";
+                        error = $"option '{name}' is given more than once";
                         return false;
                     }
                     media = value;
                     break;
                 default:
-                    error = $"Unrecognized option '{arg}'.";
+                    error = $"unrecognized option '{arg}'";
                     return false;
             }
         }
         if (action == Command.Convert && input is null)
         {
-            error = "Required argument missing: the input.";
+            error = "no input";
             return false;
         }
         parsed = new Arguments(action, input, media);
         return true;
-    }
-
-    // Any exception the conversion doesn't expect is a failure of its own, exit code 4, so it can
-    // never pass for another outcome, such as exit code 1, which says the media could not be
-    // written.
-    private static int Convert(string path, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
-    {
-        try
-        {
-            return ConvertDocument(path, mediaDirectory, stdout, stderr);
-        }
-        catch (Exception e)
-        {
-            stderr.WriteLine($"docproc-ooxml: failed: {path}: an unexpected {e.GetType().FullName}: {e.Message}");
-            return Failed;
-        }
     }
 
     // The whole conversion and its lines are made before anything is written, so a refusal leaves
@@ -184,7 +196,7 @@ internal static class Cli
     // as warnings. Media are written next, the directory created if missing, each distinct
     // content once (a file of the same name holds the same bytes, so it is rewritten); stdout
     // comes last, so it is written only when they all were.
-    private static int ConvertDocument(string path, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
+    private static int Convert(string path, string? mediaDirectory, Stream stdout, Stderr errors)
     {
         Conversion conversion;
         try
@@ -193,16 +205,15 @@ internal static class Cli
         }
         catch (RefusalException e)
         {
-            stderr.WriteLine($"docproc-ooxml: refused: {e.Message}");
+            errors.Error(e.Message);
             return Refused;
         }
         foreach (var warning in conversion.Warnings)
         {
-            stderr.WriteLine($"docproc-ooxml: warning: {path}: {warning}");
+            errors.Warning(warning);
         }
         using var lines = new MemoryStream();
         Lines.Write(conversion.Document, lines);
-        var output = Encoding.UTF8.GetString(lines.GetBuffer(), 0, (int)lines.Length);
         if (mediaDirectory is not null)
         {
             try
@@ -215,12 +226,20 @@ internal static class Cli
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
-                stderr.WriteLine($"docproc-ooxml: media not written: {e.Message}");
-                return MediaNotWritten;
+                errors.Error($"media not written: {e.Message}");
+                return NotWritten;
             }
         }
-        stdout.Write(output);
-        stdout.Flush();
+        try
+        {
+            stdout.Write(lines.GetBuffer().AsSpan(0, (int)lines.Length));
+            stdout.Flush();
+        }
+        catch (IOException e)
+        {
+            errors.Error($"stdout not written: {e.Message}");
+            return NotWritten;
+        }
         return Converted;
     }
 }

@@ -110,7 +110,7 @@ run = "uv run --script fixtures/generate.py"
 # The goldens are the published binary's own output, so a change to it is reviewed as a diff of
 # them; the check compares against them and never writes them.
 [tasks.golden]
-description = "Publish the CLI with NativeAOT and re-record each fixture's .jsonl and .stderr golden from it; the check never runs it; writes only bin/, obj/, .state/, and the goldens"
+description = "Publish the CLI with NativeAOT and re-record each fixture's .jsonl and .stderr golden, and a refused fixture's .exit, from it; the check never runs it; writes only bin/, obj/, .state/, and the goldens"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -128,17 +128,18 @@ golden=test/Docproc.Ooxml.Tests/Expected
 rm -rf "$golden"
 for fixture in fixtures/generated/*/* fixtures/realworld/*/*; do
   case "$fixture" in
-    *.docx | *.xlsx | *.pptx) ;;
+    *.docx | *.xlsx | *.pptx | *.doc) ;;
     *) continue ;;
   esac
   stem="$golden/${fixture#fixtures/}"
   stem="${stem%.*}"
   mkdir -p "$(dirname "$stem")"
-  # A fixture that exits other than 0 is recorded too, and reported; the tests say which
-  # outcome each fixture has.
+  # A fixture that exits other than 0 is recorded too, its exit code in a .exit golden beside
+  # the other two, and reported; a fixture with no .exit golden exits 0.
   status=0
   .state/aot/docproc-ooxml "$fixture" >"$stem.jsonl" 2>"$stem.stderr" || status=$?
   if [ "$status" -ne 0 ]; then
+    echo "$status" >"$stem.exit"
     echo "golden: $fixture exited $status"
   fi
 done

@@ -1,8 +1,8 @@
 # Fixtures
 
 The documents office's tests read, committed and never generated in the check. The pool is two
-sets, and nothing else: the generated set in `generated/` and the real-world set in
-`realworld/`. The hermetic check, `mise run check`, runs both, wherever it runs, locally or in
+sets, and nothing else: the generated set in `generated/`, its refused documents among them, and
+the real-world set in `realworld/`. The hermetic check, `mise run check`, runs both, wherever it runs, locally or in
 CI; no test reads a document from anywhere else, and none is fetched.
 
 ## Real-world set
@@ -180,6 +180,23 @@ And in a pptx file, where python-pptx's file and LibreOffice's differ:
   each notes page's slide-number placeholder with a `<number>` field, writes a centered title as
   a title, and drops the chart's embedded workbook, keeping its caches.
 
+## Refused set
+
+`generated/refused/` holds documents docproc-ooxml refuses before any output, each written by
+`generate.py` like the rest of the generated set: a python-docx document of a heading and a
+paragraph, stored by LibreOffice headless in another form. They have no ground truth; their
+goldens pin the refusal's reason and exit code, 3.
+
+| Fixture | Covers |
+| --- | --- |
+| `encrypted.libreoffice.docx` | an OOXML package LibreOffice encrypted with the password `docproc` (ECMA-376 standard encryption, AES-128): an OLE compound file whose root storage holds `EncryptionInfo` and `EncryptedPackage` streams, refused with a reason beginning `encrypted` |
+| `legacy.libreoffice.doc` | a Word 97-2003 document LibreOffice wrote: an OLE compound file with no `EncryptedPackage` stream, refused with a reason that never holds that word |
+
+`--convert-to` can't pass a password, so the generator stores both through a Python macro it
+places in LibreOffice's throwaway profile and runs inside LibreOffice (`STORE_MACRO`), which
+needs nothing beyond LibreOffice. LibreOffice stamps the time and a random salt into what it
+stores, so a rerun changes both files' bytes, never what docproc-ooxml makes of them.
+
 ## Regenerating
 
 From the repository root, with LibreOffice's `soffice` on the path and no LibreOffice window open
@@ -272,4 +289,6 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/pptx/slide-objects.libreoffice.pptx` | `7c0b5e40f22001166b9e4ee6f3b8e68a5c21fc6ea73e8ed77e15caffd4918995` |
 | `generated/pptx/slide-objects.truth.json` | `e01a1d4068f68da865feefd2bc1f0acd25faa9eaee5164ed37102a3408a52cac` |
 | `generated/pptx/slide-objects.libreoffice.truth.json` | `aca5bab816c442c3e83e98033bf66aea784d1fac2a8012db2241fe36f05f3952` |
+| `generated/refused/encrypted.libreoffice.docx` | `aee62a814f3d872d211d57c598bf8d4e9c88f1322ec4a5083d07c9b23c4bf9a6` |
+| `generated/refused/legacy.libreoffice.doc` | `6c1632e53bcc4f90f95756dd1c7a05d207433a4474550da7e689a4a09b5a77ab` |
 <!-- generated: end -->

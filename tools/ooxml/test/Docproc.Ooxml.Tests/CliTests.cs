@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Globalization;
+using System.Runtime.Versioning;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using Docproc.Ooxml.Reading;
 
 namespace Docproc.Ooxml.Tests;
 
@@ -15,46 +18,89 @@ public sealed class CliTests : IDisposable
 
     public void Dispose() => scratch.Delete(recursive: true);
 
+    // The version alone on the first line, which tools/pack.sh compares with a tag's, and the
+    // schema on the second, so a reader's spec refuses a tool of another schema at startup.
     [Fact]
-    public void VersionIsTheAssemblysVersion()
+    public void VersionIsTheAssemblysVersionThenTheSchema()
     {
         var result = Run("--version");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Equal(Cli.Version + "\n", result.Stdout);
+        Assert.Equal($"{Cli.Version}\nschema 2\n", result.Stdout);
         Assert.Empty(result.Stderr);
     }
 
-    public static TheoryData<string, string> AllFixtures => Fixtures.All;
+    public static TheoryData<string, string> FixturesWithGoldens => Fixtures.WithGoldens;
 
     // Each fixture's stdout and stderr, byte for byte, are its goldens, which `mise run golden`
     // recorded from an earlier run of the published binary; the comparison is a second run, so it
-    // shows a run's bytes are the same every time as well as what they are. Every fixture
-    // converts.
+    // shows a run's bytes are the same every time as well as what they are. Its exit code is its
+    // .exit golden's, one of the envelope's, or 0 when it has none: every fixture but the refused
+    // ones converts.
     [Theory]
-    [MemberData(nameof(AllFixtures))]
+    [MemberData(nameof(FixturesWithGoldens))]
     public void AFixturesOutputIsItsGoldens(string name, string variant)
     {
+        var exit = Fixtures.GoldenPath(name, variant, "exit");
+        var expected = File.Exists(exit) ? int.Parse(File.ReadAllText(exit).TrimEnd('\n'), CultureInfo.InvariantCulture) : Cli.Converted;
+
         var result = RunBytes(Fixtures.DocumentPath(name, variant));
 
-        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Contains(expected, EnvelopeCases.Load().ExitCodes.Select(c => c.Code));
+        Assert.Equal(Fixtures.Refused.ContainsKey(name) ? Cli.Refused : Cli.Converted, expected);
+        Assert.Equal(expected, result.ExitCode);
         Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath(name, variant, "jsonl")), result.Stdout);
         Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath(name, variant, "stderr")), result.Stderr);
     }
 
-    // The goldens are each fixture's two and nothing else, so none outlives its fixture.
+    // The goldens are each fixture's two, and a refused fixture's .exit, and nothing else, so none
+    // outlives its fixture.
     [Fact]
     public void EveryGoldenIsAFixtures()
     {
-        var expected = Fixtures.All.SelectMany(row => new[]
+        var expected = Fixtures.WithGoldens.SelectMany(row => new[]
         {
             Fixtures.GoldenPath(row.Data.Item1, row.Data.Item2, "jsonl"),
             Fixtures.GoldenPath(row.Data.Item1, row.Data.Item2, "stderr"),
-        });
+        }.Concat(Fixtures.Refused.ContainsKey(row.Data.Item1) ? [Fixtures.GoldenPath(row.Data.Item1, row.Data.Item2, "exit")] : []));
 
         Assert.Equal(
             expected.Order(StringComparer.Ordinal),
             Directory.GetFiles(Fixtures.GoldenRoot, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
+    }
+
+    // The encrypted fixture's reason begins `encrypted`, the envelope's one word for an encrypted
+    // input, found by the compound file's own directory; its golden pins the whole line.
+    [Fact]
+    public void AnEncryptedPackageIsRefusedAsEncrypted()
+    {
+        var path = Fixtures.DocumentPath("encrypted", Fixtures.RefusedVariant);
+
+        var reason = AssertRefused(path);
+
+        Assert.StartsWith("encrypted", reason, StringComparison.Ordinal);
+        Assert.Equal(OfficeReader.Encrypted, reason);
+    }
+
+    // A legacy binary document is an OLE compound file too, with no EncryptedPackage stream: its
+    // reason never holds the word an encrypted input's begins with.
+    [Fact]
+    public void ALegacyBinaryDocumentIsRefusedWithoutTheWordEncrypted()
+    {
+        var reason = AssertRefused(Fixtures.DocumentPath("legacy", Fixtures.RefusedVariant));
+
+        Assert.DoesNotContain("encrypted", reason, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(OfficeReader.Legacy, reason);
+    }
+
+    // The same holds whatever the file's name: the content decides.
+    [Fact]
+    public void AnEncryptedPackageIsFoundByItsContentNotItsName()
+    {
+        var path = Path.Combine(scratch.FullName, "report.doc");
+        File.Copy(Fixtures.DocumentPath("encrypted", Fixtures.RefusedVariant), path);
+
+        Assert.Equal(OfficeReader.Encrypted, AssertRefused(path));
     }
 
     // Each distinct picture once, named by its bytes, however many parts and blocks hold it: the
@@ -161,9 +207,10 @@ public sealed class CliTests : IDisposable
 
         var result = Run(Fixtures.DocumentPath("media", "python-docx"), "--media", media);
 
-        Assert.Equal(Cli.MediaNotWritten, result.ExitCode);
+        Assert.Equal(Cli.NotWritten, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.StartsWith("docproc-ooxml: media not written: ", result.Stderr, StringComparison.Ordinal);
+        Assert.StartsWith("docproc-ooxml: error: media not written: ", result.Stderr, StringComparison.Ordinal);
+        AssertOneLine(result.Stderr);
     }
 
     [Fact]
@@ -207,47 +254,127 @@ public sealed class CliTests : IDisposable
     [InlineData("--help", "--version")]
     [InlineData("--help=yes")]
     [InlineData("--")]
-    public void UsageErrorsPrintUsageToStderrAndExitTwo(params string[] args)
+    public void UsageErrorsWriteOneErrorLineAndExitTwo(params string[] args)
     {
         var result = Run(args);
 
         Assert.Equal(Cli.UsageError, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.Contains("Usage:", result.Stderr, StringComparison.Ordinal);
+        Assert.StartsWith("docproc-ooxml: error: ", result.Stderr, StringComparison.Ordinal);
+        AssertOneLine(result.Stderr);
+    }
+
+    // A usage error's reason names what was wrong; an argument it echoes is escaped, so the error
+    // stays one line.
+    [Theory]
+    [InlineData(new[] { "--bogus", "in.docx" }, "docproc-ooxml: error: unrecognized option '--bogus'\n")]
+    [InlineData(new[] { "--bo\ngus" }, "docproc-ooxml: error: unrecognized option '--bo\\ngus'\n")]
+    [InlineData(new[] { "one.docx", "two.docx" }, "docproc-ooxml: error: more than one input: only one is converted\n")]
+    [InlineData(new string[0], "docproc-ooxml: error: no input\n")]
+    [InlineData(new[] { "in.docx", "--media" }, "docproc-ooxml: error: option '--media' needs a value\n")]
+    public void AUsageErrorsLineNamesTheError(string[] args, string stderr)
+    {
+        var result = Run(args);
+
+        Assert.Equal(Cli.UsageError, result.ExitCode);
+        Assert.Equal(stderr, result.Stderr);
     }
 
     [Fact]
-    public void AMissingFileIsRefused() =>
-        AssertRefused(Path.Combine(scratch.FullName, "absent.docx"), "no such file");
+    public void AMissingFileIsNotAFile() =>
+        Assert.Equal(OfficeReader.NotAFile, AssertRefused(Path.Combine(scratch.FullName, "absent.docx")));
+
+    [Fact]
+    public void ADirectoryIsNotAFile()
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(scratch.FullName, "folder.docx")).FullName;
+
+        Assert.Equal(OfficeReader.NotAFile, AssertRefused(directory));
+    }
+
+    // A device is no regular file, though it can be opened and read.
+    [Fact]
+    public void ADeviceIsNotAFile() =>
+        Assert.Equal(OfficeReader.NotAFile, AssertRefused("/dev/null"));
+
+    // A symbolic link is followed to what it names.
+    [Fact]
+    public void ALinkIsReadAsWhatItNames()
+    {
+        var link = Path.Combine(scratch.FullName, "link.docx");
+        File.CreateSymbolicLink(link, Fixtures.DocumentPath("headings", "python-docx"));
+
+        var result = Run(link);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(Golden("headings", "python-docx"), result.Stdout);
+        Assert.Equal(OfficeReader.NotAFile, AssertRefused(Path.Combine(scratch.FullName, "dangling.docx"), linkTo: Path.Combine(scratch.FullName, "gone")));
+    }
+
+    // A file that can't be opened is refused, its reason without the path .NET's message names.
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void AnUnreadableFileIsRefused()
+    {
+        var path = Path.Combine(scratch.FullName, "locked.docx");
+        File.Copy(Fixtures.DocumentPath("headings", "python-docx"), path);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+
+        Assert.Equal("cannot be read: permission denied", AssertRefused(path));
+    }
 
     [Fact]
     public void AFileThatIsNoPackageIsRefused() =>
-        AssertRefused(Write("notes.docx", Encoding.UTF8.GetBytes("plain text, not a package")), "not a docx, xlsx, or pptx package");
+        Assert.Equal(OfficeReader.NotAPackage, AssertRefused(Write("notes.docx", Encoding.UTF8.GetBytes("plain text, not a package"))));
 
     [Fact]
     public void AZipThatIsNoOfficePackageIsRefused() =>
-        AssertRefused(Zip("archive.docx", ("readme.txt", "hello")), "not a docx, xlsx, or pptx package");
+        Assert.Equal(OfficeReader.NotAPackage, AssertRefused(Zip("archive.docx", ("readme.txt", "hello"))));
 
-    // An encrypted OOXML package is an OLE compound file, as are the legacy binary formats; the
-    // signature alone identifies it.
+    // The main part's exact content type decides the format: an xlsb's binary workbook is no
+    // xlsx, though its content type names Excel.
     [Fact]
-    public void AnEncryptedOrLegacyFileIsRefused() =>
-        AssertRefused(
-            Write("secret.docx", [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0]),
-            "OLE compound file, which is an encrypted package or a legacy binary format");
+    public void AnXlsbIsNoPackageOfTheThree() =>
+        Assert.Equal(
+            OfficeReader.NotAPackage,
+            AssertRefused(Package("book.xlsb", "xl/workbook.bin", "application/vnd.ms-excel.sheet.binary.macroEnabled.main", "binary")));
+
+    // A macro-enabled workbook and a template are packages of the three, each by its own exact
+    // content type.
+    [Theory]
+    [InlineData("book.xlsm", "xl/workbook.xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml", "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheets/></workbook>", "{\"line\":\"document\",\"schema\":\"2\",\"format\":\"xlsx\"}\n")]
+    [InlineData("letter.dotx", "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml", "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>", "{\"line\":\"document\",\"schema\":\"2\",\"format\":\"docx\",\"markdown\":\"kept\\n\"}\n")]
+    public void OtherKindsOfTheThreeConvert(string name, string part, string contentType, string content, string stdout)
+    {
+        var result = Run(Package(name, part, contentType, content));
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(stdout, result.Stdout);
+        Assert.Empty(result.Stderr);
+    }
+
+    // A compound file whose directory can't be read is refused as malformed, never as encrypted.
+    [Fact]
+    public void AMalformedCompoundFileIsRefusedWithoutTheWordEncrypted()
+    {
+        var reason = AssertRefused(Write("secret.docx", [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1, 0, 0, 0, 0]));
+
+        Assert.Equal("a malformed OLE compound file: shorter than its header", reason);
+    }
 
     [Fact]
     public void ATruncatedPackageIsRefusedAsMalformed()
     {
         var bytes = File.ReadAllBytes(Fixtures.DocumentPath("headings", "python-docx"));
-        AssertRefused(Write("truncated.docx", bytes[..(bytes.Length / 2)]), "a malformed package");
+        Assert.StartsWith("a malformed package", AssertRefused(Write("truncated.docx", bytes[..(bytes.Length / 2)])), StringComparison.Ordinal);
     }
 
     [Fact]
     public void APackageWithBrokenXmlIsRefusedAsMalformed() =>
-        AssertRefused(
-            Package("broken.docx", "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "<w:document"),
-            "a malformed package");
+        Assert.StartsWith(
+            "a malformed package",
+            AssertRefused(Package("broken.docx", "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "<w:document")),
+            StringComparison.Ordinal);
 
     // The sections fixture's third section reads its default header, which holds a picture,
     // before its first-page header, broken here: the picture was read, and still nothing is
@@ -264,14 +391,15 @@ public sealed class CliTests : IDisposable
             writer.Write("<w:hdr");
         }
 
-        AssertRefused(path, "a malformed package");
+        Assert.StartsWith("a malformed package", AssertRefused(path), StringComparison.Ordinal);
     }
 
     [Fact]
     public void AnXlsxWithBrokenXmlIsRefusedAsMalformed() =>
-        AssertRefused(
-            Package("broken.xlsx", "xl/workbook.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "<workbook"),
-            "a malformed package");
+        Assert.StartsWith(
+            "a malformed package",
+            AssertRefused(Package("broken.xlsx", "xl/workbook.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "<workbook")),
+            StringComparison.Ordinal);
 
     // The drawings fixture's first sheet holds both red squares; its second sheet's part, read
     // after them, is broken here, and still no media are written.
@@ -287,14 +415,15 @@ public sealed class CliTests : IDisposable
             writer.Write("<worksheet");
         }
 
-        AssertRefused(path, "a malformed package");
+        Assert.StartsWith("a malformed package", AssertRefused(path), StringComparison.Ordinal);
     }
 
     [Fact]
     public void APptxWithBrokenXmlIsRefusedAsMalformed() =>
-        AssertRefused(
-            Package("broken.pptx", "ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "<p:presentation"),
-            "a malformed package");
+        Assert.StartsWith(
+            "a malformed package",
+            AssertRefused(Package("broken.pptx", "ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "<p:presentation")),
+            StringComparison.Ordinal);
 
     // A single invalid reference is skipped with a warning and the rest converts, as in poi's test
     // file for its bug 60293: a header reference of type "odd", which no header kind is.
@@ -314,7 +443,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Cli.Converted, result.ExitCode);
         Assert.Equal("{\"line\":\"document\",\"schema\":\"2\",\"format\":\"docx\",\"markdown\":\"kept\\n\"}\n", result.Stdout);
         Assert.Equal(
-            $"docproc-ooxml: warning: {path}: a header reference of type \"odd\" in section 1 was skipped: no header has that type\n",
+            "docproc-ooxml: warning: section 1: a header reference of type \"odd\" was skipped: no header has that type\n",
             result.Stderr);
     }
 
@@ -358,7 +487,7 @@ public sealed class CliTests : IDisposable
             """,
             result.Stdout);
         Assert.Equal(
-            $"docproc-ooxml: warning: {path}: sheet \"Module\" was skipped: its relationship id \"\" names no part\n",
+            "docproc-ooxml: warning: sheet 1: \"Module\" was skipped: its relationship id \"\" names no part\n",
             result.Stderr);
     }
 
@@ -366,13 +495,14 @@ public sealed class CliTests : IDisposable
     // where: the ninth table's first paragraph, the body's second, after the one before them.
     [Fact]
     public void TablesNestedPastTheLimitAreRefused() =>
-        AssertRefused(
-            Package(
-                "deep.docx",
-                "word/document.xml",
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
-                Document("<w:p><w:r><w:t>before</w:t></w:r></w:p>" + NestedTables(9, "") + "<w:sectPr/>")),
-            "deep.docx: tables nested 9 deep (limit 8), at body paragraph 2");
+        Assert.Equal(
+            "tables nested 9 deep (limit 8), at body paragraph 2",
+            AssertRefused(
+                Package(
+                    "deep.docx",
+                    "word/document.xml",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
+                    Document("<w:p><w:r><w:t>before</w:t></w:r></w:p>" + NestedTables(9, "") + "<w:sectPr/>"))));
 
     // Eight tables deep converts, and so does the deepest model that allows: a list nested Word's
     // nine levels in the innermost cell.
@@ -410,29 +540,129 @@ public sealed class CliTests : IDisposable
         Assert.Contains("item 8", result.Stdout, StringComparison.Ordinal);
     }
 
-    // An exception docproc-ooxml doesn't expect, here from a stdout that can't be written, is exit code
-    // 4 and never 1, which says the media were not written.
+    // An exception docproc-ooxml doesn't expect, here from a stdout that fails other than by I/O,
+    // is exit code 4, written as an error line, and never leaves Run, so the process never aborts.
     [Fact]
     public void AnUnexpectedErrorFailsWithItsOwnExitCode()
     {
-        var stderr = new StringWriter();
+        using var stderr = new MemoryStream();
 
-        var code = Cli.Run([Fixtures.DocumentPath("headings", "python-docx")], new UnwritableWriter(), stderr);
+        var code = Cli.Run([Fixtures.DocumentPath("headings", "python-docx")], new FailingStream(new InvalidOperationException("stdout\nis odd")), stderr);
 
         Assert.Equal(Cli.Failed, code);
-        Assert.StartsWith(
-            "docproc-ooxml: failed: " + Fixtures.DocumentPath("headings", "python-docx") + ": an unexpected System.InvalidOperationException: ",
-            stderr.ToString(),
-            StringComparison.Ordinal);
+        Assert.Equal(
+            "docproc-ooxml: error: an unexpected System.InvalidOperationException: stdout\\nis odd\n",
+            Encoding.UTF8.GetString(stderr.ToArray()));
     }
 
-    private sealed class UnwritableWriter : TextWriter
+    // An I/O error on stdout is exit code 1, stdout not written.
+    [Fact]
+    public void AnIOErrorOnStdoutIsNotWritten()
     {
-        public override Encoding Encoding => Encoding.UTF8;
+        using var stderr = new MemoryStream();
 
-        public override void Write(char value) => throw new InvalidOperationException("stdout is closed");
+        var code = Cli.Run(["--version"], new FailingStream(new IOException("Input/output error")), stderr);
 
-        public override void Write(string? value) => throw new InvalidOperationException("stdout is closed");
+        Assert.Equal(Cli.NotWritten, code);
+        Assert.Equal("docproc-ooxml: error: stdout not written: Input/output error\n", Encoding.UTF8.GetString(stderr.ToArray()));
+    }
+
+    // stderr that can't be written loses the line, never the exit code.
+    [Fact]
+    public void AnUnwritableStderrKeepsTheExitCode() =>
+        Assert.Equal(Cli.UsageError, Cli.Run(["--bogus"], new MemoryStream(), new FailingStream(new IOException("Broken pipe"))));
+
+    private sealed class FailingStream(Exception error) : MemoryStream
+    {
+        public override void Write(ReadOnlySpan<byte> buffer) => throw error;
+
+        public override void Write(byte[] buffer, int offset, int count) => throw error;
+    }
+
+    // A full device on stdout is exit code 1, where the spike exited 4.
+    [Fact]
+    public void AFullStdoutIsNotWritten()
+    {
+        var result = Shell("exec \"$0\" \"$1\" >/dev/full", Fixtures.DocumentPath("headings", "python-docx"));
+
+        Assert.Equal(Cli.NotWritten, result.ExitCode);
+        Assert.Equal("docproc-ooxml: error: stdout not written: No space left on device\n", result.Stderr);
+    }
+
+    // A closed stdout is exit code 1, where the spike aborted with 134; with stderr closed too,
+    // nothing can be told, and the exit code still is.
+    [Theory]
+    [InlineData("exec \"$0\" \"$1\" >&-", "docproc-ooxml: error: stdout not written: Bad file descriptor\n")]
+    [InlineData("exec \"$0\" \"$1\" >&- 2>&-", "")]
+    public void AClosedStdoutIsNotWritten(string script, string stderr)
+    {
+        var result = Shell(script, Fixtures.DocumentPath("headings", "python-docx"));
+
+        Assert.Equal(Cli.NotWritten, result.ExitCode);
+        Assert.Equal(stderr, result.Stderr);
+    }
+
+    // A reader that closes its end is a broken pipe: exit code 1, where the spike exited 0 over
+    // truncated output. The lines pass the pipe's buffer, so the write fails whenever the reader
+    // closes, before the tool writes or while it waits for room.
+    [Fact]
+    public void ABrokenPipeIsNotWritten()
+    {
+        var path = Zip(
+            "large.xlsx",
+            ("[Content_Types].xml",
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
+                "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>"),
+            ("_rels/.rels",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
+                "</Relationships>"),
+            ("xl/workbook.xml",
+                "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" " +
+                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>" +
+                "<sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"),
+            ("xl/_rels/workbook.xml.rels",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
+                "</Relationships>"),
+            ("xl/worksheets/sheet1.xml",
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
+                string.Concat(Enumerable.Range(1, 5000).Select(r => $"<row r=\"{r}\"><c r=\"A{r}\"><v>{r}</v></c></row>")) +
+                "</sheetData></worksheet>"));
+        var start = new ProcessStartInfo(Binary) { RedirectStandardOutput = true, RedirectStandardError = true };
+        start.ArgumentList.Add(path);
+        using var process = Process.Start(start)!;
+        process.StandardOutput.Close();
+
+        var stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        Assert.Equal(Cli.NotWritten, process.ExitCode);
+        Assert.Equal("docproc-ooxml: error: stdout not written: Broken pipe\n", stderr);
+    }
+
+    // stdout and stderr are UTF-8 bytes whatever the locale says: the ruby fixture's Japanese
+    // text, and an error line echoing a non-ASCII option, under locales whose charset is ASCII or
+    // Latin-1, where the spike wrote `??`.
+    [Theory]
+    [InlineData("LANG", "C")]
+    [InlineData("LC_ALL", "POSIX")]
+    [InlineData("LC_ALL", "C")]
+    [InlineData("LC_ALL", "en_US.ISO-8859-1")]
+    public void BytesAreUtf8UnderAnyLocale(string variable, string locale)
+    {
+        var environment = new Dictionary<string, string> { [variable] = locale };
+
+        var fixture = RunBytesIn(Environment.CurrentDirectory, environment, Fixtures.DocumentPath("ruby", Fixtures.RealWorld));
+        var usage = RunBytesIn(Environment.CurrentDirectory, environment, "--東京");
+
+        Assert.Equal(Cli.Converted, fixture.ExitCode);
+        Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath("ruby", Fixtures.RealWorld, "jsonl")), fixture.Stdout);
+        Assert.True(fixture.Stdout.AsSpan().IndexOf("東京"u8) >= 0);
+        Assert.Equal(Cli.UsageError, usage.ExitCode);
+        Assert.Equal(Encoding.UTF8.GetBytes("docproc-ooxml: error: unrecognized option '--東京'\n"), usage.Stderr);
     }
 
     // Tables nested the given number deep, each one cell, the innermost holding the given
@@ -448,8 +678,9 @@ public sealed class CliTests : IDisposable
     // part), fails the SDK when it first loads the package's parts.
     [Fact]
     public void ARelationshipToAMissingPartIsRefusedAsMalformed() =>
-        AssertRefused(
-            Zip(
+        Assert.Contains(
+            "doesn't exist in the package",
+            AssertRefused(Zip(
                 "missing.xlsx",
                 ("[Content_Types].xml",
                     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
@@ -463,8 +694,8 @@ public sealed class CliTests : IDisposable
                 ("xl/_rels/workbook.xml.rels",
                     "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
                     "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/connections\" Target=\"connections.xml\"/>" +
-                    "</Relationships>")),
-            "doesn't exist in the package");
+                    "</Relationships>"))),
+            StringComparison.Ordinal);
 
     // The package stores the given number of parts under the media prefix, and each one's bytes
     // are in the media directory under its content's name.
@@ -483,16 +714,34 @@ public sealed class CliTests : IDisposable
         }
     }
 
-    private void AssertRefused(string path, string reason)
+    // The path is refused, exit code 3, before any output: stdout empty and no media directory.
+    // stderr is one error line, whose reason never holds the path, given or in full, or the
+    // file's name; returns the reason. With linkTo, the path is first made a link to it.
+    private string AssertRefused(string path, string? linkTo = null)
     {
+        if (linkTo is not null)
+        {
+            File.CreateSymbolicLink(path, linkTo);
+        }
         var media = Path.Combine(scratch.FullName, "media");
         var result = Run(path, "--media", media);
 
         Assert.Equal(Cli.Refused, result.ExitCode);
         Assert.Empty(result.Stdout);
         Assert.False(Directory.Exists(media));
-        Assert.StartsWith("docproc-ooxml: refused: ", result.Stderr, StringComparison.Ordinal);
-        Assert.Contains(reason, result.Stderr, StringComparison.Ordinal);
+        Assert.StartsWith("docproc-ooxml: error: ", result.Stderr, StringComparison.Ordinal);
+        AssertOneLine(result.Stderr);
+        var reason = result.Stderr["docproc-ooxml: error: ".Length..^1];
+        Assert.DoesNotContain(Path.GetFileName(path), reason, StringComparison.Ordinal);
+        Assert.DoesNotContain(scratch.FullName, reason, StringComparison.Ordinal);
+        return reason;
+    }
+
+    private static void AssertOneLine(string stderr)
+    {
+        Assert.EndsWith("\n", stderr, StringComparison.Ordinal);
+        Assert.DoesNotContain('\n', stderr[..^1]);
+        Assert.DoesNotContain('\r', stderr);
     }
 
     private string Write(string name, byte[] bytes)
@@ -540,14 +789,31 @@ public sealed class CliTests : IDisposable
 
     private static Result RunIn(string directory, params string[] args)
     {
-        var result = RunBytesIn(directory, args);
+        var result = RunBytesIn(directory, null, args);
         return new Result(result.ExitCode, Encoding.UTF8.GetString(result.Stdout), Encoding.UTF8.GetString(result.Stderr));
     }
 
-    private static BytesResult RunBytes(params string[] args) => RunBytesIn(Environment.CurrentDirectory, args);
+    private static BytesResult RunBytes(params string[] args) => RunBytesIn(Environment.CurrentDirectory, null, args);
 
-    // The binary's exit code and its stdout's and stderr's bytes, as written.
-    private static BytesResult RunBytesIn(string directory, params string[] args)
+    // The binary run by sh with the script given, its $0 the binary and $1 the argument, so the
+    // script can redirect or close the binary's descriptors.
+    private static Result Shell(string script, string argument)
+    {
+        var start = new ProcessStartInfo("/bin/sh") { RedirectStandardOutput = true, RedirectStandardError = true };
+        foreach (var arg in new[] { "-c", script, Binary, argument })
+        {
+            start.ArgumentList.Add(arg);
+        }
+        using var process = Process.Start(start)!;
+        var stdout = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var stderr = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        return new Result(process.ExitCode, stdout.Result, stderr);
+    }
+
+    // The binary's exit code and its stdout's and stderr's bytes, as written, with the
+    // environment's variables given set, the rest inherited.
+    private static BytesResult RunBytesIn(string directory, Dictionary<string, string>? environment, params string[] args)
     {
         Assert.True(File.Exists(Binary), $"{Binary} is missing: `mise run check` publishes it before the tests run");
         var start = new ProcessStartInfo(Binary)
@@ -556,6 +822,10 @@ public sealed class CliTests : IDisposable
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        foreach (var (name, value) in environment ?? [])
+        {
+            start.Environment[name] = value;
+        }
         foreach (var arg in args)
         {
             start.ArgumentList.Add(arg);

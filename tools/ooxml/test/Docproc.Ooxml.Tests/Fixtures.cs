@@ -50,6 +50,18 @@ internal static class Fixtures
     /// <summary>The real-world pptx files, by name.</summary>
     public static readonly string[] RealWorldPptx = ["chart-2d", "chartex-slide", "layouts", "linked-pictures", "powerpoint-sample", "shapes"];
 
+    /// <summary>The refused fixtures (<c>fixtures/generated/refused/</c>), by name, with their
+    /// extensions: documents docproc-ooxml refuses, which LibreOffice stored, so their one variant
+    /// is <see cref="RefusedVariant"/>. They have goldens and no truth.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Refused = new Dictionary<string, string>
+    {
+        ["encrypted"] = "docx",
+        ["legacy"] = "doc",
+    };
+
+    /// <summary>The one variant of each refused fixture: LibreOffice stored it.</summary>
+    public const string RefusedVariant = "libreoffice";
+
     /// <summary>Every generated fixture, docx, xlsx, then pptx, in each of its variants.</summary>
     public static TheoryData<string, string> Variants
     {
@@ -81,6 +93,21 @@ internal static class Fixtures
         }
     }
 
+    /// <summary>Every fixture with goldens: those <see cref="All"/> converts, then the refused
+    /// ones.</summary>
+    public static TheoryData<string, string> WithGoldens
+    {
+        get
+        {
+            var data = All;
+            foreach (var name in Refused.Keys)
+            {
+                data.Add(name, RefusedVariant);
+            }
+            return data;
+        }
+    }
+
     private static void AddRealWorld(TheoryData<string, string> data)
     {
         foreach (var name in RealWorldDocx.Concat(RealWorldXlsx).Concat(RealWorldPptx))
@@ -97,7 +124,9 @@ internal static class Fixtures
 
     /// <summary>A fixture variant's file: a generated fixture's, or a real-world file.</summary>
     public static string DocumentPath(string name, string variant) =>
-        variant == RealWorld
+        Refused.TryGetValue(name, out var extension)
+            ? Path.Combine(Root, "fixtures", "generated", "refused", $"{name}.{variant}.{extension}")
+        : variant == RealWorld
             ? Path.Combine(Root, "fixtures", "realworld", Format(name), $"{name}.{Format(name)}")
             : Path.Combine(Root, "fixtures", "generated", Format(name), $"{name}.{variant}.{Format(name)}");
 
@@ -116,11 +145,14 @@ internal static class Fixtures
     }
 
     /// <summary>The directory of the goldens: each fixture's exact stdout (<c>.jsonl</c>) and
-    /// stderr (<c>.stderr</c>) on the published binary, at the fixture's path under
+    /// stderr (<c>.stderr</c>) on the published binary, and its exit code (<c>.exit</c>) when that
+    /// isn't 0, at the fixture's path under
     /// <c>fixtures/</c>, less its extension. Only <c>mise run golden</c> writes them.</summary>
     public static string GoldenRoot { get; } = Path.Combine(Root, "test", "Docproc.Ooxml.Tests", "Expected");
 
-    /// <summary>A fixture variant's golden of the given extension, <c>jsonl</c> or <c>stderr</c>.</summary>
+    /// <summary>A fixture variant's golden of the given extension: <c>jsonl</c>, <c>stderr</c>,
+    /// or <c>exit</c>, which only a fixture that exits other than 0 has, holding its exit
+    /// code.</summary>
     public static string GoldenPath(string name, string variant, string extension)
     {
         var fixture = Path.GetRelativePath(Path.Combine(Root, "fixtures"), DocumentPath(name, variant));

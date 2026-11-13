@@ -3,6 +3,7 @@ using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Writing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
@@ -23,15 +24,18 @@ internal static class XlsxReader
             new NumberFormats(workbookPart.WorkbookStylesPart?.Stylesheet),
             workbook.WorkbookProperties?.Date1904?.Value ?? false);
         var blocks = new List<Block>();
-        var warnings = new List<string>();
+        var warnings = new List<Warning>();
+        var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
         {
             // A sheet whose reference names no part (an empty or unknown relationship id) is one
-            // invalid reference: it is skipped, with a warning, and the other sheets are read.
+            // invalid reference: it is skipped, with a warning, and the other sheets are read. It
+            // has no sheet line to count, so its place is its ordinal in the workbook's order.
+            ordinal++;
             var id = sheet.Id?.Value;
             if (string.IsNullOrEmpty(id) || !workbookPart.TryGetPartById(id, out var part))
             {
-                warnings.Add($"sheet \"{sheet.Name?.Value}\" was skipped: its relationship id \"{id}\" names no part");
+                warnings.Add(new Warning($"sheet {ordinal}", $"\"{sheet.Name?.Value}\" was skipped: its relationship id \"{id}\" names no part"));
                 continue;
             }
             var state = sheet.State?.Value;
