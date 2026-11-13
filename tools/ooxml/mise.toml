@@ -63,7 +63,7 @@ dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror 
 # Read-only and development-time: it reads the network, so CI never runs it. NuGet's audit runs
 # here, never in a build, so a newly published advisory is reported without failing the check.
 [tasks.currency]
-description = "Report every NuGet package behind its latest or with a known vulnerability, and every mise tool behind its latest; writes only obj/"
+description = "Report every NuGet package behind its latest or with a known vulnerability, every fixture generator package and mise tool behind its latest; writes only obj/"
 dir = "{{config_root}}"
 run = '''
 set -euo pipefail
@@ -91,6 +91,12 @@ vulnerable=$(dotnet list DocprocOoxml.slnx package --vulnerable --include-transi
 while read -r line; do
   [ -n "$line" ] && report "$line"
 done <<<"$vulnerable"
+
+# The fixture generator's Python packages, pinned in its script, with a newer release.
+generator=$(uv tree -q --script fixtures/generate.py --outdated --depth 0 --locked | sed -n '/(latest: /p')
+while read -r line; do
+  [ -n "$line" ] && report "fixtures/generate.py: $line"
+done <<<"$generator"
 
 # mise tools, the .NET SDK among them, pinned below their latest version.
 outdated=$(mise outdated --bump --local --json |

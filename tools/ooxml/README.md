@@ -141,8 +141,9 @@ from this directory, `mise run <task>`, or from the repository root, `mise -C to
 - `publish`: builds the release binary for this machine into `.state/publish/`;
   `tools/pack.sh ooxml <version>` runs it and packs the archive, refusing a binary whose
   `--version` isn't `<version>` or that requires a glibc above the floor.
-- `currency`: reports NuGet packages and mise tools behind their latest, and packages with a
-  known vulnerability. It reads the network, so CI never runs it.
+- `currency`: reports NuGet packages, the fixture generator's Python packages, and mise tools
+  behind their latest, and NuGet packages with a known vulnerability. It reads the network, so
+  CI never runs it.
 - `fixtures`: regenerates the generated fixtures; it needs LibreOffice's `soffice`. The
   fixtures are described in [`fixtures/README.md`](fixtures/README.md).
 

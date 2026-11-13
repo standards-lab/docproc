@@ -15,7 +15,7 @@ TOOLS = "ooxml"
 
 # The one check: read-only and deterministic, stopping at the first failure.
 [tasks.check]
-description = "Lint the scripts and workflows; build, vet, format, tidy, test, and lint every module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
+description = "Lint the scripts and workflows; build, vet, format, fix, tidy, test, and lint every module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
 run = '''
 set -eu
 mise -C "$MISE_PROJECT_ROOT" run lint
@@ -27,6 +27,7 @@ for mod in $GO_MODULES; do
   go vet ./...
   unformatted=$(gofmt -l .)
   if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
+  go fix -diff ./...
   go mod tidy -diff
   go test -race ./...
   golangci-lint run ./...
