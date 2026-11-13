@@ -10,12 +10,35 @@ using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>Reads an xlsx package into the model: its sheets in workbook order, each a table of
-/// the cells that have a value or a formula, with their stored values typed and nothing
-/// evaluated, then its charts and pictures.</summary>
-internal static class XlsxReader
+/// <summary>Reads an xlsx package: its sheets in workbook order, each a table of the cells that
+/// have a value or a formula, with their stored values typed and nothing evaluated, then its
+/// charts and pictures.</summary>
+/// <remarks>Each worksheet part is read twice, forward-only, and never held whole
+/// (context/design.md, OX-2). <see cref="Validate"/> reads every sheet once and writes nothing:
+/// it finds whatever would refuse the workbook, and collects what the sheet's lines need before
+/// its rows, its used columns, shared-formula anchors, and merges, and its drawings and their
+/// media. <see cref="XlsxWorkbook.Rows"/> reads a sheet a second time, giving its rows as they
+/// are read.</remarks>
+internal static partial class XlsxReader
 {
+    /// <summary>Reads the package whole into the model, each sheet's rows collected; the CLI
+    /// streams them instead (<see cref="XlsxWorkbook.Write"/>).</summary>
     public static Conversion Read(SpreadsheetDocument package)
+    {
+        var workbook = Validate(package);
+        var blocks = new List<Block>();
+        foreach (var sheet in workbook.Sheets)
+        {
+            var rows = workbook.Rows(sheet).ToList();
+            blocks.Add(new Model.Sheet(sheet.Name, sheet.Hidden, [.. rows.Count > 0 ? [new Table(rows)] : Array.Empty<Block>(), .. sheet.Drawings]));
+        }
+        return new Conversion(new Document(SourceFormat.Xlsx, blocks), workbook.Media) { Warnings = workbook.Warnings };
+    }
+
+    /// <summary>The validate pass: reads every sheet of the package forward once, writing nothing,
+    /// so whatever refuses the workbook is found before any output. The workbook-level parts,
+    /// shared strings and styles, are read whole up front, as the cells' values need them.</summary>
+    public static XlsxWorkbook Validate(SpreadsheetDocument package)
     {
         var workbookPart = package.WorkbookPart ?? throw new OpenXmlPackageException("the package has no workbook part");
         var workbook = workbookPart.Workbook ?? throw new OpenXmlPackageException("the workbook part has no workbook");
@@ -23,7 +46,7 @@ internal static class XlsxReader
             SharedStrings(workbookPart.SharedStringTablePart?.SharedStringTable),
             new NumberFormats(workbookPart.WorkbookStylesPart?.Stylesheet),
             workbook.WorkbookProperties?.Date1904?.Value ?? false);
-        var blocks = new List<Block>();
+        var sheets = new List<XlsxSheet>();
         var warnings = new List<Warning>();
         var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
@@ -40,12 +63,12 @@ internal static class XlsxReader
             }
             var state = sheet.State?.Value;
             var hidden = state == S.SheetStateValues.Hidden || state == S.SheetStateValues.VeryHidden;
-            blocks.Add(new Model.Sheet(sheet.Name?.Value ?? "", hidden, ReadSheet(context, part, blocks.Count)));
+            sheets.Add(ValidateSheet(context, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
         }
-        return new Conversion(new Document(SourceFormat.Xlsx, blocks), context.Media.Files) { Warnings = warnings };
+        return new XlsxWorkbook(context, sheets, warnings);
     }
 
-    private sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904)
+    internal sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904)
     {
         public IReadOnlyList<string> Strings => strings;
 
@@ -58,17 +81,14 @@ internal static class XlsxReader
 
     // A worksheet's cells, then its drawing; a chartsheet's drawing alone; any other kind of
     // sheet (a dialog or macro sheet) holds nothing docproc-ooxml reads.
-    private static List<Block> ReadSheet(XlsxContext context, OpenXmlPart part, int index)
+    private static XlsxSheet ValidateSheet(XlsxContext context, string name, bool hidden, OpenXmlPart part, int index)
     {
-        var blocks = new List<Block>();
+        SheetCells? cells = null;
         DrawingsPart? drawings = null;
         switch (part)
         {
             case WorksheetPart worksheet:
-                if (ReadCells(context, worksheet.Worksheet) is { Rows.Count: > 0 } table)
-                {
-                    blocks.Add(table);
-                }
+                cells = ValidateCells(context, worksheet);
                 drawings = worksheet.DrawingsPart;
                 break;
             case ChartsheetPart chartsheet:
@@ -77,99 +97,12 @@ internal static class XlsxReader
             default:
                 break;
         }
+        var blocks = new List<Block>();
         if (drawings is not null)
         {
             ReadDrawing(context, drawings, index, blocks);
         }
-        return blocks;
-    }
-
-    // The cells that have a value or a formula, row by row as stored. A merged range's anchor
-    // carries its spans; the cells it covers are left out, as a docx table's are, and a range
-    // whose anchor holds nothing leaves nothing. A shared formula's text is on its anchor, which
-    // the other cells name.
-    private static Table? ReadCells(XlsxContext context, S.Worksheet? worksheet)
-    {
-        var sheetData = worksheet?.GetFirstChild<S.SheetData>();
-        if (sheetData is null)
-        {
-            return null;
-        }
-        var merges = new MergeIndex(worksheet!.GetFirstChild<S.MergeCells>()?.Elements<S.MergeCell>()
-            .Select(merge => merge.Reference?.Value is { } range ? Range(range) : null)
-            .OfType<Merge>() ?? []);
-        var sharedAnchors = SharedFormulaAnchors(sheetData);
-
-        var rows = new List<TableRow>();
-        var rowNumber = 0;
-        foreach (var row in sheetData.Elements<S.Row>())
-        {
-            rowNumber = row.RowIndex?.Value is { } stored
-                ? stored is >= 1 and <= MaxRow ? (int)stored : throw new InvalidDataException($"a row's number {stored} is out of range")
-                : rowNumber + 1;
-            var column = 0;
-            var cells = new List<TableCell>();
-            foreach (var cell in row.Elements<S.Cell>())
-            {
-                // A cell's reference is optional; one without follows the cell before it.
-                var (cellRow, cellColumn) = cell.CellReference?.Value is { } reference
-                    ? Position(reference) ?? throw new InvalidDataException($"a cell's reference {reference} is not a cell reference")
-                    : (rowNumber, column + 1);
-                column = cellColumn;
-                var anchored = merges.Find(cellRow, cellColumn);
-                if (anchored is not null && (anchored.Top != cellRow || anchored.Left != cellColumn))
-                {
-                    continue;
-                }
-                var formula = cell.CellFormula;
-                string? text = null;
-                string? sharedFrom = null;
-                if (formula is not null)
-                {
-                    text = formula.Text is { Length: > 0 } own ? own : null;
-                    if (text is null && formula.FormulaType?.Value == S.CellFormulaValues.Shared && formula.SharedIndex?.Value is { } si)
-                    {
-                        sharedFrom = sharedAnchors.GetValueOrDefault(si);
-                    }
-                }
-                var value = Value(context, cell);
-                if (value is null && text is null && sharedFrom is null)
-                {
-                    continue;
-                }
-                cells.Add(new TableCell(null)
-                {
-                    Ref = Reference(cellRow, cellColumn),
-                    Value = value,
-                    Formula = text,
-                    SharedFrom = sharedFrom,
-                    ColSpan = anchored is { Columns: > 1 } ? anchored.Columns : null,
-                    RowSpan = anchored is { Rows: > 1 } ? anchored.Rows : null,
-                });
-            }
-            if (cells.Count > 0)
-            {
-                rows.Add(new TableRow(cells) { Row = rowNumber });
-            }
-        }
-        return new Table(rows);
-    }
-
-    // Each shared formula's anchor, by its shared index: the cell whose formula holds the text.
-    private static Dictionary<uint, string> SharedFormulaAnchors(S.SheetData sheetData)
-    {
-        var anchors = new Dictionary<uint, string>();
-        foreach (var cell in sheetData.Elements<S.Row>().SelectMany(row => row.Elements<S.Cell>()))
-        {
-            if (cell.CellFormula is { Text.Length: > 0 } formula
-                && formula.FormulaType?.Value == S.CellFormulaValues.Shared
-                && formula.SharedIndex?.Value is { } si
-                && cell.CellReference?.Value is { } reference)
-            {
-                anchors.TryAdd(si, reference);
-            }
-        }
-        return anchors;
+        return new XlsxSheet(name, hidden, cells, blocks);
     }
 
     // A cell's stored value by its type: a shared or inline string, a formula's string, a
@@ -334,7 +267,7 @@ internal static class XlsxReader
     }
 
     // A merged range by its corners; its anchor is the top-left cell.
-    private sealed record Merge(int Top, int Left, int Bottom, int Right)
+    internal sealed record Merge(int Top, int Left, int Bottom, int Right)
     {
         public int Rows => Bottom - Top + 1;
 
@@ -409,19 +342,22 @@ internal static class XlsxReader
         }
     }
 
-    private static string Reference(int row, int column)
+    private static string Reference(int row, int column) => ColumnName(column) + row.ToString(CultureInfo.InvariantCulture);
+
+    // A column's letters, A for 1.
+    private static string ColumnName(int column)
     {
         var letters = new StringBuilder();
         for (var c = column; c > 0; c = (c - 1) / 26)
         {
             letters.Insert(0, (char)('A' + ((c - 1) % 26)));
         }
-        return letters.Append(row.ToString(CultureInfo.InvariantCulture)).ToString();
+        return letters.ToString();
     }
 
     // The number formats of the workbook's cell styles, by style index: whether each shows a
     // date, a time, or both, or neither.
-    private sealed class NumberFormats
+    internal sealed class NumberFormats
     {
         private readonly List<uint> styles = [];
         private readonly Dictionary<uint, string> codes = [];

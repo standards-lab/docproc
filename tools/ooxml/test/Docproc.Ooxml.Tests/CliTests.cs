@@ -4,7 +4,9 @@ using System.Runtime.Versioning;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json.Nodes;
 using Docproc.Ooxml.Reading;
+using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
@@ -641,6 +643,117 @@ public sealed class CliTests : IDisposable
 
         Assert.Equal(Cli.NotWritten, process.ExitCode);
         Assert.Equal("docproc-ooxml: error: stdout not written: Broken pipe\n", stderr);
+    }
+
+    // A sheet's rows are read forward twice, never held whole (context/design.md, OX-2). Its
+    // output is 50,000 rows in 33 MB of lines, run with the managed heap capped at 16 MiB, less
+    // than the output and far less than the sheet's DOM, which the spike held: it peaked at
+    // 513 MiB on this sheet, and failed under this cap with exit code 4. Each rows line is within 256 KiB, and
+    // together they hold every row in order. It takes about two seconds.
+    [Fact]
+    public void ALargeSheetIsStreamedInBoundedMemory()
+    {
+        const int rows = 50_000;
+        const int heapLimit = 16 * 1024 * 1024;
+        var path = LargeSheet("large.xlsx", rows, "");
+
+        var result = RunBytesIn(Environment.CurrentDirectory, new() { ["DOTNET_GCHeapHardLimit"] = $"0x{heapLimit:x}" }, path);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Empty(result.Stderr);
+        Assert.True(result.Stdout.Length > heapLimit, $"{result.Stdout.Length} bytes of lines");
+        var lines = Encoding.UTF8.GetString(result.Stdout).Split('\n')[..^1];
+        Assert.Equal("""{"line":"document","schema":"2","format":"xlsx"}""", lines[0]);
+        Assert.StartsWith("""{"line":"sheet","name":"Data",""", lines[1], StringComparison.Ordinal);
+        var numbers = new List<int>();
+        foreach (var line in lines[2..])
+        {
+            Assert.True(Encoding.UTF8.GetByteCount(line) + 1 <= LineWriter.RowsLineBound, $"a rows line of {Encoding.UTF8.GetByteCount(line) + 1} bytes");
+            var held = JsonNode.Parse(line)!["rows"]!.AsArray();
+            Assert.All(held, row => Assert.Equal(10, row!["cells"]!.AsArray().Count));
+            numbers.AddRange(held.Select(row => (int)row!["row"]!));
+        }
+        Assert.True(lines.Length > 100, $"{lines.Length} lines");
+        Assert.Equal(Enumerable.Range(1, rows), numbers);
+    }
+
+    // A failure in a sheet's last row is found by the validate pass, so the refusal still comes
+    // before any output, though the rows before it fill many rows lines.
+    [Fact]
+    public void ASheetFailingInItsLastRowIsRefusedBeforeAnyOutput() =>
+        Assert.Equal(
+            "a malformed package: cell A5001's boolean 2 is not 0 or 1",
+            AssertRefused(LargeSheet("late.xlsx", 5000, "<row r=\"5001\"><c r=\"A5001\" t=\"b\"><v>2</v></c></row>")));
+
+    // A forward reading meets a sheet's merges after its cells, and can meet a shared formula's
+    // anchor after a cell that names it; the columns, on the sheet line before the rows, are still
+    // those of the kept cells. B1 is covered by A1:B1, so its value is left out and its column
+    // too, and B2's boolean, which isn't one, is covered by A2:B2, so it is never read; C1 names
+    // the anchor A3 comes later.
+    [Fact]
+    public void TheColumnsAreThoseOfTheKeptCellsWhereverTheMergesAndAnchorsAre()
+    {
+        var path = OneSheet(
+            "merged.xlsx",
+            "<sheetData>" +
+            "<row r=\"1\"><c r=\"A1\"><v>1</v></c><c r=\"B1\"><v>2</v></c><c r=\"C1\"><f t=\"shared\" si=\"0\"/></c></row>" +
+            "<row r=\"2\"><c r=\"A2\"><v>3</v></c><c r=\"B2\" t=\"b\"><v>9</v></c></row>" +
+            "<row r=\"3\"><c r=\"A3\"><f t=\"shared\" ref=\"A3:C3\" si=\"0\">D1</f><v>4</v></c></row>" +
+            "</sheetData><mergeCells count=\"2\"><mergeCell ref=\"A1:B1\"/><mergeCell ref=\"A2:B2\"/></mergeCells>");
+
+        var result = Run(path);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Empty(result.Stderr);
+        Assert.Equal(
+            """
+            {"line":"document","schema":"2","format":"xlsx"}
+            {"line":"sheet","name":"Data","markdown":"# Data\n\n|  | A | C |\n| --- | --- | --- |\n"}
+            {"line":"rows","markdown":"| 1 | 1 | (formula shared from A3) |\n| 2 | 3 |  |\n| 3 | 4 |  |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"number","value":1,"col_span":2},{"ref":"C1","shared_from":"A3"}]},{"row":2,"cells":[{"ref":"A2","value_type":"number","value":3,"col_span":2}]},{"row":3,"cells":[{"ref":"A3","value_type":"number","value":4,"formula":"D1"}]}]}
+
+            """,
+            result.Stdout);
+    }
+
+    // A one-sheet workbook, its sheet "Data" the given worksheet content.
+    private string OneSheet(string name, string worksheet) =>
+        Zip(
+            name,
+            ("[Content_Types].xml",
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>" +
+                "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>"),
+            ("_rels/.rels",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>" +
+                "</Relationships>"),
+            ("xl/workbook.xml",
+                "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" " +
+                "xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>" +
+                "<sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"),
+            ("xl/_rels/workbook.xml.rels",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>" +
+                "</Relationships>"),
+            ("xl/worksheets/sheet1.xml",
+                $"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">{worksheet}</worksheet>"));
+
+    // A one-sheet workbook of the given number of rows, each ten numbers in A to J, then the
+    // given rows' XML.
+    private string LargeSheet(string name, int rows, string after)
+    {
+        var sheet = new StringBuilder("<sheetData>");
+        for (var r = 1; r <= rows; r++)
+        {
+            sheet.Append(CultureInfo.InvariantCulture, $"<row r=\"{r}\">");
+            for (var c = 0; c < 10; c++)
+            {
+                sheet.Append(CultureInfo.InvariantCulture, $"<c r=\"{(char)('A' + c)}{r}\"><v>{(r * 10) + c}</v></c>");
+            }
+            sheet.Append("</row>");
+        }
+        return OneSheet(name, sheet.Append(after).Append("</sheetData>").ToString());
     }
 
     // stdout and stderr are UTF-8 bytes whatever the locale says: the ruby fixture's Japanese

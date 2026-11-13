@@ -11,27 +11,42 @@ internal static class Lines
     /// <summary>Writes the document's lines to the output.</summary>
     public static void Write(Document document, Stream output)
     {
-        var writer = new LineWriter(output);
         if (document.Format != SourceFormat.Xlsx)
         {
-            writer.WriteDocument(document.Format, MarkdownRenderer.Render(document), Pictures(document));
+            new LineWriter(output).WriteDocument(document.Format, MarkdownRenderer.Render(document), Pictures(document));
             return;
         }
+        WriteXlsx(Pictures(document), document.Blocks.OfType<Sheet>().Select(sheet =>
+        {
+            var table = sheet.Blocks.OfType<Table>().FirstOrDefault();
+            return new SheetSource(
+                sheet.Name,
+                sheet.Hidden,
+                table is null ? [] : MarkdownRenderer.SheetColumns(table),
+                table?.Rows ?? [],
+                [.. sheet.Blocks.Where(block => block is not Table)]);
+        }), output);
+    }
+
+    /// <summary>Writes an xlsx document's lines to the output: its document line, naming the given
+    /// pictures, then each sheet's lines, each line written as its rows are enumerated, so a sheet
+    /// read forward never waits in memory past one <c>rows</c> line.</summary>
+    public static void WriteXlsx(IReadOnlyList<Media> pictures, IEnumerable<SheetSource> sheets, Stream output)
+    {
         // An xlsx document's Markdown is its sheets', so its document line holds none. A sheet's
         // lines are written in the order a forward reading of it gives them: its header, its rows,
         // and then its drawings, which its drawing part anchors apart from its cells.
-        writer.WriteDocument(document.Format, "", Pictures(document));
+        var writer = new LineWriter(output);
+        writer.WriteDocument(SourceFormat.Xlsx, "", pictures);
         var follows = false;
-        foreach (var sheet in document.Blocks.OfType<Sheet>())
+        foreach (var sheet in sheets)
         {
-            var table = sheet.Blocks.OfType<Table>().FirstOrDefault();
-            var columns = table is null ? [] : MarkdownRenderer.SheetColumns(table);
-            writer.WriteSheet(sheet.Name, sheet.Hidden, MarkdownRenderer.SheetFragment(sheet.Name, sheet.Hidden, columns, follows));
-            foreach (var row in table?.Rows ?? [])
+            writer.WriteSheet(sheet.Name, sheet.Hidden, MarkdownRenderer.SheetFragment(sheet.Name, sheet.Hidden, sheet.Columns, follows));
+            foreach (var row in sheet.Rows)
             {
-                writer.WriteRow(row, MarkdownRenderer.RowFragment(row, columns));
+                writer.WriteRow(row, MarkdownRenderer.RowFragment(row, sheet.Columns));
             }
-            writer.EndSheet(MarkdownRenderer.DrawingFragment([.. sheet.Blocks.Where(block => block is not Table)]));
+            writer.EndSheet(MarkdownRenderer.DrawingFragment(sheet.Drawings));
             follows = true;
         }
     }
@@ -102,3 +117,9 @@ internal static class Lines
         }
     }
 }
+
+/// <summary>An xlsx sheet as its lines take it: its name, whether it is hidden, the column letters
+/// its table uses in the sheet's order (none when it has no table), its table's rows, which may be
+/// read only as they are enumerated, and its charts and pictures in the order its drawing anchors
+/// them.</summary>
+internal sealed record SheetSource(string Name, bool Hidden, IReadOnlyList<string> Columns, IEnumerable<TableRow> Rows, IReadOnlyList<Block> Drawings);

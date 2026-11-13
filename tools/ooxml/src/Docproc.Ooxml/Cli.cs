@@ -191,55 +191,113 @@ internal static class Cli
         return true;
     }
 
-    // The whole conversion and its lines are made before anything is written, so a refusal leaves
+    // Every refusal is found before anything is written (OfficeReader.Open), so a refusal leaves
     // stdout empty and the media directory untouched. What the conversion skipped goes to stderr
     // as warnings. Media are written next, the directory created if missing, each distinct
     // content once (a file of the same name holds the same bytes, so it is rewritten); stdout
-    // comes last, so it is written only when they all were.
+    // comes last, so it is written only when they all were. Its lines are written as they are
+    // made, an xlsx sheet's as its rows are read.
     private static int Convert(string path, string? mediaDirectory, Stream stdout, Stderr errors)
     {
-        Conversion conversion;
+        PendingConversion conversion;
         try
         {
-            conversion = OfficeReader.Convert(path);
+            conversion = OfficeReader.Open(path);
         }
         catch (RefusalException e)
         {
             errors.Error(e.Message);
             return Refused;
         }
-        foreach (var warning in conversion.Warnings)
+        using (conversion)
         {
-            errors.Warning(warning);
-        }
-        using var lines = new MemoryStream();
-        Lines.Write(conversion.Document, lines);
-        if (mediaDirectory is not null)
-        {
-            try
+            foreach (var warning in conversion.Warnings)
             {
-                Directory.CreateDirectory(mediaDirectory);
-                foreach (var (name, bytes) in conversion.Media)
+                errors.Warning(warning);
+            }
+            if (mediaDirectory is not null)
+            {
+                try
                 {
-                    File.WriteAllBytes(Path.Combine(mediaDirectory, name), bytes);
+                    Directory.CreateDirectory(mediaDirectory);
+                    foreach (var (name, bytes) in conversion.Media)
+                    {
+                        File.WriteAllBytes(Path.Combine(mediaDirectory, name), bytes);
+                    }
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    errors.Error($"media not written: {e.Message}");
+                    return NotWritten;
                 }
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            // Not disposed: that would close stdout, and flush it again after a failed write.
+            var output = new BufferedStream(new StdoutStream(stdout), 64 * 1024);
+            try
             {
-                errors.Error($"media not written: {e.Message}");
+                conversion.WriteLines(output);
+                output.Flush();
+            }
+            catch (StdoutException e)
+            {
+                errors.Error($"stdout not written: {e.Message}");
                 return NotWritten;
             }
         }
-        try
-        {
-            stdout.Write(lines.GetBuffer().AsSpan(0, (int)lines.Length));
-            stdout.Flush();
-        }
-        catch (IOException e)
-        {
-            errors.Error($"stdout not written: {e.Message}");
-            return NotWritten;
-        }
         return Converted;
+    }
+
+    // An I/O error writing stdout, told apart from one reading the document while its lines are
+    // written.
+    private sealed class StdoutException(IOException error) : Exception(error.Message, error);
+
+    // stdout, its I/O errors raised as StdoutException.
+    private sealed class StdoutStream(Stream stdout) : Stream
+    {
+        public override bool CanRead => false;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => true;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Write(ReadOnlySpan<byte> buffer)
+        {
+            try
+            {
+                stdout.Write(buffer);
+            }
+            catch (IOException e)
+            {
+                throw new StdoutException(e);
+            }
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) => Write(buffer.AsSpan(offset, count));
+
+        public override void Flush()
+        {
+            try
+            {
+                stdout.Flush();
+            }
+            catch (IOException e)
+            {
+                throw new StdoutException(e);
+            }
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 }

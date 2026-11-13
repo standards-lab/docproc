@@ -26,6 +26,24 @@ internal sealed record Conversion(Document Document, IReadOnlyDictionary<string,
     public IReadOnlyList<Warning> Warnings { get; init; } = [];
 }
 
+/// <summary>A conversion as the CLI writes it: read, with nothing in it refused, its media and
+/// warnings found, and its lines still to be written. An xlsx package stays open until it is
+/// disposed, as its sheets' rows are read again as they are written; a docx's or pptx's model is
+/// whole.</summary>
+internal sealed class PendingConversion(IReadOnlyDictionary<string, byte[]> media, IReadOnlyList<Warning> warnings, Action<Stream> write, IDisposable? package) : IDisposable
+{
+    /// <summary>The embedded media the lines name, by file name.</summary>
+    public IReadOnlyDictionary<string, byte[]> Media => media;
+
+    /// <summary>What the conversion skipped and converted the rest without.</summary>
+    public IReadOnlyList<Warning> Warnings => warnings;
+
+    /// <summary>Writes the document's lines to the output, each as it is made.</summary>
+    public void WriteLines(Stream output) => write(output);
+
+    public void Dispose() => package?.Dispose();
+}
+
 /// <summary>Office's converter: a document in, the model and its media out.</summary>
 internal static class OfficeReader
 {
@@ -73,15 +91,50 @@ internal static class OfficeReader
         }
     }
 
+    /// <summary>Opens the document at path for the CLI to write: every refusal is found here, before
+    /// anything is written. An xlsx workbook's sheets are read once to validate them and are read
+    /// again only as their lines are written; a docx or pptx is converted whole.</summary>
+    /// <exception cref="RefusalException">As <see cref="Read"/>.</exception>
+    public static PendingConversion Open(string path)
+    {
+        try
+        {
+            if (Native.KindOf(path) != Native.PathKind.RegularFile)
+            {
+                throw new RefusalException(NotAFile);
+            }
+            var format = Sniff(path);
+            if (format != SourceFormat.Xlsx)
+            {
+                var conversion = ConvertPackage(path, format);
+                return new PendingConversion(conversion.Media, conversion.Warnings, output => Lines.Write(conversion.Document, output), null);
+            }
+            var package = Guarded(path, () => SpreadsheetDocument.Open(path, false));
+            try
+            {
+                var workbook = Guarded(path, () => XlsxReader.Validate(Loaded(package)));
+                return new PendingConversion(workbook.Media, workbook.Warnings, workbook.Write, package);
+            }
+            catch
+            {
+                package.Dispose();
+                throw;
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new RefusalException($"cannot be read: {WithoutPath(e, path)}");
+        }
+    }
+
     // .NET's messages for a file name it, as given or in full; a reason never holds the path.
     private static string WithoutPath(Exception e, string path) =>
         e is UnauthorizedAccessException
             ? "permission denied"
             : e.Message.Replace(Path.GetFullPath(path), "the input", StringComparison.Ordinal).Replace(path, "the input", StringComparison.Ordinal);
 
-    private static Conversion ConvertPackage(string path, SourceFormat format)
-    {
-        try
+    private static Conversion ConvertPackage(string path, SourceFormat format) =>
+        Guarded(path, () =>
         {
             if (format == SourceFormat.Xlsx)
             {
@@ -95,6 +148,14 @@ internal static class OfficeReader
             }
             using var package = WordprocessingDocument.Open(path, false);
             return DocxReader.Read(Loaded(package));
+        });
+
+    // A reading of the package, its failures the document's refusals: malformed, or past a limit.
+    private static T Guarded<T>(string path, Func<T> read)
+    {
+        try
+        {
+            return read();
         }
         catch (Exception e) when (IsMalformed(e))
         {
