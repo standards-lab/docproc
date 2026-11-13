@@ -64,23 +64,25 @@ impl Media {
     /// payload that can't be read or written is a media fault, exit 1.
     pub fn store(&mut self, content: impl Read, extension: Option<&str>) -> Result<String, Fault> {
         let Some(dir) = self.dir.clone() else {
-            let hash = copy(content, &mut io::sink())
-                .map_err(|err| Fault::Media(format!("a medium can't be read: {err}")))?;
+            // io::sink takes every write, so only the read can fail.
+            let hash = copy(content, &mut io::sink()).map_err(|failed| {
+                let (Failed::Read(err) | Failed::Write(err)) = failed;
+                unreadable(err)
+            })?;
             return Ok(name(hash, extension));
         };
         self.temporaries += 1;
         let temporary = dir.join(format!(".{}-{}.tmp", std::process::id(), self.temporaries));
-        let written = File::create_new(&temporary).and_then(|mut file| {
-            let hash = copy(content, &mut file)?;
-            file.flush()?;
-            Ok(hash)
-        });
-        let hash = written.map_err(|err| {
+        let written = File::create_new(&temporary)
+            .map_err(Failed::Write)
+            .and_then(|mut file| {
+                let hash = copy(content, &mut file)?;
+                file.flush().map_err(Failed::Write)?;
+                Ok(hash)
+            });
+        let hash = written.map_err(|failed| {
             remove(&temporary);
-            Fault::Media(format!(
-                "the media file {} can't be written: {err}",
-                temporary.display()
-            ))
+            failed.fault(&temporary)
         })?;
         let name = name(hash, extension);
         if self.written.contains(&name) {
@@ -109,8 +111,34 @@ pub fn extension_of(stored_name: &str) -> Option<&str> {
         .filter(|extension| !extension.is_empty())
 }
 
+/// Which side of a copy failed: reading the payload, or writing the media file.
+enum Failed {
+    Read(io::Error),
+    Write(io::Error),
+}
+
+impl Failed {
+    /// The media fault a failed copy into `file` is: a payload that can't be read is worded as it
+    /// is without `--media`, never naming the temporary file it was being copied into; a write
+    /// that fails names the file.
+    fn fault(self, file: &Path) -> Fault {
+        match self {
+            Failed::Read(err) => unreadable(err),
+            Failed::Write(err) => Fault::Media(format!(
+                "the media file {} can't be written: {err}",
+                file.display()
+            )),
+        }
+    }
+}
+
+/// The media fault of a payload that can't be read, with or without `--media`.
+fn unreadable(err: io::Error) -> Fault {
+    Fault::Media(format!("a medium can't be read: {err}"))
+}
+
 /// Copies `content` into `out` through the fixed buffer, hashing it, and returns its SHA-256.
-fn copy(mut content: impl Read, out: &mut impl Write) -> io::Result<[u8; 32]> {
+fn copy(mut content: impl Read, out: &mut impl Write) -> Result<[u8; 32], Failed> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; BUFFER];
     loop {
@@ -118,10 +146,10 @@ fn copy(mut content: impl Read, out: &mut impl Write) -> io::Result<[u8; 32]> {
             Ok(0) => break,
             Ok(read) => read,
             Err(err) if err.kind() == io::ErrorKind::Interrupted => continue,
-            Err(err) => return Err(err),
+            Err(err) => return Err(Failed::Read(err)),
         };
         hasher.update(&buffer[..read]);
-        out.write_all(&buffer[..read])?;
+        out.write_all(&buffer[..read]).map_err(Failed::Write)?;
     }
     Ok(hasher.finalize().into())
 }

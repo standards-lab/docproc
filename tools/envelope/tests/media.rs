@@ -2,6 +2,7 @@
 //! integration tests, so a check writes only target/.
 
 use std::fs;
+use std::io::{self, Read};
 use std::path::PathBuf;
 
 use docproc_envelope::{Fault, Media};
@@ -94,4 +95,52 @@ fn a_payload_that_cant_be_read_leaves_nothing() {
     let fault = media.store(Failing, None).unwrap_err();
     assert_eq!(fault.code(), 1);
     assert!(entries(&dir).is_empty());
+}
+
+/// A payload whose read fails is a read failure with and without `--media`: the temporary file
+/// it was being copied into is never named, and is removed.
+#[test]
+fn a_payload_that_cant_be_read_is_worded_as_a_read_failure() {
+    let dir = scratch("unreadable");
+    fs::create_dir_all(&dir).unwrap();
+    for media in [None, Some(dir.clone())] {
+        let fault = Media::new(media.clone())
+            .store(Unreadable, None)
+            .unwrap_err();
+        assert_eq!(fault.code(), 1, "{media:?}");
+        assert_eq!(
+            fault.reason(),
+            "a medium can't be read: the payload is gone",
+            "{media:?}"
+        );
+    }
+    assert!(entries(&dir).is_empty());
+}
+
+/// A media file that can't be written, here its temporary file in a directory that is missing,
+/// is named.
+#[test]
+fn a_media_file_that_cant_be_written_is_named() {
+    let dir = scratch("unwritable").join("missing");
+    let fault = Media::new(Some(dir.clone()))
+        .store(&b"abc"[..], None)
+        .unwrap_err();
+    assert_eq!(fault.code(), 1);
+    let temporary = dir.join(format!(".{}-1.tmp", std::process::id()));
+    assert_eq!(
+        fault.reason(),
+        format!(
+            "the media file {} can't be written: No such file or directory (os error 2)",
+            temporary.display()
+        )
+    );
+}
+
+/// A payload whose every read fails.
+struct Unreadable;
+
+impl Read for Unreadable {
+    fn read(&mut self, _: &mut [u8]) -> io::Result<usize> {
+        Err(io::Error::other("the payload is gone"))
+    }
 }
