@@ -1,4 +1,4 @@
-//! spike-ai-pipeline-mail: Outlook .pst stores, .msg messages, .eml messages and mbox files to a
+//! docproc-mail: Outlook .pst stores, .msg messages, .eml messages and mbox files to a
 //! JSON model.
 //!
 //! It reads one input, sniffed by content, and writes JSON Lines of schema "1" to stdout:
@@ -35,10 +35,16 @@ use files::Files;
 use jsonl::Lines;
 use sniff::Format;
 
-const NAME: &str = "spike-ai-pipeline-mail";
+/// The binary's name, which Cargo.toml's package gives, leading every stderr line.
+const NAME: &str = env!("CARGO_BIN_NAME");
 
-const USAGE: &str = "usage: spike-ai-pipeline-mail [--attachments <dir>] [--after <id>] <input>
-       spike-ai-pipeline-mail --version";
+const USAGE: &str = concat!(
+    "usage: ",
+    env!("CARGO_BIN_NAME"),
+    " [--attachments <dir>] [--after <id>] <input>\n       ",
+    env!("CARGO_BIN_NAME"),
+    " --version"
+);
 
 /// Why a run stopped short of exit 0.
 pub enum Fault {

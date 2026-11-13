@@ -1,7 +1,3 @@
-# marathon working files.
-.claude/plans/
-.claude/briefs/
-
 # Build output.
 target/
 
@@ -9,5 +5,5 @@ target/
 generator/bin/
 generator/obj/
 
-# Untracked state: the scale store, and the findings run's downloads, builds and outputs.
+# Untracked state: the publish task's binary.
 .state/

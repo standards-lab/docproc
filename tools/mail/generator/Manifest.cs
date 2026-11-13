@@ -3,7 +3,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace SpikeAiPipeline.Mail.Generator;
+namespace Docproc.Mail.Generator;
 
 /// <summary>
 /// manifest.json: what the last run built. Each source and output has its SHA-256; each output

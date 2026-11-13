@@ -342,7 +342,7 @@ fn with_headers(name: &str, headers: &str) -> (Value, String) {
 
 /// The warning line for a record's note.
 fn warning(note: &str) -> String {
-    format!("spike-ai-pipeline-mail: warning: message: {note}\n")
+    format!("docproc-mail: warning: message: {note}\n")
 }
 
 /// Importance gives the importance, whatever its case, before X-Priority; without it,
@@ -508,7 +508,7 @@ fn a_date_that_cannot_be_read_is_left_out_with_a_warning() {
     assert_eq!(message.get("submit_time"), None);
     assert_eq!(
         stderr,
-        "spike-ai-pipeline-mail: warning: message: \
+        "docproc-mail: warning: message: \
          the Date header has no date that can be read; left out\n"
     );
 }
@@ -542,7 +542,7 @@ fn an_eml_of_4_gib_is_refused() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: error: {}: an .eml of 4 GiB or more is not read\n",
+            "docproc-mail: error: {}: an .eml of 4 GiB or more is not read\n",
             path.display()
         )
     );
@@ -590,7 +590,7 @@ fn nesting_stops_at_16_levels() {
     assert_eq!(
         stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: {place}, attachment 1: \
+            "docproc-mail: warning: {place}, attachment 1: \
              an embedded message nested deeper than 16 messages; listed without it\n"
         )
     );
@@ -674,7 +674,7 @@ fn encoded_nesting_stops_at_16_levels() {
     assert_eq!(
         stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: {place}, attachment 1: \
+            "docproc-mail: warning: {place}, attachment 1: \
              an embedded message nested deeper than 16 messages; listed without it\n"
         )
     );
@@ -756,9 +756,9 @@ fn lossy_decoding_gives_a_warning_naming_the_record() {
     assert_eq!(message["attachments"][0]["size"], 3);
     assert_eq!(
         stderr,
-        "spike-ai-pipeline-mail: warning: message: \
+        "docproc-mail: warning: message: \
          the text body is not valid in its charset; decoded lossily\n\
-         spike-ai-pipeline-mail: warning: message, attachment 1: \
+         docproc-mail: warning: message, attachment 1: \
          the attachment's content has a malformed transfer encoding; decoded lossily\n"
     );
 }

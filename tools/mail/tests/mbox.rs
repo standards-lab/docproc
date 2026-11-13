@@ -162,7 +162,7 @@ fn an_mbox_gives_its_messages_by_ordinal() {
     assert_eq!(lines[2]["kind"], "message");
     assert_eq!(
         out.stderr,
-        "spike-ai-pipeline-mail: warning: message 2: \
+        "docproc-mail: warning: message 2: \
          skipped: it has no header block with a From or Date field\n"
     );
 }
@@ -270,7 +270,7 @@ fn an_mboxcl_content_length_is_ignored() {
     assert_eq!(lines[2]["id"], 2);
     assert_eq!(
         out.stderr,
-        "spike-ai-pipeline-mail: warning: message 2: \
+        "docproc-mail: warning: message 2: \
          skipped: it has no header block with a From or Date field\n"
     );
 }

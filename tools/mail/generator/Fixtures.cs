@@ -7,7 +7,7 @@ using PstBuilder;
 using PstBuilder.Eml;
 using PstBuilder.Messaging;
 
-namespace SpikeAiPipeline.Mail.Generator;
+namespace Docproc.Mail.Generator;
 
 /// <summary>
 /// The committed set: every store of layout.json as a .pst under pst/, every .eml source its msg
@@ -177,7 +177,7 @@ public static class Fixtures
         // needn't be its package's (MimeKit 4.18.2's assembly says 4.18.1.0).
         using var stream = typeof(Fixtures).Assembly.GetManifestResourceStream("packages.lock.json")
             ?? throw new InvalidOperationException("packages.lock.json isn't embedded");
-        var packages = JsonDocument.Parse(stream).RootElement.GetProperty("dependencies").GetProperty("net10.0");
+        var packages = JsonDocument.Parse(stream).RootElement.GetProperty("dependencies").GetProperty("net11.0");
         foreach (var package in Packages)
         {
             tools[package] = packages.GetProperty(package).GetProperty("resolved").GetString()!;

@@ -3,7 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using PstBuilder.Messaging;
 
-namespace SpikeAiPipeline.Mail.Generator;
+namespace Docproc.Mail.Generator;
 
 /// <summary>
 /// An item source, items/*.json: one item written field by field through PST Builder's

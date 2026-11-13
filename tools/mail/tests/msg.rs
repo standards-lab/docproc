@@ -501,7 +501,7 @@ fn nesting_is_capped_at_16() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: {place}, attachment 0: an embedded message nested \
+            "docproc-mail: warning: {place}, attachment 0: an embedded message nested \
              deeper than 16 messages; listed without it\n"
         )
     );
@@ -566,9 +566,8 @@ fn records_that_cant_be_read_are_skipped() {
         lines[2..],
         [json!({"line": "skipped", "kind": "attachment", "id": 1, "reason": short})]
     );
-    let warning = |place: &str, what: &str| {
-        format!("spike-ai-pipeline-mail: warning: message{place}: {what}\n")
-    };
+    let warning =
+        |place: &str, what: &str| format!("docproc-mail: warning: message{place}: {what}\n");
     assert_eq!(
         out.stderr,
         [

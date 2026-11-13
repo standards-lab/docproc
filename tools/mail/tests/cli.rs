@@ -4,8 +4,8 @@ mod common;
 
 use common::{built, fixture, run};
 
-const USAGE: &str = "usage: spike-ai-pipeline-mail [--attachments <dir>] [--after <id>] <input>
-       spike-ai-pipeline-mail --version
+const USAGE: &str = "usage: docproc-mail [--attachments <dir>] [--after <id>] <input>
+       docproc-mail --version
 ";
 
 #[test]
@@ -54,7 +54,7 @@ fn usage_errors_exit_2_with_usage() {
         assert_eq!(out.stdout, "", "{args:?}");
         assert_eq!(
             out.stderr,
-            format!("spike-ai-pipeline-mail: {reason}\n{USAGE}"),
+            format!("docproc-mail: {reason}\n{USAGE}"),
             "{args:?}"
         );
     }
@@ -84,7 +84,7 @@ fn a_malformed_after_id_is_a_usage_error() {
         assert_eq!(
             out.stderr,
             format!(
-                "spike-ai-pipeline-mail: --after {id} is not a message id, a whole number from 1 to 4,294,967,295\n{USAGE}"
+                "docproc-mail: --after {id} is not a message id, a whole number from 1 to 4,294,967,295\n{USAGE}"
             ),
             "{id:?}"
         );
@@ -107,7 +107,7 @@ fn after_with_a_single_message_is_a_usage_error() {
         assert_eq!(
             out.stderr,
             format!(
-                "spike-ai-pipeline-mail: --after resumes a .pst or an mbox; \
+                "docproc-mail: --after resumes a .pst or an mbox; \
                  {path} is {kind}, a single message\n{USAGE}"
             ),
             "{input}"
@@ -150,10 +150,7 @@ fn assert_refused(args: &[&std::path::Path], reason: &str) {
     let out = run(args);
     assert_eq!(out.code, Some(3), "{}", out.stderr);
     assert_eq!(out.stdout, "");
-    assert_eq!(
-        out.stderr,
-        format!("spike-ai-pipeline-mail: error: {reason}\n")
-    );
+    assert_eq!(out.stderr, format!("docproc-mail: error: {reason}\n"));
 }
 
 #[test]
@@ -199,7 +196,7 @@ fn an_unreadable_pst_header_is_refused() {
     assert_eq!(out.stdout, "");
     assert!(
         out.stderr
-            .starts_with("spike-ai-pipeline-mail: error: the PST header can't be read: "),
+            .starts_with("docproc-mail: error: the PST header can't be read: "),
         "{}",
         out.stderr
     );
@@ -216,7 +213,7 @@ fn an_unreadable_store_root_is_refused() {
     assert_eq!(out.stdout, "");
     assert!(
         out.stderr
-            .starts_with("spike-ai-pipeline-mail: error: the store's root can't be read: "),
+            .starts_with("docproc-mail: error: the store's root can't be read: "),
         "{}",
         out.stderr
     );
@@ -247,7 +244,7 @@ fn an_unreadable_compound_file_is_refused() {
     assert_eq!(out.stdout, "");
     assert!(
         out.stderr.starts_with(&format!(
-            "spike-ai-pipeline-mail: error: {}: the compound file can't be read: ",
+            "docproc-mail: error: {}: the compound file can't be read: ",
             msg.display()
         )),
         "{}",

@@ -11,7 +11,7 @@ pub mod msg;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const BIN: &str = env!("CARGO_BIN_EXE_spike-ai-pipeline-mail");
+const BIN: &str = env!("CARGO_BIN_EXE_docproc-mail");
 
 /// One run of the binary: its exit code, stdout and stderr.
 pub struct Run {

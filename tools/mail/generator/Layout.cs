@@ -1,7 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace SpikeAiPipeline.Mail.Generator;
+namespace Docproc.Mail.Generator;
 
 /// <summary>
 /// layout.json: what the generator builds from its sources, the .eml under eml/ and the item

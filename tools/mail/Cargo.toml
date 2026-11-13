@@ -1,10 +1,9 @@
 [package]
-name = "spike-ai-pipeline-mail"
+name = "docproc-mail"
 version = "0.3.1"
 edition = "2024"
 license = "Apache-2.0"
-description = "The mail CLI of spike-ai-pipeline: Outlook .pst stores, .msg messages, .eml messages and mbox files to a JSON model"
-repository = "https://github.com/JaimeStill/spike-ai-pipeline-mail"
+description = "docproc's mail tool: Outlook .pst stores, .msg messages, .eml messages and mbox files to a JSON model"
 publish = false
 
 [dependencies]
@@ -33,7 +32,8 @@ cfb = "0.16.0"
 # brings encoding_rs's multi-byte charsets, ISO-2022-JP and GB2312 among them.
 mail-parser = { version = "1.0.1", features = ["full_encoding"] }
 
-# The findings run (scripts/findings.sh, `mise run findings`): the check compiles it, never runs it.
-[[example]]
-name = "findings"
-path = "bench/findings.rs"
+# A release binary checks integer arithmetic as a debug one does: an overflow panics, a fault the
+# CLI reports, instead of wrapping silently into a wrong offset or length. The check runs every
+# test against this profile.
+[profile.release]
+overflow-checks = true

@@ -448,7 +448,7 @@ fn content_that_cant_be_written_exits_1() {
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr
-            .starts_with("spike-ai-pipeline-mail: error: the attachments directory ")
+            .starts_with("docproc-mail: error: the attachments directory ")
             && out.stderr.contains("can't be created"),
         "{}",
         out.stderr
@@ -461,7 +461,7 @@ fn content_that_cant_be_written_exits_1() {
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr.starts_with(&format!(
-            "spike-ai-pipeline-mail: error: the attachment {}",
+            "docproc-mail: error: the attachment {}",
             dir.join(&first).display()
         )) && out.stderr.contains("can't be written"),
         "{}",
@@ -559,7 +559,7 @@ fn an_attachment_that_cant_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Sent Items, message \
+            "docproc-mail: warning: /Top of Personal Folders/Sent Items, message \
              {NOTE_G_MESSAGE}, attachment 5: skipped: {reason}\n"
         )
     );

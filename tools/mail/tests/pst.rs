@@ -211,7 +211,7 @@ fn a_message_outlook_pst_cannot_read_is_skipped() {
         assert_eq!(
             skips,
             [
-                "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Contacts, message \
+                "docproc-mail: warning: /Top of Personal Folders/Contacts, message \
               2097188: skipped: Missing Sub-Node Tree on message"
             ]
         );
@@ -260,7 +260,7 @@ fn embedded_messages_are_listed_with_a_warning() {
         assert_eq!(attachments(&out.lines()), [(message, expected)], "{store}");
         for id in ids {
             let warning = format!(
-                "spike-ai-pipeline-mail: warning: {place}, message {message}, attachment {id}: \
+                "docproc-mail: warning: {place}, message {message}, attachment {id}: \
                  an embedded message (attach method 5), listed without its content: \
                  outlook-pst 1.2.0 can't open one"
             );
@@ -324,7 +324,7 @@ fn records_after_a_reader_panic_are_still_read() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
         out.stderr,
-        "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
+        "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
          skipped: the reader panicked: attempt to multiply with overflow\n"
     );
     // Every line but the panicked message's is the intact store's.
@@ -376,9 +376,11 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     );
     let warnings: Vec<&str> = out.stderr.lines().collect();
     assert_eq!(warnings.len(), skipped.len());
-    assert!(warnings[0].starts_with(
-        "spike-ai-pipeline-mail: warning: /Top of Personal Folders, folder 32930: skipped: "
-    ));
+    assert!(
+        warnings[0].starts_with(
+            "docproc-mail: warning: /Top of Personal Folders, folder 32930: skipped: "
+        )
+    );
     assert!(
         lines
             .iter()
@@ -390,7 +392,7 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     assert_eq!(out.code, Some(0));
     assert_eq!(
         out.stderr,
-        "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
+        "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
          skipped: Invalid internal block btype: 0xFF\n"
     );
     let messages = out
@@ -426,7 +428,7 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: /Top of Personal Folders, hierarchy table: \
+            "docproc-mail: warning: /Top of Personal Folders, hierarchy table: \
              skipped: {lost}\n"
         )
     );
@@ -450,7 +452,7 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Inbox, contents table: \
+            "docproc-mail: warning: /Top of Personal Folders/Inbox, contents table: \
              skipped: {lost}\n"
         )
     );
@@ -479,7 +481,7 @@ fn attachments_after_a_reader_panic_are_still_read() {
     assert_eq!(
         out.stderr,
         format!(
-            "spike-ai-pipeline-mail: warning: /Top of Personal Folders/Inbox, message 2097188, \
+            "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188, \
              attachment 32805: skipped: {reason}\n"
         )
     );

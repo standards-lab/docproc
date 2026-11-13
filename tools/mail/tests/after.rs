@@ -222,10 +222,7 @@ fn assert_refused(input: &Path, after: &str, reason: &str) {
     let out = run(&[input.as_os_str(), "--after".as_ref(), after.as_ref()]);
     assert_eq!(out.code, Some(3), "{}", out.stderr);
     assert_eq!(out.stdout, "");
-    assert_eq!(
-        out.stderr,
-        format!("spike-ai-pipeline-mail: error: {reason}\n")
-    );
+    assert_eq!(out.stderr, format!("docproc-mail: error: {reason}\n"));
 }
 
 /// A node id no message in the store has is refused before any output, the node id of a
