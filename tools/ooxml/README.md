@@ -144,6 +144,11 @@ from this directory, `mise run <task>`, or from the repository root, `mise -C to
 - `currency`: reports NuGet packages, the fixture generator's Python packages, and mise tools
   behind their latest, and NuGet packages with a known vulnerability. It reads the network, so
   CI never runs it.
+- `upgrade`: bumps what `currency` reports as behind to its latest: the mise tools in
+  [`mise.toml`](mise.toml), the direct NuGet packages, their lock files rewritten and restored
+  in locked mode, and the fixture generator's pinned packages and its lock. A vulnerable
+  transitive package is moved only by a newer direct one. Review the diff and run `check`;
+  docproc's own `mise run upgrade` runs it.
 - `fixtures`: regenerates the generated fixtures; it needs LibreOffice's `soffice`. The
   fixtures are described in [`fixtures/README.md`](fixtures/README.md).
 

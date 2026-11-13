@@ -10,7 +10,8 @@ shellcheck = "0.11.0"
 [env]
 GO_MODULES = ""
 # Space-separated list of the system tools under tools/, each with its own mise.toml that pins its
-# toolchain and defines its `check` and `currency` tasks, which the root's tasks run in turn.
+# toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
+# turn.
 TOOLS = "ooxml"
 
 # The one check: read-only and deterministic, stopping at the first failure.
@@ -62,3 +63,15 @@ actionlint
 [tasks.currency]
 description = "Report every requirement, tool, and action pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
 run = "scripts/currency.sh"
+
+# Development-time, as currency is. It runs each tool's upgrade alone so far: the Go modules' and
+# the root's own pins are not upgraded by it yet.
+[tasks.upgrade]
+description = "Run each tool's upgrade, which bumps its pins to their latest; rewrites only the tools' pins and lock files"
+run = '''
+set -eu
+for tool in $TOOLS; do
+  echo "upgrade: tools/$tool"
+  mise -C "$MISE_PROJECT_ROOT/tools/$tool" run upgrade
+done
+'''

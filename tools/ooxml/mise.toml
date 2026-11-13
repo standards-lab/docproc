@@ -108,6 +108,61 @@ done <<<"$outdated"
 exit "$stale"
 '''
 
+# Development-time, as currency is, and its counterpart: it moves every pin currency reports as
+# trailing to its latest, so a currency run after it reports none of them but a vulnerable
+# transitive package, which only a newer direct one can move. It rewrites only this directory's
+# pins, never the root's: the mise tools here, then, with them, the NuGet packages and the
+# fixture generator's packages. Run it, review the diff, and run the check.
+[tasks.upgrade]
+description = "Bump every mise tool in this file, every direct NuGet package, and every fixture generator package to its latest, rewriting mise.toml, the csproj files, the lock files in locked form, generate.py, and its lock"
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+# The tools pinned in this file alone: mise reads the root's config too, whose pins the root's
+# upgrade owns. Each is written to this file at its latest.
+config=$(realpath mise.toml)
+tools=$(mise outdated --bump --no-global --json |
+  jq -r --arg config "$config" 'to_entries[] | select(.value.source.path == $config and .value.bump != null) |
+    "\(.key)@\(.value.bump)"')
+for tool in $tools; do
+  mise use --path mise.toml "$tool"
+done
+# A new mise process, so the packages are upgraded with the tools just pinned: a new SDK moves
+# the runtime packs the NativeAOT publish locks.
+mise run upgrade:packages
+'''
+
+[tasks."upgrade:packages"]
+description = "Bump every direct NuGet package and fixture generator package to its latest, rewriting the lock files in locked form; upgrade runs it after the mise tools"
+hide = true
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+export PATH="$DOTNET_ROOT:$PATH"
+# Restored afresh first, as the SDK may be new, then each direct package with a newer release is
+# written to its project at the latest, and the lock files rewritten from the projects and
+# checked in locked mode, as the check restores them.
+dotnet restore DocprocOoxml.slnx --force-evaluate >/dev/null
+packages=$(dotnet list DocprocOoxml.slnx package --outdated --format json |
+  jq -r '.projects[] | .path as $p | .frameworks[]?.topLevelPackages[]? | "\($p) \(.id) \(.latestVersion)"')
+while read -r project id version; do
+  [ -n "$project" ] && dotnet package add "$id" --project "$project" --version "$version" --no-restore
+done <<<"$packages"
+dotnet restore DocprocOoxml.slnx --force-evaluate >/dev/null
+dotnet restore DocprocOoxml.slnx --locked-mode >/dev/null
+
+# The fixture generator's packages, pinned exactly in its script's header: each with a newer
+# release is pinned at it in place (uv add would rewrite the header's list across lines), then
+# the script is re-locked, its other locked packages kept where they are, and the lock checked.
+generator=$(uv tree -q --script fixtures/generate.py --outdated --depth 0 --locked |
+  sed -n 's/^\([^ ]*\) v\([^ ]*\) (latest: v\([^)]*\))$/\1 \2 \3/p')
+while read -r name pinned latest; do
+  [ -n "$name" ] && sed -i "1,/^# \/\/\/\$/s/\"$name==$pinned\"/\"$name==$latest\"/" fixtures/generate.py
+done <<<"$generator"
+uv lock -q --script fixtures/generate.py
+uv lock -q --script fixtures/generate.py --check
+'''
+
 [tasks.fixtures]
 description = "Regenerate the generated fixtures and their ground truth; needs LibreOffice's soffice; the check never runs it"
 dir = "{{config_root}}"
