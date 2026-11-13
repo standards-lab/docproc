@@ -283,4 +283,167 @@ and an entry that binds docproc-onenote too names onenote.
   the locked graph into the archive, and the check fails on a license outside the permissive
   set.
 
-The remaining three artifacts' reviews follow in their own sections.
+## docproc-onenote
+
+From spike-ai-pipeline-onenote v0.1.0. Evidence was read from the spike at `866ffc6` and from
+onenote_parser 2.1.0's source; probes ran on the spike's v0.1.0 musl release binary over its
+committed fixtures, and an entry says where a finding was found by reading. Every finding was
+accepted, ON-2 and ON-4 in the form round 3 settled; the changes are in `layers.md`,
+"docproc-onenote [onenote]" unless an entry says otherwise. Two rulings close the section: the
+parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstream.
+
+- **ON-1 · Recognised ink words reached the Markdown only through the page's ink image.**
+  Accepted → onenote. The spike joined every recognised word of the page and gave them to the
+  page's own ink drawing alone; a paragraph's handwriting and an ink block were written
+  `![ink](file.svg)` with no words, and the page's ink exists only when its ink containers hold
+  points, so a page whose handwriting sits in outlines had its words in `ink_text` alone, which
+  schema "2" cuts. The one ink fixture, `handwriting_recognition.one`, has page ink only, so no
+  test showed it. The parser links each stroke to its word (`InkStroke::recognized_word()`), so
+  each drawing's alt text is the words its own strokes belong to, in the recognition's order,
+  `![ink: <words>](file.svg)` for page ink, paragraph ink, and ink blocks alike; a recognised
+  word no drawing carries is one plain line after the page's content, and
+  `ink_alternatives[].word` stays the page-wide index (`layers.md`, "docproc-onenote", now "the
+  ink images' alt texts"). Unit tests over built pages show paragraph ink alone and both kinds.
+- **ON-2 · A table of contents through docproc read empty or twice, and a directory never
+  arrived.** Settled → onenote, with the stage's outcome in "docproc's packages [library]". The
+  tool read a `.onetoc2` as its whole notebook, resolving sections beside it. Spooled from a
+  stream, as Cerebro passes every input, nothing is beside it, and the parser drops a missing
+  entry without a word: one `notebook` line, exit 0, no warning. Given by path, as `cmd/docproc`
+  walks a share, every section was read, and each sibling `.one` is also its own input, so every
+  page came out twice under two parts. The header can't tell a section from a table of contents,
+  so the route couldn't avoid the run, and a notebook directory isn't a file, so it never
+  reaches docproc. By reading, a directory read also leaves out any `.one` its table of contents
+  doesn't list (`interop/SUT`'s `FileSyncWOPI_OneNoteWithODB.one`). docproc always passes a
+  file-only option, `--file-only`, under which a table of contents is refused, exit 3, with a
+  fixed reason, before any section is read; docproc's onenote stage records that refusal as the
+  part's outcome, not a failure. Notebook and directory reads stay for an operator; the notebook
+  read warns when it read no entry, and the README lists unlisted sections as a limit. Rejected:
+  the tool reading notebooks for docproc.
+- **ON-3 · The expectations `layers.md` kept all pointed into the fields schema "2" cuts.**
+  Accepted → onenote. Every pointer in `tests/fixtures/content.json` starts `/content`, `/ink`,
+  or `/ink_text`; `sections.json` counts each page's containers by kind; `tests/content.rs`,
+  `tests/media.rs`, and `tests/ink.rs` walk the same tree. They are the tool's only hand truth,
+  and a golden records what the tool wrote, not what is right. A refusal's stderr leads with the
+  input path as given, and no `.onepkg` is committed. The truth is re-seated: `content.json`
+  points into `media` and `ink_alternatives`; `sections.json` keeps ids, levels, titles, times,
+  and refusals; the run, list, table, and tag truth moves to hand-written Markdown expectations
+  and the unit tests `src/content.rs` already has. Goldens run in the fixtures' directory with
+  relative inputs, and a package's read equals its directory's golden in every line but the
+  first.
+- **ON-4 · An encryption signal is feasible for desktop-format sections.** Settled → onenote, with
+  the mapping in "docproc's packages [library]". `Encryption.one` was refused with the parser's
+  `Unexpected end of file`, and skipped inside a notebook with the same reason, so docproc could
+  only call it failed. [MS-ONESTORE] 2.5.19's encryption-key structure opens with the fixed bytes
+  `0xFB6BA385DAD1A067` and closes with `0x2649294F8E198B3C`; `Encryption.one` holds each three
+  times (first at offsets 5608 and 6687), and none of the other 22 committed OneStore files, nor
+  the 285 MB of large sections the spike measured, holds either. Only after a section's parse
+  fails does the tool scan for the two constants; found, it refuses with a reason beginning
+  `encrypted`, and a `skipped` line gains an optional `encrypted: true`, an addition under schema
+  "2". A false match relabels a read that already failed, never costing content. docproc maps
+  the reason to `ErrEncrypted`, as office's stage does. The scan is the tool's own tested code;
+  the OneDrive packaging format, with no encrypted fixture, stays unestablished, and decryption
+  keeps waiting on a specification. Rejected: leaving encrypted sections reported failed.
+- **ON-5 · The parser hid absent times and titles.** Accepted → onenote. By reading:
+  `created_time()` is never absent, an unreadable FILETIME becoming `1970-01-01T00:00:00Z` with a
+  parser warning; `updated_time()` returns the creation time when no modification time is
+  stored, behind a private option; and an untitled page's title is the first outline's first
+  paragraph. `creation_time` is left out when it is the parser's 1970 fallback, with a warning;
+  `layers.md` and the README state that a page with no stored modification time reports its
+  creation time, and that an untitled page's `title` is its first line, as OneNote's page list
+  shows it.
+- **ON-6 · The binary the tests proved was not the binary that ships.** Accepted → onenote,
+  settled with mail as ML-8, whose onenote bullet carries it; the spike's test
+  `a_parser_panic_is_refused_with_exit_3` relied on debug overflow checks a release build lacks.
+  The media unit test that wrote under the system temporary directory moves under
+  `CARGO_TARGET_TMPDIR`, so the check writes only `target/`.
+- **ON-7 · Memory was unbounded in four places, one of them the tool's own.** Accepted →
+  onenote, with the run's bound in "docproc's packages [library]". The tool read each image and
+  embedded file whole before hashing and writing it, though the parser hands back a streaming
+  reader, and `fs::write` to the hash name left a truncated file under the full content's name
+  when a run was killed mid-write. The parser holds a notebook whole before its first line and
+  decompresses a `.onepkg` whole, beside issue #48, which alone the README named. Media are
+  streamed, hashed while copied through a fixed buffer into a temporary file in the media
+  directory and renamed to the hash name, or hashed only without `--media`; the README states
+  the parser's memory. A bound on the whole run is docproc's, in `tool`; an allocation failure
+  under it aborts the tool by signal, which docproc reports as failed (ON-16).
+- **ON-8 · Some Markdown the tool wrote didn't parse as what it meant.** Accepted → onenote, mail
+  taking it through the shared crate. By reading: a destination escaped parentheses only, where
+  htmd wraps one holding a space in `<…>`, so a link to `\\server\Team Notes\plan.docx` was text,
+  not a link, and no URL reached the content rule; in a table cell, a code span and an
+  equation's LaTeX left `|`, which GFM reads as a cell boundary even in a code span. One
+  destination writer, in the shared crate, writes a destination holding a space, a control
+  character, `<`, or `>` as `<…>` with `<` and `>` escaped, else bare with its parentheses
+  escaped; in a table cell `|` is written `\|` in code spans and LaTeX.
+- **ON-9 · Five workarounds stood on onenote_parser's behaviour, under a caret requirement.**
+  Accepted → onenote. The parser is current and maintained, by one person; the tool works around
+  (a) its private error kind, told by message prefix, (b) a `println!` that costs `libc`, an
+  `unsafe` `dup2`, and `stdout.rs`, (c) a silently dropped recycle bin, mirrored through `cab`
+  and the parser's private name normalisation, (d) a failed section inside a group vanishing,
+  and (e) one section's panic refusing its whole notebook. (a) and (c) depend on 2.1.0's exact
+  text and logic, under `"2.1.0"`. onenote_parser is pinned `=2.1.0` with the comment mail's
+  pins carry; (a) to (c) stay as the tool's own tested code, (d) and (e) join the README's
+  limits, `cab` stays a direct dependency, and typed-path stays held.
+- **ON-10 · After the cut, the model is the renderer's private input.** Accepted → onenote. Once
+  `content`, `ink`, and `ink_text` aren't written, nothing reads a run's underline, superscript,
+  subscript, highlight, and font colour, a list's bullet, prefix, suffix, and format, a tag's
+  completed time and its shape's `Debug` text, a word's language, or an image's printout page;
+  and the reader already visits media in the order processing's `Page.Media` walks them. The
+  page content becomes a crate-private intermediate with no `Serialize`, less those fields, a
+  tag carrying `task: bool`; the reader appends a `media` entry at each of its three store sites
+  (image, embedded file, drawing), so processing's walk isn't ported, and the README says the
+  Markdown's order differs from `media`'s by design.
+- **ON-11 · The shared crate holds the envelope both Rust tools implement.** Accepted → onenote,
+  which adopts the crate mail writes (ML-9). `jsonl.rs` is byte-identical in both, the media name
+  rule and once-only writer, the faults, and the escape parallel, with one drift: mail created
+  the media directory once the input was known to be read, onenote at its first file, so
+  `--media` over `interop/SUT/OneWithoutFileData.one` left no directory. This settles ML-9's open
+  "one directory rule": the directory is created once the input is read. onenote compares two
+  plain texts (`ocr_text` with `alt_text`), so the content rule's entry point takes plain token
+  sequences, and the Markdown-to-plain reader sits behind a Cargo feature only mail enables, so
+  onenote links no CommonMark parser. Each tool has its own lock, so the crate requires its
+  Unicode crates exactly; the version they carry is round 2's (ML-3), not the 16.0 this finding
+  assumed. docproc's CI runs both Rust tools' checks when the crate changes.
+- **ON-12 · The release and currency machinery assumed the tool was the repository.** Accepted →
+  onenote, with the repository's part in "docproc-ooxml [ooxml]", which lands the first tool.
+  Nested under `tools/onenote`, the release trigger, the pack script's version check, the asset
+  name, the changelog path, and the currency script's workflow glob all break; the scripts are
+  near copies of mail's. release-and-ci.md ships every committed file below a `go.mod`, so the
+  2.3 MB of fixtures, MPL-2.0 samples among them, would ship in docproc's module zip. One pack
+  script and one notices script under `tools/` take the tool's name, and a `go.mod` at `tools/`
+  keeps the subtree out of the library's zip, both landed by ooxml; the tool's currency reports
+  its crates and mise tools only, action pins being the root's; the nested `.gitattributes` keeps
+  its fixture rules. The module-zip exception on the architecture page is a pending edit for the
+  `architecture` task, which the session records.
+- **ON-13 · The findings harness is spike evidence.** Accepted → onenote. `bench/findings.rs`
+  (976 lines), `bench/rusage.c`, and `scripts/findings.sh` score the binary over the fields schema
+  "2" cuts, and the check compiled the scorer on every run and never ran it. They stay in the
+  spike with `docs/findings/`; a per-tool timing, if one is wanted, is one harness for all three
+  tools, in the acceptance task.
+- **ON-14 · The stderr line rules were documented, not enforced.** Accepted → onenote, through the
+  shared crate. By reading: `place` escaped control characters only, so a section name holding
+  `": "`, stored in the file or taken from a renamed input, split a warning wrong, and `<what>`
+  passed the parser's messages through unescaped. The shared warning writer writes a colon
+  followed by a space in `<where>` with the space escaped, and escapes control characters in
+  `<where>` and `<what>`.
+- **ON-15 · Byte identity has three edges in the parser's hash or directory order.** Accepted →
+  onenote. By reading: a section group's `.onetoc2` is the first `read_dir` or a package's
+  `HashMap` yields, a OneDrive package's storage index and manifest are `HashMap::values().next()`,
+  and object spaces parse in `HashMap` order, so two faults report in either order. No committed
+  fixture reaches them. The README states the three as limits beside the determinism promise.
+- **ON-16 · Nesting depth was unbounded, and a stack overflow dies by signal.** Accepted →
+  onenote, with the signal's outcome in "docproc's packages [library]". By reading: outline items,
+  groups, tables in cells, and equations recurse to the file's depth in the reader, the renderer,
+  the math port, and the parser, and a stack overflow is a SIGSEGV no handler catches. The read
+  runs on a thread with a large fixed stack, and the README names the limit; docproc records a
+  tool's death by signal as failed, naming the signal.
+- **onenote_parser's MPL-2.0.** Settled → onenote. The parser is MPL-2.0, outside ML-20's
+  permissive set. The Rust tools' license check allows MPL-2.0 by name for docproc-onenote only,
+  and its notices state where onenote_parser's source is. Rejected: treating the license as a
+  blocker.
+- **Nothing is asked upstream.** Settled → onenote. The evaluation proposed asks to onenote_parser
+  (ON-4's error kind, ON-5's modification-time option, ON-9's four, ON-15's ordered maps). The
+  architect's ruling: these are docproc's requirements, and docproc fills the gaps for its own
+  needs. Every workaround is owned, tested code in docproc-onenote, the tool fills a gap itself
+  where it needs to, and nothing is filed upstream.
+
+The remaining two artifacts' reviews follow in their own sections.
