@@ -365,9 +365,15 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
-  it is made from the text body, nothing is. Compared by docproc-mail's content rule instead
-  (UAX #29 by uniseg 0.10.1 on Unicode 16.0, CommonMark by markdown-it-py; the mail task reruns it
-  on the content rule's version), the sentences it
+  it is made from the text body, nothing is. Compared by docproc-mail's content rule instead,
+  rerun by the mail task on 2026-11-13 over the same `~/docs` (no file in it newer than
+  2026-11-12) with the rule docproc-mail ships: the shared crate `tools/envelope`, on Rust 1.100.0,
+  with NFC, the dictionary-free UAX #29 word and sentence boundaries, and general categories from
+  ICU4X 2.4.0 on Unicode 18.0.0, CommonMark read by pulldown-cmark 0.13.6, and its own Myers
+  alignment, each comparison written to stderr by a scratch build of the tool, which compares the
+  Markdown as htmd makes it from the HTML, before anything is appended. The figures are those the
+  first run found with UAX #29 by uniseg 0.10.1 on Unicode 16.0 and CommonMark by markdown-it-py.
+  Of the 31 messages whose Markdown is made from HTML, 28 with a source text, the sentences it
   appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
   `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
   inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
@@ -380,8 +386,11 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   correction applies: PT_STRING8 is read in its message's code page, and a MIME part's charset
   label as the WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
   windows-1252). The RTF's text, read as "docproc-mail" states, compared the same way, lacks
-  nothing where the Markdown is made from it; beside a stored HTML body it lacks 28 B, the line
-  `testMSG_chinese.msg`'s text body also holds.
+  nothing where the Markdown is made from it (2 messages); beside a stored HTML body (2 messages)
+  it lacks 57 B, all in `testMSG_chinese.msg`: 28 B, the line its text body also holds, and 29 B,
+  a table's numbers 1 to 19, which the RTF's text runs together into one word, since its reader
+  breaks only at `\par`, `\line`, and `\tab`, not between cells, where the first run counted the
+  28 B alone.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
