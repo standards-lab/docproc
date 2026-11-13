@@ -1484,7 +1484,7 @@ type Chunk struct {
                                                 // little-endian float32s, the spike's EncodeVector
     Error       string `json:"error,omitzero"`  // why the endpoint refused it, or it failed
 }
-// Counts is one job's, counting occurrences ("docinfer's packages").
+// Counts is one job's, counting occurrences ("docinfer's packages [the docinfer goal]").
 type Counts struct {
     Texts         int                  `json:"texts"`    // text and Markdown outputs chunked
     Metadata      int                  `json:"metadata"` // metadata texts: one per job
@@ -1555,7 +1555,7 @@ type Checkpoint struct { // a store's cursor, a low watermark
 }
 type Done struct { // one attempt's
     Parts   map[dispatch.Outcome]int `json:"parts"`   // by outcome, every depth
-    Outputs int                      `json:"outputs"` // output events
+    Outputs int                      `json:"outputs"` // by part ID, never by event
     Counts  docinfer.Counts          `json:"counts"`
 }
 ```
@@ -2715,7 +2715,9 @@ docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, 
                                    stages.Options' Timeout, Idle, Memory, and Concurrency, and the
                                    outputs' caps in each stage's request (pages, frames, MaxPixels,
                                    a frame's MaxSide); docproc's README names stages as the shipped
-                                   wiring and cmd/docproc its first caller
+                                   wiring and cmd/docproc its first caller; a committed go.work
+                                   over the base module and cmd/docproc, carrying changes between
+                                   the base module's tags
                        [reports]   the report: a page per distinct input content, named by its
                                    SHA-256, listing every input path that holds it with its file
                                    metadata, outcome, and time, the tree and outputs once; the

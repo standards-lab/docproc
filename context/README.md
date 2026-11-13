@@ -15,8 +15,8 @@ and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) stat
 boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) as signatures and
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
-disposition of every evaluated finding, and each artifact's first tag and the task that releases
-it.
+disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
+each artifact's first tag and the task that releases it.
 
 ## Capability map
 

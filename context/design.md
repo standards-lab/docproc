@@ -1,14 +1,14 @@
 # design
 
-The design review: Fable 5.2 evaluated each of the five artifacts v1.ai.processing promotes, and
-the architect settled every finding in one review round per artifact, then a sixth round gave
-the shapes and vocabularies they share one home each. `layers.md`
-holds the boundaries and the change lists; this note holds each finding's settled design and its
-disposition, with the evidence that justified it, since the evaluations themselves are not kept.
-An entry names the task that carries it, and the `layers.md` section that states it where one
-does; it doesn't restate a signature that section holds. The note opens with how the review
-changes the goal's tasks, holds the structural single homes after the artifacts, and closes with
-each artifact's first tag and the task that releases it.
+This note holds the design review of the five artifacts v1.ai.processing promotes: each
+finding's settled design and disposition, with the evidence that justified it, since the
+evaluations themselves are not kept. Fable 5.2 evaluated each artifact, the architect settled its
+findings in one review round per artifact, and a sixth round gave the shapes and vocabularies the
+artifacts share one home each ("Structural single homes"). `layers.md` holds the boundaries and
+the change lists. An entry names the task that carries it and the `layers.md` section that states
+it, and doesn't restate what that section holds; an entry a later one changed points to it. The
+note opens with how the review changes the goal's tasks and closes with each artifact's first tag
+and the task that releases it.
 
 ## How the review changes the goal's tasks
 
@@ -32,18 +32,17 @@ edits in the goal record, applied to the roadmap at SHIP.
   replays a miss from the nearest ancestor with a file, sets no default bounds, records a table
   of contents' refusal and a death by signal, and corrects the signed-PDF cause; unrouted
   formats, HTML, and ClamAV stay backlog.
-- **docproc** gains a tag, the base module's v0.2.0 when `rundir` lands, reversing "`docproc`
-  releases nothing", with `rundir` as one handle and its README naming `stages` as the shipped
-  wiring.
+- **docproc** tags the base module v0.2.0 when `rundir` lands, with a committed `go.work` between
+  tags (DP-3), makes `rundir` one handle, and has its README name `stages` as the shipped wiring.
 - **reports** writes a page per input content and tags `cmd/docproc/v0.1.0`.
 - **acceptance** gains measurements over ~/docs: each tool's peak memory, the word error rate of
   its audio before the tag, and the inspection evaluation's bombs through `cmd/docproc`'s
   starting bounds.
-- **The docinfer goal** counts a job's outputs by part ID, owns `outdir`'s atomic write, and
-  gains the `join` package from docproc's `audio` and the one metadata-text function (SH-2,
-  SH-8); the
-  **architecture** task takes the architecture-page edits (the `tools/` module zip, a nested
-  command's layout, the rule for external repositories, CI's gate job).
+- **The docinfer goal** counts a job's outputs by part ID, owns `outdir`'s atomic write, gains
+  the `join` package from docproc's `audio` and the one metadata-text function, reads `dispatch`'s
+  Meta keys, and states that its "1" includes `dispatch`'s "1" (SH-1, SH-2, SH-8, SH-9).
+- **The architecture task** takes the architecture-page edits: the `tools/` module zip, a nested
+  command's layout, the rule for external repositories, and CI's gate job.
 
 ## docproc-ooxml
 
@@ -53,11 +52,10 @@ From spike-ai-pipeline-office v0.1.0. Probes ran on the spike's published binary
 
 - **OX-1 · A sheet's charts and pictures had no line for their Markdown.** Accepted → ooxml. The
   renderer writes a sheet's chart tables and picture links after its cell table, and a chart
-  sheet has only those, so no line held them. They ride on a closing `rows` line of that sheet
-  with `markdown` and no `rows`, bounded as any `rows` line is; a chart sheet is a `sheet` line
-  and that closing line. The lines' Markdown fragments concatenate with nothing between them,
-  each ending in its own newlines, since the renderer's separators differ by place (`layers.md`,
-  "docproc-ooxml"). Rejected: a new line kind for a sheet's drawing.
+  sheet has only those, so no line held them. They ride on a closing `rows` line of that sheet,
+  and the lines' Markdown concatenates with nothing between, since the renderer's separators
+  differ by place (`layers.md`, "docproc-ooxml"). Rejected: a new line kind for a sheet's
+  drawing.
 - **OX-2 · The tool held the whole workbook in memory.** Accepted → ooxml. One sheet of 500,000
   rows by 10 cells (17 MB on disk) took 25.5 s and 8,201 MiB peak; a killed tool exits 137, none
   of the contract's codes, and `rows` lines bound only the reader. Each worksheet part is read
@@ -107,17 +105,13 @@ From spike-ai-pipeline-office v0.1.0. Probes ran on the spike's published binary
   v0.1.0 tag stopped building when ILCompiler 10.0.13 got an advisory. NuGet's audit is off in
   the check's and the release's builds and runs in `currency`, never a gate.
 - **OX-10 · Nesting under `tools/ooxml`.** Accepted → ooxml, with library's part in
-  "docproc's packages [library]". `tools/ooxml/` holds `src/`, `test/`, `fixtures/`, its own
-  `mise.toml` (toolchain pins; `check`, `currency`, `fixtures`, `golden`), `CHANGELOG.md`,
-  `README.md`, and `.gitignore`; names `DocprocOoxml.slnx`, `src/Docproc.Ooxml`, namespace
-  `Docproc.Ooxml`, binary `docproc-ooxml`. docproc's root `mise run check` runs each tool's own
-  check: the root `mise.toml` pins the tools' toolchains and loops a `TOOLS` list beside
-  `GO_MODULES`. CI splits the same checks into a Go job and a tool-by-runner matrix on native
-  x64 and arm64 runners, since a NativeAOT publish can't cross-link. The ooxml task builds
-  docproc's CI and the one root workflow releasing `tools/*/v*` tags, deriving the directory,
-  changelog, and version (`${TAG##*/v}`) from the tag and writing
-  `docproc-ooxml-v<version>-<rid>.tar.gz` with `SHA256SUMS` and the repository's LICENSE; mail
-  and onenote add a matrix row each; library adds the Go job and the Go module releases.
+  "docproc's packages [library]". The tool nests at `tools/ooxml/` with its own `mise.toml`, and
+  docproc's root `mise run check` runs each tool's own check. CI splits the same checks into a Go
+  job and a tool-by-runner matrix on native x64 and arm64 runners, since a NativeAOT publish
+  can't cross-link. The ooxml task builds docproc's CI and the one root workflow releasing
+  `tools/*/v*` tags; mail and onenote add a matrix row each; library adds the Go job and the Go
+  module releases (`layers.md`, "docproc-ooxml [ooxml]", Layout, CI and release). Rejected: a
+  Go-only root check; library building the CI.
 - **OX-11 · Hyperlink targets unread; unread content left no trace.** Accepted → ooxml. External
   hyperlinks render as `[text](target)` in all three formats, an internal anchor staying text;
   4 of the 85 packages in ~/docs hold hyperlinks. Each unread kind a document holds (text boxes,
@@ -237,10 +231,9 @@ and an entry that binds docproc-onenote too names onenote.
   where onenote's exits 1, and mail created the media directory on every run where onenote
   creates it before its first file. mail also escaped a text body by running html5ever and htmd
   over built HTML and patching what htmd left. The untagged path crate under `tools/` holds the
-  whole Rust envelope: the fault type with its exit codes, the error and warning lines, the lines
-  writer, the record guard, the media store (name rule, write-once, one directory rule), the
-  literal-text escape, and the content rule; each tool keeps its flags, readers, and model, and
-  the three drifts settle to the envelope's wording.
+  whole Rust envelope, not the content rule alone (`layers.md`, "docproc-mail [mail]", Shared
+  crate); each tool keeps its flags, readers, and model, and the three drifts settle to the
+  envelope's wording.
 - **ML-10 · codepage-strings goes.** Accepted → mail. A 2021 wrapper over `codepage` and
   encoding_rs, both already direct dependencies, pinned exactly for a US-ASCII workaround, it
   alone brings 11 of the lock's 92 crates, and its BOM-sniffing decode reads a PT_STRING8 that
@@ -256,10 +249,10 @@ and an entry that binds docproc-onenote too names onenote.
   every other pull request. mail's part is its files under `tools/mail`, its own `mise.toml`
   tasks resolving paths from their own directory, the tool's name from `CARGO_PKG_NAME`, the
   asset `docproc-mail-v<version>-linux-<arch>.tar.gz` from the root workflow, and a matrix row.
-  Settled in this round: docproc's CI gains one always-running final `ci` job that a GitHub
-  ruleset on docproc requires, so a path-skipped job never blocks a merge, built by ooxml with
-  the CI ("docproc-ooxml [ooxml]"); rulesets for other repositories are out of scope. Rejected:
-  one release workflow per tool.
+  docproc's CI also gains one always-running final `ci` job that a GitHub ruleset on docproc
+  requires, so a path-skipped job never blocks a merge, built by ooxml with the CI
+  ("docproc-ooxml [ooxml]"); rulesets for other repositories are out of scope. Rejected: one
+  release workflow per tool.
 - **ML-12 · MimeKit 5.0.0 would sit under two packages built for 4.x.** Settled → mail. The
   generator's direct MimeKit reference lifts what MsgKit 3.0.6 (>= 4.18.1) and PstBuilder.Eml
   1.3.0 (>= 4.17.0) resolve to, past a Pkcs advisory; both were compiled against MimeKit 4, so a
@@ -350,12 +343,11 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   page came out twice under two parts. The header can't tell a section from a table of contents,
   so the route couldn't avoid the run, and a notebook directory isn't a file, so it never
   reaches docproc. By reading, a directory read also leaves out any `.one` its table of contents
-  doesn't list (`interop/SUT`'s `FileSyncWOPI_OneNoteWithODB.one`). docproc always passes a
-  file-only option, `--file-only`, under which a table of contents is refused, exit 3, with a
-  fixed reason, before any section is read; docproc's onenote stage records that refusal as the
-  part's outcome, not a failure. Notebook and directory reads stay for an operator; the notebook
-  read warns when it read no entry, and the README lists unlisted sections as a limit. Rejected:
-  the tool reading notebooks for docproc.
+  doesn't list (`interop/SUT`'s `FileSyncWOPI_OneNoteWithODB.one`). docproc always passes
+  `--file-only`, under which the tool refuses a table of contents before reading any section,
+  and docproc records that refusal as the part's outcome, not a failure: the outcome
+  `read elsewhere`, mapped in `internal/cli` (SH-5). Notebook and directory reads stay for an
+  operator (`layers.md`, "docproc-onenote"). Rejected: the tool reading notebooks for docproc.
 - **ON-3 · The expectations `layers.md` kept all pointed into the fields schema "2" cuts.**
   Accepted → onenote. Every pointer in `tests/fixtures/content.json` starts `/content`, `/ink`,
   or `/ink_text`; `sections.json` counts each page's containers by kind; `tests/content.rs`,
@@ -373,13 +365,14 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   only call it failed. [MS-ONESTORE] 2.5.19's encryption-key structure opens with the fixed bytes
   `0xFB6BA385DAD1A067` and closes with `0x2649294F8E198B3C`; `Encryption.one` holds each three
   times (first at offsets 5608 and 6687), and none of the other 22 committed OneStore files, nor
-  the 285 MB of large sections the spike measured, holds either. Only after a section's parse
-  fails does the tool scan for the two constants; found, it refuses with a reason beginning
-  `encrypted`, and a `skipped` line gains an optional `encrypted: true`, an addition under schema
-  "2". A false match relabels a read that already failed, never costing content. docproc maps
-  the reason to `ErrEncrypted`, as office's stage does. The scan is the tool's own tested code;
-  the OneDrive packaging format, with no encrypted fixture, stays unestablished, and decryption
-  keeps waiting on a specification. Rejected: leaving encrypted sections reported failed.
+  the 285 MB of large sections the spike measured, holds either. Only after a section's parse fails
+  does the tool scan for the two constants; found, it refuses with a reason beginning `encrypted`,
+  and a `skipped` line gains an optional `encrypted: true`, an addition under schema "2". A false
+  match relabels a read that already failed, never costing content. docproc maps the reason to
+  `ErrEncrypted` by the one prefix mapping SH-5 puts in `internal/cli`. The scan is the tool's own
+  tested code; the OneDrive packaging format, with no encrypted fixture, stays unestablished, and
+  decryption keeps waiting on a specification. Rejected: leaving encrypted sections reported
+  failed.
 - **ON-5 · The parser hid absent times and titles.** Accepted → onenote. By reading:
   `created_time()` is never absent, an unreadable FILETIME becoming `1970-01-01T00:00:00Z` with a
   parser warning; `updated_time()` returns the creation time when no modification time is
@@ -408,9 +401,8 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   htmd wraps one holding a space in `<…>`, so a link to `\\server\Team Notes\plan.docx` was text,
   not a link, and no URL reached the content rule; in a table cell, a code span and an
   equation's LaTeX left `|`, which GFM reads as a cell boundary even in a code span. One
-  destination writer, in the shared crate, writes a destination holding a space, a control
-  character, `<`, or `>` as `<…>` with `<` and `>` escaped, else bare with its parentheses
-  escaped; in a table cell `|` is written `\|` in code spans and LaTeX.
+  destination writer goes in the shared crate, and a table cell's code spans and LaTeX escape `|`
+  (`layers.md`, "docproc-onenote [onenote]", Destinations).
 - **ON-9 · Five workarounds stood on onenote_parser's behaviour, under a caret requirement.**
   Accepted → onenote. The parser is current and maintained, by one person; the tool works around
   (a) its private error kind, told by message prefix, (b) a `println!` that costs `libc`, an
@@ -450,7 +442,7 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   keeps the subtree out of the library's zip, both landed by ooxml; the tool's currency reports
   its crates and mise tools only, action pins being the root's; the nested `.gitattributes` keeps
   its fixture rules. The module-zip exception on the architecture page is a pending edit for the
-  `architecture` task, which the session records.
+  `architecture` task.
 - **ON-13 · The findings harness is spike evidence.** Accepted → onenote. `bench/findings.rs`
   (976 lines), `bench/rusage.c`, and `scripts/findings.sh` score the binary over the fields schema
   "2" cuts, and the check compiled the scorer on every run and never ran it. They stay in the
@@ -491,9 +483,8 @@ PI; tool runners and readers, PT; stages and media, PS; dispatch, content, and i
 synthesised into sixteen cross-package findings (PX) and twenty decisions; the groups ran their
 probes on scratch copies and an entry says where a finding was run, the rest found by reading.
 Round 4 accepted every finding as proposed, merged and with conflicts resolved as the synthesis
-set out, and every decision as recommended; Q1 settled the findings, Q2 to Q16 decisions 1 to
-15, Q17 decision 19, Q18 decision 17, Q19 decision 18, Q20 decision 20, and Q1 took decision 16
-with PX-5. The changes are in `layers.md`, "docproc's packages [library]", unless an entry names
+set out, and every decision as recommended; each decision names the round's question that
+settled it. The changes are in `layers.md`, "docproc's packages [library]", unless an entry names
 another task; the signatures and sentences the decisions changed are in `layers.md`'s "docproc's
 API" sections. An entry merged into a PX finding is settled there and only points to it.
 
@@ -769,7 +760,7 @@ API" sections. An entry merged into a PX finding is settled there and only point
   18.
 - **PX-10 · Format packages worked out again what the part carries.** Accepted → library.
 - **PX-11 · `Output.Meta` was an undeclared wire vocabulary.** Accepted → library; the docinfer
-  goal reads the constants.
+  goal reads the constants. SH-1 moves them from each writing package into `dispatch`.
 - **PX-12 · Every adapter supported tool sets no wiring builds.** Accepted → library.
 - **PX-13 · The LibreOffice runner was written twice.** Accepted → library.
 - **PX-14 · Three readers turned media into parts by three rules.** Accepted → library.
@@ -782,10 +773,10 @@ API" sections. An entry merged into a PX finding is settled there and only point
 From spike-ai-pipeline's docproc command at `6a631f1`, over its library,
 spike-ai-pipeline-processing v0.9.0, with the spike's docinfer read for its use of `rundir`. Every
 finding was found by reading; `go vet` passed over the command, and nothing else ran. Round 5
-accepted every finding, DP-3 and DP-10 in the form it settled. An entry is carried by docproc
-unless it names another task; the command's changes are in `layers.md`, "The nested modules",
-and `rundir`'s in the `rundir` row of "docproc's packages [library]", with its API under "The
-nested modules".
+accepted every finding, DP-3 and DP-10 in the form it settled, and a follow-up settled DP-16's
+form. An entry is carried by docproc unless it names another task; the command's changes are in
+`layers.md`, "The nested modules", and `rundir`'s in the `rundir` row of "docproc's packages
+[library]", with its API under "The nested modules".
 
 - **DP-1 · The schema "2" event line couldn't be the embed `layers.md` listed.** Accepted →
   docproc, and library for `Part`'s `omitzero`. Five things didn't fit. An input's error line
@@ -816,7 +807,7 @@ nested modules".
   and reports. `rundir` and `rundir/schema` are base-module packages the `docproc` task builds,
   after `library` tags the base module v0.1.0, and `cmd/docproc`'s module requires the base
   module by version, so `cmd/docproc/v0.1.0` had no tagged library holding `rundir` to require,
-  nor had `cmd/docinfer`, under round 1's "`docproc` releases nothing". The `docproc` task tags
+  nor had `cmd/docinfer`, under the plan's "`docproc` releases nothing". The `docproc` task tags
   the base module's next minor, v0.2.0, when `rundir` lands; `reports` tags it again only if it
   changes `rundir`, before it tags `cmd/docproc/v0.1.0`; a committed `go.work` over the base
   module and `cmd/docproc` carries changes between tags. Reverses "`docproc` releases
@@ -843,11 +834,11 @@ nested modules".
   `dispatch.Version` "1", a break there a break here.
 - **DP-7 · The content store's layout joins the contract.** Accepted → docproc (the layout and its
   path), and reports (the pages). The "1" report linked each output under `outputs/` by an
-  extension a browser opens; a content named by its SHA-256 has none, so a linked text
-  downloads, and a page that names a content's file fixes `FileContent`'s layout for every reader
-  that isn't Go. The layout is part of schema "2" and `rundir` exports a content's path; the
-  report inlines text, Markdown, and records from the content store, points `<img>` and
-  `<audio>` at the file, and renders over the reader's handle.
+  extension a browser opens; a content named by its SHA-256 has none, so a linked text downloads,
+  and a page that names a content's file fixes `FileContent`'s layout for every reader that isn't
+  Go. The layout is part of schema "2" and `rundir` exports a content's path, joined to the layout
+  `dispatch` exports (SH-6); the report inlines text, Markdown, and records from the content store,
+  points `<img>` and `<audio>` at the file, and renders over the reader's handle.
 - **DP-8 · A page per input SHA-256 collided, and some inputs have none.** Accepted → reports. 17
   of ~/docs's 592 inputs share their content with another, and an input stopped before its own
   event has no SHA-256. A page per distinct input content lists every input path holding it with
@@ -880,15 +871,13 @@ nested modules".
   docproc. `record` and `Run.Record` go; `run` stays.
 - **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
   library (the shapes) and docproc (the manifest), in the form the follow-up settled, which
-  supersedes round 5's: the stage table's shapes are declared once in `dispatch`, `Tool` with an
-  `error` string beside an untagged `Err`, `Row`, and `State` (wired, missing, excluded), with
-  JSON names and versioned by `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s
-  manifest uses them, filled by `run` from `stages.Set`, so `schema` imports no docproc package
-  but `dispatch` and `inspect` (`layers.md`, "Dispatch", "The nested modules"). Rejected:
-  `schema` aliasing `stages`' shapes, which ties schema "2" to an unversioned package and has
-  `schema`, and so `cmd/docinfer`, compile `stages` and every format package beneath it; `schema`
-  keeping its own copies, the standards review's interim form, which leaves two definitions of
-  one shape to drift.
+  supersedes round 5's: the stage table's shapes are declared once in `dispatch`, versioned by
+  `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so
+  `schema` imports no docproc package but `dispatch` and `inspect` (`layers.md`, "Dispatch", "The
+  nested modules"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
+  unversioned package and has `schema`, and so `cmd/docinfer`, compile `stages` and every format
+  package beneath it; `schema` keeping its own copies, the standards review's interim form, which
+  leaves two definitions of one shape to drift.
 - **DP-17 · Every tool was probed before the inputs were checked.** Accepted → docproc.
 - **DP-18 · `flags.json` repeated the record.** Accepted → docproc. The kept file is
   `quarantine/<sha256>`, named on the line whenever it exists.
