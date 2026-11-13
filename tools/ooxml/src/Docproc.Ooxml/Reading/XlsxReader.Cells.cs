@@ -66,18 +66,16 @@ internal static partial class XlsxReader
     /// reading has them.</summary>
     internal sealed record SheetCells(WorksheetPart Part, IReadOnlyList<string> Columns, IReadOnlyList<Merge> Merges, IReadOnlyDictionary<uint, string> Anchors, IReadOnlyList<(Merge Range, string Target)> Links);
 
-    // A failure found in a sheet's cells, kept until the sheet's merges are known: one at a cell
-    // (Row and Column from 1) counts only when no merge covers the cell, as a covered cell is
-    // never read; one at row 0 counts always.
-    private sealed record CellError(int Row, int Column, ExceptionDispatchInfo Error);
-
     // The validate pass of a worksheet: one forward reading of its part, holding one row at a
     // time, that finds what would refuse it and collects its merges, its shared-formula anchors,
     // its external hyperlinks, the columns its kept cells use, and its OLE objects, as elements
     // (each an oleObject or the alternate content holding one). It refuses with the failure a
     // reading of the whole part would have met first: the part's XML, wherever it fails, then a
     // shared formula's attributes, then the first failure among the cells in order, a covered
-    // cell's left out.
+    // cell's left out. A cell's failure counts only when no merge covers it, and the merges come
+    // after the cells, so the failing cells are kept until then as the columns' cells are, by
+    // column as runs of row numbers, never one by one; a sheet with one that counts is read again
+    // to find the first (FirstKeptFailure).
     private static (SheetCells Cells, List<OpenXmlElement> Objects) ValidateCells(XlsxContext context, WorksheetPart part)
     {
         var merges = new List<Merge>();
@@ -86,8 +84,10 @@ internal static partial class XlsxReader
         var anchors = new Dictionary<uint, string>();
         var candidates = new ColumnCandidates();
         ExceptionDispatchInfo? anchorError = null;
-        var errors = new List<CellError>();
-        var stopped = false;
+        var failing = new Dictionary<int, List<RowRun>>();
+        // A row's number or a cell's reference that fails: no later failure can come first, so
+        // the cells after it are not read.
+        ExceptionDispatchInfo? stopped = null;
         var rowNumber = 0;
         foreach (var element in Elements(part, rowsOnly: false))
         {
@@ -129,7 +129,7 @@ internal static partial class XlsxReader
                     anchorError = ExceptionDispatchInfo.Capture(e);
                 }
             }
-            if (stopped)
+            if (stopped is not null)
             {
                 continue;
             }
@@ -143,10 +143,8 @@ internal static partial class XlsxReader
                     column = cellColumn;
                     try
                     {
-                        var formula = cell.CellFormula;
-                        var text = OwnFormula(formula);
-                        uint? shared = text is null && formula?.FormulaType?.Value == S.CellFormulaValues.Shared ? formula.SharedIndex?.Value : null;
-                        if (Value(context, cell) is not null || text is not null)
+                        var (held, shared) = ReadCell(context, cell);
+                        if (held)
                         {
                             candidates.Add(cellColumn, cellRow);
                         }
@@ -155,30 +153,70 @@ internal static partial class XlsxReader
                             candidates.AddShared(cellColumn, si, cellRow);
                         }
                     }
-                    catch (Exception e)
+                    catch (Exception)
                     {
-                        errors.Add(new CellError(cellRow, cellColumn, ExceptionDispatchInfo.Capture(e)));
+                        AddRun(failing, cellColumn, cellRow);
                     }
                 }
             }
             catch (Exception e)
             {
-                // A row's number or a cell's reference fails wherever the merges are: no later
-                // failure can come first.
-                errors.Add(new CellError(0, 0, ExceptionDispatchInfo.Capture(e)));
-                stopped = true;
+                stopped = ExceptionDispatchInfo.Capture(e);
             }
         }
         anchorError?.Throw();
         var index = new MergeIndex(merges);
-        foreach (var error in errors)
+        if (failing.Any(entry => entry.Value.Any(run => AnyKept(index, entry.Key, run))))
         {
-            if (error.Row == 0 || Kept(index, error.Row, error.Column))
+            FirstKeptFailure(context, part, index).Throw();
+        }
+        stopped?.Throw();
+        return (new SheetCells(part, candidates.Columns(index, anchors), merges, anchors, links), objects);
+    }
+
+    // What the validate pass reads of a cell, as the write pass reads it: whether it holds a value
+    // or its own formula, and when it holds neither, the index of the shared formula it names, if
+    // any. A cell that can't be read throws.
+    private static (bool Held, uint? Shared) ReadCell(XlsxContext context, S.Cell cell)
+    {
+        var formula = cell.CellFormula;
+        var text = OwnFormula(formula);
+        uint? shared = text is null && formula?.FormulaType?.Value == S.CellFormulaValues.Shared ? formula.SharedIndex?.Value : null;
+        return (Value(context, cell) is not null || text is not null, shared);
+    }
+
+    // The failure of the first cell in document order that fails and that no merge covers, in a
+    // sheet whose validate pass found one: a second reading of its rows, the merges now known,
+    // that stops at that cell. The validate pass read the part whole without a fault in its XML
+    // and stopped no earlier than that cell, so the reading meets it before any other failure.
+    // Only a refused sheet is read so, before anything is written.
+    private static ExceptionDispatchInfo FirstKeptFailure(XlsxContext context, WorksheetPart part, MergeIndex merges)
+    {
+        var rowNumber = 0;
+        foreach (var element in Elements(part, rowsOnly: true))
+        {
+            var row = (S.Row)element;
+            rowNumber = RowNumber(row, rowNumber);
+            var column = 0;
+            foreach (var cell in row.Elements<S.Cell>())
             {
-                error.Error.Throw();
+                var (cellRow, cellColumn) = CellPosition(cell, rowNumber, column);
+                column = cellColumn;
+                if (!Kept(merges, cellRow, cellColumn))
+                {
+                    continue;
+                }
+                try
+                {
+                    ReadCell(context, cell);
+                }
+                catch (Exception e)
+                {
+                    return ExceptionDispatchInfo.Capture(e);
+                }
             }
         }
-        return (new SheetCells(part, candidates.Columns(index, anchors), merges, anchors, links), objects);
+        throw new InvalidOperationException("the validate pass found a failing cell no merge covers that a second reading did not");
     }
 
     // The write pass of a worksheet: its rows, read forward one at a time, each holding the cells
@@ -365,24 +403,9 @@ internal static partial class XlsxReader
         private readonly Dictionary<int, List<RowRun>> cells = [];
         private readonly Dictionary<(int Column, uint Index), List<RowRun>> shared = [];
 
-        public void Add(int column, int row) => Add(cells, column, row);
+        public void Add(int column, int row) => AddRun(cells, column, row);
 
-        public void AddShared(int column, uint index, int row) => Add(shared, (column, index), row);
-
-        private static void Add<TKey>(Dictionary<TKey, List<RowRun>> runs, TKey key, int row)
-            where TKey : notnull
-        {
-            ref var list = ref CollectionsMarshal.GetValueRefOrAddDefault(runs, key, out _);
-            list ??= [];
-            if (list.Count > 0 && list[^1] is var last && row >= last.First && row <= last.Last + 1)
-            {
-                list[^1] = last with { Last = Math.Max(last.Last, row) };
-            }
-            else
-            {
-                list.Add(new RowRun(row, row));
-            }
-        }
+        public void AddShared(int column, uint index, int row) => AddRun(shared, (column, index), row);
 
         // The used columns' letters, in the sheet's order.
         public List<string> Columns(MergeIndex merges, Dictionary<uint, string> anchors)
@@ -395,20 +418,38 @@ internal static partial class XlsxReader
                     byColumn[column] = byColumn.TryGetValue(column, out var other) ? other.Concat(runs) : runs;
                 }
             }
-            return [.. byColumn.Where(entry => entry.Value.Any(run => Used(merges, entry.Key, run))).Select(entry => entry.Key).Order().Select(ColumnName)];
+            return [.. byColumn.Where(entry => entry.Value.Any(run => AnyKept(merges, entry.Key, run))).Select(entry => entry.Key).Order().Select(ColumnName)];
         }
+    }
 
-        private static bool Used(MergeIndex merges, int column, RowRun run)
+    // Adds a row to a key's runs: to its last run when the row extends it, else as a run of its
+    // own, so cells down a column in order keep to one run.
+    private static void AddRun<TKey>(Dictionary<TKey, List<RowRun>> runs, TKey key, int row)
+        where TKey : notnull
+    {
+        ref var list = ref CollectionsMarshal.GetValueRefOrAddDefault(runs, key, out _);
+        list ??= [];
+        if (list.Count > 0 && list[^1] is var last && row >= last.First && row <= last.Last + 1)
         {
-            for (var row = run.First; row <= run.Last; row++)
-            {
-                if (Kept(merges, row, column))
-                {
-                    return true;
-                }
-            }
-            return false;
+            list[^1] = last with { Last = Math.Max(last.Last, row) };
         }
+        else
+        {
+            list.Add(new RowRun(row, row));
+        }
+    }
+
+    // Whether any of a run's cells in a column is read, no merge covering it.
+    private static bool AnyKept(MergeIndex merges, int column, RowRun run)
+    {
+        for (var row = run.First; row <= run.Last; row++)
+        {
+            if (Kept(merges, row, column))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private readonly record struct RowRun(int First, int Last);

@@ -808,6 +808,68 @@ public sealed class CliTests : IDisposable
             "a malformed package: cell A5001's boolean 2 is not 0 or 1",
             AssertRefused(LargeSheet("late.xlsx", 5000, "<row r=\"5001\"><c r=\"A5001\" t=\"b\"><v>2</v></c></row>")));
 
+    // The validate pass meets a sheet's merges after its cells, so it keeps the failing cells
+    // until it knows which a merge covers, as runs of positions, never one by one (context/design.md,
+    // OX-2). 199,999 cells that fail, each covered by A1:J20000, whose anchor A1 holds a number,
+    // are passed over with the managed heap capped at 16 MiB, and the sheet is refused, before any
+    // output, with the failure of A20001, the one failing cell no merge covers, after them all.
+    // Kept one by one with their failures, as they were, the cells exhausted the heap.
+    [Fact]
+    public void ManyCoveredFailingCellsAreKeptInBoundedMemory()
+    {
+        const int rows = 20_000;
+        var sheet = new StringBuilder("<sheetData>");
+        for (var r = 1; r <= rows; r++)
+        {
+            sheet.Append(CultureInfo.InvariantCulture, $"<row r=\"{r}\">");
+            for (var c = 0; c < 10; c++)
+            {
+                if (r == 1 && c == 0)
+                {
+                    sheet.Append("<c r=\"A1\"><v>1</v></c>");
+                    continue;
+                }
+                sheet.Append(CultureInfo.InvariantCulture, $"<c r=\"{(char)('A' + c)}{r}\" t=\"b\"><v>2</v></c>");
+            }
+            sheet.Append("</row>");
+        }
+        sheet.Append(CultureInfo.InvariantCulture, $"<row r=\"{rows + 1}\"><c r=\"A{rows + 1}\" t=\"b\"><v>3</v></c></row>");
+        sheet.Append(CultureInfo.InvariantCulture, $"</sheetData><mergeCells count=\"1\"><mergeCell ref=\"A1:J{rows}\"/></mergeCells>");
+        var path = OneSheet("covered.xlsx", sheet.ToString());
+
+        var result = RunBytesIn(Environment.CurrentDirectory, new() { ["DOTNET_GCHeapHardLimit"] = $"0x{16 * 1024 * 1024:x}" }, path);
+
+        Assert.Equal(
+            $"docproc-ooxml: error: a malformed package: cell A{rows + 1}'s boolean 3 is not 0 or 1\n",
+            Encoding.UTF8.GetString(result.Stderr));
+        Assert.Equal(Cli.Refused, result.ExitCode);
+        Assert.Empty(result.Stdout);
+    }
+
+    // A sheet is refused with the failure a reading of the whole part meets first: a shared
+    // formula's attributes before any cell's failure, then the cells' failures and a row's
+    // number in document order, a cell a merge covers passed over. D1:D3 covers D2 and D3.
+    [Theory]
+    [InlineData(
+        "<row r=\"1\"><c r=\"A1\" t=\"b\"><v>2</v></c></row><row r=\"2\"><c r=\"A2\"><f t=\"nonsense\">B1</f></c></row>",
+        "a malformed package: The text value is not a valid enumeration value.")]
+    [InlineData(
+        "<row r=\"5\"><c r=\"A5\" t=\"b\"><v>5</v></c></row><row r=\"2\"><c r=\"A2\" t=\"b\"><v>2</v></c></row>",
+        "a malformed package: cell A5's boolean 5 is not 0 or 1")]
+    [InlineData(
+        "<row r=\"2\"><c r=\"D2\" t=\"b\"><v>2</v></c><c r=\"E2\" t=\"b\"><v>7</v></c></row><row r=\"0\"/>",
+        "a malformed package: cell E2's boolean 7 is not 0 or 1")]
+    [InlineData(
+        "<row r=\"2\"><c r=\"D2\" t=\"b\"><v>2</v></c></row><row r=\"0\"/><row r=\"3\"><c r=\"E3\" t=\"b\"><v>3</v></c></row>",
+        "a malformed package: a row's number 0 is out of range")]
+    [InlineData(
+        "<row r=\"2\"><c r=\"D2\" t=\"b\"><v>2</v></c><c r=\"D3\" t=\"b\"><v>3</v></c><c r=\"A1\" t=\"b\"><v>4</v></c></row>",
+        "a malformed package: cell A1's boolean 4 is not 0 or 1")]
+    public void ASheetIsRefusedWithTheFirstFailureNoMergeCovers(string rows, string reason) =>
+        Assert.Equal(
+            reason,
+            AssertRefused(OneSheet("first.xlsx", $"<sheetData>{rows}</sheetData><mergeCells count=\"1\"><mergeCell ref=\"D1:D3\"/></mergeCells>")));
+
     // A forward reading meets a sheet's merges after its cells, and can meet a shared formula's
     // anchor after a cell that names it; the columns, on the sheet line before the rows, are still
     // those of the kept cells. B1 is covered by A1:B1, so its value is left out and its column
