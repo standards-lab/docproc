@@ -1,0 +1,33 @@
+{
+  "fixture": "comments-plain",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "Before the anchor and after.",
+      "marks": [
+        {
+          "at": 17,
+          "kind": "comment",
+          "n": 1
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "comments": [
+    {
+      "author": "Dee Writer",
+      "anchor": "the anchor",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "A comment without commentsExtended."
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

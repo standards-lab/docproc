@@ -1,0 +1,211 @@
+{
+  "schema": "1",
+  "format": "pptx",
+  "blocks": [
+    {
+      "type": "slide",
+      "number": 1,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Quarterly Review"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Operations, third quarter"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Prepared for the board"
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Welcome everyone."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Introduce the agenda."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 2,
+      "hidden": true,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Internal figures"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Not for the board"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Skip this slide when presenting."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 3,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Agenda"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Results"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Outlook"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 4,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Thank you"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Contact the operations team."
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Close on time."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 5,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Questions"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

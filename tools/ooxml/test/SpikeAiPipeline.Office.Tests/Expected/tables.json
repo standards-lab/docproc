@@ -1,0 +1,187 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Tables"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "rows": [
+        {
+          "cells": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Region"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Q3"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Q4"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cells": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "North"
+                    }
+                  ]
+                },
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "(provisional)"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Pending audit"
+                    }
+                  ]
+                }
+              ],
+              "colSpan": 2
+            }
+          ]
+        },
+        {
+          "cells": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "West"
+                    }
+                  ]
+                }
+              ],
+              "rowSpan": 2
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "12"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "14"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "cells": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "9"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "11 | revised"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Text after the table."
+        }
+      ]
+    }
+  ]
+}

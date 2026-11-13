@@ -1,0 +1,36 @@
+{
+  "fixture": "chartex-funnel-word",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "before 前文"
+    },
+    {
+      "kind": "chart",
+      "chartType": "funnel",
+      "title": "销售统计",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3"
+          ],
+          "values": [
+            10,
+            20,
+            30
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "after 后文"
+    }
+  ],
+  "absent": [],
+  "once": []
+}

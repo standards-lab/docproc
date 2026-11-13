@@ -1,0 +1,353 @@
+{
+  "schema": "1",
+  "format": "xlsx",
+  "blocks": [
+    {
+      "type": "sheet",
+      "name": "Cells",
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "Text"
+                },
+                {
+                  "ref": "B1",
+                  "valueType": "text",
+                  "value": "plain text"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "valueType": "text",
+                  "value": "Rich text"
+                },
+                {
+                  "ref": "B2",
+                  "valueType": "text",
+                  "value": "plain bold"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "valueType": "text",
+                  "value": "Numbers"
+                },
+                {
+                  "ref": "B3",
+                  "valueType": "number",
+                  "value": 12.5
+                },
+                {
+                  "ref": "C3",
+                  "valueType": "number",
+                  "value": -3
+                },
+                {
+                  "ref": "D3",
+                  "valueType": "number",
+                  "value": 1234.5678
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "A4",
+                  "valueType": "text",
+                  "value": "Booleans"
+                },
+                {
+                  "ref": "B4",
+                  "valueType": "boolean",
+                  "value": true
+                },
+                {
+                  "ref": "C4",
+                  "valueType": "boolean",
+                  "value": false
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "A5",
+                  "valueType": "text",
+                  "value": "Errors"
+                },
+                {
+                  "ref": "B5",
+                  "valueType": "error",
+                  "value": "#N/A"
+                },
+                {
+                  "ref": "C5",
+                  "valueType": "error",
+                  "value": "#DIV/0!"
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "A6",
+                  "valueType": "text",
+                  "value": "Percent"
+                },
+                {
+                  "ref": "B6",
+                  "valueType": "number",
+                  "value": 0.125
+                }
+              ]
+            },
+            {
+              "row": 7,
+              "cells": [
+                {
+                  "ref": "A7",
+                  "valueType": "text",
+                  "value": "Thousands"
+                },
+                {
+                  "ref": "B7",
+                  "valueType": "number",
+                  "value": 1234567
+                }
+              ]
+            },
+            {
+              "row": 8,
+              "cells": [
+                {
+                  "ref": "A8",
+                  "valueType": "text",
+                  "value": "Date"
+                },
+                {
+                  "ref": "B8",
+                  "valueType": "date",
+                  "value": "2026-01-15"
+                }
+              ]
+            },
+            {
+              "row": 9,
+              "cells": [
+                {
+                  "ref": "A9",
+                  "valueType": "text",
+                  "value": "Datetime"
+                },
+                {
+                  "ref": "B9",
+                  "valueType": "date",
+                  "value": "2026-01-15T10:30:00"
+                }
+              ]
+            },
+            {
+              "row": 10,
+              "cells": [
+                {
+                  "ref": "A10",
+                  "valueType": "text",
+                  "value": "Time"
+                },
+                {
+                  "ref": "B10",
+                  "valueType": "date",
+                  "value": "14:15:30"
+                }
+              ]
+            },
+            {
+              "row": 11,
+              "cells": [
+                {
+                  "ref": "A11",
+                  "valueType": "text",
+                  "value": "Built-in date"
+                },
+                {
+                  "ref": "B11",
+                  "valueType": "date",
+                  "value": "2025-12-31"
+                }
+              ]
+            },
+            {
+              "row": 12,
+              "cells": [
+                {
+                  "ref": "A12",
+                  "valueType": "text",
+                  "value": "Built-in datetime"
+                },
+                {
+                  "ref": "B12",
+                  "valueType": "date",
+                  "value": "2025-06-01T08:05:00"
+                }
+              ]
+            },
+            {
+              "row": 13,
+              "cells": [
+                {
+                  "ref": "A13",
+                  "valueType": "text",
+                  "value": "Built-in time"
+                },
+                {
+                  "ref": "B13",
+                  "valueType": "date",
+                  "value": "09:45:00"
+                }
+              ]
+            },
+            {
+              "row": 14,
+              "cells": [
+                {
+                  "ref": "A14",
+                  "valueType": "text",
+                  "value": "Custom date"
+                },
+                {
+                  "ref": "B14",
+                  "valueType": "date",
+                  "value": "2026-03-01"
+                }
+              ]
+            },
+            {
+              "row": 15,
+              "cells": [
+                {
+                  "ref": "A15",
+                  "valueType": "text",
+                  "value": "Custom time"
+                },
+                {
+                  "ref": "B15",
+                  "valueType": "date",
+                  "value": "18:00:00"
+                }
+              ]
+            },
+            {
+              "row": 16,
+              "cells": [
+                {
+                  "ref": "A16",
+                  "valueType": "text",
+                  "value": "Quoted letters"
+                },
+                {
+                  "ref": "B16",
+                  "valueType": "number",
+                  "value": 42
+                }
+              ]
+            },
+            {
+              "row": 17,
+              "cells": [
+                {
+                  "ref": "A17",
+                  "valueType": "text",
+                  "value": "Bracketed letters"
+                },
+                {
+                  "ref": "B17",
+                  "valueType": "number",
+                  "value": 7
+                }
+              ]
+            },
+            {
+              "row": 18,
+              "cells": [
+                {
+                  "ref": "A18",
+                  "valueType": "text",
+                  "value": "Escaped letters"
+                },
+                {
+                  "ref": "B18",
+                  "valueType": "number",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "row": 19,
+              "cells": [
+                {
+                  "ref": "A19",
+                  "valueType": "text",
+                  "value": "Early dates"
+                },
+                {
+                  "ref": "B19",
+                  "valueType": "date",
+                  "value": "1900-02-28"
+                },
+                {
+                  "ref": "C19",
+                  "valueType": "date",
+                  "value": "1900-03-01"
+                }
+              ]
+            },
+            {
+              "row": 20,
+              "cells": [
+                {
+                  "ref": "A20",
+                  "valueType": "text",
+                  "value": "ISO date"
+                },
+                {
+                  "ref": "B20",
+                  "valueType": "date",
+                  "value": "2026-01-15T10:30:00"
+                }
+              ]
+            },
+            {
+              "row": 23,
+              "cells": [
+                {
+                  "ref": "E23",
+                  "valueType": "text",
+                  "value": "far corner"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

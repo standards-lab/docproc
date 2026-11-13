@@ -1,0 +1,161 @@
+{
+  "fixture": "strict-column-charts",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "chart",
+      "chartType": "bar",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            4.3,
+            2.5,
+            3.5,
+            4.5
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2.4,
+            4.4,
+            1.8,
+            2.8
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2,
+            2,
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "bar",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            4.3,
+            2.5,
+            3.5,
+            4.5
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2.4,
+            4.4,
+            1.8,
+            2.8
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2,
+            2,
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "bar",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            4.3,
+            2.5,
+            3.5,
+            4.5
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2.4,
+            4.4,
+            1.8,
+            2.8
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2,
+            2,
+            3,
+            5
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

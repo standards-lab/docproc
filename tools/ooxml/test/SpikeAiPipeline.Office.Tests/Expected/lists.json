@@ -1,0 +1,364 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Bulleted, nested three deep:"
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": false,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Fruit"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Apples"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "ordered": false,
+                      "items": [
+                        {
+                          "blocks": [
+                            {
+                              "type": "paragraph",
+                              "inlines": [
+                                {
+                                  "type": "text",
+                                  "text": "Granny Smith"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Pears"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Vegetables"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Ordered, with a nested bullet list:"
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": true,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Prepare the site"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Clear debris"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Mark boundaries"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Pour the foundation"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Cure for seven days"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "A second ordered list restarts its numbering:"
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": true,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Restart one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Restart two"
+                }
+              ]
+            },
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Bullet under restart"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "list",
+                      "ordered": true,
+                      "items": [
+                        {
+                          "blocks": [
+                            {
+                              "type": "paragraph",
+                              "inlines": [
+                                {
+                                  "type": "text",
+                                  "text": "Lettered detail"
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Two ordered lists back to back, the second restarting, then a bullet list:"
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": true,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Back one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Back two"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": true,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Again one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Again two"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": false,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Bullet right after"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "End of lists."
+        }
+      ]
+    }
+  ]
+}

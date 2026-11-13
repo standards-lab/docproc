@@ -1,0 +1,125 @@
+{
+  "fixture": "chart-sheet",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Sheet1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "soap"
+                },
+                {
+                  "ref": "B1",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "C1",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "D1",
+                  "type": "number",
+                  "value": 3
+                },
+                {
+                  "ref": "E1",
+                  "type": "number",
+                  "value": 4
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "shampoo"
+                },
+                {
+                  "ref": "B2",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "C2",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "D2",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "E2",
+                  "type": "number",
+                  "value": 6
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet2",
+      "hidden": false,
+      "elements": []
+    },
+    {
+      "kind": "sheet",
+      "name": "Chart1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "series": [
+            {
+              "name": "soap",
+              "categories": [],
+              "values": [
+                1,
+                2,
+                3,
+                4
+              ]
+            },
+            {
+              "name": "shampoo",
+              "categories": [],
+              "values": [
+                1,
+                2,
+                2,
+                6
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet3",
+      "hidden": false,
+      "elements": []
+    }
+  ],
+  "absent": [],
+  "once": []
+}

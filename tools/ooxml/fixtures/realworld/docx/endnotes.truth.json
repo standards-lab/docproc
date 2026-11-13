@@ -1,0 +1,65 @@
+{
+  "fixture": "endnotes",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "    * A Nepalese name for Tilaka"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A nickname for Petrika the Albanian variation of Peter"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A title in certain Indian monarchies for a Crown Prince"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A place in Abkhazia"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A place on Saturn's satellite Rhea, named after the last place"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A name in various Indian languages (ṭīkā) for certain commentaries such as:"
+    },
+    {
+      "kind": "paragraph",
+      "text": "        * the subcommentaries of the Theravada tradition."
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A pendant worn in place of the red spot (tilaka or 'tika') on the foreheads of Hindu women. Originally, the red spot was a sign which a priest would paint on the brow of a visitor to the temple. Later the tika became a standard part of the costume of a Hindu woman. The tika can be stuck on or drawn, or, in the form of a pendant, suspended between the eyes. Also known as Maang Tika.",
+      "marks": [
+        {
+          "at": 54,
+          "kind": "endnote",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * Tika Waylan, a major character in the DragonLance series of fantasy novels"
+    },
+    {
+      "kind": "paragraph",
+      "text": "    * A software module for extracting text from binary files. Apache Tika is a subproject of the Lucene"
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "endnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " XXX"
+        }
+      ]
+    }
+  ]
+}

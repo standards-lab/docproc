@@ -1,0 +1,51 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Body text without even-page or first-page variants."
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Plain header"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Plain footer"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

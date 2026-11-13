@@ -1,0 +1,110 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Quarterly Operations Report"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "This report summarizes operations for the third quarter."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Scope"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "The scope covers three regional offices."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 3,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Regional detail"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "North office: stable.\nSouth office: expanding."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 4,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Notes on method"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Figures marked * are estimates; see [appendix] for the _raw_ data | 2024 & later."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 2,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Outline-level heading"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "1. This paragraph starts like a numbered item but is plain text."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "# Not a heading either."
+        }
+      ]
+    }
+  ]
+}

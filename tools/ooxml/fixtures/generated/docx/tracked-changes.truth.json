@@ -1,0 +1,88 @@
+{
+  "fixture": "tracked-changes",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Tracked changes"
+    },
+    {
+      "kind": "paragraph",
+      "text": "The committee carefully reviewed the proposal."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Budget figures follow. Staffing is unchanged."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Closing remarks. This sentence moves down."
+    },
+    {
+      "kind": "paragraph",
+      "text": "This sentence was split across two paragraphs."
+    },
+    {
+      "kind": "paragraph",
+      "text": "The paragraph after the removed one."
+    },
+    {
+      "kind": "paragraph",
+      "text": "A newly inserted paragraph."
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "Kept item"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Inserted item"
+    },
+    {
+      "kind": "paragraph",
+      "text": "A paragraph whose mark was deleted, right before a table."
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell fresh value"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Plain cell"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "absent": [
+    "obsolete appendix",
+    "withdrawn",
+    "stale"
+  ],
+  "once": [
+    "This sentence moves down"
+  ]
+}

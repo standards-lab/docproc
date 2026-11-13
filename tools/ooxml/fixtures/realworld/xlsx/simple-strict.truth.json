@@ -1,0 +1,184 @@
+{
+  "fixture": "simple-strict",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Sheet1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "test"
+                },
+                {
+                  "ref": "C1",
+                  "type": "number",
+                  "value": 1
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "test 2"
+                },
+                {
+                  "ref": "C2",
+                  "type": "number",
+                  "value": 2
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "C3",
+                  "type": "number",
+                  "value": 3
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "C4",
+                  "type": "number",
+                  "value": 4
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "C5",
+                  "type": "number",
+                  "value": 5
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "C6",
+                  "type": "number",
+                  "value": 6
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet Number 2",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "This is sheet 2"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "Stuff"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "B3",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "C3",
+                  "type": "number",
+                  "value": 3
+                },
+                {
+                  "ref": "D3",
+                  "type": "number",
+                  "value": 4
+                },
+                {
+                  "ref": "E3",
+                  "type": "number",
+                  "value": 5
+                },
+                {
+                  "ref": "F3",
+                  "type": "number",
+                  "value": 6
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "A4",
+                  "type": "date",
+                  "value": "1990-01-01"
+                }
+              ]
+            },
+            {
+              "row": 7,
+              "cells": [
+                {
+                  "ref": "A7",
+                  "type": "number",
+                  "value": 10,
+                  "formula": "SUM(A3:D3)"
+                },
+                {
+                  "ref": "C7",
+                  "type": "number",
+                  "value": 3,
+                  "formula": "C3"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

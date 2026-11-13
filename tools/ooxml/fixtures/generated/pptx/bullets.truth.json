@@ -1,0 +1,135 @@
+{
+  "fixture": "bullets",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Plan"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Hire"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Engineers"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Backend"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": false,
+          "text": "Designers"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "Train"
+        },
+        {
+          "kind": "paragraph",
+          "text": "A plain paragraph between the lists."
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": true,
+          "text": "First step"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "Second step"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "A detail of the second step"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "Third step"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "A bullet after the numbers"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "A text box's plain paragraph."
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Its own bullet"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Nested under it"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": true,
+          "text": "Its own number"
+        },
+        {
+          "kind": "paragraph",
+          "text": "After the empty paragraph."
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": []
+}

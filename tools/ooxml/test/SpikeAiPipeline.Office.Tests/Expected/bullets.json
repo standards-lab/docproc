@@ -1,0 +1,280 @@
+{
+  "schema": "1",
+  "format": "pptx",
+  "blocks": [
+    {
+      "type": "slide",
+      "number": 1,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Plan"
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Hire"
+                    }
+                  ]
+                },
+                {
+                  "type": "list",
+                  "ordered": false,
+                  "items": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Engineers"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "list",
+                          "ordered": false,
+                          "items": [
+                            {
+                              "blocks": [
+                                {
+                                  "type": "paragraph",
+                                  "inlines": [
+                                    {
+                                      "type": "text",
+                                      "text": "Backend"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Designers"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Train"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "A plain paragraph between the lists."
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "First step"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Second step"
+                    }
+                  ]
+                },
+                {
+                  "type": "list",
+                  "ordered": false,
+                  "items": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "A detail of the second step"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Third step"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "A bullet after the numbers"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 2,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "A text box's plain paragraph."
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Its own bullet"
+                    }
+                  ]
+                },
+                {
+                  "type": "list",
+                  "ordered": false,
+                  "items": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Nested under it"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Its own number"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "After the empty paragraph."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

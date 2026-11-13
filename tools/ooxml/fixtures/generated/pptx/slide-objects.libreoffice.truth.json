@@ -1,0 +1,196 @@
+{
+  "fixture": "slide-objects",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Figures"
+        },
+        {
+          "kind": "table",
+          "rows": [
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Region"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Sales"
+                  }
+                ],
+                "colSpan": 2,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "North"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 2
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Q1"
+                  },
+                  {
+                    "kind": "paragraph",
+                    "text": "first quarter"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "12 | 5"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Q2"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "14"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Sales"
+        },
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "title": "Sales by quarter",
+          "series": [
+            {
+              "name": "North",
+              "categories": [
+                "Q1",
+                "Q2",
+                "Q3"
+              ],
+              "values": [
+                12.5,
+                14,
+                15.25
+              ]
+            },
+            {
+              "name": "South",
+              "categories": [
+                "Q1",
+                "Q2",
+                "Q3"
+              ],
+              "values": [
+                9,
+                null,
+                11
+              ]
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "The South's second quarter is missing."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 3,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "A red square",
+          "slide": 2
+        },
+        {
+          "kind": "media",
+          "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+          "contentType": "image/png",
+          "alt": "A blue square",
+          "slide": 2
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 4,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "The red square again",
+          "slide": 3
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": []
+}

@@ -1,0 +1,81 @@
+{
+  "fixture": "chart-2d",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Chart (2D)"
+        },
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "series": [
+            {
+              "name": "Series 1",
+              "categories": [
+                "Category 1",
+                "Category 2",
+                "Category 3",
+                "Category 4"
+              ],
+              "values": [
+                4.3,
+                2.5,
+                3.5,
+                4.5
+              ]
+            },
+            {
+              "name": "Series 2",
+              "categories": [
+                "Category 1",
+                "Category 2",
+                "Category 3",
+                "Category 4"
+              ],
+              "values": [
+                2.3999999999999995,
+                4.4,
+                1.8,
+                2.8
+              ]
+            },
+            {
+              "name": "Series 3",
+              "categories": [
+                "Category 1",
+                "Category 2",
+                "Category 3",
+                "Category 4"
+              ],
+              "values": [
+                2,
+                2,
+                3,
+                5
+              ]
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Created in build 4421"
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style"
+  ],
+  "once": []
+}

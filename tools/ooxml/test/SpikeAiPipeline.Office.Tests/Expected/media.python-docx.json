@@ -1,0 +1,142 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Media"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "A picture on its own line follows."
+        }
+      ]
+    },
+    {
+      "type": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "A red square",
+      "title": "Red",
+      "source": "/word/media/image1.png",
+      "section": 0
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Text before and after."
+        }
+      ]
+    },
+    {
+      "type": "media",
+      "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+      "contentType": "image/png",
+      "alt": "A blue square",
+      "source": "/word/media/image2.png",
+      "section": 0
+    },
+    {
+      "type": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "The red square again",
+      "source": "/word/media/image1.png",
+      "section": 0
+    },
+    {
+      "type": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "The red square in a part of its own",
+      "source": "/word/media/copy-of-red.png",
+      "section": 0
+    },
+    {
+      "type": "media",
+      "name": "670be6349ed84b27d6ca43d66ba6e9454c632f68de8d9b8fea78a480e90afb31.emf",
+      "contentType": "image/x-emf",
+      "alt": "A metafile",
+      "source": "/word/media/vector.emf",
+      "section": 0
+    },
+    {
+      "type": "media",
+      "alt": "A linked picture",
+      "title": "Linked",
+      "target": "https://example.invalid/linked.png",
+      "section": 0
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "A deleted picture follows."
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "rows": [
+        {
+          "cells": [
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Cell with a picture"
+                    }
+                  ]
+                },
+                {
+                  "type": "media",
+                  "name": "df026100fd6fe38e22923c5152a33ea6f6879e38073fb47f022ed9d90dec65a8.png",
+                  "contentType": "image/png",
+                  "alt": "A green square",
+                  "source": "/word/media/image3.png",
+                  "section": 0
+                }
+              ]
+            },
+            {
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "text",
+                      "text": "Plain cell"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "media",
+      "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+      "contentType": "image/png",
+      "alt": "Blue in section two",
+      "source": "/word/media/image2.png",
+      "section": 1
+    }
+  ]
+}

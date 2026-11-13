@@ -1,0 +1,58 @@
+{
+  "fixture": "chart-column",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "Column "
+    },
+    {
+      "kind": "chart",
+      "chartType": "bar3D",
+      "title": "fruit",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "apple",
+            "banana",
+            "pear"
+          ],
+          "values": [
+            4.6,
+            2.9,
+            3.9
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "apple",
+            "banana",
+            "pear"
+          ],
+          "values": [
+            2.4,
+            5,
+            2.2
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "apple",
+            "banana",
+            "pear"
+          ],
+          "values": [
+            2,
+            2,
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

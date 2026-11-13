@@ -1,0 +1,41 @@
+# mise: the toolchain and the check and currency tasks.
+[tools]
+dotnet = "10.0.400"
+jq = "1.8.2"
+shellcheck = "0.11.0"
+uv = "0.13.6"
+
+[env]
+DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+DOTNET_NOLOGO = "1"
+
+[tasks.check]
+description = "Format, build, publish the CLI with NativeAOT, and test, the CLI tests on the published binary, all warnings as errors; writes only bin/, obj/, and .state/"
+run = '''
+set -eu
+cd "$MISE_PROJECT_ROOT"
+git ls-files -z '*.sh' | xargs -0 -r shellcheck
+dotnet format --verify-no-changes
+dotnet build -warnaserror
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "check: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+# The tests run the CLI's process contract on this binary, so it is published first.
+dotnet publish src/SpikeAiPipeline.Office -c Release -r "$rid" -warnaserror -o .state/aot
+dotnet test --no-build
+.state/aot/spike-ai-pipeline-office --version
+'''
+
+[tasks.currency]
+description = "Report every NuGet package, mise tool, and GitHub Action pin behind its latest; writes nothing"
+run = "scripts/currency.sh"
+
+[tasks.fixtures]
+description = "Regenerate the generated fixtures and their ground truth; needs LibreOffice's soffice; the check never runs it"
+run = "uv run --script fixtures/generate.py"
+
+[tasks.baseline]
+description = "Run office over the committed pool, score its Markdown against the ground truth, and measure each run; on the laptop, never in CI; writes only .state/baseline/ and prints the summary, unless `-- --record [name]` records the run in a new docs/findings/office-cli/runs/<name>/ (<date>-<n> by default)"
+run = "scripts/baseline.sh"

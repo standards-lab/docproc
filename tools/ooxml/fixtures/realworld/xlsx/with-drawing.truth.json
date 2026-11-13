@@ -1,0 +1,62 @@
+{
+  "fixture": "with-drawing",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Sheet1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "media",
+          "name": "8345fcf9642a79651ea36935f736e753e355a4df2d85eaaa1589837143b8f2f0.jpeg",
+          "contentType": "image/jpeg",
+          "alt": "clock.jpg",
+          "sheet": 0
+        },
+        {
+          "kind": "media",
+          "name": "14013b5a111a348deb6efc63f5f164d0bed08831bbe2c3803dd9fbfc76fd2664.emf",
+          "contentType": "image/x-emf",
+          "alt": "cow.pict",
+          "sheet": 0
+        },
+        {
+          "kind": "media",
+          "name": "90a2c8be87924f2bf36439fec40969eb74fcc314dce8b9f9c627167d7d425663.png",
+          "contentType": "image/png",
+          "alt": "tomcat.png",
+          "sheet": 0
+        },
+        {
+          "kind": "media",
+          "name": "3c9e27e68d0322daaff3477a957d46ae5b32b23f058d29e65d3947b6eeafb2cb.emf",
+          "contentType": "image/x-emf",
+          "alt": "wrench.emf",
+          "sheet": 0
+        },
+        {
+          "kind": "media",
+          "name": "fdc312bc0dbea47df16d3e3e98e2777e4aa537d225a703e3cde0177df56a592a.wmf",
+          "contentType": "image/x-wmf",
+          "alt": "santa.wmf",
+          "sheet": 0
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet2",
+      "hidden": false,
+      "elements": []
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet3",
+      "hidden": false,
+      "elements": []
+    }
+  ],
+  "absent": [],
+  "once": []
+}

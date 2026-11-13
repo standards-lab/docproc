@@ -1,0 +1,172 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Comments"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "The budget figures"
+        },
+        {
+          "type": "comment",
+          "id": 2
+        },
+        {
+          "type": "text",
+          "text": " need review."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "A comment that spans two"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "paragraphs"
+        },
+        {
+          "type": "comment",
+          "id": 3
+        },
+        {
+          "type": "text",
+          "text": " of text."
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "The timeline"
+        },
+        {
+          "type": "comment",
+          "id": 4
+        },
+        {
+          "type": "text",
+          "text": " is new."
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "id": 2,
+      "author": "Ana Reviewer",
+      "anchor": "budget figures",
+      "resolved": false,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Please check these figures."
+            }
+          ]
+        }
+      ],
+      "replies": [
+        {
+          "id": 1,
+          "author": "Ben Author",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Checked against the ledger."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": 0,
+          "author": "Ana Reviewer",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Thanks."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "author": "Ben Author",
+      "anchor": "spans two\nparagraphs",
+      "resolved": true,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "This comment spans two paragraphs."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Its text has two paragraphs as well."
+            }
+          ]
+        }
+      ],
+      "replies": []
+    },
+    {
+      "id": 4,
+      "author": "Cleo Editor",
+      "anchor": "timeline",
+      "resolved": false,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "An open comment over tracked text."
+            }
+          ]
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

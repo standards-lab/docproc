@@ -1,0 +1,194 @@
+{
+  "fixture": "unit-test-formatting",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "italic"
+    },
+    {
+      "kind": "paragraph",
+      "text": "bold"
+    },
+    {
+      "kind": "paragraph",
+      "text": "underline"
+    },
+    {
+      "kind": "paragraph",
+      "text": "hyperlink"
+    },
+    {
+      "kind": "paragraph",
+      "text": "italic and bold hyperlink"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Normal italic bold underline and hyperlink on the same line"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "Italic bullet 1"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Bold bullet 2"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Underline bullet 3"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Some italic bold underline"
+    },
+    {
+      "kind": "listItem",
+      "level": 1,
+      "ordered": false,
+      "start": true,
+      "text": "Nested italic bold"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Indexation"
+    },
+    {
+      "kind": "paragraph",
+      "text": "This text carries a complex-script bold property in OOXML but it should not be bold."
+    },
+    {
+      "kind": "paragraph",
+      "text": "The second page of the document with same header and footer"
+    },
+    {
+      "kind": "paragraph",
+      "text": "The third page of the document with different header and footer"
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "sections": [
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a header"
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a footer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a header"
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a footer"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a header"
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Another header in bold"
+            },
+            {
+              "kind": "paragraph",
+              "text": "With 2 paragraphs"
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "This is a footer"
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Another footer"
+            },
+            {
+              "kind": "paragraph",
+              "text": "With"
+            },
+            {
+              "kind": "paragraph",
+              "text": "3 paragraphs and a picture\t"
+            },
+            {
+              "kind": "media",
+              "name": "a041aea6735ca919642039b8a1174ee0c0dcde8511c8b11d25e90f998e1b014c.png",
+              "contentType": "image/png",
+              "alt": "Owner avatar",
+              "section": 2
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

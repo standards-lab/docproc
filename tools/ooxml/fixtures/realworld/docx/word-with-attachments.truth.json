@@ -1,0 +1,354 @@
+{
+  "fixture": "word-with-attachments",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "media",
+      "name": "90f616810030696b8b3b1cd2686a603e484262d00b8dc0eeba0266b28cca857d.wmf",
+      "contentType": "image/x-wmf",
+      "section": 0
+    },
+    {
+      "kind": "paragraph",
+      "text": "Русский вариант\t"
+    },
+    {
+      "kind": "paragraph",
+      "text": "English"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Ўзбек"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Hyperlink Ссылка юбоқриш"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Таблица"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Сначала "
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Все "
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "На "
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "русском"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Table"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "…"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "123"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "456"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "789"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "жадвўал"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": ",,,"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "***"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "(0)"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "###"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Всех, кто стар и кто молод, что ныне живут,"
+    },
+    {
+      "kind": "paragraph",
+      "text": "В темноту одного за другим уведут."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Жизнь дана не навек. Как до нас уходили,"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Мы уйдем; и за нами –  придут и уйдут."
+    },
+    {
+      "kind": "paragraph",
+      "text": "",
+      "marks": [
+        {
+          "at": 0,
+          "kind": "comment",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Қурилиш, ишлаб чиқариш технологияси "
+    },
+    {
+      "kind": "paragraph",
+      "text": "Ҳуқуқшунослик ўзбекистон йўналишларида"
+    },
+    {
+      "kind": "paragraph",
+      "text": " ўқитиладиган фанлардан ишчи ўқув"
+    },
+    {
+      "kind": "paragraph",
+      "text": " дастурлари тўплами Иктисодий.",
+      "marks": [
+        {
+          "at": 29,
+          "kind": "comment",
+          "n": 2
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "All, who’s young, or whom old, all who lives in our days"
+    },
+    {
+      "kind": "paragraph",
+      "text": "They will take in the darkness,"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Life is short for us all. Like before us they leave,"
+    },
+    {
+      "kind": "paragraph",
+      "text": "We will leave and the others will come then thay leaves like we all",
+      "marks": [
+        {
+          "at": 67,
+          "kind": "comment",
+          "n": 3
+        }
+      ]
+    },
+    {
+      "kind": "media",
+      "name": "2156195ef201015167ead7b09b568042142520ff0d5618eeddb6ba5b169e095f.emf",
+      "contentType": "image/x-emf",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "8e362ed597728fa8a3eedc95785f2375b9d87cfc5e727de4f6dd597a4f809f16.emf",
+      "contentType": "image/x-emf",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "cc90707a7aab5dcb25ce2cb5fdefe6fd611d5c3d632ee5d4d18373cc7d672add.emf",
+      "contentType": "image/x-emf",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "f35ded1fae0aa91c50f3f8846401d5565e940246f15bf03c38a5c1fb38118a03.emf",
+      "contentType": "image/x-emf",
+      "section": 0
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "sections": [
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "2"
+            },
+            {
+              "kind": "paragraph",
+              "text": "\tСтраница 1"
+            },
+            {
+              "kind": "paragraph",
+              "text": "\tPage 1"
+            },
+            {
+              "kind": "paragraph",
+              "text": "\tБетўўў 1"
+            }
+          ]
+        }
+      ],
+      "footers": []
+    }
+  ],
+  "comments": [
+    {
+      "author": "vbiryukova",
+      "anchor": "Всех, кто стар и кто молод, что ныне живут,\nВ темноту одного за другим уведут.\nЖизнь дана не навек. Как до нас уходили,\nМы уйдем; и за нами –  придут и уйдут.",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Первое четверостишье"
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "vbiryukova",
+      "anchor": "Қурилиш, ишлаб чиқариш технологияси \nҲуқуқшунослик ўзбекистон йўналишларида\n ўқитиладиган фанлардан ишчи ўқув\n дастурлари тўплами Иктисодий",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "иккинчитўғри"
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "vbiryukova",
+      "anchor": "All, who’s young, or whom old, all who lives in our days\nThey will take in the darkness,\nLife is short for us all. Like before us they leave,\nWe will leave and the others will come then thay leaves like we all",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Third"
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

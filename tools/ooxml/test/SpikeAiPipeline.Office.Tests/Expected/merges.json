@@ -1,0 +1,153 @@
+{
+  "schema": "1",
+  "format": "xlsx",
+  "blocks": [
+    {
+      "type": "sheet",
+      "name": "Merges",
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "Left pair",
+                  "colSpan": 2
+                },
+                {
+                  "ref": "C1",
+                  "valueType": "text",
+                  "value": "between"
+                },
+                {
+                  "ref": "D1",
+                  "valueType": "text",
+                  "value": "Right block",
+                  "colSpan": 2,
+                  "rowSpan": 2
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "valueType": "text",
+                  "value": "under the pair"
+                },
+                {
+                  "ref": "B2",
+                  "valueType": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "C2",
+                  "valueType": "text",
+                  "value": "beside the block"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "valueType": "number",
+                  "value": 31
+                },
+                {
+                  "ref": "B3",
+                  "valueType": "number",
+                  "value": 32
+                },
+                {
+                  "ref": "C3",
+                  "valueType": "number",
+                  "value": 33
+                },
+                {
+                  "ref": "D3",
+                  "valueType": "number",
+                  "value": 34
+                },
+                {
+                  "ref": "E3",
+                  "valueType": "number",
+                  "value": 35
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "A4",
+                  "valueType": "text",
+                  "value": "before the later range"
+                },
+                {
+                  "ref": "B4",
+                  "valueType": "text",
+                  "value": "Later",
+                  "colSpan": 2,
+                  "rowSpan": 2
+                },
+                {
+                  "ref": "D4",
+                  "valueType": "text",
+                  "value": "after it"
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "A5",
+                  "valueType": "number",
+                  "value": 5
+                },
+                {
+                  "ref": "D5",
+                  "valueType": "text",
+                  "value": "still after it"
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "A6",
+                  "valueType": "number",
+                  "value": 61
+                },
+                {
+                  "ref": "B6",
+                  "valueType": "number",
+                  "value": 62
+                },
+                {
+                  "ref": "C6",
+                  "valueType": "number",
+                  "value": 63
+                },
+                {
+                  "ref": "D6",
+                  "valueType": "number",
+                  "value": 64
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,465 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Section one"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Body of section one."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Section two"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Body of section two."
+        }
+      ]
+    },
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Section three"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Body of section three."
+        }
+      ]
+    }
+  ],
+  "sections": [
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Default header one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "First header one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Even header one"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "table",
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell A"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell B"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "First footer one"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Even footer item"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Default header two"
+                }
+              ]
+            },
+            {
+              "type": "media",
+              "name": "805924e65dff89ccbac4046a6995a73622a878f5ff9ec17678b4bc33ca55ea12.png",
+              "contentType": "image/png",
+              "alt": "Logo\nHeader logo",
+              "source": "/word/media/image1.png",
+              "section": 1
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Even header one"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "table",
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell A"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell B"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Even footer item"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Default header two"
+                }
+              ]
+            },
+            {
+              "type": "media",
+              "name": "805924e65dff89ccbac4046a6995a73622a878f5ff9ec17678b4bc33ca55ea12.png",
+              "contentType": "image/png",
+              "alt": "Logo\nHeader logo",
+              "source": "/word/media/image1.png",
+              "section": 2
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Default header two"
+                }
+              ]
+            },
+            {
+              "type": "media",
+              "name": "805924e65dff89ccbac4046a6995a73622a878f5ff9ec17678b4bc33ca55ea12.png",
+              "contentType": "image/png",
+              "alt": "Logo\nHeader logo",
+              "source": "/word/media/image1.png",
+              "section": 2
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "Even header one"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "blocks": [
+            {
+              "type": "table",
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell A"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell B"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "first",
+          "blocks": [
+            {
+              "type": "table",
+              "rows": [
+                {
+                  "cells": [
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell A"
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "text",
+                              "text": "Footer cell B"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "even",
+          "blocks": [
+            {
+              "type": "list",
+              "ordered": false,
+              "items": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Even footer item"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

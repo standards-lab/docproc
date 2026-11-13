@@ -1,0 +1,43 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Before the anchor"
+        },
+        {
+          "type": "comment",
+          "id": 0
+        },
+        {
+          "type": "text",
+          "text": " and after."
+        }
+      ]
+    }
+  ],
+  "comments": [
+    {
+      "id": 0,
+      "author": "Dee Writer",
+      "anchor": "the anchor",
+      "resolved": false,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "A comment without commentsExtended."
+            }
+          ]
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "schema": "1",
+  "format": "xlsx",
+  "blocks": [
+    {
+      "type": "sheet",
+      "name": "Zeta",
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "the first sheet"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sheet",
+      "name": "Hidden",
+      "hidden": true,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "a hidden sheet"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sheet",
+      "name": "Alpha",
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "Title",
+                  "colSpan": 3
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "valueType": "text",
+                  "value": "Rows",
+                  "rowSpan": 2
+                },
+                {
+                  "ref": "B2",
+                  "valueType": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "C2",
+                  "valueType": "text",
+                  "value": "beside"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "B3",
+                  "valueType": "number",
+                  "value": 2
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "B5",
+                  "valueType": "text",
+                  "value": "Block",
+                  "colSpan": 2,
+                  "rowSpan": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sheet",
+      "name": "Empty",
+      "hidden": false,
+      "blocks": []
+    },
+    {
+      "type": "sheet",
+      "name": "Very hidden",
+      "hidden": true,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "text",
+                  "value": "a very hidden sheet"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

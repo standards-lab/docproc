@@ -1,0 +1,57 @@
+{
+  "fixture": "headings",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Quarterly Operations Report"
+    },
+    {
+      "kind": "paragraph",
+      "text": "This report summarizes operations for the third quarter."
+    },
+    {
+      "kind": "heading",
+      "level": 2,
+      "text": "Scope"
+    },
+    {
+      "kind": "paragraph",
+      "text": "The scope covers three regional offices."
+    },
+    {
+      "kind": "heading",
+      "level": 3,
+      "text": "Regional detail"
+    },
+    {
+      "kind": "paragraph",
+      "text": "North office: stable.\nSouth office: expanding."
+    },
+    {
+      "kind": "heading",
+      "level": 4,
+      "text": "Notes on method"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Figures marked * are estimates; see [appendix] for the _raw_ data | 2024 & later."
+    },
+    {
+      "kind": "heading",
+      "level": 2,
+      "text": "Outline-level heading"
+    },
+    {
+      "kind": "paragraph",
+      "text": "1. This paragraph starts like a numbered item but is plain text."
+    },
+    {
+      "kind": "paragraph",
+      "text": "# Not a heading either."
+    }
+  ],
+  "absent": [],
+  "once": []
+}

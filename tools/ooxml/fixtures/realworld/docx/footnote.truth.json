@@ -1,0 +1,41 @@
+{
+  "fixture": "footnote",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "This document shows the usage of footnote.",
+      "marks": [
+        {
+          "at": 41,
+          "kind": "footnote",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Footnotes and endnotes are used in printed documents to explain, comment on, or provide references for text in a document. You might use footnotes for detailed comments and endnotes for citation of sources."
+    },
+    {
+      "kind": "paragraph",
+      "text": " Note    If you want to create a bibliography, you can find commands for creating and managing sources and citations on the References tab in the Citations & Bibliography group."
+    },
+    {
+      "kind": "paragraph",
+      "text": "In this document, the footnote is set to locate at bottom of page and numbering will be continuous."
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "footnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " Footnote is for detailed comments."
+        }
+      ]
+    }
+  ]
+}

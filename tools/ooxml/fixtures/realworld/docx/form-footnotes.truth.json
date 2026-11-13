@@ -1,0 +1,1015 @@
+{
+  "fixture": "form-footnotes",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "",
+                "marks": [
+                  {
+                    "at": 0,
+                    "kind": "footnote",
+                    "n": 1
+                  }
+                ]
+              },
+              {
+                "kind": "media",
+                "name": "0e71f09f2cb22c9ad4b1bdf6d7b168e500f2b9c531c5b4ed8d4f5d2ff995daae.png",
+                "contentType": "image/png",
+                "section": 0
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "REPÚBLICA  FEDERATIVA DO BRASIL"
+              },
+              {
+                "kind": "paragraph",
+                "text": "MINISTÉRIO DAS RELAÇÕES EXTERIORES"
+              },
+              {
+                "kind": "paragraph",
+                "text": "CONSULADO-GERAL EM SAN FRANCISCO"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Protocol number"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Visa number"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 4,
+      "text": "VISA APPLICATION FORM"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "01 -   Full name  (as per passport; do not abbreviate or omit any name)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "                            First                                      Middle                                           Last "
+              }
+            ],
+            "colSpan": 13,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 3,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 6,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "heading",
+                "level": 4,
+                "text": "Attach photo here"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "02 -   Place of birth (city/state/country)"
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "03 -  Date of birth"
+              },
+              {
+                "kind": "paragraph",
+                "text": "      Day               Month                Year"
+              }
+            ],
+            "colSpan": 8,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "size: 40 mm x 35mm (1 9/6 x 1 3/8 inches)"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 5,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 3,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 3,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "04 -  Country of  citizenship"
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "05 -   Sex"
+              },
+              {
+                "kind": "paragraph",
+                "text": "          male        female    "
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "06 - Marital status"
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "white or off-white background  "
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "07 -   Passport # "
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "08 -  Issuing country "
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "09 -   Expiration date "
+              },
+              {
+                "kind": "paragraph",
+                "text": "    Day      Month       Year "
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "front view, full face"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "must be recent picture"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "10 -   Parent’s full name (do not abbreviate or omit any name) and country of birth"
+              }
+            ],
+            "colSpan": 15,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Father’s:"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 12,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 15,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Mother’s:"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 12,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 15,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "11 – Highest level of education (check only one box)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  no diploma"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  high school diploma or the equivalent (e.g., GED)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  some college credit, but less than one year"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  more than one year of college, but no degree"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  associate’s degree (e.g., AA, AS)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  bachelor’s degree (e.g., BA, AB, BS)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  master’s degree"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  professional degree (e.g.,  MD, DDS DVM, LLB,"
+              },
+              {
+                "kind": "paragraph",
+                "text": "                     JD)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "\t  doctorate degree"
+              }
+            ],
+            "colSpan": 6,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "12 -  Major/primary field of study"
+              },
+              {
+                "kind": "paragraph",
+                "text": "13 -  List any special skill and/or certificates"
+              },
+              {
+                "kind": "paragraph",
+                "text": "14 -  Job position (as per business card) or title"
+              },
+              {
+                "kind": "paragraph",
+                "text": "15 -  Employer (for students, name school/university)"
+              },
+              {
+                "kind": "paragraph",
+                "text": " 16 – E-mail: "
+              }
+            ],
+            "colSpan": 9,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "17 -  Business address"
+              }
+            ],
+            "colSpan": 9,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "18 -   Business telephone # (with area code)"
+              }
+            ],
+            "colSpan": 6,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "19 -  Home address"
+              }
+            ],
+            "colSpan": 9,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "20 -   Home telephone # (with area code)"
+              }
+            ],
+            "colSpan": 6,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "heading",
+                "level": 6,
+                "text": "FOR OFFICIAL USE ONLY"
+              }
+            ],
+            "colSpan": 6,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "A -   Consulta à SERE"
+              },
+              {
+                "kind": "paragraph",
+                "text": "  OF       TEL           No. _______"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "B -   Autorização da SERE"
+              },
+              {
+                "kind": "paragraph",
+                "text": "DESP     DESPTEL     No.  ______ "
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "C -  Tipo do Visto"
+              },
+              {
+                "kind": "paragraph",
+                "text": "        ___________________"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "D -      Concessão"
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "Denegação "
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": false,
+                "text": "Impedimento "
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "E -      Uma entrada"
+              },
+              {
+                "kind": "paragraph",
+                "text": "           Múltiplas entradas "
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "F -  Validade"
+              },
+              {
+                "kind": "paragraph",
+                "text": "      _____________anos/dias"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "G -  Data"
+              },
+              {
+                "kind": "paragraph",
+                "text": "     ______/______/______"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "H -  Observações"
+              }
+            ],
+            "colSpan": 3,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "I -  Assinaturas"
+              },
+              {
+                "kind": "paragraph",
+                "text": "      Funcionário                                          Chefia                                                             "
+              }
+            ],
+            "colSpan": 3,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "21 -  Purpose of trip (check item that is the most applicable to the circumstances of your trip)"
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Provide services in Brazil of a temporary nature, including activities such as office and technical support, installation and repair of equipment, including computer and telecommunications systems, construction activities, and direct supervision of  personnel in Brazil "
+              },
+              {
+                "kind": "paragraph",
+                "text": "U.S.-based personnel involved in business development activities, including negotiating contracts, marketing, opportunity assessments, specifying orders for contracts, customer relations related activities, performance assessments, project reviews, and establishing a  framework for doing business in Brazil"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Direct participation in oil and gas exploration and/or production activities"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Work under an employment contract with a company/organization in Brazil  -  i.e., hired under a Brazilian labor contract as a local employee  (this applies to the foreign employees of multinationals working in their Brazilian subsidiaries)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Transfer of residence to Brazil under permanent residency status"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Attend conference, seminar or workshop (note under  “Comments” below whether attendee, paid/unpaid speaker, trainer, and provide name of event sponsor)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Provide religious or missionary services and/or assistance"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Provide community and/or medical services "
+              },
+              {
+                "kind": "paragraph",
+                "text": "Attend school or pursue studies"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Conduct research or pursue scientific-technologic activities under an international cooperation program"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Pursue professorial studies/research/teaching and/or pursue scientific/technologic activities at an university,  research or similar organization (attach letter specifying conditions: employment contract? research scholarship? )"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Participation in athletic or performing arts events (note under “Comments”  below  whether paid/unpaid participation)"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Journalism activities and/or  film making"
+              },
+              {
+                "kind": "heading",
+                "level": 2,
+                "text": "As a government official"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Tourism, visit friend(s) and/or relatives (under “Comments”  below  provide further insight on intended trip and, as applicable, list relationship to parties being visited)"
+              },
+              {
+                "kind": "heading",
+                "level": 2,
+                "text": "Other:        \t"
+              },
+              {
+                "kind": "heading",
+                "level": 2,
+                "text": "    Comments:        \t"
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "22 -   Expected port of entry and date of arrival in Brazil       "
+              }
+            ],
+            "colSpan": 3,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "23 -   Expected duration of  immediate trip        "
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "24 -   Name and address of person, institution or company through whom you can be contacted in Brazil"
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "25 -  Address  in Brazil where you will be staying  (e.g., hotel, vessel, friend, other)"
+              }
+            ],
+            "colSpan": 4,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "26 -   Telephone # in Brazil (with city code)"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "27 -   Have you ever been to Brazil?  "
+              },
+              {
+                "kind": "paragraph",
+                "text": "               Yes                      No"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "28 -    If yes for item 27, provide date, place and duration of last visit"
+              }
+            ],
+            "colSpan": 3,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "heading",
+      "level": 7,
+      "text": "IMPORTANT: FORMS THAT ARE INCOMPLETE  AND INCORRECTLY  FILLED OUT  WILL  BE  RETURNED. "
+    },
+    {
+      "kind": "paragraph",
+      "text": "                         CAREFULLY READ AND FOLLOW INSTRUCTIONS AT THE BOTTOM OF THIS PAGE."
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "29 -   I declare that  the above information is true and accurate."
+              },
+              {
+                "kind": "paragraph",
+                "text": "   Name (type or print)                                                                  Date                                    Signature "
+              }
+            ],
+            "colSpan": 5,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 5,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Day"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Month"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Year"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "heading",
+                "level": 5,
+                "text": "INSTRUCTIONS"
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "Type or write in block letters, on blue or black ink only.  Form can be filled out on line."
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": false,
+                "text": "Complete first and second pages, except for box marked “For Offical Use Only”."
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": false,
+                "text": "Answer all questions thoroughly and accurately.  If a question does not apply, please type N/A. "
+              },
+              {
+                "kind": "listItem",
+                "level": 0,
+                "ordered": false,
+                "start": true,
+                "text": "Sign and date each form.  Original signature is mandatory (no photocopy). "
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "footnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " testdoc       test phrase"
+        }
+      ]
+    }
+  ]
+}

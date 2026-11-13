@@ -1,0 +1,57 @@
+{
+  "schema": "1",
+  "format": "pptx",
+  "blocks": [
+    {
+      "type": "slide",
+      "number": 1,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Before the group."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "In the group."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "In the nested group."
+            }
+          ]
+        },
+        {
+          "type": "media",
+          "name": "df026100fd6fe38e22923c5152a33ea6f6879e38073fb47f022ed9d90dec65a8.png",
+          "contentType": "image/png",
+          "alt": "A green square in the nested group",
+          "source": "/ppt/media/image1.png",
+          "slide": 0
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "After the group, placed at the top."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

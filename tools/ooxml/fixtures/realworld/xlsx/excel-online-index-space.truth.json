@@ -1,0 +1,50 @@
+{
+  "fixture": "excel-online-index-space",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Tabelle1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "Konto"
+                },
+                {
+                  "ref": "B1",
+                  "type": "text",
+                  "value": "Name"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "number",
+                  "value": 100
+                },
+                {
+                  "ref": "B2",
+                  "type": "text",
+                  "value": "Mustermann"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

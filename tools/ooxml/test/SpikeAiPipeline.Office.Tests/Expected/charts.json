@@ -1,0 +1,108 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Charts"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Revenue by region:"
+        }
+      ]
+    },
+    {
+      "type": "chart",
+      "chartType": "bar",
+      "title": "Revenue by region",
+      "series": [
+        {
+          "name": "North",
+          "categories": [
+            "Q1",
+            "Q2",
+            "Q3"
+          ],
+          "values": [
+            12.5,
+            14,
+            15.25
+          ]
+        },
+        {
+          "name": "South",
+          "categories": [
+            "Q1",
+            "Q2",
+            "Q3"
+          ],
+          "values": [
+            9,
+            null,
+            11
+          ]
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Share of costs:"
+        }
+      ]
+    },
+    {
+      "type": "chart",
+      "chartType": "pie",
+      "series": [
+        {
+          "name": "Share",
+          "categories": [
+            "Staff",
+            "Rent",
+            "Other"
+          ],
+          "values": [
+            60,
+            25,
+            15
+          ]
+        }
+      ]
+    },
+    {
+      "type": "chart",
+      "chartType": "line",
+      "title": "Trend",
+      "series": [
+        {
+          "name": "Index",
+          "categories": [
+            "Jan",
+            "Feb",
+            "Mar",
+            "Apr"
+          ],
+          "values": [
+            1.5,
+            2,
+            2.75,
+            3.25
+          ]
+        }
+      ]
+    }
+  ]
+}

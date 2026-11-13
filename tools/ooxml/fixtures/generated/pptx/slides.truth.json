@@ -1,0 +1,128 @@
+{
+  "fixture": "slides",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Quarterly Review"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Operations, third quarter"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Prepared for the board"
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Welcome everyone."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Introduce the agenda."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": true,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Internal figures"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Not for the board"
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Skip this slide when presenting."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 3,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Agenda"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Results"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "Outlook"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 4,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Thank you"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Contact the operations team."
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Close on time."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 5,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Questions"
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": []
+}

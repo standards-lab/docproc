@@ -1,0 +1,146 @@
+{
+  "schema": "1",
+  "format": "docx",
+  "blocks": [
+    {
+      "type": "heading",
+      "level": 1,
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Notes"
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Revenue rose sharply"
+        },
+        {
+          "type": "footnote",
+          "id": 2
+        },
+        {
+          "type": "text",
+          "text": " in the third quarter."
+        },
+        {
+          "type": "endnote",
+          "id": 1
+        }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "inlines": [
+        {
+          "type": "text",
+          "text": "Costs held steady"
+        },
+        {
+          "type": "footnote",
+          "id": 1
+        },
+        {
+          "type": "text",
+          "text": "."
+        }
+      ]
+    },
+    {
+      "type": "list",
+      "ordered": false,
+      "items": [
+        {
+          "blocks": [
+            {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "text",
+                  "text": "An item with an endnote"
+                },
+                {
+                  "type": "endnote",
+                  "id": 2
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "footnotes": [
+    {
+      "id": 2,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": " The method has two parts."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Its second part is a second paragraph."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": " Figures are unaudited."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "endnotes": [
+    {
+      "id": 1,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": " Source: the regional ledgers."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "blocks": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": " An endnote from a list item."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

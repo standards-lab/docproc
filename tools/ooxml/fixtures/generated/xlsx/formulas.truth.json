@@ -1,0 +1,126 @@
+{
+  "fixture": "formulas",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Formulas",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "B1",
+                  "type": "number",
+                  "value": 10
+                },
+                {
+                  "ref": "C1",
+                  "formula": "A1*B1"
+                },
+                {
+                  "ref": "D1",
+                  "formula": "A1:A3*2"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "B2",
+                  "type": "number",
+                  "value": 20
+                },
+                {
+                  "ref": "C2",
+                  "sharedFrom": "C1"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "number",
+                  "value": 3
+                },
+                {
+                  "ref": "B3",
+                  "type": "number",
+                  "value": 30
+                },
+                {
+                  "ref": "C3",
+                  "sharedFrom": "C1"
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "A5",
+                  "formula": "SUM(A1:A3)"
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "A6",
+                  "formula": "A1&\" unit\""
+                }
+              ]
+            },
+            {
+              "row": 7,
+              "cells": [
+                {
+                  "ref": "A7",
+                  "formula": "A1/0"
+                }
+              ]
+            },
+            {
+              "row": 8,
+              "cells": [
+                {
+                  "ref": "A8",
+                  "formula": "A1>B1"
+                }
+              ]
+            },
+            {
+              "row": 9,
+              "cells": [
+                {
+                  "ref": "A9",
+                  "formula": "DATE(2026,1,15)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

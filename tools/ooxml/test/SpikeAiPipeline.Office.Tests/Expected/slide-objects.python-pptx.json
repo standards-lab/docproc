@@ -1,0 +1,242 @@
+{
+  "schema": "1",
+  "format": "pptx",
+  "blocks": [
+    {
+      "type": "slide",
+      "number": 1,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Figures"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "rows": [
+            {
+              "cells": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Region"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Sales"
+                        }
+                      ]
+                    }
+                  ],
+                  "colSpan": 2
+                }
+              ]
+            },
+            {
+              "cells": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "North"
+                        }
+                      ]
+                    }
+                  ],
+                  "rowSpan": 2
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Q1"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "first quarter"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "12 | 5"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "cells": [
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "Q2"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "text",
+                          "text": "14"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 2,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "inlines": [
+            {
+              "type": "text",
+              "text": "Sales"
+            }
+          ]
+        },
+        {
+          "type": "chart",
+          "chartType": "bar",
+          "title": "Sales by quarter",
+          "series": [
+            {
+              "name": "North",
+              "categories": [
+                "Q1",
+                "Q2",
+                "Q3"
+              ],
+              "values": [
+                12.5,
+                14,
+                15.25
+              ]
+            },
+            {
+              "name": "South",
+              "categories": [
+                "Q1",
+                "Q2",
+                "Q3"
+              ],
+              "values": [
+                9,
+                null,
+                11
+              ]
+            }
+          ]
+        }
+      ],
+      "notes": [
+        {
+          "type": "paragraph",
+          "inlines": [
+            {
+              "type": "text",
+              "text": "The South's second quarter is missing."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 3,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "A red square",
+          "title": "Red",
+          "source": "/ppt/media/image1.png",
+          "slide": 2
+        },
+        {
+          "type": "media",
+          "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+          "contentType": "image/png",
+          "alt": "A blue square",
+          "source": "/ppt/media/image2.png",
+          "slide": 2
+        }
+      ]
+    },
+    {
+      "type": "slide",
+      "number": 4,
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "The red square again",
+          "source": "/ppt/media/image1.png",
+          "slide": 3
+        }
+      ]
+    }
+  ]
+}

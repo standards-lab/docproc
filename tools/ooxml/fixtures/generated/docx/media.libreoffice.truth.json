@@ -1,0 +1,109 @@
+{
+  "fixture": "media",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Media"
+    },
+    {
+      "kind": "paragraph",
+      "text": "A picture on its own line follows."
+    },
+    {
+      "kind": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "Red\nA red square",
+      "section": 0
+    },
+    {
+      "kind": "paragraph",
+      "text": "Text before and after."
+    },
+    {
+      "kind": "media",
+      "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+      "contentType": "image/png",
+      "alt": "A blue square",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "The red square again",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+      "contentType": "image/png",
+      "alt": "The red square in a part of its own",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "name": "670be6349ed84b27d6ca43d66ba6e9454c632f68de8d9b8fea78a480e90afb31.emf",
+      "contentType": "image/x-emf",
+      "alt": "A metafile",
+      "section": 0
+    },
+    {
+      "kind": "media",
+      "target": "https://example.invalid/linked.png",
+      "alt": "Linked\nA linked picture",
+      "section": 0
+    },
+    {
+      "kind": "paragraph",
+      "text": "A deleted picture follows."
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell with a picture"
+              },
+              {
+                "kind": "media",
+                "name": "df026100fd6fe38e22923c5152a33ea6f6879e38073fb47f022ed9d90dec65a8.png",
+                "contentType": "image/png",
+                "alt": "A green square",
+                "section": 0
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Plain cell"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "media",
+      "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+      "contentType": "image/png",
+      "alt": "Blue in section two",
+      "section": 1
+    }
+  ],
+  "absent": [
+    "Withdrawn picture"
+  ],
+  "once": []
+}

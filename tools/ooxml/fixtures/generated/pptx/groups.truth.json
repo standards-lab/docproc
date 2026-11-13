@@ -1,0 +1,43 @@
+{
+  "fixture": "groups",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Before the group."
+        },
+        {
+          "kind": "paragraph",
+          "text": "In the group."
+        },
+        {
+          "kind": "paragraph",
+          "text": "In the nested group."
+        },
+        {
+          "kind": "media",
+          "name": "df026100fd6fe38e22923c5152a33ea6f6879e38073fb47f022ed9d90dec65a8.png",
+          "contentType": "image/png",
+          "alt": "A green square in the nested group",
+          "slide": 0
+        },
+        {
+          "kind": "paragraph",
+          "text": "After the group, placed at the top."
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": []
+}

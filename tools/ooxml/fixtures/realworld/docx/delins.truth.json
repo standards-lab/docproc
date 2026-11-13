@@ -1,0 +1,153 @@
+{
+  "fixture": "delins",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "Tika can be:"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "A Nepalese name for Tilaka"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A nickname for Petrika the Albanian variation of Peter"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A title in certain Indian monarchies for a Crown Prince"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A place in Abkhazia "
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A place on Saturn's satellite Rhea, named after the last place"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A name in various Indian languages (ṭīkā) for certain commentaries such as:"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "the subcommentaries of the Theravada tradition."
+    },
+    {
+      "kind": "paragraph",
+      "text": "March 2009: Apache Tika Release"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Apache Tika 0.3 has been released. Please see the download page for more details."
+    },
+    {
+      "kind": "paragraph",
+      "text": "February 2009: Lucene at ApacheCon Europe 2009 in Amsterdam"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Lucene will be extremely well represented at ApacheCon EU 2009 in Amsterdam, Netherlands this March 23-27, 2009:"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "Lucene Boot Camp - A two day training session, March 23 & 24th"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Solr Boot Camp - A one day training session, March 24th"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Introducing Apache Mahout - Grant Ingersoll. March 25th @ 10:30"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Lucene/Solr Case Studies - Erik Hatcher. March 25th @ 11:30"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Advanced Indexing Techniques with Apache Lucene - Michael Busch. March 25th @ 14:00"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Apache Solr - A Case Study - Uri Boness. March 26th @ 17:30"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Best of breed - httpd, forrest, solr and droids - Thorsten Scherler. March 27th @ 17:30"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "Apache Droids - an intelligent standalone robot framework - Thorsten Scherler. March 26th @ 15:00"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": ""
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": "A software module for extracting text from binary files. Apache Tika is a subproject of the Lucene"
+    }
+  ],
+  "absent": [
+    "A pendant worn in place of the red spot",
+    "Maang Tika",
+    "Tika Waylan",
+    "DragonLance",
+    "HYPERLINK"
+  ],
+  "once": []
+}

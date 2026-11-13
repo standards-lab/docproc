@@ -1,0 +1,152 @@
+{
+  "schema": "1",
+  "format": "xlsx",
+  "blocks": [
+    {
+      "type": "sheet",
+      "name": "Formulas",
+      "hidden": false,
+      "blocks": [
+        {
+          "type": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "valueType": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "B1",
+                  "valueType": "number",
+                  "value": 10
+                },
+                {
+                  "ref": "C1",
+                  "valueType": "number",
+                  "value": 10,
+                  "formula": "A1*B1"
+                },
+                {
+                  "ref": "D1",
+                  "valueType": "number",
+                  "value": 2,
+                  "formula": "A1:A3*2"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "valueType": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "B2",
+                  "valueType": "number",
+                  "value": 20
+                },
+                {
+                  "ref": "C2",
+                  "valueType": "number",
+                  "value": 40,
+                  "formula": "A2*B2"
+                },
+                {
+                  "ref": "D2",
+                  "valueType": "number",
+                  "value": 4
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "valueType": "number",
+                  "value": 3
+                },
+                {
+                  "ref": "B3",
+                  "valueType": "number",
+                  "value": 30
+                },
+                {
+                  "ref": "C3",
+                  "valueType": "number",
+                  "value": 90,
+                  "formula": "A3*B3"
+                },
+                {
+                  "ref": "D3",
+                  "valueType": "number",
+                  "value": 6
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "A5",
+                  "valueType": "number",
+                  "value": 6,
+                  "formula": "SUM(A1:A3)"
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "A6",
+                  "valueType": "text",
+                  "value": "1 unit",
+                  "formula": "A1&\" unit\""
+                }
+              ]
+            },
+            {
+              "row": 7,
+              "cells": [
+                {
+                  "ref": "A7",
+                  "valueType": "error",
+                  "value": "#DIV/0!",
+                  "formula": "A1/0"
+                }
+              ]
+            },
+            {
+              "row": 8,
+              "cells": [
+                {
+                  "ref": "A8",
+                  "valueType": "boolean",
+                  "value": false,
+                  "formula": "A1>B1"
+                }
+              ]
+            },
+            {
+              "row": 9,
+              "cells": [
+                {
+                  "ref": "A9",
+                  "valueType": "date",
+                  "value": "2026-01-15",
+                  "formula": "DATE(2026,1,15)"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

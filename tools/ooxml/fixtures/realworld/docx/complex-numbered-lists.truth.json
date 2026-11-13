@@ -1,0 +1,120 @@
+{
+  "fixture": "complex-numbered-lists",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "This is a document with numbered lists"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": true,
+      "text": "Entry #1"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Entry #2, with children"
+    },
+    {
+      "kind": "listItem",
+      "level": 1,
+      "ordered": true,
+      "start": true,
+      "text": "2-a"
+    },
+    {
+      "kind": "listItem",
+      "level": 1,
+      "ordered": true,
+      "start": false,
+      "text": "2-b"
+    },
+    {
+      "kind": "listItem",
+      "level": 1,
+      "ordered": true,
+      "start": false,
+      "text": "2-c"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Entry #3"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Entry #4"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": true,
+      "text": "Restarted to 1 from 5"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Restarted @ 2"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Restarted @ 3"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": true,
+      "text": "Jump to new list at 10",
+      "startAt": 10
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Now 11"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Normal text here"
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": true,
+      "text": "Carrying on @ 12",
+      "startAt": 12
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": true,
+      "start": false,
+      "text": "Carrying on @ 13"
+    },
+    {
+      "kind": "paragraph",
+      "text": "All done!"
+    }
+  ],
+  "absent": [],
+  "once": []
+}
