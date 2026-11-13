@@ -44,6 +44,9 @@ jobs:
             ooxml:
               - &shared ['.github/workflows/ci.yml', 'mise.toml', 'tools/*.sh', 'tools/envelope/**']
               - 'tools/ooxml/**'
+            mail:
+              - *shared
+              - 'tools/mail/**'
 
       - id: lint
         uses: dorny/paths-filter@v4.0.3
@@ -84,7 +87,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # NativeAOT links with clang against zlib.
+      # NativeAOT links with clang against zlib, so a .NET tool (a .slnx) alone needs them; a Rust
+      # tool's musl targets come with its pinned toolchain.
       - name: Install the NativeAOT prerequisites
         if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
@@ -95,13 +99,24 @@ jobs:
         with:
           working_directory: tools/${{ matrix.tool }}
 
-      # The packages the tool's lock files pin, as downloaded; bin/ and obj/ are built fresh.
+      # A .NET tool's packages its lock files pin, as downloaded; bin/ and obj/ are built fresh.
       - uses: actions/cache@v6.1.0
         if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
         with:
           path: ~/.nuget/packages
           key: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/**/packages.lock.json', matrix.tool)) }}
           restore-keys: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-
+
+      # A Rust tool's crates its Cargo.lock pins, as downloaded, and any git sources; target/ is
+      # built fresh.
+      - uses: actions/cache@v6.1.0
+        if: hashFiles(format('tools/{0}/Cargo.lock', matrix.tool)) != ''
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/Cargo.lock', matrix.tool)) }}
+          restore-keys: cargo-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: mise run check
         working-directory: tools/${{ matrix.tool }}

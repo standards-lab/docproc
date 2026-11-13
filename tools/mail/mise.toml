@@ -5,6 +5,9 @@
 # Each task runs in this directory.
 [tools]
 cargo-deny = "0.20.2"
+# tools/notices.sh runs it, in this environment, for the release's third-party notices and their
+# license check (about.toml). It is not in mise's registry, so it comes from its GitHub release.
+"github:EmbarkStudios/cargo-about" = "0.9.3"
 jq = "1.8.2"
 rust = { version = "1.100.0", profile = "minimal", components = "clippy,rustfmt", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" }
 shellcheck = "0.11.0"
@@ -150,7 +153,9 @@ held() {
   grep -q "^$1 $2: " <<<"$HOLDS"
 }
 # Each tool is rewritten in place, its version alone, as `mise use` would write rust's table as a
-# bare version; the SDK's pin in global.json moves with dotnet's.
+# bare version; the SDK's pin in global.json moves with dotnet's. A backend-qualified name, such as
+# "github:EmbarkStudios/cargo-about", is a quoted key holding a "/", so the name is matched with its
+# quotes optional and its regex characters escaped, under a "|" delimiter.
 tools=$(MISE_ENV=fixtures mise outdated --bump --json |
   jq -r --arg dir "$PWD" 'to_entries[] |
     select(.value.bump != null and (.value.source.path | startswith($dir + "/mise."))) |
@@ -158,7 +163,8 @@ tools=$(MISE_ENV=fixtures mise outdated --bump --json |
 while read -r file name pinned latest; do
   [ -n "$file" ] || continue
   held "$name" "$pinned" && continue
-  sed -i -E "s/^($name = (\\{ version = )?\")$pinned\"/\\1$latest\"/" "$file"
+  key=$(sed 's/[][\\.*^$|+?(){}]/\\&/g' <<<"$name")
+  sed -i -E "s|^(\"?$key\"? = (\\{ version = )?\")$pinned\"|\\1$latest\"|" "$file"
   if [ "$name" = dotnet ]; then
     sed -i -E "s/(\"version\": \")$pinned\"/\\1$latest\"/" generator/global.json
   fi

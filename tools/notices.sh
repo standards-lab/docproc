@@ -1,15 +1,23 @@
 #!/usr/bin/env bash
 # notices writes the third-party notices for one system tool's release binary, for one runtime
-# identifier, to stdout: every package the binary links, at the version the tool's lock file pins,
-# with its license, and for a .NET tool the .NET runtime NativeAOT compiles into the binary, with
-# the runtime's license, followed once each by the third-party notices those packages bundle.
-# pack.sh writes it into each release archive, and docproc's root check runs it for every tool so
-# a package it can't give a notice for fails the check, not the release.
+# identifier, to stdout: every package the binary is built from, at the version the tool's lock
+# file pins, with its license. pack.sh writes it into each release archive, and docproc's root
+# check runs it for every tool so a package it can't give a notice for fails the check, not the
+# release. It reads no network and writes nothing.
 #
-# It carries one license text, MIT's, and refuses a package under any other license: a new license
-# is a reviewed change to this script. It reads the tool's restored package graph and the NuGet
-# packages folder, so it runs after the tool's check or publish has restored; it reads no network
-# and writes nothing.
+# A .NET tool (a .slnx) gets every NuGet package the binary links and the .NET runtime NativeAOT
+# compiles into it, with the runtime's license, followed once each by the third-party notices
+# those packages bundle. This script carries one license text for it, MIT's, and refuses a package
+# under any other license: a new license is a reviewed change to this script. It reads the tool's
+# restored package graph and the NuGet packages folder, so it runs after the tool's check or
+# publish has restored.
+#
+# A Rust tool (a Cargo.toml) gets every crate cargo-about, pinned in the tool's mise.toml, walks
+# in the tool's locked graph for the runtime identifier's musl target, followed by each license
+# text once with the crates it covers. cargo-about checks each crate's license against the
+# accepted list in the tool's about.toml, and a license outside it fails the script: a new license
+# is a reviewed change to that file. It reads the crates from Cargo's registry cache, offline, so
+# it runs after the tool's check or publish has fetched them.
 #
 # usage: tools/notices.sh <format> <rid>
 #   format  the tool's directory under tools/, such as ooxml
@@ -31,15 +39,73 @@ case "$rid" in
 		exit 2
 		;;
 esac
-if ! compgen -G "$tool/*.slnx" >/dev/null; then
-	echo "notices: $tool is not a .NET tool, the only kind this script reads" >&2
+if [ -f "$tool/Cargo.toml" ]; then
+	kind=cargo
+elif compgen -G "$tool/*.slnx" >/dev/null; then
+	kind=dotnet
+else
+	echo "notices: $tool is neither a Rust tool (Cargo.toml) nor a .NET tool (.slnx)" >&2
 	exit 2
 fi
+binary=docproc-$format
 
 fail() {
 	echo "notices: $1" >&2
 	exit 1
 }
+
+rule() {
+	printf '%80s\n' '' | tr ' ' '='
+}
+
+if [ "$kind" = cargo ]; then
+	case "$rid" in
+		linux-x64) target=x86_64-unknown-linux-musl ;;
+		linux-arm64) target=aarch64-unknown-linux-musl ;;
+	esac
+	# cargo-about runs in the tool's mise environment, its pinned Rust's cargo ahead of a host
+	# cargo, as the tool's own tasks run it. --frozen keeps Cargo.lock as it is and reads no network,
+	# and --fail fails on a license it can't read or the accepted list can't satisfy. The inner
+	# script is single-quoted so that $CARGO_HOME expands in mise's environment, not this one.
+	# shellcheck disable=SC2016
+	about=$(mise -C "$tool" exec -- bash -c '
+		export PATH="$CARGO_HOME/bin:$PATH"
+		cargo-about --color never generate --format json --frozen --fail --target "$1"
+	' bash "$target") || fail "cargo-about refused $tool's crates for $target"
+
+	echo "Third-party notices for $binary, $rid"
+	echo
+	echo "$binary is built from the crates below, at the versions its Cargo.lock pins: the normal"
+	echo "dependency graph for $target, proc macros and their dependencies included,"
+	echo "though they run only at build time. Each entry gives the licenses its notice is given"
+	echo "under, chosen from the crate's license expression; the license texts follow, each with"
+	echo "the crates it covers."
+	echo
+	# Each crate's chosen licenses are the texts that name it. A license text cargo-about made up
+	# from the license's template, for a crate that ships none, is given once per crate, under
+	# its authors' copyright in place of the template's placeholder.
+	jq -r '
+		def crate: "\(.name) \(.version)";
+		def rule: "=" * 80;
+		[.licenses[] | .id as $id | .used_by[] | {crate: (.crate | crate), id: $id}] as $chosen |
+		(.crates | map(.package) | sort_by(.name, .version)[] | crate as $c |
+			($chosen | map(select(.crate == $c) | .id) | unique | join(" AND ")) as $ids |
+			if $ids == "" then error("\($c) has no license text") else "\($c): \($ids)" end),
+		"",
+		(.licenses | sort_by(.id, .used_by[0].crate.name)[] |
+			if .source_path then
+				rule, "\(.id), for \(.used_by | map(.crate | crate) | join(", "))", "", .text
+			else
+				.id as $id | .text as $text | .used_by[].crate |
+				(if (.authors | length) > 0 then .authors | join(", ")
+					else "the authors of \(.name)" end) as $owner |
+				rule, "\($id), for \(crate)", "",
+				($text | sub("Copyright \\(c\\) <year> <copyright holders>";
+					"Copyright (c) \($owner)"))
+			end)
+	' <<<"$about" || fail "cargo-about's report for $tool could not be read"
+	exit 0
+fi
 
 # The release binary is built from the projects under src/; the tests' packages are never linked.
 locks=("$tool"/src/*/packages.lock.json)
@@ -80,10 +146,6 @@ nuspec() {
 	local dir=$1 id=$2 element=$3
 	sed -n "s|.*<${element}[^>]*>\\([^<]*\\)</${element}>.*|\\1|p" "$dir/${id,,}.nuspec" | head -n 1 |
 		sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&apos;/'/g" -e 's/&amp;/\&/g'
-}
-
-rule() {
-	printf '%80s\n' '' | tr ' ' '='
 }
 
 mit() {
@@ -155,7 +217,6 @@ entry() {
 	done < <(find "$dir" -maxdepth 1 -type f -iname 'third-party-notices*' | sort)
 }
 
-binary=docproc-$format
 echo "Third-party notices for $binary, $rid"
 echo
 echo "$binary links the NuGet packages below, at the versions its lock file pins, and the .NET"

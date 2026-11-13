@@ -1,0 +1,20 @@
+# cargo-about's configuration, read by tools/notices.sh to write docproc-mail's third-party notices
+# and to check their licenses. Each crate's notice is given under licenses from the accepted list,
+# in its order, and a crate whose license expression the list can't satisfy fails the script, and
+# with it docproc's root check: adding a license is a reviewed change to this file.
+#
+# cargo-about walks the normal dependency graph for the target, proc macros and their own
+# dependencies included, though they run only at build time and the binary links none of them; it
+# has no setting to leave them out. Build and dev dependencies are left out.
+accepted = ["MIT", "Apache-2.0", "BSD-3-Clause"]
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# docproc-mail itself is unpublished and carries the repository's LICENSE.
+private = { ignore = true }
+
+# unicode-ident is reached only through proc-macro2, at build time, and needs Unicode-3.0 beside
+# MIT or Apache-2.0. Accepted for this crate alone until the content rule's ICU4X crates, which
+# the binary links, make Unicode-3.0 one of the accepted list's licenses.
+[unicode-ident]
+accepted = ["Unicode-3.0"]
