@@ -340,6 +340,36 @@
               ]
             },
             {
+              "row": 21,
+              "cells": [
+                {
+                  "ref": "A21",
+                  "type": "text",
+                  "value": "Escaped characters"
+                },
+                {
+                  "ref": "B21",
+                  "type": "text",
+                  "value": "Tab\there, _x0041_ kept"
+                }
+              ]
+            },
+            {
+              "row": 22,
+              "cells": [
+                {
+                  "ref": "A22",
+                  "type": "text",
+                  "value": "Elapsed time"
+                },
+                {
+                  "ref": "B22",
+                  "type": "number",
+                  "value": 1.5
+                }
+              ]
+            },
+            {
               "row": 23,
               "cells": [
                 {

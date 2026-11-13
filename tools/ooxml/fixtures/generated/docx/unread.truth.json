@@ -1,0 +1,37 @@
+{
+  "fixture": "unread",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Unread"
+    },
+    {
+      "kind": "paragraph",
+      "text": "A text box follows."
+    },
+    {
+      "kind": "paragraph",
+      "text": "A second text box follows."
+    },
+    {
+      "kind": "paragraph",
+      "text": "An equation follows: "
+    },
+    {
+      "kind": "paragraph",
+      "text": "A diagram follows."
+    },
+    {
+      "kind": "paragraph",
+      "text": "The end."
+    }
+  ],
+  "absent": [
+    "Text in a box",
+    "More text in a box",
+    "A diagram node"
+  ],
+  "once": []
+}

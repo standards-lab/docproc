@@ -2,6 +2,7 @@ using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Writing;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using P = DocumentFormat.OpenXml.Presentation;
@@ -9,8 +10,9 @@ using P = DocumentFormat.OpenXml.Presentation;
 namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads a pptx package into the model: its slides in presentation order, hidden ones
-/// included and marked, each with its shapes' text, tables, charts, and pictures in shape-tree
-/// order, and its notes.</summary>
+/// included and marked, each with its shapes' text, tables, charts, pictures, and embedded
+/// packages and OLE objects in shape-tree order, and its notes; and the package's
+/// properties.</summary>
 /// <remarks>Shapes are read in the order the slide's shape tree holds them, which is their
 /// z-order, back to front; nothing is re-sorted by position. A group is read in place, its own
 /// shapes in its tree's order. A placeholder holds only the slide's own text, so one left empty
@@ -24,6 +26,9 @@ internal static class PptxReader
         var presentationPart = package.PresentationPart ?? throw new OpenXmlPackageException("the package has no presentation part");
         var presentation = presentationPart.Presentation ?? throw new OpenXmlPackageException("the presentation part has no presentation");
         var media = new MediaStore();
+        var warnings = new List<Warning>();
+        var properties = PropertiesReader.Read(package, warnings);
+        var unread = new UnreadKinds(warnings);
         var blocks = new List<Block>();
         foreach (var slideId in presentation.SlideIdList?.Elements<P.SlideId>() ?? [])
         {
@@ -33,19 +38,30 @@ internal static class PptxReader
                 throw new OpenXmlPackageException($"slide {slideId.Id}'s part is missing");
             }
             var slide = slidePart.Slide ?? throw new OpenXmlPackageException($"slide {slideId.Id}'s part has no slide");
-            var reader = new SlideReader(media, slidePart, presentation.DefaultTextStyle, blocks.Count);
+            var place = $"slide {blocks.Count + 1}";
+            var reader = new SlideReader(media, slidePart, presentation.DefaultTextStyle, blocks.Count, new TextScope(slidePart, unread, place));
             blocks.Add(new Model.Slide(blocks.Count + 1, slide.Show?.Value == false, reader.ReadShapes(slide.CommonSlideData?.ShapeTree))
             {
-                Notes = ReadNotes(slidePart.NotesSlidePart) is { Count: > 0 } notes ? notes : null,
+                Notes = ReadNotes(slidePart.NotesSlidePart, unread, place) is { Count: > 0 } notes ? notes : null,
             });
+            // A slide's comments, in its legacy comments part or its modern ones, are not read.
+            if (slidePart.SlideCommentsPart?.CommentList?.HasChildren == true
+                || slidePart.GetPartsOfType<PowerPointCommentPart>().Any(comments => comments.RootElement?.HasChildren == true))
+            {
+                unread.Found(place, UnreadKinds.Comments);
+            }
         }
-        return new Conversion(new Document(SourceFormat.Pptx, blocks), media.Files);
+        return new Conversion(new Document(SourceFormat.Pptx, blocks) { Properties = properties }, media.Files) { Warnings = warnings };
     }
+
+    // Where a text body's paragraphs are read: the part that holds their hyperlinks'
+    // relationships, and the place the unread kinds they hold are warned of at.
+    private sealed record TextScope(OpenXmlPart Part, UnreadKinds Unread, string Place);
 
     // A notes page's text: its body placeholders' paragraphs, never the slide image, the slide
     // number, or a header, footer, or date placeholder. Their bullets come from their own list
     // style and the notes master's body placeholder and notes style.
-    private static List<Block> ReadNotes(NotesSlidePart? part)
+    private static List<Block> ReadNotes(NotesSlidePart? part, UnreadKinds unread, string place)
     {
         var blocks = new List<Block>();
         var master = part?.NotesMasterPart?.NotesMaster;
@@ -55,13 +71,13 @@ internal static class PptxReader
         {
             if (Placeholder(shape)?.Type?.Value == P.PlaceholderValues.Body && shape.TextBody is { } body)
             {
-                blocks.AddRange(ReadText(body, [body.ListStyle, masterBody?.TextBody?.ListStyle, master?.NotesStyle]));
+                blocks.AddRange(ReadText(body, [body.ListStyle, masterBody?.TextBody?.ListStyle, master?.NotesStyle], new TextScope(part!, unread, place)));
             }
         }
         return blocks;
     }
 
-    private sealed class SlideReader(MediaStore media, SlidePart part, P.DefaultTextStyle? defaultTextStyle, int index)
+    private sealed class SlideReader(MediaStore media, SlidePart part, P.DefaultTextStyle? defaultTextStyle, int index, TextScope scope)
     {
         private readonly SlideLayoutPart? layout = part.SlideLayoutPart;
         private readonly P.SlideMaster? master = part.SlideLayoutPart?.SlideMasterPart?.SlideMaster;
@@ -80,9 +96,17 @@ internal static class PptxReader
                         blocks.AddRange(ReadShapes(group));
                         break;
                     case P.GraphicFrame frame:
+                        if (UnreadKinds.HoldsSmartArt(frame))
+                        {
+                            scope.Unread.Found(scope.Place, UnreadKinds.SmartArt);
+                        }
                         if (ReadGraphic(frame.Graphic?.GraphicData) is { } graphic)
                         {
                             blocks.Add(graphic);
+                        }
+                        else
+                        {
+                            blocks.AddRange(ReadObject(frame.Graphic?.GraphicData));
                         }
                         break;
                     case AlternateContent content when ChartReader.ChartEx(content, part) is { } chartEx:
@@ -96,17 +120,43 @@ internal static class PptxReader
                         }
                         break;
                     case P.Picture picture:
-                        var properties = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
-                        var blip = picture.BlipFill?.Blip;
-                        if ((blip?.Embed?.Value ?? blip?.Link?.Value) is { } id
-                            && media.Picture(part, id, NonEmpty(properties?.Description?.Value), NonEmpty(properties?.Title?.Value)) is { } picked)
+                        if (ReadPicture(picture) is { } picked)
                         {
-                            blocks.Add(picked with { Slide = index });
+                            blocks.Add(picked);
                         }
                         break;
                     default:
                         break;
                 }
+            }
+            return blocks;
+        }
+
+        private Media? ReadPicture(P.Picture picture)
+        {
+            var properties = picture.NonVisualPictureProperties?.NonVisualDrawingProperties;
+            var blip = picture.BlipFill?.Blip;
+            return (blip?.Embed?.Value ?? blip?.Link?.Value) is { } id
+                && media.Picture(part, id, NonEmpty(properties?.Description?.Value), NonEmpty(properties?.Title?.Value)) is { } picked
+                ? picked with { Slide = index }
+                : null;
+        }
+
+        // An OLE object's frame: its preview picture, then its embedded package or OLE object as
+        // stored, with its program id. PowerPoint writes the object twice in alternate content,
+        // the preview only in the fallback's copy; both name the same relationship.
+        private List<Block> ReadObject(A.GraphicData? data)
+        {
+            var objects = data?.Descendants<P.OleObject>().ToList() ?? [];
+            var blocks = new List<Block>();
+            if (objects.SelectMany(o => o.Descendants<P.Picture>()).FirstOrDefault() is { } preview && ReadPicture(preview) is { } picture)
+            {
+                blocks.Add(picture);
+            }
+            if (objects.FirstOrDefault(o => o.Id?.Value is not null) is { } named
+                && media.Payload(part, named.Id!.Value!, objects.Select(o => o.ProgId?.Value).FirstOrDefault(p => p is not null)) is { } payload)
+            {
+                blocks.Add(payload with { Slide = index });
             }
             return blocks;
         }
@@ -119,10 +169,10 @@ internal static class PptxReader
             var type = placeholder is null ? (P.PlaceholderValues?)null : TypeOf(placeholder);
             if (type == P.PlaceholderValues.Title || type == P.PlaceholderValues.CenteredTitle)
             {
-                var lines = body.Elements<A.Paragraph>().Select(TextOf).Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-                return lines.Count == 0 ? [] : [new Heading(1, [new TextRun(string.Join("\n", lines))])];
+                var lines = body.Elements<A.Paragraph>().Select(p => InlinesOf(p, scope)).Where(i => !string.IsNullOrWhiteSpace(InlineText.Of(i))).ToList();
+                return lines.Count == 0 ? [] : [new Heading(1, Joined(lines))];
             }
-            return ReadText(body, Styles(body.ListStyle, placeholder, type));
+            return ReadText(body, Styles(body.ListStyle, placeholder, type), scope);
         }
 
         // The list styles a shape's paragraphs inherit their bullets from, nearest first: the
@@ -156,7 +206,7 @@ internal static class PptxReader
         {
             if (data?.GetFirstChild<A.Table>() is { } table)
             {
-                return ReadTable(table);
+                return ReadTable(table, scope);
             }
             return data?.GetFirstChild<C.ChartReference>()?.Id?.Value is { } chartId
                 && part.TryGetPartById(chartId, out var chartPart) && chartPart is ChartPart chart
@@ -166,7 +216,7 @@ internal static class PptxReader
 
         // A table's rows of cells. A cell that a merge covers, from the left (hMerge) or from
         // above (vMerge), is left out; the merge's first cell carries its spans.
-        private static Table ReadTable(A.Table table)
+        private static Table ReadTable(A.Table table, TextScope scope)
         {
             var rows = new List<TableRow>();
             foreach (var row in table.Elements<A.TableRow>())
@@ -180,7 +230,7 @@ internal static class PptxReader
                     }
                     var colSpan = cell.GridSpan?.Value ?? 1;
                     var rowSpan = cell.RowSpan?.Value ?? 1;
-                    cells.Add(new TableCell(cell.TextBody is { } body ? ReadText(body, [body.ListStyle]) : [])
+                    cells.Add(new TableCell(cell.TextBody is { } body ? ReadText(body, [body.ListStyle], scope) : [])
                     {
                         ColSpan = colSpan > 1 ? colSpan : null,
                         RowSpan = rowSpan > 1 ? rowSpan : null,
@@ -197,20 +247,20 @@ internal static class PptxReader
     // the list styles give for its level, nearest first; with none, or buNone, it is a paragraph.
     // An auto-number counts from its startAt, 1 by default. An empty paragraph is spacing and is
     // left out.
-    private static List<Block> ReadText(OpenXmlElement body, List<OpenXmlElement?> styles)
+    private static List<Block> ReadText(OpenXmlElement body, List<OpenXmlElement?> styles, TextScope scope)
     {
         var blocks = new TextBlocks();
         foreach (var paragraph in body.Elements<A.Paragraph>())
         {
-            var text = TextOf(paragraph);
-            if (string.IsNullOrWhiteSpace(text))
+            var inlines = InlinesOf(paragraph, scope);
+            if (string.IsNullOrWhiteSpace(InlineText.Of(inlines)))
             {
                 continue;
             }
             var properties = paragraph.ParagraphProperties;
             var level = Math.Clamp(properties?.Level?.Value ?? 0, 0, 8);
             var bullet = BulletOf(properties) ?? styles.Select(style => BulletOf(LevelProperties(style, level))).FirstOrDefault(b => b is not null);
-            var block = new Paragraph([new TextRun(text)]);
+            var block = new Paragraph(inlines);
             if (bullet is { } kind && kind != Bullet.None)
             {
                 var start = AutoNumberOf(properties) ?? styles.Select(style => AutoNumberOf(LevelProperties(style, level))).FirstOrDefault(n => n is not null);
@@ -267,28 +317,87 @@ internal static class PptxReader
 
     private const string DrawingNamespace = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-    // A paragraph's text: its runs and fields, line breaks as \n.
-    private static string TextOf(A.Paragraph paragraph)
+    // A paragraph's inlines: its runs' and fields' text, line breaks as \n, an external
+    // hyperlink's runs (each run's own a:hlinkClick) between its start and end. A hyperlink to a
+    // slide or an action is no external one, so its text stays text. An equation, in alternate
+    // content, is not read.
+    private static List<Inline> InlinesOf(A.Paragraph paragraph, TextScope scope)
     {
+        var inlines = new List<Inline>();
         var text = new StringBuilder();
+        string? open = null;
+        void Flush()
+        {
+            if (text.Length > 0)
+            {
+                inlines.Add(new TextRun(text.ToString()));
+                text.Clear();
+            }
+        }
+        void Link(OpenXmlElement? properties)
+        {
+            var target = MediaStore.Hyperlink(scope.Part, properties?.GetFirstChild<A.HyperlinkOnClick>()?.Id?.Value);
+            if (target == open)
+            {
+                return;
+            }
+            Flush();
+            if (open is not null)
+            {
+                inlines.Add(new HyperlinkEnd());
+            }
+            if (target is not null)
+            {
+                inlines.Add(new HyperlinkStart(target));
+            }
+            open = target;
+        }
         foreach (var child in paragraph.ChildElements)
         {
             switch (child)
             {
                 case A.Run run:
+                    Link(run.RunProperties);
                     text.Append(run.Text?.Text);
                     break;
                 case A.Field field:
+                    Link(field.GetFirstChild<A.RunProperties>());
                     text.Append(field.Text?.Text);
                     break;
                 case A.Break:
                     text.Append('\n');
                     break;
+                case AlternateContent content when UnreadKinds.HoldsEquation(content):
+                    scope.Unread.Found(scope.Place, UnreadKinds.Equations);
+                    break;
                 default:
                     break;
             }
         }
-        return text.ToString();
+        Link(null);
+        Flush();
+        return inlines;
+    }
+
+    // Paragraphs' inlines as one block's, a line break between each, adjacent text merged.
+    private static List<Inline> Joined(List<List<Inline>> paragraphs)
+    {
+        var inlines = new List<Inline>();
+        foreach (var paragraph in paragraphs)
+        {
+            foreach (var inline in inlines.Count > 0 ? [new TextRun("\n"), .. paragraph] : paragraph)
+            {
+                if (inline is TextRun run && inlines.Count > 0 && inlines[^1] is TextRun last)
+                {
+                    inlines[^1] = new TextRun(last.Text + run.Text);
+                }
+                else
+                {
+                    inlines.Add(inline);
+                }
+            }
+        }
+        return inlines;
     }
 
     private static P.PlaceholderShape? Placeholder(P.Shape shape) =>

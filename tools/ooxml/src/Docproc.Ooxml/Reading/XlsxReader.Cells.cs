@@ -28,8 +28,12 @@ internal sealed class XlsxWorkbook
     /// <summary>The media the sheets' drawings hold, by file name.</summary>
     public IReadOnlyDictionary<string, byte[]> Media => context.Media.Files;
 
-    /// <summary>What the validate pass skipped: a sheet that names no part.</summary>
+    /// <summary>What the validate pass skipped: a sheet that names no part, a properties part
+    /// that can't be parsed or repeats a key, and the unread kinds the workbook holds.</summary>
     public IReadOnlyList<Warning> Warnings { get; }
+
+    /// <summary>The package's properties, or null when it has none.</summary>
+    public Properties? Properties { get; init; }
 
     /// <summary>The write pass of a sheet: its table's rows, each read from its part as it is
     /// enumerated. The validate pass already read the part, so reading it again finds nothing it
@@ -41,7 +45,8 @@ internal sealed class XlsxWorkbook
     /// written, so no more of a sheet is held than its next <c>rows</c> line.</summary>
     public void Write(Stream output) =>
         Lines.WriteXlsx(
-            Lines.Pictures(new Document(SourceFormat.Xlsx, [.. Sheets.Select(sheet => new Model.Sheet(sheet.Name, sheet.Hidden, sheet.Drawings))])),
+            Properties,
+            Lines.MediaOf(new Document(SourceFormat.Xlsx, [.. Sheets.Select(sheet => new Model.Sheet(sheet.Name, sheet.Hidden, sheet.Drawings))])),
             Sheets.Select(sheet => new SheetSource(sheet.Name, sheet.Hidden, sheet.Cells?.Columns ?? [], Rows(sheet), sheet.Drawings)),
             output);
 }
@@ -55,10 +60,11 @@ internal static partial class XlsxReader
 {
     /// <summary>What the validate pass collects of a worksheet for its write pass: the column
     /// letters its table uses, in the sheet's order (none when it has no table), its merged
-    /// ranges, and its shared formulas' anchors by shared index. A forward reading meets the
-    /// merges after the cells and can meet an anchor after a cell that names it, so the rows
-    /// can't be written until a first reading has them.</summary>
-    internal sealed record SheetCells(WorksheetPart Part, IReadOnlyList<string> Columns, IReadOnlyList<Merge> Merges, IReadOnlyDictionary<uint, string> Anchors);
+    /// ranges, its shared formulas' anchors by shared index, and its external hyperlinks' ranges
+    /// with their targets. A forward reading meets the merges and hyperlinks after the cells and
+    /// can meet an anchor after a cell that names it, so the rows can't be written until a first
+    /// reading has them.</summary>
+    internal sealed record SheetCells(WorksheetPart Part, IReadOnlyList<string> Columns, IReadOnlyList<Merge> Merges, IReadOnlyDictionary<uint, string> Anchors, IReadOnlyList<(Merge Range, string Target)> Links);
 
     // A failure found in a sheet's cells, kept until the sheet's merges are known: one at a cell
     // (Row and Column from 1) counts only when no merge covers the cell, as a covered cell is
@@ -67,12 +73,16 @@ internal static partial class XlsxReader
 
     // The validate pass of a worksheet: one forward reading of its part, holding one row at a
     // time, that finds what would refuse it and collects its merges, its shared-formula anchors,
-    // and the columns its kept cells use. It refuses with the failure a reading of the whole part
-    // would have met first: the part's XML, wherever it fails, then a shared formula's attributes,
-    // then the first failure among the cells in order, a covered cell's left out.
-    private static SheetCells ValidateCells(XlsxContext context, WorksheetPart part)
+    // its external hyperlinks, the columns its kept cells use, and its OLE objects, as elements
+    // (each an oleObject or the alternate content holding one). It refuses with the failure a
+    // reading of the whole part would have met first: the part's XML, wherever it fails, then a
+    // shared formula's attributes, then the first failure among the cells in order, a covered
+    // cell's left out.
+    private static (SheetCells Cells, List<OpenXmlElement> Objects) ValidateCells(XlsxContext context, WorksheetPart part)
     {
         var merges = new List<Merge>();
+        var links = new List<(Merge, string)>();
+        var objects = new List<OpenXmlElement>();
         var anchors = new Dictionary<uint, string>();
         var candidates = new ColumnCandidates();
         ExceptionDispatchInfo? anchorError = null;
@@ -87,6 +97,21 @@ internal static partial class XlsxReader
                 {
                     merges.Add(found);
                 }
+                continue;
+            }
+            // A hyperlink to a place in the workbook (its location alone) stays text.
+            if (element is S.Hyperlink hyperlink)
+            {
+                if (hyperlink.Reference?.Value is { } range && Range(range) is { } linked
+                    && MediaStore.Hyperlink(part, hyperlink.Id?.Value) is { } target)
+                {
+                    links.Add((linked, target));
+                }
+                continue;
+            }
+            if (element is not S.Row)
+            {
+                objects.Add(element);
                 continue;
             }
             var row = (S.Row)element;
@@ -153,7 +178,7 @@ internal static partial class XlsxReader
                 error.Error.Throw();
             }
         }
-        return new SheetCells(part, candidates.Columns(index, anchors), merges, anchors);
+        return (new SheetCells(part, candidates.Columns(index, anchors), merges, anchors, links), objects);
     }
 
     // The write pass of a worksheet: its rows, read forward one at a time, each holding the cells
@@ -195,6 +220,7 @@ internal static partial class XlsxReader
                 cells.Add(new TableCell(null)
                 {
                     Ref = Reference(cellRow, cellColumn),
+                    Target = LinkOf(sheet.Links, cellRow, cellColumn),
                     Value = value,
                     Formula = text,
                     SharedFrom = sharedFrom,
@@ -207,6 +233,20 @@ internal static partial class XlsxReader
                 yield return new TableRow(cells) { Row = rowNumber };
             }
         }
+    }
+
+    // The target of the first of a sheet's external hyperlinks whose range holds the cell, or
+    // null. A sheet's hyperlinks are few, held as ranges, never cell by cell.
+    private static string? LinkOf(IReadOnlyList<(Merge Range, string Target)> links, int row, int column)
+    {
+        foreach (var (range, target) in links)
+        {
+            if (row >= range.Top && row <= range.Bottom && column >= range.Left && column <= range.Right)
+            {
+                return target;
+            }
+        }
+        return null;
     }
 
     // A row's number: as stored, or with none the one after the row before it.
@@ -242,7 +282,8 @@ internal static partial class XlsxReader
         merges.Find(row, column) is not { } merge || (merge.Top == row && merge.Left == column);
 
     // The elements of a worksheet part docproc-ooxml reads, in one forward reading of it: the rows
-    // of its first sheetData and, unless rowsOnly, the ranges of its first mergeCells, each loaded
+    // of its first sheetData and, unless rowsOnly, the ranges of its first mergeCells, the
+    // hyperlinks of its first hyperlinks, and the children of its first oleObjects, each loaded
     // alone, so no more than one row is held at a time. Only the worksheet's own children count:
     // a row inside alternate content is passed over. As the SDK reads a part whole, one of under
     // four bytes holds no worksheet, and one whose root is no worksheet is invalid data.
@@ -259,8 +300,12 @@ internal static partial class XlsxReader
         }
         var sheetData = 0;
         var mergeCells = 0;
+        var hyperlinks = 0;
+        var oleObjects = 0;
         var inSheetData = false;
         var inMergeCells = false;
+        var inHyperlinks = false;
+        var inOleObjects = false;
         while (reader.Read())
         {
             if (reader.Depth == 1 && reader.IsStartElement)
@@ -273,6 +318,14 @@ internal static partial class XlsxReader
                 {
                     inMergeCells = mergeCells++ == 0;
                 }
+                else if (reader.ElementType == typeof(S.Hyperlinks))
+                {
+                    inHyperlinks = hyperlinks++ == 0;
+                }
+                else if (reader.ElementType == typeof(S.OleObjects))
+                {
+                    inOleObjects = oleObjects++ == 0;
+                }
             }
             else if (reader.Depth == 1 && reader.IsEndElement)
             {
@@ -282,9 +335,14 @@ internal static partial class XlsxReader
                 }
                 inSheetData = false;
                 inMergeCells = false;
+                inHyperlinks = false;
+                inOleObjects = false;
             }
             else if (reader.Depth == 2 && reader.IsStartElement
-                && ((inSheetData && reader.ElementType == typeof(S.Row)) || (inMergeCells && reader.ElementType == typeof(S.MergeCell))))
+                && ((inSheetData && reader.ElementType == typeof(S.Row))
+                    || (inMergeCells && reader.ElementType == typeof(S.MergeCell))
+                    || (inHyperlinks && reader.ElementType == typeof(S.Hyperlink))
+                    || inOleObjects))
             {
                 // Loading leaves the reader on the element's end.
                 yield return reader.LoadCurrentElement()!;

@@ -15,7 +15,8 @@ public sealed class LineWriterTests
 {
     // Every field of the document, sheet, and rows lines, in order and in snake_case: a value
     // typed as its JSON primitive, a field with no value left out, a sheet hidden only when it is,
-    // and a sheet's drawings on a closing rows line with no rows.
+    // a sheet's drawings on a closing rows line with no rows, and a medium's sheet the ordinal of
+    // its sheet line: the second sheet's picture is on sheet 2.
     [Fact]
     public void AnXlsxIsItsDocumentLineThenEachSheetsLines()
     {
@@ -45,7 +46,7 @@ public sealed class LineWriterTests
 
         Assert.Equal(
             """
-            {"line":"document","schema":"2","format":"xlsx","media":[{"kind":"picture","file":"abc.png","content_type":"image/png","part":"/xl/media/image1.png","sheet":1}]}
+            {"line":"document","schema":"2","format":"xlsx","media":[{"kind":"picture","file":"abc.png","content_type":"image/png","part":"/xl/media/image1.png","sheet":2}]}
             {"line":"sheet","name":"Data","markdown":"# Data\n\n|  | A | C | D | E |\n| --- | --- | --- | --- | --- |\n"}
             {"line":"rows","markdown":"| 1 | 1.5 | TRUE | 2026-01-15 |  |\n| 2 |  | x | (formula shared from D1) | \\#N/A |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"number","value":1.5,"col_span":2,"row_span":3},{"ref":"C1","value_type":"boolean","value":true},{"ref":"D1","value_type":"date","value":"2026-01-15"}]},{"row":2,"cells":[{"ref":"C2","value_type":"text","value":"x","formula":"\"x\""},{"ref":"D2","shared_from":"D1"},{"ref":"E2","value_type":"error","value":"#N/A"}]}]}
             {"line":"sheet","name":"Hidden","hidden":true,"markdown":"\n# Hidden (hidden)\n"}
@@ -76,6 +77,28 @@ public sealed class LineWriterTests
             Write(new Document(SourceFormat.Docx, [])));
     }
 
+    // The properties come before the Markdown, each map in stored order, each value its JSON
+    // type, a map with none left out; an embedded package or OLE object is a medium of its kind
+    // with its program id, after its preview picture, and a docx medium's placement its section.
+    [Fact]
+    public void PropertiesAndPayloadsAreOnTheDocumentLine()
+    {
+        var properties = new Properties(
+            [new Property("title", new PropertyValue(PropertyValueType.Text, "Plan")), new Property("created", new PropertyValue(PropertyValueType.Text, "2026-01-15T10:00:00Z"))],
+            null,
+            [new Property("Reviewed", new PropertyValue(PropertyValueType.Boolean, "true")), new Property("Ratio", new PropertyValue(PropertyValueType.Number, "0.25"))]);
+        var preview = new Media { Name = "p.emf", ContentType = "image/x-emf", Source = "/word/media/image1.emf", Section = 0 };
+        var ole = new Media { Kind = MediaKind.Ole, Name = "o.bin", ContentType = "application/vnd.openxmlformats-officedocument.oleObject", Source = "/word/embeddings/oleObject1.bin", ProgId = "Package", Section = 0 };
+        var embedded = new Media { Kind = MediaKind.Embedded, Name = "e.xlsx", Source = "/word/embeddings/Book.xlsx", Section = 1 };
+
+        Assert.Equal(
+            """
+            {"line":"document","schema":"2","format":"docx","properties":{"core":{"title":"Plan","created":"2026-01-15T10:00:00Z"},"custom":{"Reviewed":true,"Ratio":0.25}},"markdown":"![](p.emf)\n\n[Package](o.bin)\n\n[Book.xlsx](e.xlsx)\n","media":[{"kind":"picture","file":"p.emf","content_type":"image/x-emf","part":"/word/media/image1.emf","section":0},{"kind":"ole","file":"o.bin","content_type":"application/vnd.openxmlformats-officedocument.oleObject","part":"/word/embeddings/oleObject1.bin","prog_id":"Package","section":0},{"kind":"embedded","file":"e.xlsx","part":"/word/embeddings/Book.xlsx","section":1}]}
+
+            """,
+            Write(new Document(SourceFormat.Docx, [preview, ole, embedded]) { Properties = properties }));
+    }
+
     // A docx's pictures are listed in the order of the Markdown's chunks, headers first, each
     // time one is shown, nested ones in place.
     [Fact]
@@ -95,7 +118,7 @@ public sealed class LineWriterTests
 
         Assert.Equal(
             ["top.png", "cell.png", "item.png", "top.png", "comment.png"],
-            Lines.Pictures(document).Select(m => m.Name));
+            Lines.MediaOf(document).Select(m => m.Name));
     }
 
     // A sheet past the bound: rows lines each within 256 KiB, its newline included, holding as

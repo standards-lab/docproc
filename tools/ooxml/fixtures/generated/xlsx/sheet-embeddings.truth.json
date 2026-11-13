@@ -1,0 +1,78 @@
+{
+  "fixture": "sheet-embeddings",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Cover",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "The objects are on the next sheet."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Objects",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "An OLE object and an embedded package follow."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "media",
+          "name": "8b593ff2b3621b88e351e139e1d83834eb5655f3a33d465565c80e5b62b3cf97.png",
+          "contentType": "image/png",
+          "sheet": 1
+        },
+        {
+          "kind": "ole",
+          "name": "6c1632e53bcc4f90f95756dd1c7a05d207433a4474550da7e689a4a09b5a77ab.bin",
+          "contentType": "application/vnd.openxmlformats-officedocument.oleObject",
+          "progId": "Word.Document.8",
+          "sheet": 1
+        },
+        {
+          "kind": "media",
+          "name": "6b56cc15ceb6127178192e73ffc85e4433c607acfd667728766a01d051253693.png",
+          "contentType": "image/png",
+          "sheet": 1
+        },
+        {
+          "kind": "embedded",
+          "name": "411eedc6342e57713e7dae5898fda73f5f7a0cf5036f837ee557d8f283d298a2.docx",
+          "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "progId": "Word.Document.12",
+          "sheet": 1
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

@@ -260,19 +260,24 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
+    // A picture's image text is its alternative text, or else its title; a title that differs
+    // from the image text is the image's title, its quotes escaped.
     [Fact]
     public void MediaAreImageLinksToTheirFilesOrTargets()
     {
         var markdown = Render(
-            new Media { Name = "abc.png", ContentType = "image/png", Alt = "A [bracketed] picture", Title = "Unused" },
+            new Media { Name = "abc.png", ContentType = "image/png", Alt = "A [bracketed] picture", Title = "A \"quoted\" title" },
             new Media { Target = "https://example.com/a b.png", Title = "Titled" },
+            new Media { Name = "same.png", Alt = "Same", Title = "Same" },
             new Table([new TableRow([new TableCell([Para("Cell"), new Media { Name = "x.emf" }])])]));
 
         Assert.Equal(
             """
-            ![A \[bracketed\] picture](abc.png)
+            ![A \[bracketed\] picture](abc.png "A \"quoted\" title")
 
             ![Titled](<https://example.com/a b.png>)
+
+            ![Same](same.png)
 
             | Cell<br>![](x.emf) |
             | --- |
@@ -457,6 +462,155 @@ public sealed class MarkdownRendererTests
             ###### Six
 
             # After
+
+            """,
+            markdown);
+    }
+
+    // An embedded package or OLE object links to its file, its text its program id or else its
+    // part's file name, after its preview picture.
+    [Fact]
+    public void APayloadIsALinkAfterItsPreview()
+    {
+        var markdown = Render(
+            new Media { Name = "preview.emf" },
+            new Media { Kind = MediaKind.Ole, Name = "x.bin", ProgId = "Word.Document.8", Source = "/word/embeddings/oleObject1.bin" },
+            new Media { Kind = MediaKind.Embedded, Name = "y.docx", Source = "/ppt/embeddings/My_Document.docx" });
+
+        Assert.Equal(
+            """
+            ![](preview.emf)
+
+            [Word.Document.8](x.bin)
+
+            [My\_Document.docx](y.docx)
+
+            """,
+            markdown);
+    }
+
+    // An external hyperlink's text is linked to its target, escaped as any text is; its line
+    // breaks are spaces, and one with no text is nothing. A destination holding a space is in
+    // angle brackets, and a pipe in one is escaped.
+    [Fact]
+    public void AnExternalHyperlinkIsALink()
+    {
+        var markdown = Render(
+            new Paragraph([new TextRun("Read "), new HyperlinkStart("https://example.invalid/a b"), new TextRun("the *guide*"), new HyperlinkEnd(), new TextRun(" now.")]),
+            new Paragraph([new HyperlinkStart("https://example.invalid/?q=1|2"), new TextRun("two\nlines"), new HyperlinkEnd()]),
+            new Paragraph([new TextRun("An empty "), new HyperlinkStart("https://example.invalid/"), new TextRun("  "), new HyperlinkEnd(), new TextRun("link")]),
+            new Table([new TableRow([new TableCell([new Paragraph([new HyperlinkStart("https://example.invalid/c"), new TextRun("In a cell"), new HyperlinkEnd()])])])]));
+
+        Assert.Equal(
+            """
+            Read [the \*guide\*](<https://example.invalid/a b>) now.
+
+            [two lines](https://example.invalid/?q=1\|2)
+
+            An empty link
+
+            | [In a cell](https://example.invalid/c) |
+            | --- |
+
+            """,
+            markdown);
+    }
+
+    // A paragraph renders as segments: each text run escaped on its own, a private-use character
+    // kept as it is, each label appended where its reference is, and only text that begins a line
+    // escaped as a line's start.
+    [Fact]
+    public void ReferencesAreLabelsBetweenTextSegments()
+    {
+        var document = new Document(SourceFormat.Docx,
+        [
+            new Paragraph([new TextRun("Private \uE000 and \uE001 use"), new FootnoteReference(1), new TextRun("\n1. after a break"), new FootnoteReference(2)]),
+            new Paragraph([new FootnoteReference(1), new TextRun("# not a line's start")]),
+        ])
+        {
+            Footnotes = [new Note(1, [Para("First.")]), new Note(2, [Para("Second.")])],
+        };
+
+        Assert.Equal(
+            """
+            Private U+E000 and U+E001 use[^1]\
+            1\. after a break[^2]
+
+            [^1]# not a line's start
+
+            [^1]: First.
+
+            [^2]: Second.
+
+            """.Replace("U+E000", "\uE000", StringComparison.Ordinal).Replace("U+E001", "\uE001", StringComparison.Ordinal),
+            MarkdownRenderer.Render(document));
+    }
+
+    // A chart in a docx table cell, which a GFM cell can't hold, renders after the table, its
+    // title left in the cell, through nested tables.
+    [Fact]
+    public void AChartInATableCellFollowsTheTable()
+    {
+        var chart = new Chart("bar", "Cell chart", [new ChartSeries("Units", ["A"], [3])]);
+        var nested = new Chart("pie", "Nested chart", [new ChartSeries("Share", ["B"], [1])]);
+        var markdown = Render(
+            new Table(
+            [
+                new TableRow(
+                [
+                    new TableCell([Para("Cell"), chart]),
+                    new TableCell([new Table([new TableRow([new TableCell([nested])])])]),
+                ]),
+            ]),
+            Para("After."));
+
+        Assert.Equal(
+            """
+            | Cell<br>Cell chart | Nested chart |
+            | --- | --- |
+
+            Cell chart
+
+            |  | Units |
+            | --- | --- |
+            | A | 3 |
+
+            Nested chart
+
+            |  | Share |
+            | --- | --- |
+            | B | 1 |
+
+            After.
+
+            """,
+            markdown);
+    }
+
+    // A sheet cell with an external hyperlink links what it shows.
+    [Fact]
+    public void ASheetCellWithAHyperlinkLinksItsValue()
+    {
+        var markdown = Render(new Sheet("Links", false,
+        [
+            new Table(
+            [
+                new TableRow(
+                [
+                    Cell("A1", CellValue.OfText("The guide")) with { Target = "https://example.invalid/guide" },
+                    Cell("B1", CellValue.OfNumber(42)) with { Target = "https://example.invalid/answer" },
+                    Cell("C1", CellValue.OfText("plain")),
+                ]) { Row = 1 },
+            ]),
+        ]));
+
+        Assert.Equal(
+            """
+            # Links
+
+            |  | A | B | C |
+            | --- | --- | --- | --- |
+            | 1 | [The guide](https://example.invalid/guide) | [42](https://example.invalid/answer) | plain |
 
             """,
             markdown);

@@ -13,10 +13,10 @@ internal static class Lines
     {
         if (document.Format != SourceFormat.Xlsx)
         {
-            new LineWriter(output).WriteDocument(document.Format, MarkdownRenderer.Render(document), Pictures(document));
+            new LineWriter(output).WriteDocument(document.Format, document.Properties, MarkdownRenderer.Render(document), MediaOf(document));
             return;
         }
-        WriteXlsx(Pictures(document), document.Blocks.OfType<Sheet>().Select(sheet =>
+        WriteXlsx(document.Properties, MediaOf(document), document.Blocks.OfType<Sheet>().Select(sheet =>
         {
             var table = sheet.Blocks.OfType<Table>().FirstOrDefault();
             return new SheetSource(
@@ -28,16 +28,17 @@ internal static class Lines
         }), output);
     }
 
-    /// <summary>Writes an xlsx document's lines to the output: its document line, naming the given
-    /// pictures, then each sheet's lines, each line written as its rows are enumerated, so a sheet
-    /// read forward never waits in memory past one <c>rows</c> line.</summary>
-    public static void WriteXlsx(IReadOnlyList<Media> pictures, IEnumerable<SheetSource> sheets, Stream output)
+    /// <summary>Writes an xlsx document's lines to the output: its document line, holding the given
+    /// properties and naming the given media, then each sheet's lines, each line written as its
+    /// rows are enumerated, so a sheet read forward never waits in memory past one <c>rows</c>
+    /// line.</summary>
+    public static void WriteXlsx(Properties? properties, IReadOnlyList<Media> media, IEnumerable<SheetSource> sheets, Stream output)
     {
         // An xlsx document's Markdown is its sheets', so its document line holds none. A sheet's
         // lines are written in the order a forward reading of it gives them: its header, its rows,
         // and then its drawings, which its drawing part anchors apart from its cells.
         var writer = new LineWriter(output);
-        writer.WriteDocument(SourceFormat.Xlsx, "", pictures);
+        writer.WriteDocument(SourceFormat.Xlsx, properties, "", media);
         var follows = false;
         foreach (var sheet in sheets)
         {
@@ -51,11 +52,12 @@ internal static class Lines
         }
     }
 
-    /// <summary>Every picture of the document, in the order of the Markdown's chunks: each
-    /// section's headers, the body, each section's footers, the footnotes, the endnotes, and the
-    /// comments with their replies; within each, in block order, nested blocks in place. A
-    /// picture shown more than once is listed each time, with its own placement.</summary>
-    internal static List<Media> Pictures(Document document)
+    /// <summary>Every medium of the document, pictures, embedded packages, and OLE objects, in the
+    /// order of the Markdown's chunks: each section's headers, the body, each section's footers,
+    /// the footnotes, the endnotes, and the comments with their replies; within each, in block
+    /// order, nested blocks in place, a payload after its preview picture. A medium shown more
+    /// than once is listed each time, with its own placement.</summary>
+    internal static List<Media> MediaOf(Document document)
     {
         var pictures = new List<Media>();
         var sections = document.Sections ?? [];

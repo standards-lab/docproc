@@ -175,6 +175,129 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "ppt/media/", 2, media);
     }
 
+    // A sheet's embedded package and OLE object are written as stored, each after its preview,
+    // and named in the media list with the second sheet line's ordinal.
+    [Fact]
+    public void SheetPayloadsAreWrittenAsStored()
+    {
+        var media = Path.Combine(scratch.FullName, "media");
+        var path = Fixtures.DocumentPath("sheet-embeddings", "openpyxl");
+
+        var result = Run(path, "--media", media);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(Golden("sheet-embeddings", "openpyxl"), result.Stdout);
+        Assert.Equal(4, Directory.GetFiles(media).Length);
+        AssertEachStoredPartIsWritten(path, "xl/embeddings/", 2, media);
+        AssertEachStoredPartIsWritten(path, "xl/media/", 2, media);
+        var listed = JsonNode.Parse(result.Stdout.Split('\n')[0])!["media"]!.AsArray();
+        Assert.Equal(["picture", "ole", "picture", "embedded"], listed.Select(m => (string?)m!["kind"]));
+        Assert.All(listed, m => Assert.Equal(2, (int?)m!["sheet"]));
+    }
+
+    // A slide's embedded package and OLE object are written as stored; the chart beside them
+    // embeds its source workbook, which is never media (context/design.md, OX-5).
+    [Fact]
+    public void SlidePayloadsAreWrittenAndAChartsWorkbookIsNot()
+    {
+        var media = Path.Combine(scratch.FullName, "media");
+        var path = Fixtures.DocumentPath("slide-embeddings", "python-pptx");
+
+        var result = Run(path, "--media", media);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(Golden("slide-embeddings", "python-pptx"), result.Stdout);
+        using var package = ZipFile.OpenRead(path);
+        var workbook = package.Entries.Single(e => e.FullName.StartsWith("ppt/embeddings/", StringComparison.Ordinal) && e.Name.EndsWith(".xlsx", StringComparison.Ordinal));
+        using (var stream = workbook.Open())
+        using (var bytes = new MemoryStream())
+        {
+            stream.CopyTo(bytes);
+            Assert.False(File.Exists(Path.Combine(media, Convert.ToHexStringLower(SHA256.HashData(bytes.ToArray())) + ".xlsx")));
+        }
+        Assert.Equal(4, Directory.GetFiles(media).Length);
+        Assert.DoesNotContain(".xlsx", result.Stdout, StringComparison.Ordinal);
+    }
+
+    // The properties by the reading rule (context/layers.md, "docproc-ooxml"): core values strings
+    // as stored, an extended value all digits a number, a custom value its variant's type, a file
+    // time its stored text, and one that isn't its type's the string it is stored as; keys in
+    // stored order, a repeated key's first value kept with a warning, and an empty value or a
+    // vector left out.
+    [Fact]
+    public void PropertiesAreReadByTheReadingRule()
+    {
+        var path = PropertiesPackage(
+            "properties.docx",
+            core: "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" " +
+                "xmlns:dc=\"http://purl.org/dc/elements/1.1/\" xmlns:dcterms=\"http://purl.org/dc/terms/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\">" +
+                "<dc:title>Plan</dc:title><dc:subject/><dc:creator>First</dc:creator><dc:creator>Second</dc:creator>" +
+                "<dcterms:created xsi:type=\"dcterms:W3CDTF\">2026-01-15T10:00:00Z</dcterms:created><cp:revision>007</cp:revision></cp:coreProperties>",
+            app: "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\" " +
+                "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
+                "<Pages>0012</Pages><AppVersion>16.0300</AppVersion><ScaleCrop>false</ScaleCrop>" +
+                "<TitlesOfParts><vt:vector size=\"1\" baseType=\"lpstr\"><vt:lpstr>Plan</vt:lpstr></vt:vector></TitlesOfParts></Properties>",
+            custom: "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" " +
+                "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
+                CustomProperty(2, "Owner", "<vt:lpwstr>Ops: \"East\"</vt:lpwstr>") +
+                CustomProperty(3, "Count", "<vt:i4>-5</vt:i4>") +
+                CustomProperty(4, "Big", "<vt:ui8>18446744073709551615</vt:ui8>") +
+                CustomProperty(5, "Ratio", "<vt:r8>1.5E3</vt:r8>") +
+                CustomProperty(6, "Done", "<vt:bool>1</vt:bool>") +
+                CustomProperty(7, "Due", "<vt:filetime>2026-02-01T00:00:00Z</vt:filetime>") +
+                CustomProperty(8, "Odd", "<vt:i4>many</vt:i4>") +
+                CustomProperty(9, "Empty", "<vt:lpwstr></vt:lpwstr>") +
+                CustomProperty(10, "List", "<vt:vector size=\"1\" baseType=\"lpstr\"><vt:lpstr>a</vt:lpstr></vt:vector>") +
+                CustomProperty(11, "Owner", "<vt:lpwstr>West</vt:lpwstr>") +
+                "</Properties>");
+
+        var result = Run(path);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(
+            "{\"line\":\"document\",\"schema\":\"2\",\"format\":\"docx\",\"properties\":{" +
+            "\"core\":{\"title\":\"Plan\",\"creator\":\"First\",\"created\":\"2026-01-15T10:00:00Z\",\"revision\":\"007\"}," +
+            "\"app\":{\"Pages\":12,\"AppVersion\":\"16.0300\",\"ScaleCrop\":\"false\"}," +
+            "\"custom\":{\"Owner\":\"Ops: \\\"East\\\"\",\"Count\":-5,\"Big\":18446744073709551615,\"Ratio\":1500,\"Done\":true," +
+            "\"Due\":\"2026-02-01T00:00:00Z\",\"Odd\":\"many\"}},\"markdown\":\"kept\\n\"}\n",
+            result.Stdout);
+        Assert.Equal(
+            "docproc-ooxml: warning: core properties: \"creator\" is repeated: its first value is kept\n" +
+            "docproc-ooxml: warning: custom properties: \"Owner\" is repeated: its first value is kept\n",
+            result.Stderr);
+    }
+
+    // A properties part that can't be parsed is a warning, never a refusal: the document and the
+    // other parts' properties convert.
+    [Theory]
+    [InlineData("core")]
+    [InlineData("app")]
+    [InlineData("custom")]
+    public void APropertiesPartThatCannotBeParsedIsAWarning(string broken)
+    {
+        const string Core = "<cp:coreProperties xmlns:cp=\"http://schemas.openxmlformats.org/package/2006/metadata/core-properties\" " +
+            "xmlns:dc=\"http://purl.org/dc/elements/1.1/\"><dc:title>Plan</dc:title></cp:coreProperties>";
+        const string App = "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/extended-properties\"><Pages>2</Pages></Properties>";
+        const string Custom = "<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" " +
+            "xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">" +
+            "<property fmtid=\"{D5CDD505-2E9C-101B-9397-08002B2CF9AE}\" pid=\"2\" name=\"Owner\"><vt:lpwstr>Ops</vt:lpwstr></property></Properties>";
+        var path = PropertiesPackage(
+            $"{broken}.docx",
+            core: broken == "core" ? "<cp:coreProperties" : Core,
+            app: broken == "app" ? "<Properties><Pages>" : App,
+            custom: broken == "custom" ? "not xml" : Custom);
+
+        var result = Run(path);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        var line = JsonNode.Parse(result.Stdout)!;
+        Assert.Equal("kept\n", (string?)line["markdown"]);
+        var properties = line["properties"]!.AsObject();
+        Assert.Equal(PropertyMaps.Where(map => map != broken), properties.Select(map => map.Key));
+        Assert.StartsWith($"docproc-ooxml: warning: {broken} properties: not read: ", result.Stderr, StringComparison.Ordinal);
+        AssertOneLine(result.Stderr);
+    }
+
     [Fact]
     public void NothingIsWrittenWithoutTheMediaOption()
     {
@@ -889,6 +1012,36 @@ public sealed class CliTests : IDisposable
                 $"<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"{part}\"/>" +
                 "</Relationships>"),
             (part, content));
+
+    // A docx package of one paragraph, "kept", with the given core, extended, and custom
+    // properties parts, each related from the package as Office relates them.
+    private string PropertiesPackage(string name, string core, string app, string custom) =>
+        Zip(
+            name,
+            ("[Content_Types].xml",
+                "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+                "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>" +
+                "<Override PartName=\"/word/document.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml\"/>" +
+                "<Override PartName=\"/docProps/core.xml\" ContentType=\"application/vnd.openxmlformats-package.core-properties+xml\"/>" +
+                "<Override PartName=\"/docProps/app.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.extended-properties+xml\"/>" +
+                "<Override PartName=\"/docProps/custom.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.custom-properties+xml\"/></Types>"),
+            ("_rels/.rels",
+                "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">" +
+                "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"word/document.xml\"/>" +
+                "<Relationship Id=\"rId2\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties\" Target=\"docProps/core.xml\"/>" +
+                "<Relationship Id=\"rId3\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties\" Target=\"docProps/app.xml\"/>" +
+                "<Relationship Id=\"rId4\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties\" Target=\"docProps/custom.xml\"/>" +
+                "</Relationships>"),
+            ("word/document.xml", Document("<w:p><w:r><w:t>kept</w:t></w:r></w:p>")),
+            ("docProps/core.xml", core),
+            ("docProps/app.xml", app),
+            ("docProps/custom.xml", custom));
+
+    // The properties' maps, in the order the document line holds them.
+    private static readonly string[] PropertyMaps = ["core", "app", "custom"];
+
+    private static string CustomProperty(int pid, string name, string variant) =>
+        $"<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"{pid}\" name=\"{name}\">{variant}</property>";
 
     // A fixture variant's stdout golden, as text.
     private static string Golden(string name, string variant) =>

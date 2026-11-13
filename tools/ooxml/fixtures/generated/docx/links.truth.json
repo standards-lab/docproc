@@ -1,0 +1,106 @@
+{
+  "fixture": "links",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Links"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Read the docproc guide or the figures below."
+    },
+    {
+      "kind": "paragraph",
+      "text": "A linked source ends here.",
+      "marks": [
+        {
+          "at": 15,
+          "kind": "footnote",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Private use  and  stay as they are.",
+      "marks": [
+        {
+          "at": 36,
+          "kind": "footnote",
+          "n": 2
+        }
+      ]
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "A chart in a cell"
+              },
+              {
+                "kind": "chart",
+                "chartType": "bar",
+                "title": "Cell chart",
+                "series": [
+                  {
+                    "name": "Units",
+                    "categories": [
+                      "A",
+                      "B"
+                    ],
+                    "values": [
+                      3,
+                      4
+                    ]
+                  }
+                ]
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Plain cell"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "After the table."
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "footnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " The source is the ledger."
+        }
+      ]
+    },
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " The figures are unaudited."
+        }
+      ]
+    }
+  ]
+}

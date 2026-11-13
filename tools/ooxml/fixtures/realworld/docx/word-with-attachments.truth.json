@@ -9,6 +9,13 @@
       "section": 0
     },
     {
+      "kind": "ole",
+      "name": "e541237987a4e472acb72b245a0353ec86daef0734eee9ff9b6f65c100fa9d5f.bin",
+      "contentType": "application/vnd.openxmlformats-officedocument.oleObject",
+      "progId": "Package",
+      "section": 0
+    },
+    {
       "kind": "paragraph",
       "text": "Русский вариант\t"
     },
@@ -265,9 +272,23 @@
       "section": 0
     },
     {
+      "kind": "ole",
+      "name": "6287c5b818126f14eb37a467aecd5702ba90bd3f8199bf644e4503f25facbc74.doc",
+      "contentType": "application/msword",
+      "progId": "Word.Document.8",
+      "section": 0
+    },
+    {
       "kind": "media",
       "name": "8e362ed597728fa8a3eedc95785f2375b9d87cfc5e727de4f6dd597a4f809f16.emf",
       "contentType": "image/x-emf",
+      "section": 0
+    },
+    {
+      "kind": "ole",
+      "name": "6bd07e1dfe7e3d6518013d38f2a7d24cd49220a29395f34c704f2e14178e2e36.doc",
+      "contentType": "application/msword",
+      "progId": "Word.Document.8",
       "section": 0
     },
     {
@@ -277,9 +298,23 @@
       "section": 0
     },
     {
+      "kind": "ole",
+      "name": "1f96a031de409cc44210f58f76ce0af170cfe01ef1fa1befe3e33b9f4d1a5125.xls",
+      "contentType": "application/vnd.ms-excel",
+      "progId": "Excel.Sheet.8",
+      "section": 0
+    },
+    {
       "kind": "media",
       "name": "f35ded1fae0aa91c50f3f8846401d5565e940246f15bf03c38a5c1fb38118a03.emf",
       "contentType": "image/x-emf",
+      "section": 0
+    },
+    {
+      "kind": "embedded",
+      "name": "471dcecbca53c35f33255df5b0207345f30109a034030c7d4077b3097351b1ec.xlsx",
+      "contentType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "progId": "Excel.Sheet.12",
       "section": 0
     }
   ],

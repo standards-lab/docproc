@@ -10,14 +10,14 @@ internal static class Fixtures
     public static readonly string[] Docx =
     [
         "headings", "lists", "tables", "tracked-changes",
-        "sections", "headers-even-off", "notes", "comments", "comments-plain", "media", "charts",
+        "sections", "headers-even-off", "notes", "comments", "comments-plain", "media", "charts", "links", "unread",
     ];
 
     /// <summary>The generated xlsx fixtures, by name; no name is a docx fixture's too.</summary>
-    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904"];
+    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904", "sheet-links", "sheet-embeddings"];
 
     /// <summary>The generated pptx fixtures, by name; no name is a docx or xlsx fixture's too.</summary>
-    public static readonly string[] Pptx = ["slides", "bullets", "groups", "slide-objects"];
+    public static readonly string[] Pptx = ["slides", "bullets", "groups", "slide-objects", "slide-links", "slide-embeddings"];
 
     /// <summary>The writers of each generated docx fixture: python-docx, and LibreOffice's re-save.</summary>
     public static readonly string[] DocxWriters = ["python-docx", "libreoffice"];

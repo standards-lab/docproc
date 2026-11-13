@@ -14,8 +14,10 @@ namespace Docproc.Ooxml.Tests;
 /// document's list of them, so ids, which writers renumber, never enter the comparison. The
 /// document's sections, notes, and comments are compared in the same shape. A sheet is its name,
 /// whether it is hidden, and its elements, its table's rows each its number and its cells, each
-/// cell its reference, its value's type and value, its formula or shared formula's anchor, and
-/// its spans when merged. A slide is its number, whether it is hidden, its elements, and its
+/// cell its reference, its value's type and value, its formula or shared formula's anchor, its
+/// spans when merged, and its external hyperlink's target. A picture is a <c>media</c> element;
+/// an embedded package or OLE object is an <c>embedded</c> or <c>ole</c> one, with its program
+/// id. A slide is its number, whether it is hidden, its elements, and its
 /// notes' elements when it has notes.</summary>
 internal static class GroundTruth
 {
@@ -213,12 +215,24 @@ internal static class GroundTruth
             json["colSpan"] = cell.ColSpan ?? 1;
             json["rowSpan"] = cell.RowSpan ?? 1;
         }
+        if (cell.Target is not null)
+        {
+            json["target"] = cell.Target;
+        }
         return json;
     }
 
     private static JsonObject Picture(Media media)
     {
-        var picture = new JsonObject { ["kind"] = "media" };
+        var picture = new JsonObject
+        {
+            ["kind"] = media.Kind switch
+            {
+                MediaKind.Embedded => "embedded",
+                MediaKind.Ole => "ole",
+                _ => "media",
+            },
+        };
         if (media.Name is not null)
         {
             picture["name"] = media.Name;
@@ -227,6 +241,10 @@ internal static class GroundTruth
         else
         {
             picture["target"] = media.Target;
+        }
+        if (media.ProgId is not null)
+        {
+            picture["progId"] = media.ProgId;
         }
         if (media.Alt is not null)
         {

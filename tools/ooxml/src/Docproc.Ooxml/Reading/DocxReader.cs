@@ -6,20 +6,25 @@ using Docproc.Ooxml.Writing;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using O = DocumentFormat.OpenXml.Vml.Office;
 using V = DocumentFormat.OpenXml.Vml;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads a docx package into the model, its tracked changes accepted: the body, each
-/// section's headers and footers, the notes the text references, and the comments.</summary>
+/// section's headers and footers, the notes the text references, the comments, and the
+/// package's properties.</summary>
 internal static partial class DocxReader
 {
     public static Conversion Read(WordprocessingDocument package)
     {
         var main = package.MainDocumentPart ?? throw new OpenXmlPackageException("the package has no main document part");
         var body = main.Document?.Body ?? throw new OpenXmlPackageException("the main document part has no body");
+        var warnings = new List<Warning>();
+        var properties = PropertiesReader.Read(package, warnings);
         var context = new DocxContext(
+            warnings,
             main,
             new Styles(main.StyleDefinitionsPart?.Styles),
             new Numbering(main.NumberingDefinitionsPart?.Numbering));
@@ -33,6 +38,7 @@ internal static partial class DocxReader
                 Footnotes = context.Footnotes.Read is { Count: > 0 } footnotes ? footnotes : null,
                 Endnotes = context.Endnotes.Read is { Count: > 0 } endnotes ? endnotes : null,
                 Comments = comments.Count > 0 ? comments : null,
+                Properties = properties,
             },
             context.Media.Files)
         {
@@ -420,6 +426,13 @@ internal static partial class DocxReader
                         break;
                     case W.DeletedRun or W.MoveFromRun:
                         break;
+                    // An external hyperlink's text is linked to its target; an internal one's, to a
+                    // bookmark (w:anchor), stays text.
+                    case W.Hyperlink hyperlink when MediaStore.Hyperlink(part, hyperlink.Id?.Value) is { } target:
+                        inlines.Add(new HyperlinkStart(target));
+                        ReadInlines(child, inlines);
+                        inlines.Add(new HyperlinkEnd());
+                        break;
                     case W.InsertedRun or W.MoveToRun or W.Hyperlink or W.SimpleField or W.CustomXmlRun
                         or W.BidirectionalOverride or W.BidirectionalEmbedding:
                         ReadInlines(child, inlines);
@@ -445,6 +458,10 @@ internal static partial class DocxReader
                             inlines.Add(new CommentReference(ended));
                         }
                         break;
+                    // An equation, Office Math in the paragraph, is not read.
+                    case OpenXmlElement math when math.NamespaceUri == UnreadKinds.MathNamespace:
+                        context.Unread.Found(Place, UnreadKinds.Equations);
+                        break;
                     default:
                         break;
                 }
@@ -459,14 +476,19 @@ internal static partial class DocxReader
 
         // A run's text, references, pictures, and charts. Field codes are instructions, not text;
         // a field's result is ordinary runs. A ruby's base text is the text; its annotation, a
-        // reading aid above it, is left out. An embedded OLE object is never extracted, but the
-        // picture Word shows in its place is a picture of the document. A chartEx chart, in an
+        // reading aid above it, is left out. An embedded package or OLE object is written as
+        // stored after the picture Word shows in its place, its preview. A chartEx chart, in an
         // mc:AlternateContent, is its cached data, or with none its fallback's picture; any
-        // other alternate content is not read.
+        // other alternate content is not read. A text box's or SmartArt diagram's text is not
+        // read either, wherever it is.
         private void ReadRun(OpenXmlElement run, InlineBuilder inlines)
         {
             foreach (var child in run.ChildElements)
             {
+                if (child is W.Drawing or W.Picture or W.EmbeddedObject or AlternateContent)
+                {
+                    FindUnread(child);
+                }
                 switch (child)
                 {
                     case W.Text text:
@@ -505,6 +527,7 @@ internal static partial class DocxReader
                         break;
                     case W.Picture or W.EmbeddedObject:
                         ReadVmlPicture(child, inlines);
+                        ReadPayloads(child, inlines);
                         break;
                     case W.Ruby { RubyBase: { } rubyBase }:
                         ReadInlines(rubyBase, inlines);
@@ -577,6 +600,46 @@ internal static partial class DocxReader
 
         private Media? ReadPicture(string relationshipId, string? alt, string? title) =>
             context.Media.Picture(part, relationshipId, alt, title) is { } media ? media with { Section = context.Section } : null;
+
+        // The embedded packages and OLE objects a VML object names, each after its preview: an
+        // o:OLEObject's, or a Word 2010 w:objectEmbed's, relationship, with its program id.
+        private void ReadPayloads(OpenXmlElement container, InlineBuilder inlines)
+        {
+            foreach (var element in container.Descendants())
+            {
+                var (id, progId) = element switch
+                {
+                    O.OleObject ole => (ole.Id?.Value, ole.ProgId?.Value),
+                    W.ObjectEmbed embed => (embed.Id?.Value, embed.ProgId?.Value),
+                    _ => (null, null),
+                };
+                if (id is not null && context.Media.Payload(part, id, progId) is { } payload)
+                {
+                    inlines.Blocks.Add(payload with { Section = context.Section });
+                }
+            }
+        }
+
+        // The unread kinds a drawing, VML picture or object, or alternate content holds: a text
+        // box's text, a SmartArt diagram, or an equation.
+        private void FindUnread(OpenXmlElement element)
+        {
+            if (element.Descendants<W.TextBoxContent>().Any(box => !string.IsNullOrWhiteSpace(box.InnerText)))
+            {
+                context.Unread.Found(Place, UnreadKinds.TextBoxes);
+            }
+            if (UnreadKinds.HoldsSmartArt(element))
+            {
+                context.Unread.Found(Place, UnreadKinds.SmartArt);
+            }
+            if (UnreadKinds.HoldsEquation(element))
+            {
+                context.Unread.Found(Place, UnreadKinds.Equations);
+            }
+        }
+
+        // Where a warning about what is being read is: its section, by ordinal, or the comments.
+        private string Place => context.Section is int section ? $"section {section + 1}" : "comments";
     }
 
     // The paragraphs and tables of a container in document order, with the comment ranges that
@@ -661,8 +724,16 @@ internal static partial class DocxReader
         /// <summary>The pictures and charts the paragraph holds, the blocks that follow it.</summary>
         public List<Block> Blocks { get; } = [];
 
-        /// <summary>Whether the paragraph has neither text nor a reference.</summary>
-        public bool IsBlank => inlines.Count == 0 && string.IsNullOrWhiteSpace(text.ToString());
+        /// <summary>Whether the paragraph has neither text nor a reference; a hyperlink's start
+        /// and end are neither.</summary>
+        public bool IsBlank =>
+            inlines.All(inline => inline switch
+            {
+                HyperlinkStart or HyperlinkEnd => true,
+                TextRun run => string.IsNullOrWhiteSpace(run.Text),
+                _ => false,
+            })
+            && string.IsNullOrWhiteSpace(text.ToString());
 
         public void Append(string value) => text.Append(value);
 

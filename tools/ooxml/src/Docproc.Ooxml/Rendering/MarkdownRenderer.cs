@@ -194,8 +194,39 @@ internal sealed class MarkdownRenderer
             {
                 chunks.Add(new Chunk(text, false, block is Paragraph));
             }
+            // A chart in a docx table's cell, which a GFM cell can't hold, renders as its own
+            // chunk after the table, its title left in the cell (context/design.md, OX-15).
+            if (block is Table docxTable && docxTable.Rows.All(row => row.Row is null))
+            {
+                foreach (var chart in CellCharts(docxTable.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Blocks ?? [])))
+                {
+                    if (RenderChart(chart) is { Length: > 0 } chartText)
+                    {
+                        chunks.Add(new Chunk(chartText, false, false));
+                    }
+                }
+            }
         }
         return chunks;
+    }
+
+    // The charts among a table's cells' blocks, in order, through their lists and nested tables.
+    private static IEnumerable<Chart> CellCharts(IEnumerable<Block> blocks)
+    {
+        foreach (var block in blocks)
+        {
+            var charts = block switch
+            {
+                Chart chart => [chart],
+                ListBlock list => CellCharts(list.Items.SelectMany(item => item.Blocks)),
+                Table table => CellCharts(table.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Blocks ?? [])),
+                _ => [],
+            };
+            foreach (var chart in charts)
+            {
+                yield return chart;
+            }
+        }
     }
 
     private string RenderHeading(Heading heading)
@@ -411,7 +442,14 @@ internal sealed class MarkdownRenderer
 
     // A value plainly: a number in its shortest round-trip form, a boolean as TRUE or FALSE, the
     // rest as their text. A formula with no cached value is shown as a code span, = and its text.
+    // A cell with an external hyperlink links what it shows to the target.
     private static string SheetCellText(TableCell cell)
+    {
+        var text = SheetCellValue(cell);
+        return cell.Target is { } target && text.Length > 0 ? $"[{text}]({Destination(target)})" : text;
+    }
+
+    private static string SheetCellValue(TableCell cell)
     {
         if (cell.Value is { } value)
         {
@@ -485,16 +523,36 @@ internal sealed class MarkdownRenderer
     private static string Cell(string? text) => text is null ? "" : string.Join("<br>", Lines(text));
 
     // A picture as an image link to its file, relative to the media directory, or to a linked
-    // picture's target; its alternative text, or else its title, is the link's text.
+    // picture's target; its alternative text, or else its title, is the image text, and a title
+    // that differs from the image text is the image's title. An embedded package or OLE object is
+    // a link to its file, its text its program id or else its part's file name; it follows its
+    // preview picture (context/layers.md, "docproc-ooxml").
     private static string RenderMedia(Media media)
     {
-        var alt = string.Join(" ", Lines(media.Alt ?? media.Title ?? ""));
-        var destination = media.Name ?? media.Target ?? "";
+        var destination = Destination(media.Name ?? media.Target ?? "");
+        if (media.Kind != MediaKind.Picture)
+        {
+            var label = media.ProgId ?? (media.Source is { } part ? part[(part.LastIndexOf('/') + 1)..] : media.Name ?? "");
+            return $"[{string.Join(" ", Lines(label))}]({destination})";
+        }
+        var text = media.Alt ?? media.Title;
+        var alt = string.Join(" ", Lines(text ?? ""));
+        var title = media.Title is { } own && own != text ? string.Join(" ", Lines(own)) : "";
+        return title.Length > 0
+            ? $"![{alt}]({destination} \"{title.Replace("\"", "\\\"", StringComparison.Ordinal)}\")"
+            : $"![{alt}]({destination})";
+    }
+
+    // A link's destination: as it is, or within angle brackets, its own percent-encoded, when it
+    // holds whitespace, a parenthesis, or an angle bracket; a pipe escaped either way, as a GFM
+    // table cell requires and a backslash escape anywhere else allows.
+    private static string Destination(string destination)
+    {
         if (destination.Any(c => char.IsWhiteSpace(c) || c is '(' or ')' or '<' or '>'))
         {
             destination = "<" + destination.Replace("<", "%3C", StringComparison.Ordinal).Replace(">", "%3E", StringComparison.Ordinal) + ">";
         }
-        return $"![{alt}]({destination})";
+        return destination.Replace("|", "\\|", StringComparison.Ordinal);
     }
 
     private static string Delimiter(int columns) => "|" + string.Concat(Enumerable.Repeat(" --- |", columns));
@@ -565,51 +623,127 @@ internal sealed class MarkdownRenderer
         }
     }
 
-    // The lines of inlines, as the lines of their text, each reference a footnote reference in
-    // its place. A reference stands in the text as a private-use character while the text is
-    // split, trimmed, and escaped, none of which touch it, and then becomes its label.
+    // The lines of inlines, rendered as segments (context/design.md, OX-16): the text split at
+    // its line breaks, each line trimmed (leading spaces would make an indented code block), each
+    // text run escaped on its own, each note's or comment's label appended as it is, and an
+    // external hyperlink's text within [ and ](target). A hyperlink's text keeps to one line, its
+    // line breaks spaces, and one with no text is its text alone. A line left empty is dropped.
     private List<string> Lines(IReadOnlyList<Inline> inlines)
     {
-        var text = new StringBuilder();
-        var labels = new List<string>();
+        var lines = new List<List<Segment>> { new() };
+        string? link = null;
         foreach (var inline in inlines)
         {
-            var label = inline switch
+            switch (inline)
             {
-                TextRun run => null,
-                FootnoteReference footnote => $"[^{NoteLabel((false, footnote.Id))}]",
-                EndnoteReference endnote => $"[^{NoteLabel((true, endnote.Id))}]",
-                CommentReference comment => $"[^c{CommentLabel(comment.Id)}]",
-                _ => "",
-            };
-            if (inline is TextRun textRun)
-            {
-                text.Append(textRun.Text.Replace(Placeholder, ' '));
-            }
-            else if (label!.Length > 0 && labels.Count < PlaceholderCount)
-            {
-                text.Append((char)(Placeholder + labels.Count));
-                labels.Add(label);
+                case TextRun run:
+                    var text = run.Text.Replace('\t', ' ');
+                    var parts = (link is null ? text : text.Replace('\n', ' ')).Split('\n');
+                    for (var i = 0; i < parts.Length; i++)
+                    {
+                        if (i > 0)
+                        {
+                            lines.Add([]);
+                        }
+                        if (parts[i].Length > 0)
+                        {
+                            lines[^1].Add(new Segment(SegmentKind.Text, parts[i]));
+                        }
+                    }
+                    break;
+                case FootnoteReference footnote:
+                    lines[^1].Add(new Segment(SegmentKind.Label, $"[^{NoteLabel((false, footnote.Id))}]"));
+                    break;
+                case EndnoteReference endnote:
+                    lines[^1].Add(new Segment(SegmentKind.Label, $"[^{NoteLabel((true, endnote.Id))}]"));
+                    break;
+                case CommentReference comment:
+                    lines[^1].Add(new Segment(SegmentKind.Label, $"[^c{CommentLabel(comment.Id)}]"));
+                    break;
+                case HyperlinkStart start when link is null:
+                    link = start.Target;
+                    lines[^1].Add(new Segment(SegmentKind.LinkStart, ""));
+                    break;
+                case HyperlinkEnd when link is not null:
+                    lines[^1].Add(new Segment(SegmentKind.LinkEnd, link));
+                    link = null;
+                    break;
+                default:
+                    break;
             }
         }
-        return [.. Lines(text.ToString()).Select(line => Unplace(line, labels))];
+        if (link is not null)
+        {
+            lines[^1].Add(new Segment(SegmentKind.LinkEnd, link));
+        }
+        return [.. lines.Select(RenderLine).Where(line => line.Length > 0)];
     }
 
-    // The private-use characters references stand in as; text that holds one has it as a space.
-    private const char Placeholder = '\uE000';
-    private const int PlaceholderCount = 0x1000;
-
-    private static string Unplace(string line, List<string> labels)
+    // A piece of a line of inlines: text, escaped as it is rendered; a label, written as it is;
+    // or a hyperlink's start, or its end, whose text is the target.
+    private enum SegmentKind
     {
-        if (labels.Count == 0)
+        Text,
+        Label,
+        LinkStart,
+        LinkEnd,
+    }
+
+    private readonly record struct Segment(SegmentKind Kind, string Text);
+
+    private static string RenderLine(List<Segment> line)
+    {
+        // The line is trimmed at both ends, through a hyperlink's start or end, up to a label.
+        for (var i = 0; i < line.Count && line[i].Kind != SegmentKind.Label; i++)
         {
-            return line;
+            if (line[i].Kind == SegmentKind.Text)
+            {
+                line[i] = line[i] with { Text = line[i].Text.TrimStart() };
+                if (line[i].Text.Length > 0)
+                {
+                    break;
+                }
+            }
         }
-        var text = new StringBuilder(line.Length);
-        foreach (var c in line)
+        for (var i = line.Count - 1; i >= 0 && line[i].Kind != SegmentKind.Label; i--)
         {
-            var index = c - Placeholder;
-            text.Append(index >= 0 && index < labels.Count ? labels[index] : c.ToString());
+            if (line[i].Kind == SegmentKind.Text)
+            {
+                line[i] = line[i] with { Text = line[i].Text.TrimEnd() };
+                if (line[i].Text.Length > 0)
+                {
+                    break;
+                }
+            }
+        }
+        var text = new StringBuilder();
+        for (var i = 0; i < line.Count; i++)
+        {
+            var segment = line[i];
+            switch (segment.Kind)
+            {
+                case SegmentKind.Text:
+                    text.Append(Escape(segment.Text, lineStart: text.Length == 0));
+                    break;
+                case SegmentKind.Label:
+                    text.Append(segment.Text);
+                    break;
+                case SegmentKind.LinkStart:
+                    var end = line.FindIndex(i, s => s.Kind == SegmentKind.LinkEnd);
+                    if (line.Skip(i).Take(end - i).Any(s => s.Kind == SegmentKind.Label || (s.Kind == SegmentKind.Text && !string.IsNullOrWhiteSpace(s.Text))))
+                    {
+                        text.Append('[');
+                    }
+                    else
+                    {
+                        // A hyperlink with no text is nothing to show.
+                        i = end;
+                    }
+                    break;
+                default:
+                    text.Append("](").Append(Destination(segment.Text)).Append(')');
+                    break;
+            }
         }
         return text.ToString();
     }
@@ -617,14 +751,15 @@ internal sealed class MarkdownRenderer
     // The non-empty lines of a text, trimmed (leading spaces would make an indented code block)
     // and escaped, tabs as spaces.
     private static IEnumerable<string> Lines(string text) =>
-        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).Select(Escape);
+        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).Select(line => Escape(line));
 
     // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
     // (context/layers.md, "Common envelope"), which htmd's escaping and so mail's and onenote's
     // Markdown share: emphasis, code, links, entities, strikethrough, math, and table pipes
-    // anywhere; a `<` that could open an HTML tag, comment, or instruction; and at a line's start
-    // what would open a heading, a block quote, a list, or a setext underline.
-    internal static string Escape(string line)
+    // anywhere; a `<` that could open an HTML tag, comment, or instruction; and, when the text
+    // begins its line, at its start what would open a heading, a block quote, a list, or a setext
+    // underline.
+    internal static string Escape(string line, bool lineStart = true)
     {
         var text = new StringBuilder(line.Length + 8);
         for (var i = 0; i < line.Length; i++)
@@ -635,6 +770,10 @@ internal sealed class MarkdownRenderer
                 text.Append('\\');
             }
             text.Append(c);
+        }
+        if (!lineStart)
+        {
+            return text.ToString();
         }
         if (text.Length > 0 && text[0] is '#' or '+' or '-' or '=' or '>')
         {

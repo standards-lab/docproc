@@ -5,9 +5,9 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>The embedded media a conversion found, by file name (<see cref="NameOf"/>), so each
-/// distinct content is one file however many parts or blocks hold it. The bytes are kept as
-/// stored, never converted.</summary>
+/// <summary>The embedded media a conversion found, pictures, embedded packages, and OLE objects,
+/// by file name (<see cref="NameOf"/>), so each distinct content is one file however many parts
+/// or blocks hold it. The bytes are kept as stored, never converted.</summary>
 internal sealed class MediaStore
 {
     private readonly Dictionary<string, byte[]> files = new(StringComparer.Ordinal);
@@ -74,4 +74,43 @@ internal sealed class MediaStore
         }
         return null;
     }
+
+    /// <summary>The media block of an embedded package or OLE object the given part relates to
+    /// by id, its bytes added as stored, with no location, which the caller gives; null when the
+    /// relationship is neither, a linked object's among them, which has no part to write. Only the
+    /// part's own embedded-package and embedded-object relationships are followed, so a chart's
+    /// source workbook, its chart part's, is never one (context/design.md, OX-5).</summary>
+    public Media? Payload(OpenXmlPart part, string relationshipId, string? progId)
+    {
+        if (!part.TryGetPartById(relationshipId, out var target))
+        {
+            return null;
+        }
+        var kind = target switch
+        {
+            EmbeddedPackagePart => MediaKind.Embedded,
+            EmbeddedObjectPart => MediaKind.Ole,
+            _ => (MediaKind?)null,
+        };
+        if (kind is null)
+        {
+            return null;
+        }
+        var (name, contentType) = Add(target);
+        return new Media
+        {
+            Kind = kind.Value,
+            ProgId = string.IsNullOrWhiteSpace(progId) ? null : progId,
+            Name = name,
+            ContentType = contentType,
+            Source = target.Uri.OriginalString,
+        };
+    }
+
+    /// <summary>The target of an external hyperlink the given part relates to by id, or null when
+    /// the id names none.</summary>
+    public static string? Hyperlink(OpenXmlPart part, string? relationshipId) =>
+        relationshipId is null
+            ? null
+            : part.HyperlinkRelationships.FirstOrDefault(r => r.Id == relationshipId && r.IsExternal)?.Uri.OriginalString;
 }

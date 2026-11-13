@@ -88,7 +88,7 @@ public sealed class ConverterTests : IDisposable
             switch (n)
             {
                 case JsonObject o:
-                    if ((string?)o["kind"] == "media" && o["name"] is { } fileName)
+                    if ((string?)o["kind"] is "media" or "embedded" or "ole" && o["name"] is { } fileName)
                     {
                         names.Add((string)fileName!);
                     }

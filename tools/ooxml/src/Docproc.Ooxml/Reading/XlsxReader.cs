@@ -12,12 +12,13 @@ namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads an xlsx package: its sheets in workbook order, each a table of the cells that
 /// have a value or a formula, with their stored values typed and nothing evaluated, then its
-/// charts and pictures.</summary>
+/// charts and pictures, then its embedded packages and OLE objects; and the package's
+/// properties.</summary>
 /// <remarks>Each worksheet part is read twice, forward-only, and never held whole
 /// (context/design.md, OX-2). <see cref="Validate"/> reads every sheet once and writes nothing:
 /// it finds whatever would refuse the workbook, and collects what the sheet's lines need before
-/// its rows, its used columns, shared-formula anchors, and merges, and its drawings and their
-/// media. <see cref="XlsxWorkbook.Rows"/> reads a sheet a second time, giving its rows as they
+/// its rows, its used columns, shared-formula anchors, merges, and hyperlinks, and its drawings,
+/// objects, and their media. <see cref="XlsxWorkbook.Rows"/> reads a sheet a second time, giving its rows as they
 /// are read.</remarks>
 internal static partial class XlsxReader
 {
@@ -32,7 +33,7 @@ internal static partial class XlsxReader
             var rows = workbook.Rows(sheet).ToList();
             blocks.Add(new Model.Sheet(sheet.Name, sheet.Hidden, [.. rows.Count > 0 ? [new Table(rows)] : Array.Empty<Block>(), .. sheet.Drawings]));
         }
-        return new Conversion(new Document(SourceFormat.Xlsx, blocks), workbook.Media) { Warnings = workbook.Warnings };
+        return new Conversion(new Document(SourceFormat.Xlsx, blocks) { Properties = workbook.Properties }, workbook.Media) { Warnings = workbook.Warnings };
     }
 
     /// <summary>The validate pass: reads every sheet of the package forward once, writing nothing,
@@ -42,12 +43,14 @@ internal static partial class XlsxReader
     {
         var workbookPart = package.WorkbookPart ?? throw new OpenXmlPackageException("the package has no workbook part");
         var workbook = workbookPart.Workbook ?? throw new OpenXmlPackageException("the workbook part has no workbook");
+        var warnings = new List<Warning>();
+        var properties = PropertiesReader.Read(package, warnings);
         var context = new XlsxContext(
             SharedStrings(workbookPart.SharedStringTablePart?.SharedStringTable),
             new NumberFormats(workbookPart.WorkbookStylesPart?.Stylesheet),
-            workbook.WorkbookProperties?.Date1904?.Value ?? false);
+            workbook.WorkbookProperties?.Date1904?.Value ?? false,
+            new UnreadKinds(warnings));
         var sheets = new List<XlsxSheet>();
-        var warnings = new List<Warning>();
         var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
         {
@@ -65,11 +68,13 @@ internal static partial class XlsxReader
             var hidden = state == S.SheetStateValues.Hidden || state == S.SheetStateValues.VeryHidden;
             sheets.Add(ValidateSheet(context, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
         }
-        return new XlsxWorkbook(context, sheets, warnings);
+        return new XlsxWorkbook(context, sheets, warnings) { Properties = properties };
     }
 
-    internal sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904)
+    internal sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904, UnreadKinds unread)
     {
+        public UnreadKinds Unread => unread;
+
         public IReadOnlyList<string> Strings => strings;
 
         public NumberFormats Formats => formats;
@@ -79,17 +84,23 @@ internal static partial class XlsxReader
         public MediaStore Media { get; } = new();
     }
 
-    // A worksheet's cells, then its drawing; a chartsheet's drawing alone; any other kind of
-    // sheet (a dialog or macro sheet) holds nothing docproc-ooxml reads.
+    // A worksheet's cells, then its drawing, then its objects; a chartsheet's drawing alone; any
+    // other kind of sheet (a dialog or macro sheet) holds nothing docproc-ooxml reads. A
+    // worksheet's notes, legacy or threaded, are not read. The index is the sheet's line's, from 0.
     private static XlsxSheet ValidateSheet(XlsxContext context, string name, bool hidden, OpenXmlPart part, int index)
     {
         SheetCells? cells = null;
         DrawingsPart? drawings = null;
+        IReadOnlyList<OpenXmlElement> objects = [];
         switch (part)
         {
             case WorksheetPart worksheet:
-                cells = ValidateCells(context, worksheet);
+                (cells, objects) = ValidateCells(context, worksheet);
                 drawings = worksheet.DrawingsPart;
+                if (worksheet.WorksheetCommentsPart is not null || worksheet.WorksheetThreadedCommentsParts.Any())
+                {
+                    context.Unread.Found(Place(index), UnreadKinds.Notes);
+                }
                 break;
             case ChartsheetPart chartsheet:
                 drawings = chartsheet.DrawingsPart;
@@ -102,7 +113,37 @@ internal static partial class XlsxReader
         {
             ReadDrawing(context, drawings, index, blocks);
         }
+        foreach (var element in objects)
+        {
+            ReadObject(context, (WorksheetPart)part, element, index, blocks);
+        }
         return new XlsxSheet(name, hidden, cells, blocks);
+    }
+
+    // Where a warning about a sheet is: its sheet line, by ordinal.
+    private static string Place(int index) => $"sheet {index + 1}";
+
+    // A worksheet's OLE object: its preview picture (its objectPr's), then its embedded package or
+    // OLE object as stored, with its program id. Excel writes the object twice in alternate
+    // content, the preview only in the choice's copy; both name the same relationship. A
+    // streaming reader loads alternate content's children as unknown elements, so they are found
+    // by name.
+    private static void ReadObject(XlsxContext context, WorksheetPart part, OpenXmlElement element, int sheet, List<Block> blocks)
+    {
+        List<OpenXmlElement> objects = [.. new[] { element }.Concat(element.Descendants()).Where(e => e.LocalName == "oleObject")];
+        // Transitional and Strict name the relationships' namespace apart, both ending so.
+        string? Relationship(OpenXmlElement e) => e.GetAttributes().FirstOrDefault(a => a.LocalName == "id" && a.NamespaceUri.EndsWith("relationships", StringComparison.Ordinal)).Value;
+        if (objects.SelectMany(o => o.ChildElements.Where(c => c.LocalName == "objectPr")).Select(Relationship).FirstOrDefault(id => id is not null) is { } previewId
+            && context.Media.Picture(part, previewId, null, null) is { } preview)
+        {
+            blocks.Add(preview with { Sheet = sheet });
+        }
+        var progId = objects.Select(o => o.GetAttributes().FirstOrDefault(a => a.LocalName == "progId" && a.NamespaceUri.Length == 0).Value).FirstOrDefault(p => p is not null);
+        if (objects.Select(Relationship).FirstOrDefault(id => id is not null) is { } id
+            && context.Media.Payload(part, id, progId) is { } payload)
+        {
+            blocks.Add(payload with { Sheet = sheet });
+        }
     }
 
     // A cell's stored value by its type: a shared or inline string, a formula's string, a
@@ -159,8 +200,8 @@ internal static partial class XlsxReader
             : CellValue.OfNumber(number);
     }
 
-    // A shared or inline string's text: its text, or its rich text's runs, flattened. Phonetic
-    // runs (rPh) are a reading aid, not the text, and are left out.
+    // A shared or inline string's text: its text, or its rich text's runs, flattened, its escapes
+    // decoded. Phonetic runs (rPh) are a reading aid, not the text, and are left out.
     private static string Text(OpenXmlElement item)
     {
         var text = new StringBuilder();
@@ -178,7 +219,32 @@ internal static partial class XlsxReader
                     break;
             }
         }
-        return text.ToString();
+        return Unescape(text.ToString());
+    }
+
+    // SpreadsheetML's escapes (ECMA-376 Part 1, 22.9.2.19, ST_Xstring): _xHHHH_ is the UTF-16
+    // code unit of four hexadecimal digits, which is how a character XML can't hold, such as a
+    // control character, is stored. _x005F_ is the escaped underscore, so _x005F_x0041_ is the
+    // text _x0041_: decoded left to right, an escape's own underscore never starts another.
+    internal static string Unescape(string text)
+    {
+        if (!text.Contains("_x", StringComparison.Ordinal))
+        {
+            return text;
+        }
+        var decoded = new StringBuilder(text.Length);
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '_' && i + 6 < text.Length && text[i + 1] == 'x' && text[i + 6] == '_'
+                && ushort.TryParse(text.AsSpan(i + 2, 4), NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var unit))
+            {
+                decoded.Append((char)unit);
+                i += 6;
+                continue;
+            }
+            decoded.Append(text[i]);
+        }
+        return decoded.ToString();
     }
 
     private static List<string> SharedStrings(S.SharedStringTable? table) =>
@@ -187,7 +253,8 @@ internal static partial class XlsxReader
     // A drawing's pictures and charts in the order it anchors them, through groups. A picture's
     // alternative text and title are its own drawing properties'. A chartEx chart, in an
     // mc:AlternateContent, is its cached data, or with none its fallback's picture, never both;
-    // any other alternate content is read through, as the rest of the drawing is.
+    // any other alternate content is read through, as the rest of the drawing is. A shape's text,
+    // a text box's, and a SmartArt diagram are not read.
     private static void ReadDrawing(XlsxContext context, DrawingsPart drawings, int sheet, List<Block> blocks) =>
         ReadDrawing(context, drawings, drawings.WorksheetDrawing, sheet, blocks);
 
@@ -221,6 +288,19 @@ internal static partial class XlsxReader
                     {
                         ReadDrawing(context, drawings, chartEx.Fallback, sheet, blocks);
                     }
+                    break;
+                case Xdr.Shape shape:
+                    if (!string.IsNullOrWhiteSpace(shape.TextBody?.InnerText))
+                    {
+                        context.Unread.Found(Place(sheet), UnreadKinds.TextBoxes);
+                    }
+                    if (shape.TextBody is { } body && UnreadKinds.HoldsEquation(body))
+                    {
+                        context.Unread.Found(Place(sheet), UnreadKinds.Equations);
+                    }
+                    break;
+                case Xdr.GraphicFrame frame when UnreadKinds.HoldsSmartArt(frame):
+                    context.Unread.Found(Place(sheet), UnreadKinds.SmartArt);
                     break;
                 default:
                     ReadDrawing(context, drawings, element, sheet, blocks);
@@ -397,8 +477,9 @@ internal static partial class XlsxReader
 }
 
 /// <summary>A number format code's date and time parts, from its tokens outside quoted text,
-/// escaped and skipped characters, and brackets (colors, conditions, locales), but for the
-/// elapsed-time brackets [h], [m], and [s].</summary>
+/// escaped and skipped characters, and brackets (colors, conditions, locales). A format with an
+/// elapsed-time bracket, [h], [m], or [s], has neither: its value is a duration, which can pass a
+/// day, so it stays a number, as stored (context/design.md, OX-17).</summary>
 internal static class DateFormat
 {
     public static (bool Date, bool Time) Parts(string code)
@@ -420,7 +501,7 @@ internal static class DateFormat
                     var inside = close < 0 ? "" : code[(i + 1)..close].ToLowerInvariant();
                     if (inside.Length > 0 && inside.All(ch => ch == inside[0]) && inside[0] is 'h' or 'm' or 's')
                     {
-                        tokens.Add(inside[0]);
+                        return (false, false);
                     }
                     i = close < 0 ? code.Length : close;
                     break;

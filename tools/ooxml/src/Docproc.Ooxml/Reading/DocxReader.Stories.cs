@@ -12,7 +12,7 @@ namespace Docproc.Ooxml.Reading;
 // comments with the ranges they are anchored to.
 internal static partial class DocxReader
 {
-    private sealed class DocxContext(MainDocumentPart main, Styles styles, Numbering numbering)
+    private sealed class DocxContext(List<Warning> warnings, MainDocumentPart main, Styles styles, Numbering numbering)
     {
         public MainDocumentPart Main { get; } = main;
 
@@ -33,7 +33,10 @@ internal static partial class DocxReader
         public CommentSet Comments { get; } = new(main);
 
         /// <summary>What the conversion skipped, each a warning for stderr.</summary>
-        public List<Warning> Warnings { get; } = [];
+        public List<Warning> Warnings { get; } = warnings;
+
+        /// <summary>The unread kinds the document holds, each warned of once.</summary>
+        public UnreadKinds Unread { get; } = new(warnings);
     }
 
     /// <summary>A notes part's footnotes or endnotes, each read when the text first references

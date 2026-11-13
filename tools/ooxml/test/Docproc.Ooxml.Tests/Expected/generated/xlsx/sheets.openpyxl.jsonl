@@ -1,4 +1,4 @@
-{"line":"document","schema":"2","format":"xlsx"}
+{"line":"document","schema":"2","format":"xlsx","properties":{"core":{"creator":"openpyxl","created":"2026-10-30T20:15:41Z","modified":"2026-10-30T20:15:41Z"},"app":{"Application":"Microsoft Excel Compatible / Openpyxl 3.1.5","AppVersion":"3.1"}}}
 {"line":"sheet","name":"Zeta","markdown":"# Zeta\n\n|  | A |\n| --- | --- |\n"}
 {"line":"rows","markdown":"| 1 | the first sheet |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"the first sheet"}]}]}
 {"line":"sheet","name":"Hidden","hidden":true,"markdown":"\n# Hidden (hidden)\n\n|  | A |\n| --- | --- |\n"}

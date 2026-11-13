@@ -1,0 +1,5 @@
+{"line":"document","schema":"2","format":"xlsx","properties":{"core":{"created":"2026-11-13T16:49:05Z","creator":"openpyxl","language":"en-US","modified":"2026-11-13T16:49:05Z","revision":"0"},"app":{"TotalTime":0,"Application":"LibreOffice/26.8.1.1$Linux_X86_64 LibreOffice_project/680$Build-1","AppVersion":"15.0000"}}}
+{"line":"sheet","name":"Cover","markdown":"# Cover\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | The objects are on the next sheet. |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"The objects are on the next sheet."}]}]}
+{"line":"sheet","name":"Objects","markdown":"\n# Objects\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | An OLE object and an embedded package follow. |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"An OLE object and an embedded package follow."}]}]}

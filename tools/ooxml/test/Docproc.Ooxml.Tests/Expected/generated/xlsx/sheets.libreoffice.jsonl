@@ -1,4 +1,4 @@
-{"line":"document","schema":"2","format":"xlsx"}
+{"line":"document","schema":"2","format":"xlsx","properties":{"core":{"created":"2026-10-30T20:15:41Z","creator":"openpyxl","language":"en-US","modified":"2026-10-30T20:15:41Z","revision":"0"},"app":{"TotalTime":0,"Application":"LibreOffice/26.8.1.1$Linux_X86_64 LibreOffice_project/680$Build-1","AppVersion":"15.0000"}}}
 {"line":"sheet","name":"Zeta","markdown":"# Zeta\n\n|  | A |\n| --- | --- |\n"}
 {"line":"rows","markdown":"| 1 | the first sheet |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"the first sheet"}]}]}
 {"line":"sheet","name":"Hidden","hidden":true,"markdown":"\n# Hidden (hidden)\n\n|  | A |\n| --- | --- |\n"}

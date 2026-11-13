@@ -46,15 +46,16 @@ internal static class Cli
           docproc-ooxml --help
 
         Converts a docx, xlsx, or pptx document into JSON Lines on stdout, schema "2": a document
-        line holding its Markdown rendering and its pictures, then each xlsx sheet's sheet line and
-        rows lines.
+        line holding its properties, its Markdown rendering, and its media, then each xlsx sheet's
+        sheet line and rows lines.
 
         Arguments:
           <input>          The docx, xlsx, or pptx file to convert.
 
         Options:
-          --media <dir>    The directory embedded media are written to, each once, named by the
-                           SHA-256 of its bytes.
+          --media <dir>    The directory embedded media (pictures, embedded packages, and OLE
+                           objects) are written to as stored, each once, named by the SHA-256 of
+                           its bytes.
           --version        Print the version, then the schema, and exit.
           --help           Print this usage and exit.
 

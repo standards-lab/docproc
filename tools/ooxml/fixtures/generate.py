@@ -56,6 +56,8 @@ import pptx
 from openpyxl.cell.rich_text import CellRichText, TextBlock
 from openpyxl.cell.text import InlineFont
 from openpyxl.chart import BarChart, Reference
+from openpyxl.comments import Comment
+from openpyxl.worksheet.hyperlink import Hyperlink
 from openpyxl.drawing.image import Image
 from openpyxl.utils.cell import coordinate_to_tuple
 from openpyxl.utils.datetime import CALENDAR_MAC_1904
@@ -71,6 +73,11 @@ from docx.parts.image import ImagePart
 from docx.shared import Inches
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
+from pptx.opc.constants import CONTENT_TYPE as PCT
+from pptx.opc.constants import RELATIONSHIP_TYPE as PRT
+from pptx.opc.package import Part as PptxPart
+from pptx.opc.packuri import PackURI as PptxPackURI
+from pptx.oxml.ns import nsdecls as pptx_nsdecls
 
 ROOT = pathlib.Path(__file__).resolve().parent
 GENERATED = ROOT / "generated"
@@ -81,6 +88,11 @@ W = nsdecls("w")
 NS = nsdecls("w", "wp", "a", "pic", "r", "c")
 W15 = "http://schemas.microsoft.com/office/word/2012/wordml"
 CT_COMMENTS_EXTENDED = "application/vnd.openxmlformats-officedocument.wordprocessingml.commentsExtended+xml"
+CT_CUSTOM_PROPERTIES = "application/vnd.openxmlformats-officedocument.custom-properties+xml"
+CUSTOM_PROPERTIES = "http://schemas.openxmlformats.org/officeDocument/2006/custom-properties"
+VARIANT_TYPES = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
+MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 EMU = 457200  # A drawing's side, half an inch.
 
@@ -239,7 +251,11 @@ class Fixture:
     # - "commentStart", "commentEnd": the key of a comment this fixture defines, whose anchored
     #   range (and its replies') starts or ends here;
     # - "picture", "delPicture": a Picture, in a drawing of its own, or inside a deletion;
-    # - "chart": a Chart, in a drawing of its own.
+    # - "chart": a Chart, in a drawing of its own;
+    # - "link": (text, URL), the text in an external hyperlink; "anchor": (text, bookmark), the
+    #   text in an internal one, to a bookmark; both are text of the paragraph;
+    # - "bookmark": a bookmark's name, the start and end of an empty bookmark;
+    # - "raw": a run's XML as it is, which adds no text, such as a text box or an equation.
     # References, pictures, and charts add no text; a reference marks its offset in the text, and
     # a picture or chart is a block of its own after its paragraph.
 
@@ -294,15 +310,33 @@ class Fixture:
             elif kind == "chart":
                 xml.append(f"<w:r>{self._chart_drawing(value, part)}</w:r>")
                 after.append(value.truth())
+            elif kind == "link":
+                text, url = value
+                rid = part.relate_to(url, RT.HYPERLINK, is_external=True)
+                xml.append(f'<w:hyperlink r:id="{rid}">{self._run(text)}</w:hyperlink>')
+            elif kind == "anchor":
+                text, name = value
+                xml.append(f'<w:hyperlink w:anchor="{name}">{self._run(text)}</w:hyperlink>')
+            elif kind == "bookmark":
+                bookmark = self.next_id()
+                xml.append(f'<w:bookmarkStart w:id="{bookmark}" w:name="{value}"/><w:bookmarkEnd w:id="{bookmark}"/>')
+            elif kind == "raw":
+                xml.append(value)
             else:
                 raise ValueError(kind)
             if kind in ("text", "ins", "moveTo"):
                 offset += len(value)
+            elif kind in ("link", "anchor"):
+                offset += len(value[0])
         return "".join(xml), marks, after
 
     @staticmethod
     def accepted(segments: list[tuple[str, object]]) -> str:
-        return "".join(value for kind, value in segments if kind in ("text", "ins", "moveTo"))
+        return "".join(
+            value if kind in ("text", "ins", "moveTo") else value[0]
+            for kind, value in segments
+            if kind in ("text", "ins", "moveTo", "link", "anchor")
+        )
 
     def _fill(self, p, segments) -> tuple[list[dict], list[dict]]:
         """Appends segments to a python-docx paragraph; returns their marks and the blocks after."""
@@ -544,6 +578,26 @@ class Fixture:
         )
         part = Part(PackURI("/word/commentsExtended.xml"), CT_COMMENTS_EXTENDED, xml.encode(), self.doc.part.package)
         self.doc.part.relate_to(part, RT_COMMENTS_EXTENDED)
+
+    def custom_properties(self, properties: list[tuple[str, str, str]]) -> None:
+        """A custom properties part (docProps/custom.xml) of (name, variant type, value), in
+        order, a name given twice kept twice."""
+        entries = "".join(
+            f'<property fmtid="{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}" pid="{pid}" name="{escape(name)}">'
+            f"<vt:{kind}>{escape(value)}</vt:{kind}></property>"
+            for pid, (name, kind, value) in enumerate(properties, 2)
+        )
+        xml = (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+            f'<Properties xmlns="{CUSTOM_PROPERTIES}" xmlns:vt="{VARIANT_TYPES}">{entries}</Properties>'
+        )
+        package = self.doc.part.package
+        package.relate_to(Part(PackURI("/docProps/custom.xml"), CT_CUSTOM_PROPERTIES, xml.encode(), package), RT.CUSTOM_PROPERTIES)
+
+    def raw_part(self, name: str, content_type: str, reltype: str, xml: str) -> str:
+        """A part of the given XML, which the main document part relates to; returns the id."""
+        package = self.doc.part.package
+        return self.doc.part.relate_to(Part(PackURI(name), content_type, xml.encode(), package), reltype)
 
     def save(self, path: pathlib.Path) -> None:
         """Writes the parts the definitions add, notes and comments, then the document."""
@@ -1089,7 +1143,95 @@ def charts() -> Fixture:
     return f
 
 
-FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts]
+def links() -> Fixture:
+    """External hyperlinks, one around a footnote's reference, and an internal one to a
+    bookmark; text holding private-use characters beside a footnote's reference; a chart in a
+    table cell; and the package's core and custom properties, a custom name given twice."""
+    f = Fixture("links")
+    f.note("footnote", "source", ["The source is the ledger."])
+    f.note("footnote", "figures", ["The figures are unaudited."])
+    f.doc.core_properties.title = "Links"
+    f.doc.core_properties.author = AUTHOR
+    f.custom_properties(
+        [
+            ("Project", "lpwstr", "docproc"),
+            ("Revision", "i4", "7"),
+            ("Ratio", "r8", "0.25"),
+            ("Reviewed", "bool", "true"),
+            ("Due", "filetime", "2026-02-01T00:00:00Z"),
+            ("Project", "lpwstr", "a second value"),
+        ]
+    )
+    f.heading("Links", 1)
+    f.tracked(
+        [
+            ("text", "Read "),
+            ("link", ("the docproc guide", "https://example.invalid/docproc?page=1&lang=en")),
+            ("text", " or "),
+            ("anchor", ("the figures below", "figures")),
+            ("text", "."),
+        ]
+    )
+    f.tracked([("link", ("A linked source", "https://example.invalid/source")), ("footnote", "source"), ("text", " ends here.")])
+    f.tracked([("bookmark", "figures"), ("text", "Private use \ue000 and \ue001 stay as they are"), ("footnote", "figures"), ("text", ".")])
+    f.tracked_table(
+        [
+            [("text", "A chart in a cell"), ("chart", Chart("bar", "Cell chart", [("Units", ["A", "B"], [3, 4])]))],
+            [("text", "Plain cell")],
+        ]
+    )
+    f.paragraph("After the table.")
+    return f
+
+
+# The unread kinds: a text box (VML), an equation (Office Math), and a SmartArt diagram, whose
+# parts are as small as the package allows.
+TEXT_BOX_RUN = (
+    f'<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" style="width:120pt;height:40pt">'
+    f"<v:textbox><w:txbxContent><w:p><w:r><w:t>Text in a box</w:t></w:r></w:p></w:txbxContent></v:textbox>"
+    f"</v:shape></w:pict></w:r>"
+)
+EQUATION = f'<m:oMath xmlns:m="{MATH}"><m:r><m:t>x=2y</m:t></m:r></m:oMath>'
+DIAGRAM_PARTS = [
+    ("data", "diagramData", "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
+     f'<dgm:dataModel xmlns:dgm="{DIAGRAM}" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+     f'<dgm:ptLst><dgm:pt modelId="0" type="doc"/><dgm:pt modelId="1"><dgm:t><a:bodyPr/><a:p><a:r><a:t>A diagram node</a:t></a:r></a:p></dgm:t></dgm:pt></dgm:ptLst>'
+     f'<dgm:cxnLst><dgm:cxn modelId="2" srcId="0" destId="1"/></dgm:cxnLst></dgm:dataModel>'),
+    ("layout", "diagramLayout", "application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml",
+     f'<dgm:layoutDef xmlns:dgm="{DIAGRAM}" uniqueId="urn:microsoft.com/office/officeart/2005/8/layout/default"><dgm:layoutNode name="diagram"/></dgm:layoutDef>'),
+    ("quickStyle", "diagramQuickStyle", "application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml",
+     f'<dgm:styleDef xmlns:dgm="{DIAGRAM}" uniqueId="urn:microsoft.com/office/officeart/2005/8/quickstyle/simple1"/>'),
+    ("colors", "diagramColors", "application/vnd.openxmlformats-officedocument.drawingml.diagramColors+xml",
+     f'<dgm:colorsDef xmlns:dgm="{DIAGRAM}" uniqueId="urn:microsoft.com/office/officeart/2005/8/colors/accent1_2"/>'),
+]
+
+
+def unread() -> Fixture:
+    """The kinds docproc-ooxml doesn't read, each warned of once: two text boxes, an equation,
+    and a SmartArt diagram, among paragraphs that are read."""
+    f = Fixture("unread")
+    f.heading("Unread", 1)
+    f.tracked([("text", "A text box follows."), ("raw", TEXT_BOX_RUN)])
+    f.tracked([("text", "A second text box follows."), ("raw", TEXT_BOX_RUN.replace("Text in a box", "More text in a box"))])
+    f.tracked([("text", "An equation follows: "), ("raw", EQUATION)])
+    ids = {
+        kind: f.raw_part(f"/word/diagrams/{kind}1.xml", content_type, f"http://schemas.openxmlformats.org/officeDocument/2006/relationships/{reltype}", xml)
+        for kind, reltype, content_type, xml in DIAGRAM_PARTS
+    }
+    shape_id = f.next_id()
+    smartart = (
+        f"<w:r><w:drawing>{Fixture._inline_open(shape_id, '', '')}"
+        f'<a:graphic><a:graphicData uri="{DIAGRAM}">'
+        f'<dgm:relIds xmlns:dgm="{DIAGRAM}" r:dm="{ids["data"]}" r:lo="{ids["layout"]}" r:qs="{ids["quickStyle"]}" r:cs="{ids["colors"]}"/>'
+        f"</a:graphicData></a:graphic></wp:inline></w:drawing></w:r>"
+    )
+    f.tracked([("text", "A diagram follows."), ("raw", smartart)])
+    f.paragraph("The end.")
+    f.absent = ["Text in a box", "More text in a box", "A diagram node"]
+    return f
+
+
+FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, unread]
 
 
 # xlsx: workbooks written by openpyxl and re-saved by LibreOffice.
@@ -1128,8 +1270,16 @@ class Workbook:
         if date1904:
             self.book.epoch = CALENDAR_MAC_1904
         self.sheets: list[Sheet] = []
+        # The strings that must appear nowhere in docproc-ooxml's output.
+        self.absent: list[str] = []
         # Raw XML for what openpyxl can't write: (part, the XML openpyxl writes, the XML instead).
         self.patches: list[tuple[str, str, str]] = []
+        # Parts openpyxl can't write, added to the package as they are: (name, bytes, content
+        # type), and the relationships to them, by the part that holds them: (id, type, target).
+        self.parts: list[tuple[str, bytes, str]] = []
+        self.relationships: dict[str, list[tuple[str, str, str]]] = {}
+        # The sheets holding objects, and the namespaces their objects' XML needs.
+        self.ole_sheets: list[tuple["Sheet", str]] = []
 
     def sheet(self, title: str, state: str = "visible") -> "Sheet":
         ws = self.book.create_sheet(title)
@@ -1150,25 +1300,17 @@ class Workbook:
                 self.patches.append(
                     (f"xl/drawings/drawing{drawing}.xml", f'name="Image {i}" descr="Picture"', f'name="Image {i}" descr="{escape(alt)}"')
                 )
+        for sheet, ns in self.ole_sheets:
+            self.patches.append((sheet.part, "</worksheet>", f'<oleObjects {ns}>{"".join(sheet.ole_xml)}</oleObjects></worksheet>'))
         self.book.save(path)
-        with zipfile.ZipFile(path) as source:
-            entries = [(info, source.read(info.filename)) for info in source.infolist()]
-        with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target:
-            for info, data in entries:
-                for part, old, new in self.patches:
-                    if part == info.filename:
-                        text = data.decode()
-                        if text.count(old) != 1:
-                            raise RuntimeError(f"{self.name}: {part} holds {old!r} {text.count(old)} times, not once")
-                        data = text.replace(old, new).encode()
-                target.writestr(info, data)
+        add_to_package(path, self.name, self.patches, self.parts, self.relationships)
 
     def _truth(self, variant: str) -> dict:
         return {
             "fixture": self.name,
             "format": "xlsx",
             "elements": [sheet.truth(variant) for sheet in self.sheets],
-            "absent": [],
+            "absent": self.absent,
             "once": [],
         }
 
@@ -1180,9 +1322,76 @@ class Workbook:
         return None if adjusted == self.truth() else adjusted
 
 
+def add_to_package(
+    path: pathlib.Path,
+    name: str,
+    patches: list[tuple[str, str, str]],
+    parts: list[tuple[str, bytes, str]],
+    relationships: dict[str, list[tuple[str, str, str]]],
+) -> None:
+    """Rewrites the package at path with its parts' XML patched (each old text found once),
+    the parts added, each named in the content types, and the relationships added to their
+    source parts' relationship parts, made where a part has none."""
+    with zipfile.ZipFile(path) as source:
+        entries = [(info.filename, source.read(info.filename)) for info in source.infolist()]
+    rels = {}
+    for part, added in relationships.items():
+        folder, _, file = part.rpartition("/")
+        rels[f"{folder}/_rels/{file}.rels"] = "".join(
+            f'<Relationship Id="{rid}" Type="{kind}" Target="{escape(target)}"/>' for rid, kind, target in added
+        )
+    names = {filename for filename, _ in entries}
+    for rel_part, xml in rels.items():
+        if rel_part not in names:
+            entries.append((rel_part, f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships xmlns="{RELATIONSHIPS}"></Relationships>'.encode()))
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as target:
+        for filename, data in entries:
+            for part, old, new in patches:
+                if part == filename:
+                    text = data.decode()
+                    if text.count(old) != 1:
+                        raise RuntimeError(f"{name}: {part} holds {old!r} {text.count(old)} times, not once")
+                    data = text.replace(old, new).encode()
+            if filename in rels:
+                data = data.decode().replace("</Relationships>", rels[filename] + "</Relationships>").encode()
+            if filename == "[Content_Types].xml":
+                overrides = "".join(f'<Override PartName="/{part}" ContentType="{kind}"/>' for part, _, kind in parts)
+                data = data.decode().replace("</Types>", overrides + "</Types>").encode()
+            target.writestr(filename, data)
+        for part, data, _ in parts:
+            target.writestr(part, data)
+
+
+RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships"
+RT_OLE_OBJECT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"
+RT_PACKAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
+RT_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+CT_OLE_OBJECT = "application/vnd.openxmlformats-officedocument.oleObject"
+CT_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def ole_payload() -> bytes:
+    """An OLE object's payload: an OLE compound file, the refused set's Word 97-2003 document,
+    which LibreOffice wrote, so the fixture needs no compound-file writer of its own."""
+    return (GENERATED / "refused" / "legacy.libreoffice.doc").read_bytes()
+
+
+def package_payload() -> bytes:
+    """An embedded package's payload: a small docx python-docx writes."""
+    doc = docx.Document()
+    doc.add_paragraph("An embedded document.")
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def payload_truth(kind: str, data: bytes, ext: str, content_type: str, prog_id: str) -> dict:
+    return {"kind": kind, "name": hashlib.sha256(data).hexdigest() + "." + ext, "contentType": content_type, "progId": prog_id}
+
+
 class Sheet:
     """A worksheet and its truth: its cells by reference, each writer's truth of each (None where
-    the writer leaves the cell out), then its charts and its pictures."""
+    the writer leaves the cell out), then its charts, its pictures, and its objects."""
 
     def __init__(self, book: Workbook, ws, index: int):
         self.book = book
@@ -1191,6 +1400,8 @@ class Sheet:
         self.cells: dict[str, dict[str, dict | None]] = {}
         self.charts: list[dict[str, dict]] = []
         self.pictures: list[tuple[dict, str]] = []
+        # Each object's truth, its preview's then its payload's, by writer.
+        self.objects: list[dict[str, list[dict]]] = []
 
     @property
     def part(self) -> str:
@@ -1295,6 +1506,73 @@ class Sheet:
         }
         self.pictures.append((truth, alt))
 
+    def link(self, ref: str, value: str, target: str) -> None:
+        """A text cell with an external hyperlink, which its truth carries as its target."""
+        self.ws[ref] = value
+        self.ws[ref].hyperlink = target
+        truth = {"ref": ref, "type": "text", "value": value, "target": target}
+        self._cell(ref, truth, dict(truth))
+
+    def internal_link(self, ref: str, value: str, location: str) -> None:
+        """A text cell with a hyperlink to a place in the workbook, which stays text."""
+        self.ws[ref] = value
+        self.ws[ref].hyperlink = Hyperlink(ref=ref, location=location)
+        truth = {"ref": ref, "type": "text", "value": value}
+        self._cell(ref, truth, dict(truth))
+
+    def note(self, ref: str, value: str, text: str) -> None:
+        """A text cell with a note (a legacy comment), which is not read."""
+        self.ws[ref] = value
+        self.ws[ref].comment = Comment(text, AUTHOR)
+        truth = {"ref": ref, "type": "text", "value": value}
+        self._cell(ref, truth, dict(truth))
+
+    def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
+        """An object openpyxl can't write, added as raw XML and parts: an embedded package
+        (kind "embedded") or OLE object ("ole") with its preview picture, in Excel's alternate
+        content (its choice's copy holding the preview) or not."""
+        n = len(self.objects) + 1
+        payload = f"xl/embeddings/{self.ws.title.lower()}{n}.{ext}"
+        image = f"xl/media/{self.ws.title.lower()}-preview{n}.png"
+        reltype = RT_PACKAGE if kind == "embedded" else RT_OLE_OBJECT
+        rid, preview_rid = f"rIdObject{n}", f"rIdPreview{n}"
+        self.book.parts += [(payload, data, content_type), (image, preview, CT_PNG)]
+        self.book.relationships.setdefault(self.part, []).extend(
+            [(rid, reltype, f"../embeddings/{payload.rsplit('/', 1)[1]}"), (preview_rid, RT_IMAGE, f"../media/{image.rsplit('/', 1)[1]}")]
+        )
+        anchor = (
+            f'<objectPr defaultSize="0" r:id="{preview_rid}"><anchor moveWithCells="1">'
+            f"<from><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{n}</xdr:row><xdr:rowOff>0</xdr:rowOff></from>"
+            f"<to><xdr:col>4</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>{n + 1}</xdr:row><xdr:rowOff>0</xdr:rowOff></to>"
+            f"</anchor></objectPr>"
+        )
+        element = f'<oleObject progId="{prog_id}" shapeId="{1024 + n}" r:id="{rid}">{anchor}</oleObject>'
+        if alternate:
+            element = (
+                f'<mc:AlternateContent><mc:Choice Requires="x14">{element}</mc:Choice>'
+                f'<mc:Fallback><oleObject progId="{prog_id}" shapeId="{1024 + n}" r:id="{rid}"/></mc:Fallback></mc:AlternateContent>'
+            )
+        self.ole_xml.append(element)
+        picture = {"kind": "media", "name": hashlib.sha256(preview).hexdigest() + ".png", "contentType": CT_PNG, "sheet": self.index}
+        truth = [picture, {**payload_truth(kind, data, ext, content_type, prog_id), "sheet": self.index}]
+        # LibreOffice drops an object with no VML shape of its own, which the fixture doesn't
+        # write, so its re-save holds neither payload.
+        self.objects.append({"openpyxl": truth, "libreoffice": []})
+
+    @property
+    def ole_xml(self) -> list[str]:
+        """The sheet's objects' XML, patched in before the worksheet's end once it is saved."""
+        if not hasattr(self, "_ole_xml"):
+            self._ole_xml: list[str] = []
+            ns = (
+                'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+                'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+                'xmlns:x14="http://schemas.microsoft.com/office/spreadsheetml/2009/9/main" '
+                'xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"'
+            )
+            self.book.ole_sheets.append((self, ns))
+        return self._ole_xml
+
     def truth(self, variant: str) -> dict:
         def position(ref: str) -> tuple[int, int]:
             return coordinate_to_tuple(ref)
@@ -1309,6 +1587,7 @@ class Sheet:
             elements.append({"kind": "table", "rows": [{"row": r, "cells": cells} for r, cells in rows.items()]})
         elements += [chart[variant] for chart in self.charts]
         elements += [picture for picture, _ in self.pictures]
+        elements += [element for obj in self.objects for element in obj[variant]]
         return {
             "kind": "sheet",
             "name": self.ws.title,
@@ -1328,6 +1607,7 @@ def cells() -> Workbook:
         "Text", "Rich text", "Numbers", "Booleans", "Errors", "Percent", "Thousands", "Date", "Datetime",
         "Time", "Built-in date", "Built-in datetime", "Built-in time", "Custom date", "Custom time",
         "Quoted letters", "Bracketed letters", "Escaped letters", "Early dates", "ISO date",
+        "Escaped characters", "Elapsed time",
     ]
     for row, label in enumerate(labels, 1):
         s.value(f"A{row}", label, "text")
@@ -1363,6 +1643,11 @@ def cells() -> Workbook:
         # LibreOffice stores it as the serial number, in the General format.
         {"type": "number", "value": 46037.4375},
     )
+    # SpreadsheetML's _xHHHH_ escapes, which openpyxl writes as they are: a tab, and the escaped
+    # underscore before what would otherwise be an escape.
+    s.value("B21", "Tab_x0009_here, _x005F_x0041_ kept", "text", expected="Tab\there, _x0041_ kept")
+    # A duration past a day in an elapsed format stays a number.
+    s.value("B22", 1.5, "number", number_format="[h]:mm")
     s.styled("C22", "0.00")
     s.value("E23", "far corner", "text")
     return f
@@ -1460,7 +1745,35 @@ def dates_1904() -> Workbook:
     return f
 
 
-XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904]
+def sheet_links() -> Workbook:
+    """Cells with external hyperlinks, a text and a number cell's, a cell with a hyperlink to a
+    place in the workbook, a cell with a note, and a text box, which are not read."""
+    f = Workbook("sheet-links")
+    s = f.sheet("Links")
+    s.link("A1", "The docproc guide", "https://example.invalid/docproc?page=1&lang=en")
+    s.value("A2", 42, "number")
+    s.ws["A2"].hyperlink = "https://example.invalid/answer"
+    s.cells["A2"]["openpyxl"]["target"] = s.cells["A2"]["libreoffice"]["target"] = "https://example.invalid/answer"
+    s.internal_link("A3", "Back to the top", "'Links'!A1")
+    s.note("B1", "Noted", "A note on this cell.")
+    f.absent = ["A note on this cell."]
+    return f
+
+
+def sheet_embeddings() -> Workbook:
+    """A second sheet's objects: an OLE object (a Word 97-2003 document) in Excel's alternate
+    content and an embedded package (a docx), each with its preview picture, so their placement
+    is the second sheet line's."""
+    f = Workbook("sheet-embeddings")
+    f.sheet("Cover").value("A1", "The objects are on the next sheet.", "text")
+    s = f.sheet("Objects")
+    s.value("A1", "An OLE object and an embedded package follow.", "text")
+    s.ole_object("ole", ole_payload(), "bin", CT_OLE_OBJECT, "Word.Document.8", png((200, 120, 40)), alternate=True)
+    s.ole_object("embedded", package_payload(), "docx", CT_DOCX, "Word.Document.12", png((120, 40, 200)), alternate=False)
+    return f
+
+
+XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings]
 
 
 # pptx: presentations written by python-pptx and re-saved by LibreOffice.
@@ -1527,6 +1840,11 @@ class Deck:
         self.once: list[str] = []
         # How the LibreOffice re-save's ground truth differs, when it does.
         self.libreoffice = None
+        # The comment authors' part, made with the first comment, and the comments and
+        # payloads made so far, which number their parts.
+        self.comment_authors = None
+        self.comments = 0
+        self.payloads = 0
 
     def slide(self, layout: int, hidden: bool = False) -> "DeckSlide":
         s = DeckSlide(self, self.prs.slides.add_slide(self.prs.slide_layouts[layout]), hidden)
@@ -1671,6 +1989,79 @@ class DeckSlide:
             return element
 
         self.elements.append(truth)
+
+    def linked_text(self, runs: list[tuple[str, str | None, object]]) -> None:
+        """A text box of one paragraph of runs of (text, link kind, target): no link, an external
+        hyperlink ("url", its address), or a hyperlink to another slide of the deck ("slide",
+        its DeckSlide), which stays text."""
+        box = self.slide.shapes.add_textbox(Inches(1), Inches(1), Inches(6), Inches(1))
+        paragraph = box.text_frame.paragraphs[0]
+        for text, kind, target in runs:
+            run = paragraph.add_run()
+            run.text = text
+            if kind == "url":
+                run.hyperlink.address = target
+            elif kind == "slide":
+                rid = self.slide.part.relate_to(target.slide.part, PRT.SLIDE)
+                run._r.get_or_add_rPr().append(
+                    parse_xml(f'<a:hlinkClick {A} {nsdecls("r")} r:id="{rid}" action="ppaction://hlinksldjump"/>')
+                )
+        self.elements.append({"kind": "paragraph", "text": "".join(text for text, _, _ in runs)})
+
+    def comment(self, text: str) -> None:
+        """A comment on the slide, in a legacy comments part, which is not read."""
+        package = self.deck.prs.part.package
+        if self.deck.comment_authors is None:
+            authors = (
+                f'<p:cmAuthorLst {pptx_nsdecls("p")}><p:cmAuthor id="0" name="{AUTHOR}" initials="FA" lastIdx="1" clrIdx="0"/></p:cmAuthorLst>'
+            )
+            self.deck.comment_authors = PptxPart.load(PptxPackURI("/ppt/commentAuthors.xml"), PCT.PML_COMMENT_AUTHORS, package, authors.encode())
+            self.deck.prs.part.relate_to(self.deck.comment_authors, PRT.COMMENT_AUTHORS)
+        self.deck.comments += 1
+        xml = (
+            f'<p:cmLst {pptx_nsdecls("p")}><p:cm authorId="0" dt="2026-01-15T10:00:00.000" idx="1">'
+            f'<p:pos x="10" y="10"/><p:text>{escape(text)}</p:text></p:cm></p:cmLst>'
+        )
+        part = PptxPart.load(PptxPackURI(f"/ppt/comments/comment{self.deck.comments}.xml"), PCT.PML_COMMENTS, package, xml.encode())
+        self.slide.part.relate_to(part, PRT.COMMENTS)
+        self.deck.absent.append(text)
+
+    def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
+        """An embedded package (kind "embedded") or OLE object ("ole") in a graphic frame, its
+        preview picture inside it, written as PowerPoint 2010 does in alternate content (only the
+        fallback's copy holding the preview) or not."""
+        package = self.deck.prs.part.package
+        self.deck.payloads += 1
+        name = f"/ppt/embeddings/{'Microsoft_Word_Document' if kind == 'embedded' else 'oleObject'}{self.deck.payloads}.{ext}"
+        payload = PptxPart.load(PptxPackURI(name), content_type, package, data)
+        rid = self.slide.part.relate_to(payload, PRT.PACKAGE if kind == "embedded" else PRT.OLE_OBJECT)
+        _, image = self.slide.part.get_or_add_image_part(io.BytesIO(preview))
+        shape_id = 100 + self.deck.payloads
+        picture = (
+            f'<p:pic><p:nvPicPr><p:cNvPr id="0" name=""/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+            f'<p:blipFill><a:blip r:embed="{image}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+            f'<p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="914400" cy="914400"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+        )
+        attributes = f'name="{prog_id}" r:id="{rid}" imgW="914400" imgH="914400" progId="{prog_id}"'
+        ole = f"<p:oleObj {attributes}><p:embed/>{picture}</p:oleObj>"
+        if alternate:
+            ole = (
+                f'<mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+                f'<mc:Choice xmlns:v="urn:schemas-microsoft-com:vml" Requires="v"><p:oleObj spid="_x0000_s{1024 + shape_id}" {attributes}><p:embed/></p:oleObj></mc:Choice>'
+                f"<mc:Fallback>{ole}</mc:Fallback></mc:AlternateContent>"
+            )
+        frame = (
+            f'<p:graphicFrame {pptx_nsdecls("p", "a", "r")}><p:nvGraphicFramePr><p:cNvPr id="{shape_id}" name="Object {shape_id}"/>'
+            f'<p:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></p:cNvGraphicFramePr><p:nvPr/></p:nvGraphicFramePr>'
+            f'<p:xfrm><a:off x="914400" y="914400"/><a:ext cx="914400" cy="914400"/></p:xfrm>'
+            f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/presentationml/2006/ole">{ole}</a:graphicData></a:graphic>'
+            f"</p:graphicFrame>"
+        )
+        self.slide.shapes._spTree.append(parse_xml(frame))
+        picture_truth = {"kind": "media", "name": hashlib.sha256(preview).hexdigest() + ".png", "contentType": CT_PNG}
+        self.elements.append(lambda index: {**picture_truth, "slide": index})
+        self.elements.append(lambda index: {**payload_truth(kind, data, ext, content_type, prog_id), "slide": index})
 
     @staticmethod
     def _fill(frame, items: list[tuple[str, int, str]]) -> None:
@@ -1824,7 +2215,52 @@ def slide_objects() -> Deck:
     return f
 
 
-PPTX_FIXTURES = [slides, bullets, groups, slide_objects]
+def slide_links() -> Deck:
+    """A paragraph with an external hyperlink and a hyperlink to another slide, which stays
+    text; a comment on the first slide, which is not read."""
+    f = Deck("slide-links")
+    first = f.slide(TITLE_ONLY)
+    second = f.slide(TITLE_ONLY)
+    first.title("Links")
+    first.linked_text(
+        [
+            ("Read ", None, None),
+            ("the docproc guide", "url", "https://example.invalid/docproc?page=1&lang=en"),
+            (" or ", None, None),
+            ("the next slide", "slide", second),
+            (".", None, None),
+        ]
+    )
+    first.comment("A comment on the first slide.")
+    second.title("The next slide")
+    return f
+
+
+def slide_embeddings() -> Deck:
+    """An OLE object (a Word 97-2003 document) in PowerPoint's alternate content and an
+    embedded package (a docx), each with its preview picture, on the second slide, beside a
+    chart whose source workbook python-pptx embeds and which is never media."""
+    f = Deck("slide-embeddings")
+    first = f.slide(TITLE_ONLY)
+    first.title("Embeddings")
+    first.chart("Units", ["A", "B"], [("Units", [3, 4])])
+    s = f.slide(BLANK)
+    s.ole_object("ole", ole_payload(), "bin", CT_OLE_OBJECT, "Word.Document.8", png((200, 120, 40)), alternate=True)
+    s.ole_object("embedded", package_payload(), "docx", CT_DOCX, "Word.Document.12", png((120, 40, 200)), alternate=False)
+
+    def libreoffice(truth: dict) -> None:
+        # LibreOffice stores the OLE object's compound file, as it is, as a Word 97-2003
+        # document part.
+        for element in truth["elements"][1]["elements"]:
+            if element["kind"] == "ole":
+                element["name"] = element["name"].rsplit(".", 1)[0] + ".doc"
+                element["contentType"] = "application/msword"
+
+    f.libreoffice = libreoffice
+    return f
+
+
+PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings]
 
 
 # The refused set: documents docproc-ooxml refuses, each a python-docx document that LibreOffice

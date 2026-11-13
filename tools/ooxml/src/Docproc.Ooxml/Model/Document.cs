@@ -42,7 +42,37 @@ internal sealed record Document(SourceFormat Format, IReadOnlyList<Block> Blocks
 
     /// <summary>The comments, in the order the document stores them, each with its replies.</summary>
     public IReadOnlyList<Comment>? Comments { get; init; }
+
+    /// <summary>The package's core, extended, and custom properties, or null when it has none.</summary>
+    public Properties? Properties { get; init; }
 }
+
+/// <summary>A package's properties, read from its three parts as XML (context/layers.md,
+/// "docproc-ooxml"): each map in its part's stored order, a map with no values null.</summary>
+/// <param name="Core">The core properties (docProps/core.xml), by element name.</param>
+/// <param name="App">The extended properties (docProps/app.xml), by element name.</param>
+/// <param name="Custom">The custom properties (docProps/custom.xml), by property name.</param>
+internal sealed record Properties(IReadOnlyList<Property>? Core, IReadOnlyList<Property>? App, IReadOnlyList<Property>? Custom);
+
+/// <summary>A property: its key and its value, typed as stored.</summary>
+internal sealed record Property(string Key, PropertyValue Value);
+
+/// <summary>The JSON type a property's value is written as.</summary>
+internal enum PropertyValueType
+{
+    /// <summary>A string, as stored.</summary>
+    Text,
+
+    /// <summary>A number, its text a JSON number's.</summary>
+    Number,
+
+    /// <summary>true or false.</summary>
+    Boolean,
+}
+
+/// <summary>A property's value: its type, and its text, a JSON number's for a number and
+/// <c>true</c> or <c>false</c> for a boolean.</summary>
+internal sealed record PropertyValue(PropertyValueType Type, string Text);
 
 /// <summary>A docx section's headers and footers, as its pages show them: its own, or the
 /// previous section's where it has none of a kind. A first-page one is kept only when the
@@ -146,6 +176,10 @@ internal sealed record TableCell(IReadOnlyList<Block>? Blocks)
 
     /// <summary>The rows the cell spans, or null for one.</summary>
     public int? RowSpan { get; init; }
+
+    /// <summary>The target of a sheet cell's external hyperlink, which its Markdown links its
+    /// value to; null in a docx table, and for a cell with no hyperlink or an internal one.</summary>
+    public string? Target { get; init; }
 }
 
 /// <summary>A chart, from the data its chart part caches, never an image of it: its type (the
@@ -158,12 +192,37 @@ internal sealed record Chart(string ChartType, string? Title, IReadOnlyList<Char
 /// cache lacks null. The two lists are as long as the cache says.</summary>
 internal sealed record ChartSeries(string? Name, IReadOnlyList<string?> Categories, IReadOnlyList<double?> Values);
 
-/// <summary>A picture. An embedded one has its file's name in the media directory (the
-/// lowercase hex SHA-256 of its bytes and its stored extension, the same for every block that
-/// shows those bytes), its content type, and the package part it is stored in; a linked one has
-/// its target instead, and no file. Its alternative text and title are its drawing's.</summary>
+/// <summary>The kinds of media: a picture, or a payload the document embeds, which docproc-ooxml
+/// writes as stored and never reads.</summary>
+internal enum MediaKind
+{
+    /// <summary>A picture.</summary>
+    Picture,
+
+    /// <summary>An embedded package, such as a workbook in a slide: an embedded-package
+    /// relationship's part.</summary>
+    Embedded,
+
+    /// <summary>An OLE object: an embedded-object relationship's part, its compound file as
+    /// stored, which docproc unwraps.</summary>
+    Ole,
+}
+
+/// <summary>A picture, or an embedded package or OLE object. An embedded one has its file's name
+/// in the media directory (the lowercase hex SHA-256 of its bytes and its stored extension, the
+/// same for every block that shows those bytes), its content type, and the package part it is
+/// stored in; a linked picture has its target instead, and no file. A picture's alternative text
+/// and title are its drawing's; a payload has the program id of the object that names it, and
+/// follows its preview picture.</summary>
 internal sealed record Media : Block
 {
+    /// <summary>What the medium is; a picture unless it says otherwise.</summary>
+    public MediaKind Kind { get; init; }
+
+    /// <summary>An embedded package's or OLE object's program id, such as <c>Excel.Sheet.12</c>,
+    /// from the element that names its relationship; null for a picture.</summary>
+    public string? ProgId { get; init; }
+
     /// <summary>The file's name relative to the media directory, or null for a linked picture.</summary>
     public string? Name { get; init; }
 
@@ -187,7 +246,8 @@ internal sealed record Media : Block
     /// comment.</summary>
     public int? Section { get; init; }
 
-    /// <summary>The index of the xlsx sheet the picture is on, in the document's blocks.</summary>
+    /// <summary>The index of the xlsx sheet the picture is on, in the document's blocks; the
+    /// line writer writes it as the ordinal of the sheet's <c>sheet</c> line, this plus one.</summary>
     public int? Sheet { get; init; }
 
     /// <summary>The index of the pptx slide the picture is on, in the document's blocks: its
@@ -263,8 +323,8 @@ internal sealed record CellValue
     public static CellValue OfDate(string iso) => new(CellValueType.Date, 0, false, iso);
 }
 
-/// <summary>A piece of a block's text: text, or a reference to a note or comment at its position
-/// in the text.</summary>
+/// <summary>A piece of a block's text: text, a reference to a note or comment at its position in
+/// the text, or the start or end of an external hyperlink's text.</summary>
 internal abstract record Inline;
 
 /// <summary>A run of text, with tabs as <c>\t</c> and line breaks as <c>\n</c>. Adjacent runs
@@ -279,3 +339,11 @@ internal sealed record EndnoteReference(int Id) : Inline;
 
 /// <summary>The end of a comment's anchored range, by the comment's id.</summary>
 internal sealed record CommentReference(int Id) : Inline;
+
+/// <summary>Where an external hyperlink starts: the inlines up to the next
+/// <see cref="HyperlinkEnd"/> are its text, which the Markdown links to the target. An internal
+/// hyperlink, to a bookmark or a slide, has none, so its text stays text.</summary>
+internal sealed record HyperlinkStart(string Target) : Inline;
+
+/// <summary>Where an external hyperlink's text ends.</summary>
+internal sealed record HyperlinkEnd : Inline;

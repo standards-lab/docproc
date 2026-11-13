@@ -1,0 +1,42 @@
+{
+  "fixture": "slide-links",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Links"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Read the docproc guide or the next slide."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "The next slide"
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>",
+    "A comment on the first slide."
+  ],
+  "once": []
+}

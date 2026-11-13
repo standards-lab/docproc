@@ -40,9 +40,10 @@ internal sealed class LineWriter(Stream output)
     private readonly StringBuilder rowsMarkdown = new();
     private long rowsSize = RowsLineOverhead;
 
-    /// <summary>Writes the <c>document</c> line: the schema, the format, the Markdown of no sheet
-    /// (an xlsx document's is empty), and every picture in document order.</summary>
-    public void WriteDocument(SourceFormat format, string markdown, IReadOnlyList<Media> media)
+    /// <summary>Writes the <c>document</c> line: the schema, the format, the package's properties,
+    /// the Markdown of no sheet (an xlsx document's is empty), and every medium in document
+    /// order.</summary>
+    public void WriteDocument(SourceFormat format, Properties? properties, string markdown, IReadOnlyList<Media> media)
     {
         using var json = new Utf8JsonWriter(buffer, Options);
         json.WriteStartObject();
@@ -54,6 +55,14 @@ internal sealed class LineWriter(Stream output)
             SourceFormat.Xlsx => "xlsx",
             _ => "pptx",
         });
+        if (properties is not null)
+        {
+            json.WriteStartObject("properties");
+            WriteProperties(json, "core", properties.Core);
+            WriteProperties(json, "app", properties.App);
+            WriteProperties(json, "custom", properties.Custom);
+            json.WriteEndObject();
+        }
         WriteOptional(json, "markdown", markdown);
         if (media.Count > 0)
         {
@@ -204,18 +213,53 @@ internal sealed class LineWriter(Stream output)
         return bytes.WrittenSpan.ToArray();
     }
 
-    // A picture: its kind, its file or a linked picture's target, its content type and part, and
-    // its placement, the one of section, sheet, or slide its format has.
+    // A map of properties, in stored order, each value as its JSON type; left out when empty.
+    private static void WriteProperties(Utf8JsonWriter json, string name, IReadOnlyList<Property>? properties)
+    {
+        if (properties is not { Count: > 0 })
+        {
+            return;
+        }
+        json.WriteStartObject(name);
+        foreach (var property in properties)
+        {
+            switch (property.Value.Type)
+            {
+                case PropertyValueType.Number:
+                    json.WritePropertyName(property.Key);
+                    json.WriteRawValue(property.Value.Text, skipInputValidation: true);
+                    break;
+                case PropertyValueType.Boolean:
+                    json.WriteBoolean(property.Key, property.Value.Text == "true");
+                    break;
+                default:
+                    json.WriteString(property.Key, property.Value.Text);
+                    break;
+            }
+        }
+        json.WriteEndObject();
+    }
+
+    // A medium: its kind, its file or a linked picture's target, its content type, part, and
+    // program id, and its placement, the one of section, sheet, or slide its format has: the docx
+    // section's index, the ordinal of the xlsx sheet's sheet line, or the pptx slide's index
+    // (context/layers.md, "docproc-ooxml").
     private static void WriteMedium(Utf8JsonWriter json, Media medium)
     {
         json.WriteStartObject();
-        json.WriteString("kind", "picture");
+        json.WriteString("kind", medium.Kind switch
+        {
+            MediaKind.Embedded => "embedded",
+            MediaKind.Ole => "ole",
+            _ => "picture",
+        });
         WriteOptional(json, "file", medium.Name);
         WriteOptional(json, "content_type", medium.ContentType);
         WriteOptional(json, "part", medium.Source);
         WriteOptional(json, "target", medium.Target);
+        WriteOptional(json, "prog_id", medium.ProgId);
         WriteOptional(json, "section", medium.Section);
-        WriteOptional(json, "sheet", medium.Sheet);
+        WriteOptional(json, "sheet", medium.Sheet + 1);
         WriteOptional(json, "slide", medium.Slide);
         json.WriteEndObject();
     }
