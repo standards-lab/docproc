@@ -18,8 +18,11 @@
 //! The bodies are mail-parser's body lists (RFC 8621's textBody and htmlBody): the text body is
 //! the text parts of the one, and the HTML body the HTML parts of the other, each decoded from
 //! its transfer encoding and charset and joined in order, and the Markdown is made from them as
-//! for a .pst or a .msg; neither body is part of the line. The attachments are the message's parts that aren't body text, in order: its
-//! attachments, and the images, audio and video the bodies show. A message/rfc822 or
+//! for a .pst or a .msg, once the attachments, embedded messages included, are read; neither body
+//! is part of the line. The attachments are the message's parts that aren't body text, in order:
+//! its attachments, and the images, audio and video the bodies show. A part's Content-Location
+//! matches an image's source to it, and is no field; its Content-Disposition is not read for
+//! `inline`, which says whether the Markdown links it. A message/rfc822 or
 //! message/global part is an embedded message, nested under its record to [`DEPTH_MAX`] messages.
 //!
 //! Two kinds of part hold content no reader here opens: a TNEF part (`winmail.dat`, Outlook's own
@@ -41,9 +44,10 @@ use mail_parser::{
     MessageParser, MessagePart, MessageRef, PartKind, PartRole,
 };
 
+use crate::mapping;
+use crate::markdown::{self, Bodies};
 use crate::model::{Address, Attachment, Message};
 use crate::msg::DEPTH_MAX;
-use crate::{mapping, markdown};
 
 /// The address type of every address a MIME message carries.
 const SMTP: &str = "SMTP";
@@ -104,10 +108,11 @@ fn read(
 ) -> Result<(Message, Vec<(u32, String)>), Fault> {
     let mut own = Vec::new();
     let mut message = headers(parsed, &mut own);
-    message.markdown = markdown(parsed, &mut own);
+    let bodies = bodies(parsed, &mut own);
     own.extend(parsed.parts().filter_map(|part| unread(&part)));
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     let mut skipped = Vec::new();
+    let mut locations = Vec::new();
     let parts = parsed
         .parts()
         .filter(|part| part.is_attachment() || matches!(part.role(), PartRole::MediaBody));
@@ -115,6 +120,7 @@ fn read(
         let here = format!("{at}, attachment {number}");
         let Part {
             mut record,
+            location,
             content,
             nested,
             notes: own,
@@ -144,7 +150,11 @@ fn read(
             None => {}
         }
         message.attachments.push(record);
+        locations.push(location);
     }
+    let mut own = Vec::new();
+    markdown::make(&mut message, &bodies, &locations, files, &mut own)?;
+    notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     Ok((message, skipped))
 }
 
@@ -290,10 +300,10 @@ fn thread_index(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<S
     Some(mapping::hex(&bytes))
 }
 
-/// The Markdown made from the text and HTML bodies. A body list's parts of the other kind, the
+/// The text and HTML bodies the Markdown is made from. A body list's parts of the other kind, the
 /// stand-ins RFC 8621 copies in for a missing version, and its media are no part of a body. Parts
 /// are joined by a line break, so that one's last line never runs into the next one's first.
-fn markdown(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Option<String> {
+fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
     let text = joined(
         parsed.text_body(),
         |kind| matches!(kind, PartKind::Text),
@@ -306,7 +316,7 @@ fn markdown(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Option<String> 
         "HTML body",
         notes,
     );
-    markdown::derive(html.as_deref(), text.as_deref(), notes)
+    Bodies { html, text }
 }
 
 /// The text of a body list's parts of one kind, decoded and joined in order, with one note for
@@ -329,10 +339,12 @@ fn joined<'m>(
     (!texts.is_empty()).then(|| texts.join("\n"))
 }
 
-/// One attachment part read: its record, its decoded content when it is a file, which the caller
-/// stores and names, and its nested message when it is a message/rfc822 part, with its notes.
+/// One attachment part read: its record, its Content-Location, its decoded content when it is a
+/// file, which the caller stores and names, and its nested message when it is a message/rfc822
+/// part, with its notes.
 struct Part<'m> {
     record: Attachment,
+    location: Option<String>,
     content: Option<Cow<'m, [u8]>>,
     nested: Option<MessageRef<'m>>,
     notes: Vec<String>,
@@ -358,17 +370,16 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
         filename: owned(part.attachment_name()),
         mime_type: owned(mime_type.as_deref()),
         content_id: owned(part.content_id()),
-        inline: part
-            .content_disposition()
-            .is_some_and(|disposition| disposition.is_inline()),
         ..Attachment::default()
     };
+    let location = owned(part.content_location().map(str::trim));
     let embedded =
         part.is_content_type("message", "rfc822") || part.is_content_type("message", "global");
     if let PartKind::Message(nested) = part.kind() {
         record.method = Some("embedded_message");
         return Part {
             record,
+            location,
             content: None,
             nested: Some(nested),
             notes,
@@ -385,6 +396,7 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
         });
         return Part {
             record,
+            location,
             content: None,
             nested: None,
             notes,
@@ -396,6 +408,7 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
     record.size = Some(content.len() as u64);
     Part {
         record,
+        location,
         content: Some(content),
         nested: None,
         notes,
@@ -444,6 +457,7 @@ fn address(name: Option<&str>, address: Option<&str>) -> Option<Address> {
         name: owned(name),
         address: owned(address),
         address_type: Some(SMTP.to_owned()),
+        smtp_address: None,
     };
     (made.name.is_some() || made.address.is_some()).then_some(made)
 }

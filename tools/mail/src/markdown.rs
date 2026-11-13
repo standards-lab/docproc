@@ -6,18 +6,269 @@
 //! run by signal. A pass over the HTML's tags counts its open elements first, as the HTML parser
 //! would leave them open ([`too_deep`]), and a body nested past [`NESTING_MAX`] never reaches
 //! htmd.
+//!
+//! The Markdown is made once a message's attachments are read, nested messages included, so that
+//! its images link media names ([`make`]). Before htmd reads the HTML, each `<img>`'s source is
+//! rewritten to the media name of what it names: a `cid:` source, percent-decoded, names the
+//! attachment whose content_id it is, and any other source the attachment whose Content-Location
+//! it is. A `data:` source is its own payload, written as media and listed in the message's
+//! `media`. A source that names nothing is kept as written, with a note. An attachment is
+//! `inline` when the Markdown links it, and a `data:` payload is written, and listed, only when
+//! the Markdown links it, so every file written is named by a line.
+
+use std::borrow::Cow;
+use std::collections::HashSet;
+use std::ops::Range;
 
 use docproc_envelope::markdown::escape;
+use docproc_envelope::{Fault, Media};
+use mail_parser::Encoding;
+
+use crate::model::{Medium, Message};
 
 /// The most open elements an HTML body may nest for htmd to read it: Blink's cap on the depth
 /// of the tree its parser builds.
 pub const NESTING_MAX: usize = 512;
 
+/// A message's bodies as its Markdown is made from them: its HTML, stored or recovered from its
+/// RTF body, and its plain text, the text body or else the RTF body's own text.
+pub struct Bodies {
+    pub html: Option<String>,
+    pub text: Option<String>,
+}
+
+/// Makes `message`'s Markdown from `bodies`, once its attachments are read: its images linked to
+/// their media names, each attachment's `inline` set by whether the Markdown links it, and the
+/// `data:` payloads it links written through `files` and listed in its `media`. `locations` is
+/// each attachment's Content-Location, in the attachments' order, read for matching only. Notes
+/// go to `notes`; a payload that can't be written is a media fault.
+pub fn make(
+    message: &mut Message,
+    bodies: &Bodies,
+    locations: &[Option<String>],
+    files: &mut Media,
+    notes: &mut Vec<String>,
+) -> Result<(), Fault> {
+    let mut images = Images::new(message, locations);
+    let markdown = derive(
+        bodies.html.as_deref(),
+        bodies.text.as_deref(),
+        &mut |src| images.resolve(src),
+        notes,
+    );
+    let Images {
+        linked,
+        data,
+        notes: mut image_notes,
+        ..
+    } = images;
+    notes.append(&mut image_notes);
+    let links = |file: &str| markdown.as_deref().and_then(|markdown| markdown.find(file));
+    for (attachment, linked) in message.attachments.iter_mut().zip(linked) {
+        attachment.inline = linked && attachment.file.as_deref().and_then(links).is_some();
+    }
+    // A payload an attachment already names is that attachment's, and not listed again.
+    let mut media: Vec<(usize, Data)> = data
+        .into_iter()
+        .filter(|data| {
+            !message
+                .attachments
+                .iter()
+                .any(|attachment| attachment.file.as_deref() == Some(data.name.as_str()))
+        })
+        .filter_map(|data| Some((links(&data.name)?, data)))
+        .collect();
+    media.sort_by_key(|(at, _)| *at);
+    for (_, data) in media {
+        let file = files.store(data.bytes.as_slice(), data.extension.as_deref())?;
+        message.media.push(Medium {
+            file,
+            mime_type: data.mime_type,
+        });
+    }
+    message.markdown = markdown;
+    Ok(())
+}
+
+/// The images' sources resolved while the HTML is rewritten: what each attachment can be named
+/// by, which ones a source named, the `data:` payloads, and the notes.
+struct Images {
+    /// Each attachment's content_id, without angle brackets, its Content-Location, and its media
+    /// name; an attachment with no media name is named by no source.
+    targets: Vec<(Option<String>, Option<String>, Option<String>)>,
+    /// Whether a source named each attachment.
+    linked: Vec<bool>,
+    /// The `data:` payloads, each once, in the HTML's order.
+    data: Vec<Data>,
+    /// The sources already noted as naming nothing, each noted once.
+    unmatched: HashSet<String>,
+    notes: Vec<String>,
+}
+
+/// A `data:` image's payload, decoded, its name hashed but not yet written.
+struct Data {
+    name: String,
+    bytes: Vec<u8>,
+    mime_type: Option<String>,
+    extension: Option<String>,
+}
+
+impl Images {
+    fn new(message: &Message, locations: &[Option<String>]) -> Self {
+        let targets = message
+            .attachments
+            .iter()
+            .enumerate()
+            .map(|(at, attachment)| {
+                let content_id = attachment.content_id.as_deref().map(|id| {
+                    let id = id.trim();
+                    id.strip_prefix('<')
+                        .and_then(|id| id.strip_suffix('>'))
+                        .unwrap_or(id)
+                        .to_owned()
+                });
+                let location = locations.get(at).cloned().flatten();
+                (content_id, location, attachment.file.clone())
+            })
+            .collect::<Vec<_>>();
+        Self {
+            linked: vec![false; targets.len()],
+            targets,
+            data: Vec::new(),
+            unmatched: HashSet::new(),
+            notes: Vec::new(),
+        }
+    }
+
+    /// The media name an image's source names, its character references already decoded, or None
+    /// to keep it as written.
+    fn resolve(&mut self, src: &str) -> Option<String> {
+        // A URL in an attribute is read without its leading and trailing whitespace.
+        let src = src.trim_matches(|c: char| c.is_ascii_whitespace());
+        if src.is_empty() {
+            return None;
+        }
+        let found = if let Some(id) = scheme(src, "cid:") {
+            let id = percent_decoded(id.as_bytes());
+            let id = String::from_utf8_lossy(&id);
+            self.target(|(content_id, _, _)| content_id.as_deref() == Some(&*id))
+        } else if let Some(data) = scheme(src, "data:") {
+            return self.data(data);
+        } else {
+            self.target(|(_, location, _)| location.as_deref() == Some(src))
+        };
+        if found.is_none() && self.unmatched.insert(src.to_owned()) {
+            self.notes.push(format!(
+                "an image's source {src:?} names no attachment; kept as written"
+            ));
+        }
+        found
+    }
+
+    /// The media name of the first attachment with one that `names` matches, which is now linked.
+    fn target(
+        &mut self,
+        names: impl Fn(&(Option<String>, Option<String>, Option<String>)) -> bool,
+    ) -> Option<String> {
+        let at = self
+            .targets
+            .iter()
+            .position(|target| target.2.is_some() && names(target))?;
+        self.linked[at] = true;
+        self.targets[at].2.clone()
+    }
+
+    /// A `data:` URL's payload's media name (RFC 2397: `data:[<mediatype>][;base64],<data>`),
+    /// hashed now and written once the Markdown is known to link it; one that can't be decoded is
+    /// kept as written, with a note. `url` follows `data:`.
+    fn data(&mut self, url: &str) -> Option<String> {
+        let decoded = url.split_once(',').and_then(|(header, payload)| {
+            let (media_type, base64) = match header.rsplit_once(';') {
+                Some((media_type, last)) if last.eq_ignore_ascii_case("base64") => {
+                    (media_type, true)
+                }
+                _ => (header, false),
+            };
+            let payload = percent_decoded(payload.as_bytes());
+            let bytes = if base64 {
+                let (bytes, malformed) = Encoding::Base64.decode_checked(&payload);
+                (!malformed).then(|| bytes.into_owned())?
+            } else {
+                payload
+            };
+            let essence = media_type.split(';').next().unwrap_or_default().trim();
+            let mime_type = (!essence.is_empty()).then(|| essence.to_ascii_lowercase());
+            Some((bytes, mime_type))
+        });
+        let Some((bytes, mime_type)) = decoded else {
+            self.notes
+                .push("an image's data: URL can't be decoded; kept as written".to_owned());
+            return None;
+        };
+        // The name a payload gets is its hash and an extension, here the media type's subtype,
+        // which the store keeps when it is short and alphanumeric, as "png" and "jpeg" are.
+        let extension = mime_type
+            .as_deref()
+            .and_then(|mime_type| mime_type.split_once('/'))
+            .map(|(_, subtype)| subtype.to_owned());
+        let name = Media::new(None)
+            .store(bytes.as_slice(), extension.as_deref())
+            .ok()?;
+        if !self.data.iter().any(|data| data.name == name) {
+            self.data.push(Data {
+                name: name.clone(),
+                bytes,
+                mime_type,
+                extension,
+            });
+        }
+        Some(name)
+    }
+}
+
+/// What follows `scheme`, matched without regard to ASCII case, as a URL's scheme is, when `src`
+/// starts with it.
+fn scheme<'a>(src: &'a str, scheme: &str) -> Option<&'a str> {
+    src.get(..scheme.len())
+        .filter(|start| start.eq_ignore_ascii_case(scheme))
+        .map(|_| &src[scheme.len()..])
+}
+
+/// `bytes` with each `%hh` decoded; a `%` not followed by two hex digits is kept.
+fn percent_decoded(bytes: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        let hex = bytes
+            .get(at + 1..at + 3)
+            .filter(|_| bytes[at] == b'%')
+            .and_then(|hex| std::str::from_utf8(hex).ok())
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        match hex {
+            Some(byte) => {
+                out.push(byte);
+                at += 3;
+            }
+            None => {
+                out.push(bytes[at]);
+                at += 1;
+            }
+        }
+    }
+    out
+}
+
 /// A message's Markdown, by the one rule every format follows: made from `html` when the
-/// message has an HTML body, else from `text`, read literally. An HTML body nested past
-/// [`NESTING_MAX`] open elements gives way to `text`, else to its own text with its tags stripped,
-/// with a note. One that can't be made is left out, with a note.
-pub fn derive(html: Option<&str>, text: Option<&str>, notes: &mut Vec<String>) -> Option<String> {
+/// message has an HTML body, its images' sources first rewritten by `images`, else from `text`,
+/// read literally. An HTML body nested past [`NESTING_MAX`] open elements gives way to `text`,
+/// else to its own text with its tags stripped, with a note, and its images are not read. One
+/// that can't be made is left out, with a note.
+pub fn derive(
+    html: Option<&str>,
+    text: Option<&str>,
+    images: &mut dyn FnMut(&str) -> Option<String>,
+    notes: &mut Vec<String>,
+) -> Option<String> {
     let made = match (html, text) {
         (Some(html), _) if too_deep(html) => {
             let (made, from) = match text {
@@ -33,7 +284,7 @@ pub fn derive(html: Option<&str>, text: Option<&str>, notes: &mut Vec<String>) -
             ));
             Ok(made)
         }
-        (Some(html), _) => from_html(html),
+        (Some(html), _) => from_html(&rewritten(html, images)),
         (None, Some(text)) => Ok(from_text(text)),
         (None, None) => return None,
     };
@@ -41,8 +292,99 @@ pub fn derive(html: Option<&str>, text: Option<&str>, notes: &mut Vec<String>) -
         .ok()
 }
 
-/// Markdown from an HTML body. Images keep their sources as written, `cid:` ones included. The
-/// head, styles and scripts are no part of the text: htmd would write a style's rules as text.
+/// `html` with each `<img>`'s `src` rewritten to the name `images` gives for it, its character
+/// references decoded first; a source it gives none for is kept as written. A rewritten value is
+/// written in double quotes, and a media name needs no escape in them.
+fn rewritten<'h>(html: &'h str, images: &mut dyn FnMut(&str) -> Option<String>) -> Cow<'h, str> {
+    let mut out: Option<String> = None;
+    let mut copied = 0;
+    for piece in Pieces::new(html) {
+        let Piece::Start(name, _, tag) = piece else {
+            continue;
+        };
+        if name != "img" {
+            continue;
+        }
+        let Some((whole, value)) = src_attribute(&html[tag.clone()]) else {
+            continue;
+        };
+        let Some(media) = images(&references(
+            &html[tag.start + value.start..tag.start + value.end],
+        )) else {
+            continue;
+        };
+        let out = out.get_or_insert_with(|| String::with_capacity(html.len()));
+        out.push_str(&html[copied..tag.start + whole.start]);
+        out.push('"');
+        out.push_str(&media);
+        out.push('"');
+        copied = tag.start + whole.end;
+    }
+    match out {
+        Some(mut out) => {
+            out.push_str(&html[copied..]);
+            Cow::Owned(out)
+        }
+        None => Cow::Borrowed(html),
+    }
+}
+
+/// Where a start tag's first `src` attribute's value is, in `tag`: the value as written, quotes
+/// included, and the value itself, read as the HTML tokenizer reads attributes.
+fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
+    let bytes = tag.as_bytes();
+    let space = |byte: u8| byte.is_ascii_whitespace();
+    let mut at = 1;
+    while at < bytes.len() && !space(bytes[at]) && !matches!(bytes[at], b'/' | b'>') {
+        at += 1;
+    }
+    loop {
+        while at < bytes.len() && (space(bytes[at]) || bytes[at] == b'/') {
+            at += 1;
+        }
+        if at >= bytes.len() || bytes[at] == b'>' {
+            return None;
+        }
+        let name_start = at;
+        at += 1;
+        while at < bytes.len() && !space(bytes[at]) && !matches!(bytes[at], b'/' | b'>' | b'=') {
+            at += 1;
+        }
+        let name = &tag[name_start..at];
+        while at < bytes.len() && space(bytes[at]) {
+            at += 1;
+        }
+        if bytes.get(at) != Some(&b'=') {
+            continue;
+        }
+        at += 1;
+        while at < bytes.len() && space(bytes[at]) {
+            at += 1;
+        }
+        let start = at;
+        let (whole, value) = match bytes.get(at) {
+            Some(&quote @ (b'"' | b'\'')) => {
+                let end = bytes[at + 1..]
+                    .iter()
+                    .position(|&byte| byte == quote)
+                    .map_or(bytes.len(), |end| at + 1 + end);
+                at = (end + 1).min(bytes.len());
+                (start..at, start + 1..end)
+            }
+            _ => {
+                while at < bytes.len() && !space(bytes[at]) && bytes[at] != b'>' {
+                    at += 1;
+                }
+                (start..at, start..at)
+            }
+        };
+        if name.eq_ignore_ascii_case("src") {
+            return Some((whole, value));
+        }
+    }
+}
+
+/// Markdown from an HTML body. Images keep their sources as written. The head, styles and scripts are no part of the text: htmd would write a style's rules as text.
 pub fn from_html(html: &str) -> Result<String, String> {
     htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
@@ -143,7 +485,7 @@ fn too_deep(html: &str) -> bool {
     let mut foreign = 0usize;
     for piece in Pieces::new(html) {
         match piece {
-            Piece::Start(name, self_closing) => {
+            Piece::Start(name, self_closing, _) => {
                 while open.last().is_some_and(|last| closes(last, &name)) {
                     open.pop();
                 }
@@ -196,7 +538,7 @@ fn stripped(html: &str) -> String {
                     .chars()
                     .map(|c| if c.is_ascii_whitespace() { ' ' } else { c }),
             ),
-            Piece::Start(name, _) | Piece::End(name) if BREAKS.contains(&name.as_str()) => {
+            Piece::Start(name, ..) | Piece::End(name) if BREAKS.contains(&name.as_str()) => {
                 text.push('\n');
             }
             _ => {}
@@ -252,12 +594,12 @@ fn references(text: &str) -> String {
 }
 
 /// A piece of HTML as its tag pass reads it: a run of text, or a start or end tag by its name in
-/// ASCII lowercase, a start tag with whether it ends `/>`. Comments, doctypes, and processing
+/// ASCII lowercase, a start tag with whether it ends `/>` and where the whole tag is in the HTML. Comments, doctypes, and processing
 /// instructions are passed over, and a raw-text element's content is text, or nothing for the
 /// elements no part of the text.
 enum Piece<'a> {
     Text(&'a str),
-    Start(String, bool),
+    Start(String, bool, Range<usize>),
     End(String),
 }
 
@@ -344,11 +686,12 @@ impl<'a> Iterator for Pieces<'a> {
                     let (name, end) = Self::name(rest, 1);
                     let past = Self::past_tag(bytes, end, true);
                     let self_closing = bytes[..past].ends_with(b"/>");
+                    let tag = self.at..self.at + past;
                     self.at += past;
                     if RAW.contains(&name.as_str()) {
                         self.raw = Some(name.clone());
                     }
-                    return Some(Piece::Start(name, self_closing));
+                    return Some(Piece::Start(name, self_closing, tag));
                 }
                 // A "<" that opens no tag is text.
                 _ => {
@@ -402,14 +745,24 @@ mod tests {
     #[test]
     fn html_past_the_nesting_cap_gives_way() {
         let mut notes = Vec::new();
-        let at_cap = derive(Some(&nested("div", 512)), Some("text"), &mut notes);
+        let at_cap = derive(
+            Some(&nested("div", 512)),
+            Some("text"),
+            &mut |_| None,
+            &mut notes,
+        );
         assert_eq!(at_cap.as_deref(), Some("word"));
         assert!(notes.is_empty(), "{notes:?}");
 
         let past = nested("div", 513);
-        let from_text = derive(Some(&past), Some("the *text* body"), &mut notes);
+        let from_text = derive(
+            Some(&past),
+            Some("the *text* body"),
+            &mut |_| None,
+            &mut notes,
+        );
         assert_eq!(from_text.as_deref(), Some("the \\*text\\* body"));
-        let from_html = derive(Some(&past), None, &mut notes);
+        let from_html = derive(Some(&past), None, &mut |_| None, &mut notes);
         assert_eq!(from_html.as_deref(), Some("word"));
         assert_eq!(
             notes,
@@ -479,5 +832,165 @@ mod tests {
             from_html(html).unwrap(),
             "A **moth**.\n\n![moth](cid:moth@example.net)"
         );
+    }
+
+    /// The `src` of a start tag, quoted either way or bare, past other attributes, a name that
+    /// only starts with it, and a valueless one, the first of two; none in a tag without one.
+    #[test]
+    fn the_src_attribute_is_read_as_the_tokenizer_reads_it() {
+        fn value(tag: &str) -> Option<&str> {
+            src_attribute(tag).map(|(_, value)| &tag[value])
+        }
+        assert_eq!(value("<img src=\"a b\">"), Some("a b"));
+        assert_eq!(value("<img alt='x>y' SRC='c'>"), Some("c"));
+        assert_eq!(value("<img srcset=x src = d/>"), Some("d/"));
+        assert_eq!(value("<img ismap src=e src=f>"), Some("e"));
+        assert_eq!(value("<img\tsrc=\"unclosed>"), Some("unclosed>"));
+        assert_eq!(value("<img alt=src>"), None);
+        assert_eq!(value("<img>"), None);
+    }
+
+    #[test]
+    fn percent_escapes_are_decoded_and_others_kept() {
+        assert_eq!(percent_decoded(b"One%2Bimg%40x%2%zz%"), b"One+img@x%2%zz%");
+    }
+
+    /// Only an `<img>`'s source is rewritten, references decoded first, and the rest of the HTML
+    /// is kept byte for byte; a source given no name is kept as written.
+    #[test]
+    fn only_image_sources_are_rewritten() {
+        let html = "<a href=\"cid:x\">a</a><img alt=1 src='cid:x&amp;y'><IMG SRC=keep>\
+                    <script>'<img src=cid:x>'</script><img src=cid:x>";
+        let mut seen = Vec::new();
+        let out = rewritten(html, &mut |src| {
+            seen.push(src.to_owned());
+            (src != "keep").then(|| "f.png".to_owned())
+        });
+        assert_eq!(seen, ["cid:x&y", "keep", "cid:x"]);
+        assert_eq!(
+            out,
+            "<a href=\"cid:x\">a</a><img alt=1 src=\"f.png\"><IMG SRC=keep>\
+             <script>'<img src=cid:x>'</script><img src=\"f.png\">"
+        );
+        assert!(matches!(
+            rewritten("<p>x</p>", &mut |_| None),
+            Cow::Borrowed(_)
+        ));
+    }
+
+    /// An attachment with a content-id, one with a Content-Location, and one with neither.
+    fn message(html_ids: &[(Option<&str>, &str)]) -> Message {
+        Message {
+            attachments: html_ids
+                .iter()
+                .map(|(id, file)| crate::model::Attachment {
+                    content_id: id.map(str::to_owned),
+                    file: (!file.is_empty()).then(|| (*file).to_owned()),
+                    inline: true,
+                    ..Default::default()
+                })
+                .collect(),
+            ..Message::default()
+        }
+    }
+
+    fn made(message: &mut Message, html: &str, locations: &[Option<String>]) -> Vec<String> {
+        let bodies = Bodies {
+            html: Some(html.to_owned()),
+            text: None,
+        };
+        let mut notes = Vec::new();
+        make(
+            message,
+            &bodies,
+            locations,
+            &mut Media::new(None),
+            &mut notes,
+        )
+        .unwrap();
+        notes
+    }
+
+    /// A `cid:` matches a content-id, angle brackets and all, percent-decoded and its scheme in
+    /// any case; another source a Content-Location; an attachment without a file matches nothing.
+    /// Only a linked attachment is inline, and each unmatched source is noted once.
+    #[test]
+    fn sources_match_content_ids_and_locations() {
+        let mut message = message(&[
+            (Some("<a+b@x>"), "a.png"),
+            (None, "b.png"),
+            (Some("c@x"), ""),
+            (Some("d@x"), "d.png"),
+        ]);
+        let locations = [None, Some("pics/b.png".to_owned()), None, None];
+        let notes = made(
+            &mut message,
+            "<img src=\"CID:a%2Bb@x\"><img src=\" pics/b.png \"><img src=cid:c@x>\
+             <img src=cid:c@x><img src=\"\">",
+            &locations,
+        );
+        assert_eq!(
+            message.markdown.as_deref(),
+            Some("![](a.png)![](b.png)![](cid:c@x)![](cid:c@x)![]()")
+        );
+        let inline: Vec<bool> = message.attachments.iter().map(|a| a.inline).collect();
+        assert_eq!(inline, [true, true, false, false]);
+        assert_eq!(
+            notes,
+            ["an image's source \"cid:c@x\" names no attachment; kept as written"]
+        );
+        assert!(message.media.is_empty());
+    }
+
+    /// A `data:` image is named by its decoded payload and the media type's subtype, listed once
+    /// in `media`, in the Markdown's order, unless an attachment already names that payload; one
+    /// that can't be decoded is kept, with a note.
+    #[test]
+    fn data_images_are_media() {
+        let png = Media::new(None).store(&b"PNG"[..], Some("png")).unwrap();
+        let svg = Media::new(None).store(&b"<svg/>"[..], None).unwrap();
+        let mut message = message(&[(None, &png)]);
+        let notes = made(
+            &mut message,
+            "<img src=\"data:Image/SVG+xml;charset=utf-8,%3Csvg/%3E\">\
+             <img src=\"data:image/png;base64,UE5H\"><img src=\"data:,%3Csvg/%3E\">\
+             <img src=\"data:image/png;base64,%%%\"><img src=\"data:nocomma\">",
+            &[],
+        );
+        assert_eq!(
+            message.media,
+            [Medium {
+                file: svg.clone(),
+                mime_type: Some("image/svg+xml".to_owned()),
+            }]
+        );
+        assert!(
+            !message.attachments[0].inline,
+            "a data: image links no attachment"
+        );
+        let markdown = message.markdown.unwrap();
+        assert!(
+            markdown.starts_with(&format!("![]({svg})![]({png})![]({svg})")),
+            "{markdown}"
+        );
+        assert_eq!(
+            notes,
+            ["an image's data: URL can't be decoded; kept as written"; 2]
+        );
+    }
+
+    /// An HTML body past the nesting cap gives way to its text, so its images link nothing: no
+    /// attachment is inline and no `data:` image is listed or written.
+    #[test]
+    fn html_past_the_cap_links_no_images() {
+        let mut message = message(&[(Some("a@x"), "a.png")]);
+        let html = format!(
+            "<img src=cid:a@x><img src=\"data:,x\">{}",
+            nested("div", NESTING_MAX + 1)
+        );
+        made(&mut message, &html, &[]);
+        assert_eq!(message.markdown.as_deref(), Some("word"));
+        assert!(!message.attachments[0].inline);
+        assert!(message.media.is_empty());
     }
 }

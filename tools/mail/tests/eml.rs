@@ -9,6 +9,9 @@ use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha25
 use serde_json::{Value, json};
 
 /// The MIME group's hand-written sources, under tests/fixtures/mime/eml.
+/// The media name of 03-html-inline-image.eml's moth picture: its SHA-256 and its extension.
+const MOTH: &str = "83b67b7e132c07726a0309f13395c7a19884e27ca084eff8e8fe6e320d6d7795.png";
+
 const MIME_SOURCES: &[&str] = &["09-threading.eml"];
 
 const SOURCES: &[&str] = &[
@@ -250,7 +253,8 @@ fn the_mime_group_matches_its_sha256_list() {
     assert_eq!(listed, committed, "the list names every file of the group");
 }
 
-/// The Markdown body is made from the HTML, keeping its cid: image, else from the text.
+/// The Markdown body is made from the HTML, its cid: image linking the attachment's file, else
+/// from the text.
 #[test]
 fn markdown_is_made_from_the_html_else_the_text() {
     let markdown = |source: &str| {
@@ -259,7 +263,7 @@ fn markdown_is_made_from_the_html_else_the_text() {
     };
     assert_eq!(
         markdown("03-html-inline-image.eml"),
-        "We found a **moth** in relay 70, panel F.\n\n![moth](cid:moth@example.net)"
+        format!("We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})")
     );
     assert_eq!(
         markdown("02-reply-latin1.eml"),
@@ -607,7 +611,8 @@ fn base64(bytes: &[u8]) -> String {
 }
 
 /// A transfer-encoded message/rfc822 part is an embedded message as an unencoded one is, at
-/// every level, past mail-parser's default of 3 encoded levels; an inline disposition is kept.
+/// every level, past mail-parser's default of 3 encoded levels. An inline disposition is not
+/// `inline`, which says whether the Markdown links the attachment.
 #[test]
 fn an_encoded_message_is_embedded() {
     let mut message = "From: ann@example.com\r\nSubject: level 5\r\n\r\nlast\r\n".to_owned();
@@ -625,7 +630,7 @@ fn an_encoded_message_is_embedded() {
     for level in 1..=5 {
         let record = &at["attachments"][0];
         assert_eq!(record["method"], "embedded_message", "level {level}");
-        assert_eq!(record["inline"], true, "level {level}");
+        assert_eq!(record["inline"], false, "level {level}");
         assert_eq!(record.get("file"), None, "level {level}");
         at = &record["message"];
         assert_eq!(at["subject"], format!("level {level}"));
@@ -760,5 +765,49 @@ fn lossy_decoding_gives_a_warning_naming_the_record() {
          the text body is not valid in its charset; decoded lossily\n\
          docproc-mail: warning: message, attachment 1: \
          the attachment's content has a malformed transfer encoding; decoded lossily\n"
+    );
+}
+
+/// In a MIME message too, an image's source is rewritten to its media name: a percent-decoded
+/// `cid:` matches a part's Content-ID, another source its Content-Location, and a `data:` image is
+/// written as media and listed in `media`. A source that matches nothing is kept, with a warning,
+/// and a part is `inline` when the Markdown links it, whatever its Content-Disposition says.
+#[test]
+fn images_link_their_media_names() {
+    let eml = "From: ann@example.com\r\nSubject: images\r\n\
+               Content-Type: multipart/related; boundary=r\r\n\r\n\
+               --r\r\nContent-Type: text/html\r\n\r\n\
+               <p>Pictures</p><img src=\"cid:One%2Bimg@example.com\" alt=a>\
+               <img src=\"pic2.png\" alt=b><img src=\"data:image/gif;base64,R0lGODlh\" alt=c>\
+               <img src=\"http://example.com/x.png\" alt=d>\r\n\
+               --r\r\nContent-Type: image/png\r\nContent-ID: <One+img@example.com>\r\n\
+               Content-Disposition: attachment; filename=one.png\r\n\r\none\r\n\
+               --r\r\nContent-Type: image/jpeg\r\nContent-Location: pic2.png\r\n\r\ntwo\r\n\
+               --r\r\nContent-Type: image/png\r\nContent-ID: <unused@example.com>\r\n\
+               Content-Disposition: inline; filename=three.png\r\n\r\nthree\r\n--r--\r\n";
+    let (message, stderr) = read("images.eml", eml.as_bytes());
+    assert_eq!(
+        stderr,
+        warning(
+            "an image's source \"http://example.com/x.png\" names no attachment; kept as written"
+        )
+    );
+    let attachments = message["attachments"].as_array().unwrap();
+    let inline: Vec<&Value> = attachments.iter().map(|a| &a["inline"]).collect();
+    assert_eq!(inline, [true, true, false]);
+    let file = |at: usize| attachments[at]["file"].as_str().unwrap();
+    // The payload, "GIF89a", named by its SHA-256 and the media type's subtype.
+    let gif = format!("{}.gif", sha256(&built("payload.gif", b"GIF89a")));
+    assert_eq!(
+        message["media"],
+        json!([{"file": gif, "mime_type": "image/gif"}])
+    );
+    assert_eq!(
+        message["markdown"],
+        format!(
+            "Pictures\n\n![a]({})![b]({})![c]({gif})![d](http://example.com/x.png)",
+            file(0),
+            file(1)
+        )
     );
 }

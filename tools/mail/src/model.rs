@@ -96,13 +96,28 @@ pub struct Message {
     pub conversation_index: Option<String>,
     /// The message's text as Markdown, made from the first body it holds: its stored HTML, else
     /// the HTML recovered from its RTF body (\fromhtml1, MS-OXRTFEX), else its plain text, read
-    /// literally. Images keep their `cid:` sources, which name attachments' content_id. The
-    /// bodies themselves are no part of the line.
+    /// literally, else its RTF body's own text, read as plain text is. An image links its media
+    /// name: an attachment's `file`, or a `media` entry's. The bodies themselves are no part of
+    /// the line.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub markdown: Option<String>,
     /// In the attachment table's order, less those that couldn't be read.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<Attachment>,
+    /// The payloads the Markdown links that no attachment names, the HTML's `data:` images, in
+    /// the Markdown's order, each once.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub media: Vec<Medium>,
+}
+
+/// A payload the Markdown links that no attachment names.
+#[derive(Debug, PartialEq, Serialize)]
+pub struct Medium {
+    /// Its name in the media store, as an attachment's `file` is named.
+    pub file: String,
+    /// The media type its `data:` URL states, in lowercase, without parameters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 /// A sender or a recipient.
@@ -114,11 +129,19 @@ pub struct Address {
     pub address: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub address_type: Option<String>,
+    /// An Exchange (`EX`) address's SMTP address: a recipient's PidTagSmtpAddress (0x39FE), the
+    /// sender's PidTagSenderSmtpAddress (0x5D01). Left out when the input doesn't hold it, and on
+    /// any other address type, whose `address` is already the one to write to.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub smtp_address: Option<String>,
 }
 
 impl Address {
     pub fn is_empty(&self) -> bool {
-        self.name.is_none() && self.address.is_none() && self.address_type.is_none()
+        self.name.is_none()
+            && self.address.is_none()
+            && self.address_type.is_none()
+            && self.smtp_address.is_none()
     }
 }
 
@@ -139,8 +162,9 @@ pub struct Attachment {
     /// As stored, without angle brackets.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content_id: Option<String>,
-    /// Whether the HTML body refers to it, which is how an inline disposition is stored; in a
-    /// MIME message, whether its Content-Disposition is inline.
+    /// Whether the Markdown links it: an image of the HTML body whose source names it, by its
+    /// content_id or its Content-Location, made into Markdown. The same in every input format; a
+    /// stored inline disposition or flag is not read for it.
     pub inline: bool,
     /// "none", "by_value", "by_reference", "by_reference_only", "embedded_message", "storage"
     /// or "by_web_reference".

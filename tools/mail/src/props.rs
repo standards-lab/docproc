@@ -34,6 +34,8 @@ pub mod tag {
     pub const CONTENT_COUNT: u16 = 0x3602;
     pub const SUBFOLDERS: u16 = 0x360A;
     pub const CONTAINER_CLASS: u16 = 0x3613;
+    /// PidTagSmtpAddress, on a recipient row.
+    pub const SMTP_ADDRESS: u16 = 0x39FE;
     pub const ATTACH_DATA: u16 = 0x3701;
     pub const ATTACH_EXTENSION: u16 = 0x3703;
     pub const ATTACH_FILENAME: u16 = 0x3704;
@@ -41,11 +43,13 @@ pub mod tag {
     pub const ATTACH_LONG_FILENAME: u16 = 0x3707;
     pub const ATTACH_MIME_TAG: u16 = 0x370E;
     pub const ATTACH_CONTENT_ID: u16 = 0x3712;
-    pub const ATTACH_FLAGS: u16 = 0x3714;
+    /// PidTagAttachContentLocation, read only to match an image's source to its attachment.
+    pub const ATTACH_CONTENT_LOCATION: u16 = 0x3713;
     pub const INTERNET_CODEPAGE: u16 = 0x3FDE;
     pub const MESSAGE_LOCALE_ID: u16 = 0x3FF1;
     pub const MESSAGE_CODEPAGE: u16 = 0x3FFD;
     pub const CODE_PAGE_ID: u16 = 0x66C3;
+    pub const SENDER_SMTP_ADDRESS: u16 = 0x5D01;
     pub const PST_PASSWORD: u16 = 0x67FF;
 }
 

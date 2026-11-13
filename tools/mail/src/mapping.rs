@@ -5,9 +5,10 @@
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
+use crate::markdown::Bodies;
 use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
-use crate::{markdown, rtf};
+use crate::rtf;
 
 /// Recipient types of PidTagRecipientType (MS-OXOMSG 2.2.3.1), less the MAPI_P1 resend flag.
 const MAPI_TO: i64 = 1;
@@ -15,9 +16,10 @@ const MAPI_CC: i64 = 2;
 const MAPI_BCC: i64 = 3;
 const MAPI_P1: i64 = 0x1000_0000;
 
-/// Maps a message's properties and its recipient table's rows to a message line. Strings in
-/// PT_STRING8 are decoded in `code_page`.
-pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec<String>) {
+/// Maps a message's properties and its recipient table's rows to a message line, and gives the
+/// bodies its Markdown is made from once its attachments are read ([`crate::markdown::make`]).
+/// Strings in PT_STRING8 are decoded in `code_page`.
+pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bodies, Vec<String>) {
     let mut strings = Strings::new(code_page);
     let mut notes = Vec::new();
     let mut message = Message {
@@ -27,9 +29,12 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec
         sender: address(
             &mut strings,
             props,
-            tag::SENDER_NAME,
-            tag::SENDER_EMAIL_ADDRESS,
-            tag::SENDER_ADDRESS_TYPE,
+            [
+                tag::SENDER_NAME,
+                tag::SENDER_EMAIL_ADDRESS,
+                tag::SENDER_ADDRESS_TYPE,
+                tag::SENDER_SMTP_ADDRESS,
+            ],
         ),
         submit_time: time(props, tag::CLIENT_SUBMIT_TIME, &mut notes),
         delivery_time: time(props, tag::MESSAGE_DELIVERY_TIME, &mut notes),
@@ -53,16 +58,19 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec
         references: strings.text(props, tag::INTERNET_REFERENCES),
         conversation_topic: strings.text(props, tag::CONVERSATION_TOPIC),
         conversation_index: binary(props, tag::CONVERSATION_INDEX).map(hex),
-        markdown: markdown(&mut strings, props, code_page, &mut notes),
         ..Message::default()
     };
+    let bodies = bodies(&mut strings, props, code_page, &mut notes);
     for (row, recipient) in recipients.iter().enumerate() {
         let Some(address) = address(
             &mut strings,
             recipient,
-            tag::DISPLAY_NAME,
-            tag::EMAIL_ADDRESS,
-            tag::ADDRESS_TYPE,
+            [
+                tag::DISPLAY_NAME,
+                tag::EMAIL_ADDRESS,
+                tag::ADDRESS_TYPE,
+                tag::SMTP_ADDRESS,
+            ],
         ) else {
             continue;
         };
@@ -77,18 +85,15 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec
     }
     let mut all = strings.into_notes();
     all.append(&mut notes);
-    (message, all)
+    (message, bodies, all)
 }
 
-/// A message's Markdown, made from its stored HTML, else the HTML recovered from its RTF body,
-/// else its plain text. Each body is still read, and decoded, to make it; a body that can't be
-/// read is passed over with a note, and the Markdown is made from the next.
-fn markdown(
-    strings: &mut Strings,
-    props: &Bag,
-    code_page: u16,
-    notes: &mut Vec<String>,
-) -> Option<String> {
+/// The bodies a message's Markdown is made from, the first it holds of: its stored HTML, the
+/// HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
+/// only when it is the one. The stored HTML, the text and the RTF are each still read, and
+/// decoded; a body that can't be read is passed over with a note, and the Markdown is made from
+/// the next.
+fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
     let text = strings.text(props, tag::BODY);
     let html = html(strings, props, code_page);
     let rtf = binary(props, tag::RTF_COMPRESSED).and_then(|compressed| {
@@ -105,11 +110,15 @@ fn markdown(
         notes.append(&mut lossy);
         html
     });
-    markdown::derive(
-        html.as_deref().or(from_rtf.as_deref()),
-        text.as_deref(),
-        notes,
-    )
+    let html = html.or(from_rtf);
+    let text = match (&html, text) {
+        (None, None) => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
+            notes.append(&mut lossy);
+            text
+        }),
+        (_, text) => text,
+    };
+    Bodies { html, text }
 }
 
 /// The stored HTML body. PidTagHtml is PT_BINARY, decoded in the code page
@@ -131,19 +140,20 @@ fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {
     Some(strings.decode(tag::HTML, bytes, code_page))
 }
 
-/// ATT_MHTML_REF of PidTagAttachFlags (MS-OXCMSG 2.2.2.18): the HTML body refers to the
-/// attachment by its content-id or location, which is how an inline disposition is stored.
-const ATT_MHTML_REF: i64 = 0x4;
+/// An attachment mapped: its record, the extension it was stored under, its Content-Location,
+/// which only matches an image's source to it and is no field, and the mapping's notes.
+pub struct Mapped {
+    pub record: Attachment,
+    pub extension: Option<String>,
+    pub location: Option<String>,
+    pub notes: Vec<String>,
+}
 
-/// Maps an attachment's properties, and its content when it was read, to an attachment record,
-/// and gives the extension it was stored under. The record has no `file` yet: the caller stores
-/// the content in the media store, which names it by the content and that extension. Strings in
-/// PT_STRING8 are decoded in `code_page`, the message's.
-pub fn attachment(
-    props: &Bag,
-    content: Option<&[u8]>,
-    code_page: u16,
-) -> (Attachment, Option<String>, Vec<String>) {
+/// Maps an attachment's properties, and its content when it was read, to an attachment record.
+/// The record has no `file` yet: the caller stores the content in the media store, which names it
+/// by the content and the extension, and its `inline` is set once the message's Markdown is made.
+/// Strings in PT_STRING8 are decoded in `code_page`, the message's.
+pub fn attachment(props: &Bag, content: Option<&[u8]>, code_page: u16) -> Mapped {
     let mut strings = Strings::new(code_page);
     let mut notes = Vec::new();
     let filename = strings
@@ -160,14 +170,20 @@ pub fn attachment(
         filename,
         mime_type: strings.text(props, tag::ATTACH_MIME_TAG),
         content_id: strings.text(props, tag::ATTACH_CONTENT_ID),
-        inline: integer(props, tag::ATTACH_FLAGS).is_some_and(|flags| flags & ATT_MHTML_REF != 0),
+        inline: false,
         method: method(props, &mut notes),
         size: content.map(|content| content.len() as u64),
         message: None,
     };
+    let location = strings.text(props, tag::ATTACH_CONTENT_LOCATION);
     let mut all = strings.into_notes();
     all.append(&mut notes);
-    (attachment, extension, all)
+    Mapped {
+        record: attachment,
+        extension,
+        location,
+        notes: all,
+    }
 }
 
 /// PidTagAttachMethod (MS-OXCMSG 2.2.2.9) by name.
@@ -208,11 +224,23 @@ pub fn store_name(props: &Bag, code_page: u16) -> (Option<String>, Vec<String>) 
     (name, strings.into_notes())
 }
 
-fn address(strings: &mut Strings, bag: &Bag, name: u16, email: u16, kind: u16) -> Option<Address> {
+/// The address `bag` holds under the ids of its name, its address, its address type and its SMTP
+/// address. The SMTP address is read only for an Exchange (`EX`) address: on any other type the
+/// address is already the one to write to.
+fn address(
+    strings: &mut Strings,
+    bag: &Bag,
+    [name, email, kind, smtp]: [u16; 4],
+) -> Option<Address> {
+    let address_type = strings.text(bag, kind);
+    let exchange = address_type
+        .as_deref()
+        .is_some_and(|kind| kind.eq_ignore_ascii_case("EX"));
     let address = Address {
         name: strings.text(bag, name),
         address: strings.text(bag, email),
-        address_type: strings.text(bag, kind),
+        address_type,
+        smtp_address: exchange.then(|| strings.text(bag, smtp)).flatten(),
     };
     (!address.is_empty()).then_some(address)
 }
@@ -330,28 +358,81 @@ mod tests {
         let unicode =
             |text: &str| Value::Unicode(text.encode_utf16().flat_map(u16::to_le_bytes).collect());
         let mut props = Bag::from([(tag::ATTACH_LONG_FILENAME, unicode("report.csv"))]);
-        let (_, extension, _) = attachment(&props, Some(b""), 1252);
-        assert_eq!(extension.as_deref(), Some("csv"));
+        let mapped = attachment(&props, Some(b""), 1252);
+        assert_eq!(mapped.extension.as_deref(), Some("csv"));
         props.insert(tag::ATTACH_EXTENSION, unicode(".txt"));
-        let (_, extension, _) = attachment(&props, Some(b""), 1252);
-        assert_eq!(extension.as_deref(), Some("txt"));
+        let mapped = attachment(&props, Some(b""), 1252);
+        assert_eq!(mapped.extension.as_deref(), Some("txt"));
         props.insert(tag::ATTACH_EXTENSION, unicode("JPG"));
-        let (record, extension, _) = attachment(&props, None, 1252);
-        assert_eq!(extension.as_deref(), Some("JPG"));
-        assert_eq!((record.file, record.size), (None, None));
+        let mapped = attachment(&props, None, 1252);
+        assert_eq!(mapped.extension.as_deref(), Some("JPG"));
+        assert_eq!((mapped.record.file, mapped.record.size), (None, None));
     }
 
     #[test]
     fn an_unknown_attach_method_is_left_out_with_a_note() {
         let props = Bag::from([(tag::ATTACH_METHOD, Value::Integer(3))]);
-        let (record, _, notes) = attachment(&props, None, 1252);
-        assert_eq!(record.method, None);
-        assert_eq!(notes, ["property 0x3705 has unknown value 3; left out"]);
+        let mapped = attachment(&props, None, 1252);
+        assert_eq!(mapped.record.method, None);
+        assert_eq!(
+            mapped.notes,
+            ["property 0x3705 has unknown value 3; left out"]
+        );
     }
 
     #[test]
     fn the_subject_prefix_marker_is_dropped() {
         assert_eq!(strip_subject_prefix("\u{1}\u{5}Re: Hi".into()), "Re: Hi");
         assert_eq!(strip_subject_prefix("Hi".into()), "Hi");
+    }
+
+    fn unicode(text: &str) -> Value {
+        Value::Unicode(text.encode_utf16().flat_map(u16::to_le_bytes).collect())
+    }
+
+    /// PidTagRtfCompressed holding `rtf` uncompressed, as MS-OXRTFCP's "MELA" form stores it.
+    fn mela(rtf: &str) -> Value {
+        let mut bytes = Vec::new();
+        let size = u32::try_from(rtf.len()).unwrap();
+        for word in [size + 12, size, 0x414C_454D, 0] {
+            bytes.extend_from_slice(&word.to_le_bytes());
+        }
+        bytes.extend_from_slice(rtf.as_bytes());
+        Value::Binary(bytes)
+    }
+
+    /// The bodies, by the order the Markdown is made from them: stored HTML, the HTML from a
+    /// `\fromhtml1` RTF, the text body, then the RTF's own text, read only when it is the one.
+    #[test]
+    fn the_markdown_is_made_from_the_first_body_in_order() {
+        let bodies = |props: Vec<(u16, Value)>| {
+            let (_, bodies, notes) = message(&Bag::from_iter(props), &[], 1252);
+            assert_eq!(notes, Vec::<String>::new());
+            (bodies.html, bodies.text)
+        };
+        let html_rtf = mela("{\\rtf1\\ansi\\fromhtml1 {\\*\\htmltag <p>}from rtf}");
+        let plain_rtf = mela("{\\rtf1\\ansi plain\\par rtf}");
+        let stored = (tag::HTML, Value::Binary(b"<p>stored</p>".to_vec()));
+        let text = (tag::BODY, unicode("text"));
+        assert_eq!(
+            bodies(vec![
+                stored.clone(),
+                (tag::RTF_COMPRESSED, html_rtf.clone())
+            ]),
+            (Some("<p>stored</p>".into()), None)
+        );
+        assert_eq!(
+            bodies(vec![(tag::RTF_COMPRESSED, html_rtf), text.clone()]),
+            (Some("<p>from rtf".into()), Some("text".into()))
+        );
+        assert_eq!(
+            bodies(vec![(tag::RTF_COMPRESSED, plain_rtf.clone()), text]),
+            (None, Some("text".into()))
+        );
+        assert_eq!(
+            bodies(vec![(tag::RTF_COMPRESSED, plain_rtf)]),
+            (None, Some("plain\r\nrtf".into()))
+        );
+        assert_eq!(bodies(vec![]), (None, None));
     }
 }

@@ -1,6 +1,14 @@
-//! The RTF body: PidTagRtfCompressed decompressed through compressed-rtf (MS-OXRTFCP), and the
-//! HTML an RTF body encapsulates recovered from it (MS-OXRTFEX 2.2.3), which is the CLI's own
-//! code.
+//! The RTF body: PidTagRtfCompressed decompressed through compressed-rtf (MS-OXRTFCP), the HTML
+//! an RTF body encapsulates recovered from it (MS-OXRTFEX 2.2.3), and the text of one that
+//! encapsulates none, plain RTF or `\fromtext`, each the CLI's own code.
+//!
+//! One lexer and one group stack read the RTF for both, writing to one of two sinks
+//! ([`Sink`]): the HTML sink keeps `\*\htmltag` groups' fragments, and the text sink skips them
+//! as it skips any other ignorable group, so it keeps the document's visible text alone. Both
+//! strip control words and the invisible destinations (`\*`, the font, color and style tables,
+//! and the rest of [`INVISIBLE`]), write `\par` and `\line` as line breaks and the symbol words
+//! (`\rquote`, `\emdash`, …) as their characters, and honor `\htmlrtf`, which a plain RTF never
+//! holds.
 //!
 //! De-encapsulation follows MS-OXRTFEX 2.2.3.2, with these choices:
 //! - text and `\'hh` escapes are decoded in the header's `\ansicpg` code page, else 1252; the
@@ -103,11 +111,32 @@ fn recognize(rtf: &[u8]) -> Encapsulated {
 /// it encapsulates no HTML (\fromtext, or plain RTF). `rtf` is as compressed-rtf gives it: each
 /// char one byte of the RTF.
 pub fn html(rtf: &str) -> Option<(String, Vec<String>)> {
-    let bytes: Vec<u8> = rtf
-        .chars()
+    let bytes = bytes_of(rtf);
+    (recognize(&bytes) == Encapsulated::Html).then(|| Deencapsulator::new(&bytes, Sink::Html).run())
+}
+
+/// The text of an RTF document that encapsulates no HTML, plain RTF or `\fromtext`, with notes on
+/// any text decoded lossily: its visible text, read by the RTF specification, `\par` and `\line`
+/// as line breaks. None for a document that encapsulates HTML, whose text is that HTML's, and
+/// for bytes that are no RTF document. `rtf` is as for [`html`].
+pub fn text(rtf: &str) -> Option<(String, Vec<String>)> {
+    let bytes = bytes_of(rtf);
+    (bytes.starts_with(b"{\\rtf") && recognize(&bytes) != Encapsulated::Html)
+        .then(|| Deencapsulator::new(&bytes, Sink::Text).run())
+}
+
+/// The RTF's bytes, from compressed-rtf's string of one char per byte.
+fn bytes_of(rtf: &str) -> Vec<u8> {
+    rtf.chars()
         .map(|c| u8::try_from(u32::from(c)).unwrap_or(b'?'))
-        .collect();
-    (recognize(&bytes) == Encapsulated::Html).then(|| Deencapsulator::new(&bytes).run())
+        .collect()
+}
+
+/// What the reader writes: the encapsulated HTML, tags and text, or the document's text alone.
+#[derive(Clone, Copy, PartialEq)]
+enum Sink {
+    Html,
+    Text,
 }
 
 /// One RTF token (RTF 1.9.1, "Conventions of an RTF reader").
@@ -259,6 +288,7 @@ const INVISIBLE: &[&[u8]] = &[
 
 struct Deencapsulator<'a> {
     lexer: Lexer<'a>,
+    sink: Sink,
     state: State,
     stack: Vec<State>,
     /// Whether the next token is the first in its group, where a destination is named.
@@ -270,12 +300,15 @@ struct Deencapsulator<'a> {
     out: Out,
 }
 
-/// The HTML being written, with the bytes and UTF-16 units of the current run not yet decoded.
+/// The HTML or text being written, with the bytes and UTF-16 units of the current run not yet
+/// decoded.
 struct Out {
     html: String,
     bytes: Vec<u8>,
     units: Vec<u16>,
     code_page: u16,
+    /// What a lossy note names: the encapsulated HTML, or the RTF body's text.
+    what: &'static str,
     notes: Vec<String>,
 }
 
@@ -306,7 +339,7 @@ impl Out {
         }
         let (text, lossy) = codepage::decode(&self.bytes, self.code_page);
         if let Some(lossy) = lossy {
-            let note = format!("the RTF body's encapsulated HTML {lossy}");
+            let note = format!("the RTF body's {} {lossy}", self.what);
             if !self.notes.contains(&note) {
                 self.notes.push(note);
             }
@@ -324,10 +357,11 @@ impl Out {
 }
 
 impl<'a> Deencapsulator<'a> {
-    fn new(rtf: &'a [u8]) -> Self {
+    fn new(rtf: &'a [u8], sink: Sink) -> Self {
         let code_page = ansicpg(rtf).unwrap_or(FALLBACK);
         Self {
             lexer: Lexer { rtf, at: 0 },
+            sink,
             state: State {
                 destination: Destination::Text,
                 suppressed: false,
@@ -342,6 +376,10 @@ impl<'a> Deencapsulator<'a> {
                 bytes: Vec::new(),
                 units: Vec::new(),
                 code_page,
+                what: match sink {
+                    Sink::Html => "encapsulated HTML",
+                    Sink::Text => "text",
+                },
                 notes: Vec::new(),
             },
         }
@@ -380,7 +418,8 @@ impl<'a> Deencapsulator<'a> {
     fn opens(&mut self, word: &[u8]) -> bool {
         let inside_tag = self.state.destination == Destination::HtmlTag;
         let destination = match word {
-            b"htmltag" if self.starred => Destination::HtmlTag,
+            // The text sink skips a tag's fragment, as any other ignorable group.
+            b"htmltag" if self.starred && self.sink == Sink::Html => Destination::HtmlTag,
             // \*\mhtmltag among them: MS-OXRTFEX 2.1.3.1.5 has it skipped.
             _ if self.starred => Destination::Skip,
             _ if INVISIBLE.contains(&word) => Destination::Skip,
@@ -677,6 +716,57 @@ mod tests {
             with_raw_size(u32::MAX)
                 .unwrap_err()
                 .ends_with("not decompressed")
+        );
+    }
+
+    /// The text read from `rtf`, given as the bytes of the RTF, with its notes.
+    fn read_text(rtf: &[u8]) -> Option<(String, Vec<String>)> {
+        text(&rtf.iter().map(|&byte| char::from(byte)).collect::<String>())
+    }
+
+    /// Plain RTF's visible text: the header, font and color tables, ignorable groups, pictures
+    /// and control words stripped; `\par` and `\line` as line breaks; symbol words and `\~` as
+    /// their characters; `\'hh` in the `\ansicpg` code page; `\uN` with its fallback skipped.
+    #[test]
+    fn plain_rtf_is_read_as_its_text() {
+        let rtf = b"{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\r\n\
+                    {\\colortbl;\\red255\\green0\\blue0;}{\\*\\generator Riched20 10.0;}\
+                    {\\stylesheet{\\s1 Heading;}}\\viewkind4\\uc1\\pard\\cf1\\b\\f0\\fs20 \
+                    \\'cf\\'f0\\'e8\\'e2\\'e5\\'f2\\b0 , {\\i world}\\par\r\n\
+                    {\\pict\\pngblip 89504e47}a\\line b\\tab c\\~d\\lquote e\\rquote\\endash\\bullet \
+                    \\u8364?{\\*\\bkmkstart x}\\{\\}\\\\\\par}";
+        assert_eq!(
+            read_text(rtf),
+            Some((
+                "Привет, world\r\na\r\nb\tc\u{A0}d\u{2018}e\u{2019}\u{2013}\u{2022}€{}\\\r\n"
+                    .to_owned(),
+                Vec::new()
+            ))
+        );
+    }
+
+    /// A `\fromtext` RTF is read as plain RTF is, its HTML tags' groups skipped and `\htmlrtf`
+    /// honored; a `\fromhtml1` RTF's text is its HTML's, so it has none here, and bytes that are
+    /// no RTF have none.
+    #[test]
+    fn fromtext_is_read_as_text_and_fromhtml1_is_not() {
+        let rtf = b"{\\rtf1\\ansi\\fromtext \\deff0{\\*\\htmltag64 <p>}Hi\\htmlrtf  no\\htmlrtf0 \
+                    {\\*\\htmltag72 </p>}\\par there}";
+        assert_eq!(read_text(rtf), Some(("Hi\r\nthere".to_owned(), Vec::new())));
+        assert_eq!(
+            read_text(b"{\\rtf1\\ansi\\fromhtml1 {\\*\\htmltag <p>}x}"),
+            None
+        );
+        assert_eq!(read_text(b"Hello"), None);
+    }
+
+    #[test]
+    fn text_not_valid_in_the_code_page_is_decoded_lossily_with_a_note() {
+        let (text, notes) = read_text(b"{\\rtf1\\ansi\\ansicpg65001 a\\'ffb}").unwrap();
+        assert_eq!(text, "a\u{FFFD}b");
+        assert_eq!(
+            notes,
+            ["the RTF body's text is not valid in code page 65001; decoded lossily"]
         );
     }
 }

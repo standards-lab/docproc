@@ -155,7 +155,8 @@ fn html_is_recovered_from_a_fromhtml1_rtf() {
     assert!(message["conversation_index"].is_string());
 }
 
-/// Tika's test-outlook2003.msg carries eleven inline pictures, each written once by content.
+/// Tika's test-outlook2003.msg carries eleven pictures, each written once by content and each
+/// linked by the Markdown, so inline.
 #[test]
 fn attachments_are_written_by_content() {
     let dir = scratch("msg-attachments");
@@ -316,6 +317,19 @@ const DISPLAY_NAME: u16 = 0x3001;
 const RECIPIENT_TYPE: u16 = 0x0C15;
 const ATTACH_DATA: u16 = 0x3701;
 const ATTACH_METHOD: u16 = 0x3705;
+const BODY: u16 = 0x1000;
+const RTF_COMPRESSED: u16 = 0x1009;
+const HTML: u16 = 0x1013;
+const SENDER_NAME: u16 = 0x0C1A;
+const SENDER_ADDRESS_TYPE: u16 = 0x0C1E;
+const SENDER_EMAIL_ADDRESS: u16 = 0x0C1F;
+const SENDER_SMTP_ADDRESS: u16 = 0x5D01;
+const ADDRESS_TYPE: u16 = 0x3002;
+const EMAIL_ADDRESS: u16 = 0x3003;
+const SMTP_ADDRESS: u16 = 0x39FE;
+const ATTACH_CONTENT_ID: u16 = 0x3712;
+const ATTACH_CONTENT_LOCATION: u16 = 0x3713;
+const ATTACH_FLAGS: u16 = 0x3714;
 const ATTACH_LONG_FILENAME: u16 = 0x3707;
 
 fn subject(text: &str) -> Vec<(u16, Prop)> {
@@ -591,4 +605,255 @@ fn an_af_storage_attachment_is_written_as_a_compound_file() {
     )
     .unwrap();
     assert_eq!(contents, b"stored bytes");
+}
+
+/// PidTagRtfCompressed holding `rtf`, compressed as Outlook stores it.
+fn rtf(rtf: &str) -> Prop {
+    Prop::Binary(compressed_rtf::compress_rtf(rtf).unwrap())
+}
+
+/// The message line of the built message `message`, with its stderr, run with no media directory.
+fn read_built(name: &str, message: &Message) -> (Value, String) {
+    let out = run(&[build(name, message)]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    (out.lines()[1].clone(), out.stderr)
+}
+
+/// A message whose only body is plain RTF has the RTF's own text as its Markdown, read as a text
+/// body is: control words, the font table and ignorable groups stripped, `\par` and `\line` as
+/// line breaks, a symbol word as its character, and `\'hh` in the `\ansicpg` code page.
+#[test]
+fn a_plain_rtf_only_message_has_the_rtfs_text() {
+    let mut props = subject("plain rtf");
+    props.push((
+        RTF_COMPRESSED,
+        rtf(
+            "{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\
+             {\\*\\generator Riched20;}\\pard\\f0\\fs20 \\'cf\\'f0\\'e8\\'e2\\'e5\\'f2, *all*\\par \
+             Second\\line line\\rquote s end\\emdash done\\par}",
+        ),
+    ));
+    let (message, stderr) = read_built(
+        "plain-rtf.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "Привет, \\*all\\*  \nSecond  \nline\u{2019}s end\u{2014}done"
+    );
+}
+
+/// A `\fromtext` RTF is read as plain RTF is, its `\*\htmltag` groups skipped, when the message
+/// has no text body; with one, the Markdown is made from the text body, which comes first.
+#[test]
+fn a_fromtext_rtf_gives_way_to_the_text_body() {
+    let body = "{\\rtf1\\ansi\\ansicpg1252\\fromtext \\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\
+                {\\*\\htmltag64 <p>}Hello from \\'abRTF\\'bb\\par\
+                {\\*\\htmltag72 </p>}world}";
+    let mut props = subject("fromtext");
+    props.push((RTF_COMPRESSED, rtf(body)));
+    let (message, stderr) = read_built(
+        "fromtext.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(message["markdown"], "Hello from \u{ab}RTF\u{bb}  \nworld");
+
+    let mut props = subject("fromtext and text");
+    props.push((RTF_COMPRESSED, rtf(body)));
+    props.push((BODY, Prop::Unicode("The text body".into())));
+    let (message, _) = read_built(
+        "fromtext-text.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(message["markdown"], "The text body");
+}
+
+/// An Exchange address's SMTP address: the sender's from PidTagSenderSmtpAddress, a recipient's
+/// from PidTagSmtpAddress. An SMTP address has none written, its address being the one to write
+/// to, and an Exchange address without one has none.
+#[test]
+fn an_exchange_address_has_its_smtp_address() {
+    let ex = "/O=EXAMPLE/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=ANN";
+    let mut props = subject("smtp");
+    props.extend([
+        (SENDER_NAME, Prop::Unicode("Ann".into())),
+        (SENDER_ADDRESS_TYPE, Prop::Unicode("EX".into())),
+        (SENDER_EMAIL_ADDRESS, Prop::Unicode(ex.into())),
+        (SENDER_SMTP_ADDRESS, Prop::Unicode("ann@example.com".into())),
+    ]);
+    let recipient = |name: &str, kind: &str, address: &str, smtp: Option<&str>| {
+        let mut props = vec![
+            (RECIPIENT_TYPE, Prop::Long(1)),
+            (DISPLAY_NAME, Prop::Unicode(name.into())),
+            (ADDRESS_TYPE, Prop::Unicode(kind.into())),
+            (EMAIL_ADDRESS, Prop::Unicode(address.into())),
+        ];
+        props.extend(smtp.map(|smtp| (SMTP_ADDRESS, Prop::Unicode(smtp.into()))));
+        Child::Props(props)
+    };
+    let (message, stderr) = read_built(
+        "smtp.msg",
+        &Message {
+            props,
+            recipients: vec![
+                recipient("Bob", "EX", "/O=EXAMPLE/CN=BOB", Some("bob@example.com")),
+                recipient("Cy", "SMTP", "cy@example.com", Some("cy@example.com")),
+                recipient("Di", "EX", "/O=EXAMPLE/CN=DI", None),
+            ],
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["sender"],
+        json!({"name": "Ann", "address": ex, "address_type": "EX",
+               "smtp_address": "ann@example.com"})
+    );
+    assert_eq!(
+        message["to"],
+        json!([
+            {"name": "Bob", "address": "/O=EXAMPLE/CN=BOB", "address_type": "EX",
+             "smtp_address": "bob@example.com"},
+            {"name": "Cy", "address": "cy@example.com", "address_type": "SMTP"},
+            {"name": "Di", "address": "/O=EXAMPLE/CN=DI", "address_type": "EX"},
+        ])
+    );
+}
+
+/// An attachment that is an image of the HTML body, with its content-id and its location.
+fn picture(name: &str, content: &[u8], extra: Vec<(u16, Prop)>) -> Attachment {
+    let mut attachment = by_value(name, content);
+    let Child::Props(props) = &mut attachment.props else {
+        unreachable!()
+    };
+    props.extend(extra);
+    attachment
+}
+
+/// The PNG signature, the payload of the `data:` image below.
+const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
+
+/// An image's source is rewritten to its media name: a percent-decoded `cid:` matches an
+/// attachment's content-id, another source its PidTagAttachContentLocation, and a `data:` image is
+/// written as media and listed in `media`, with no attachment. A source that matches nothing is
+/// kept, with one warning. `inline` says the Markdown links the attachment, whatever its stored
+/// flags say.
+#[test]
+fn images_link_their_media_names() {
+    let html = "<p>Pictures</p><img src=\"cid:one%2Bimg@example.com\" alt=\"one\">\
+                <img src='pic2.png' alt=two><img alt=three src=\"data:image/png;base64,iVBORw0KGgo=\">\
+                <img src=\"cid:gone@example.com\" alt=four><img src=cid:gone@example.com alt=five>";
+    let mut props = subject("images");
+    props.push((HTML, Prop::Binary(html.as_bytes().to_vec())));
+    let msg = build(
+        "images.msg",
+        &Message {
+            props,
+            attachments: vec![
+                picture(
+                    "one.gif",
+                    b"one",
+                    vec![(
+                        ATTACH_CONTENT_ID,
+                        Prop::Unicode("one+img@example.com".into()),
+                    )],
+                ),
+                picture(
+                    "two.jpg",
+                    b"two",
+                    vec![(ATTACH_CONTENT_LOCATION, Prop::Unicode("pic2.png".into()))],
+                ),
+                // ATT_MHTML_REF says the HTML refers to it, but the Markdown doesn't link it.
+                picture(
+                    "three.png",
+                    b"three",
+                    vec![
+                        (
+                            ATTACH_CONTENT_ID,
+                            Prop::Unicode("unused@example.com".into()),
+                        ),
+                        (ATTACH_FLAGS, Prop::Long(4)),
+                    ],
+                ),
+            ],
+            ..Message::default()
+        },
+    );
+    let dir = scratch("msg-images");
+    let out = run(&[msg.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: warning: message: an image's source \"cid:gone@example.com\" names no \
+         attachment; kept as written\n"
+    );
+    assert_eq!(out.stdout, run(&[&msg]).stdout);
+    let message = &out.lines()[1];
+    let attachments = message["attachments"].as_array().unwrap();
+    let file = |at: usize| attachments[at]["file"].as_str().unwrap();
+    let inline: Vec<&Value> = attachments.iter().map(|a| &a["inline"]).collect();
+    assert_eq!(inline, [true, true, false]);
+    let media = message["media"].as_array().unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0]["mime_type"], "image/png");
+    let png = media[0]["file"].as_str().unwrap();
+    assert!(png.ends_with(".png"), "{png}");
+    assert_eq!(
+        message["markdown"],
+        format!(
+            "Pictures\n\n![one]({})![two]({})![three]({png})![four](cid:gone@example.com)\
+             ![five](cid:gone@example.com)",
+            file(0),
+            file(1)
+        )
+    );
+    assert_eq!(std::fs::read(dir.join(png)).unwrap(), PNG);
+    let mut expected = vec![file(0), file(1), file(2), png];
+    expected.sort_unstable();
+    assert_eq!(names(&dir), expected);
+}
+
+/// An embedded message's images link its own attachments, read before its Markdown is made.
+#[test]
+fn an_embedded_messages_images_link_its_own_attachments() {
+    let mut inner = subject("inner");
+    inner.push((
+        HTML,
+        Prop::Binary(b"<img src=\"cid:moth@example.net\" alt=moth>".to_vec()),
+    ));
+    let (message, stderr) = read_built(
+        "embedded-images.msg",
+        &Message {
+            props: subject("outer"),
+            attachments: vec![embedded(Message {
+                props: inner,
+                attachments: vec![picture(
+                    "moth.png",
+                    b"moth",
+                    vec![(ATTACH_CONTENT_ID, Prop::Unicode("moth@example.net".into()))],
+                )],
+                ..Message::default()
+            })],
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    let inner = &message["attachments"][0]["message"];
+    let picture = &inner["attachments"][0];
+    assert_eq!(picture["inline"], true);
+    assert_eq!(
+        inner["markdown"],
+        format!("![moth]({})", picture["file"].as_str().unwrap())
+    );
 }

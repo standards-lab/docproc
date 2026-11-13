@@ -86,13 +86,24 @@ pub fn golden(input: &str) {
 
 /// What a truth's `body` (its `text` and `html`, as a source holds them) says of a message
 /// line's `markdown`, schema "2" carrying no body of its own: with an HTML body, it is htmd's
-/// rendering of that HTML; with a text body alone, it reads as that text, word for word, once its
-/// backslash escapes are read; with neither, there is none.
+/// rendering of that HTML, each `cid:` image source naming an attachment of the line, by its
+/// content_id, read as that attachment's file; with a text body alone, it reads as that text,
+/// word for word, once its backslash escapes are read; with neither, there is none.
 pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source: &str) {
     assert_eq!(got.get("body"), None, "{source}: no body");
     let markdown = got.get("markdown").map(|text| text.as_str().unwrap());
     if let Some(html) = body.get("html") {
-        let html = htmd::convert(html.as_str().unwrap()).unwrap();
+        let mut html = html.as_str().unwrap().to_owned();
+        let attachments = got.get("attachments").and_then(|list| list.as_array());
+        for attachment in attachments.into_iter().flatten() {
+            if let (Some(id), Some(file)) = (
+                attachment.get("content_id").and_then(|id| id.as_str()),
+                attachment.get("file").and_then(|file| file.as_str()),
+            ) {
+                html = html.replace(&format!("\"cid:{id}\""), &format!("\"{file}\""));
+            }
+        }
+        let html = htmd::convert(&html).unwrap();
         assert_eq!(markdown, Some(html.as_str()), "{source}: markdown");
     } else if let Some(text) = body.get("text") {
         let text: Vec<String> = text

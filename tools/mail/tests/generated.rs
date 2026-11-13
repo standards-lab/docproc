@@ -255,16 +255,21 @@ fn markdown_is_made_from_the_html() {
     );
 }
 
-/// An inline picture keeps its cid: source in the Markdown, and it names the content_id of the
-/// attachment it is.
+/// An inline picture's cid: source, which names the content_id of the attachment it is, links
+/// that attachment's file in the Markdown, and the attachment is inline.
 #[test]
-fn markdown_keeps_cid_images() {
+fn markdown_links_cid_images_to_their_files() {
     let message = message_from("03-html-inline-image.eml");
+    let attachment = &message["attachments"][0];
+    assert_eq!(attachment["content_id"], "moth@example.net");
+    assert_eq!(attachment["inline"], true);
     assert_eq!(
         markdown(&message),
-        "We found a **moth** in relay 70, panel F.\n\n![moth](cid:moth@example.net)"
+        format!(
+            "We found a **moth** in relay 70, panel F.\n\n![moth]({})",
+            attachment["file"].as_str().unwrap()
+        )
     );
-    assert_eq!(message["attachments"][0]["content_id"], "moth@example.net");
 }
 
 /// Without HTML, the Markdown is the plain text, escaped to read literally: the quoted line is

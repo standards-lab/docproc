@@ -512,17 +512,24 @@ fn attachments_after_a_reader_panic_are_still_read() {
     let out = run(&[built("attachment-panic.pst", &bytes)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let reason = "the reader panicked: attempt to multiply with overflow";
+    // The skipped picture's image keeps its source as written, with a warning.
     assert_eq!(
         out.stderr,
         format!(
             "docproc-mail: warning: folder 33090, message 2097188, \
-             attachment 32805: skipped: {reason}\n"
+             attachment 32805: skipped: {reason}\n\
+             docproc-mail: warning: folder 33090, message 2097188: \
+             an image's source \"1.jpg\" names no attachment; kept as written\n"
         )
     );
     let mut intact = run(&[fixture("pst/libyal/outlook.pst")]).lines();
     let at = intact.iter().position(|l| l["id"] == 2097188).unwrap();
-    // The intact store's lines, less the first attachment, with its skipped line after.
-    intact[at]["attachments"].as_array_mut().unwrap().remove(0);
+    // The intact store's lines, less the first attachment, its image's source as written, with
+    // its skipped line after.
+    let first = intact[at]["attachments"].as_array_mut().unwrap().remove(0);
+    let markdown = intact[at]["markdown"].as_str().unwrap();
+    let markdown = markdown.replace(first["file"].as_str().unwrap(), "1.jpg");
+    intact[at]["markdown"] = markdown.into();
     intact.insert(
         at + 1,
         serde_json::json!({

@@ -18,8 +18,9 @@
 //!   records after it are still read.
 //!
 //! The mapping of a message or an attachment, the Markdown's derivation included, runs inside the
-//! guard too, so a panic there is that record's skipped line, and stdout is flushed after each
-//! message's lines, so a run that ends early has written every message before it. An
+//! guard too, so a panic there is that record's skipped line; the Markdown is made once the
+//! message's attachments are read, so that its images link their media names. stdout is flushed
+//! after each message's lines, so a run that ends early has written every message before it. An
 //! attachment's content is hashed and written from the reader's own buffer, never copied.
 //!
 //! A hierarchy table names a folder by its node id, and a corrupt one can name a folder already
@@ -59,7 +60,7 @@ use outlook_pst::{AnsiPstFile, UnicodePstFile};
 use crate::codepage::{message_code_page, store_code_page};
 use crate::props::{Bag, Value, integer, tag};
 use crate::sniff::Encoding;
-use crate::{mapping, model, warn, warn_all};
+use crate::{mapping, markdown, model, warn, warn_all};
 
 /// PidTagAttachMethod's afEmbeddedMessage (MS-OXCMSG 2.2.2.9).
 const AF_EMBEDDED_MESSAGE: i64 = 5;
@@ -476,7 +477,7 @@ impl<W: Write> Walk<'_, W> {
         let mapped = guarded(|| {
             Ok::<_, Infallible>(mapping::message(&data.props, &data.recipients, code_page))
         });
-        let (mut message, notes) = match mapped {
+        let (mut message, bodies, notes) = match mapped {
             Ok(mapped) => mapped,
             Err(failure) => {
                 warn(&place, &format!("skipped: {}", failure.reason));
@@ -491,6 +492,7 @@ impl<W: Write> Walk<'_, W> {
         let mut open = data.message;
         let mut opened_in = self.reopened;
         let mut skipped = Vec::new();
+        let mut locations = Vec::new();
         for attachment in data.attachments {
             let here = format!("{place}, attachment {attachment}");
             let reopened = self.reopened;
@@ -516,7 +518,12 @@ impl<W: Write> Walk<'_, W> {
             let mapped = guarded(|| {
                 Ok::<_, Infallible>(mapping::attachment(&read.props, read.content(), code_page))
             });
-            let (mut record, extension, notes) = match mapped {
+            let mapping::Mapped {
+                mut record,
+                extension,
+                location,
+                notes,
+            } = match mapped {
                 Ok(mapped) => mapped,
                 Err(failure) => {
                     warn(&here, &format!("skipped: {}", failure.reason));
@@ -529,6 +536,21 @@ impl<W: Write> Walk<'_, W> {
                 record.file = Some(self.files.store(content, extension.as_deref())?);
             }
             message.attachments.push(record);
+            locations.push(location);
+        }
+        let files = &mut *self.files;
+        let made = guarded(|| {
+            let mut notes = Vec::new();
+            let made = markdown::make(&mut message, &bodies, &locations, files, &mut notes);
+            Ok::<_, Infallible>(made.map(|()| notes))
+        });
+        match made {
+            Ok(made) => warn_all(&place, made?),
+            Err(failure) => {
+                warn(&place, &format!("skipped: {}", failure.reason));
+                self.skipped("message", folder, None, Some(id), failure.reason)?;
+                return self.out.flush().map_err(Fault::Output);
+            }
         }
         self.out.write(&message).map_err(Fault::Output)?;
         for (attachment, reason) in skipped {

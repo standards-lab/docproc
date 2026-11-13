@@ -22,7 +22,8 @@
 //! without one, or with one whose properties can't be read, is refused. The mapping, the
 //! Markdown's derivation included, runs inside the guard too: a panic in a message's is that
 //! message's skipped line, or for an embedded message, a warning on its attachment, and a panic
-//! in an attachment's is that attachment's.
+//! in an attachment's is that attachment's. A message's Markdown is made once its attachments,
+//! embedded messages included, are read, so that its images link their media names.
 
 use std::convert::Infallible;
 use std::fs::File;
@@ -35,7 +36,7 @@ use docproc_envelope::{Fault, Lines, Media, guarded};
 use crate::codepage::msg_code_page;
 use crate::model::{self, Message};
 use crate::props::{Bag, Value, integer, tag};
-use crate::{mapping, warn, warn_all};
+use crate::{mapping, markdown, warn, warn_all};
 
 /// The stream of a message's, a recipient's or an attachment's properties.
 const PROPERTIES: &str = "__properties_version1.0";
@@ -202,10 +203,11 @@ impl Walk<'_> {
                 Err(reason) => warn(&here, &format!("skipped: {reason}")),
             }
         }
-        let (mut message, notes) = mapping::message(props, &recipients, code_page);
+        let (mut message, bodies, notes) = mapping::message(props, &recipients, code_page);
         warn_all(place, notes);
 
         let mut skipped = Vec::new();
+        let mut locations = Vec::new();
         for (number, path) in children.attachments {
             let here = format!("{place}, attachment {number}");
             let (mut props, notes) =
@@ -243,7 +245,12 @@ impl Walk<'_> {
             let mapped = guarded(|| {
                 Ok::<_, Infallible>(mapping::attachment(&props, content.as_deref(), code_page))
             });
-            let (mut record, extension, notes) = match mapped {
+            let mapping::Mapped {
+                mut record,
+                extension,
+                location,
+                notes,
+            } = match mapped {
                 Ok(mapped) => mapped,
                 Err(failure) => {
                     warn(&here, &format!("skipped: {}", failure.reason));
@@ -257,7 +264,11 @@ impl Walk<'_> {
             }
             record.message = nested.map(Box::new);
             message.attachments.push(record);
+            locations.push(location);
         }
+        let mut notes = Vec::new();
+        markdown::make(&mut message, &bodies, &locations, self.files, &mut notes)?;
+        warn_all(place, notes);
         Ok((message, skipped))
     }
 
