@@ -41,6 +41,9 @@ const USAGE: &str = concat!(
     " --version"
 );
 
+/// The reason an input of none of the four formats is refused, alone or leading the reason why.
+pub const NO_MAIL: &str = "neither a .pst, a .msg, an .eml nor an mbox";
+
 /// The parsed command line.
 enum Command {
     Version,
@@ -101,9 +104,7 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
                 .and_then(|file| sniff::header_shape(BufReader::new(file)))
                 .map_err(unreadable)?;
             if !shaped {
-                return Err(Fault::Refused(
-                    "neither a .pst, a .msg, an .eml nor an mbox".to_owned(),
-                ));
+                return Err(Fault::Refused(NO_MAIL.to_owned()));
             }
             single(args.after, "an .eml")?;
             eml::read(path, &mut out, &mut files)?;

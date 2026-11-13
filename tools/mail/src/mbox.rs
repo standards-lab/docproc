@@ -36,7 +36,7 @@ use mail_parser::MessageBuffers;
 use mail_parser::mailbox::mbox::{Message, MessageIterator};
 
 use crate::model::{Skipped, Store};
-use crate::{mime, sniff, unreadable, warn, warn_below};
+use crate::{NO_MAIL, mime, sniff, unreadable, warn, warn_below};
 
 /// Reads the mbox at `path` and writes its store line and the lines of its messages, those after
 /// ordinal `after` when it is given, to `out`.
@@ -131,8 +131,7 @@ pub fn read(
         } else {
             let (ordinal, reason) = held.skipped.swap_remove(0);
             return Err(Fault::Refused(format!(
-                "neither a .pst, a .msg, an .eml nor an mbox: no entry of it is a message \
-                 (message {ordinal}: {reason})"
+                "{NO_MAIL}: no entry of it is a message (message {ordinal}: {reason})"
             )));
         }
     }
