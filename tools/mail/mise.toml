@@ -148,9 +148,14 @@ exit "$stale"
 # trailing to its latest, but a held one, so a currency run after it reports none of them but the
 # held, and an advisory only a newer release of a crate can clear. It rewrites only this
 # directory's pins, never the root's: the mise tools here and in mise.fixtures.toml, then, with
-# them, the crates and the fixture generator's packages. Run it, review the diff, and run the check.
+# them, the crates and the fixture generator's packages. The crates' requirements include the
+# shared envelope crate's, tools/envelope/Cargo.toml, which has no lock of its own and is resolved
+# in this graph alone, so this upgrade moves them too, by the same rules: each raised to its
+# latest, an exact pin ("=") kept exact. A bump of the envelope's ICU4X crates that moves the
+# Unicode version fails the unit test asserting it, so it stays a reviewed change. Run it, review
+# the diff, and run the check.
 [tasks.upgrade]
-description = "Bump every mise tool here and in mise.fixtures.toml, every crate, and every fixture generator package to its latest, but a held one, rewriting the mise files, global.json, Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form"
+description = "Bump every mise tool here and in mise.fixtures.toml, every crate, and every fixture generator package to its latest, but a held one, rewriting the mise files, global.json, Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form"
 dir = "{{config_root}}"
 run = '''
 set -euo pipefail
@@ -179,7 +184,7 @@ mise run upgrade:packages
 '''
 
 [tasks."upgrade:packages"]
-description = "Bump every crate and fixture generator package to its latest, but a held one, rewriting Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form; upgrade runs it after the mise tools"
+description = "Bump every crate and fixture generator package to its latest, but a held one, rewriting Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form; upgrade runs it after the mise tools"
 hide = true
 dir = "{{config_root}}"
 run = '''
@@ -189,16 +194,21 @@ held() {
   grep -q "^$1 $2: " <<<"$HOLDS"
 }
 # A direct dependency with a release beyond its requirement gets that release as its requirement,
-# an exact pin ("=") kept exact. An indirect one beyond its requirement moves only when the crate
-# that requires it does.
-direct=$(cargo metadata --format-version 1 --no-deps --locked | jq -r '.packages[0].dependencies[].name')
+# an exact pin ("=") kept exact, in each manifest that requires it: docproc-mail's and the shared
+# envelope crate's, both direct here, serde and serde_json in both. An indirect one beyond its
+# requirement moves only when the crate that requires it does. Each line of direct is a crate's
+# name, then the manifest requiring it; the envelope itself, by path, has no release to move to.
+direct=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] |
+  select(.name == "docproc-mail" or .name == "docproc-envelope") |
+  .manifest_path as $manifest | .dependencies[] | select(.path == null) | "\(.name) \($manifest)"')
 beyond=$(cargo update --dry-run --verbose 2>&1 |
   sed -nE 's/^ *Unchanged +([^ ]+) +v([^ ]+) \(available: v([^)]+)\)$/\1 \2 \3/p')
 while read -r name pinned latest; do
   [ -n "$name" ] || continue
   held "$name" "$pinned" && continue
-  grep -qx "$name" <<<"$direct" || continue
-  sed -i -E "s/^($name = (\\{ version = )?\"=?)[^\"]+\"/\\1$latest\"/" Cargo.toml
+  while read -r manifest; do
+    sed -i -E "s/^($name = (\\{ version = )?\"=?)[^\"]+\"/\\1$latest\"/" "$manifest"
+  done < <(sed -n "s/^$name //p" <<<"$direct")
 done <<<"$beyond"
 # Then every crate within its requirement to its latest, held ones left at their pins.
 within=$(cargo update --dry-run --verbose 2>&1 |
