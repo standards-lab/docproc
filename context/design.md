@@ -1,12 +1,14 @@
 # design
 
 The design review: Fable 5.2 evaluated each of the five artifacts v1.ai.processing promotes, and
-the architect settled every finding in one review round per artifact. `layers.md`
+the architect settled every finding in one review round per artifact, then a sixth round gave
+the shapes and vocabularies they share one home each. `layers.md`
 holds the boundaries and the change lists; this note holds each finding's settled design and its
 disposition, with the evidence that justified it, since the evaluations themselves are not kept.
 An entry names the task that carries it, and the `layers.md` section that states it where one
 does; it doesn't restate a signature that section holds. The note opens with how the review
-changes the goal's tasks and closes with each artifact's first tag and the task that releases it.
+changes the goal's tasks, holds the structural single homes after the artifacts, and closes with
+each artifact's first tag and the task that releases it.
 
 ## How the review changes the goal's tasks
 
@@ -17,7 +19,8 @@ edits in the goal record, applied to the roadmap at SHIP.
   media as stored, hyperlinks and unread-kind warnings, hand-parsed arguments in place of
   System.CommandLine; docproc's CI with its always-running `ci` gate and ruleset, the root
   workflow releasing `tools/*/v*` tags, the root check's `TOOLS` list, and `tools/go.mod` with
-  the shared pack and notices scripts.
+  the shared pack and notices scripts; the envelope's case table, `tools/envelope/cases.json`,
+  and an encrypted package's refusal by the envelope's `encrypted` vocabulary (SH-3, SH-5).
 - **mail** builds the shared Rust envelope crate under `tools/`, which onenote adopts, and gains
   `smtp_address` for senders and recipients; its fixture generator holds MimeKit at 4.x on .NET 11.
 - **onenote** gains the file-only option and the table-of-contents refusal, the encryption
@@ -36,7 +39,9 @@ edits in the goal record, applied to the roadmap at SHIP.
 - **acceptance** gains measurements over ~/docs: each tool's peak memory, the word error rate of
   its audio before the tag, and the inspection evaluation's bombs through `cmd/docproc`'s
   starting bounds.
-- **The docinfer goal** counts a job's outputs by part ID and owns `outdir`'s atomic write; the
+- **The docinfer goal** counts a job's outputs by part ID, owns `outdir`'s atomic write, and
+  gains the `join` package from docproc's `audio` and the one metadata-text function (SH-2,
+  SH-8); the
   **architecture** task takes the architecture-page edits (the `tools/` module zip, a nested
   command's layout, the rule for external repositories, CI's gate job).
 
@@ -874,11 +879,16 @@ nested modules".
 - **DP-15 · The manifest's `record` repeated the layout and was trusted as a path.** Accepted →
   docproc. `record` and `Run.Record` go; `run` stays.
 - **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
-  docproc: the manifest's shapes stay `rundir/schema`'s,
-  filled by `run` from `stages.Set`, and `stages`' carry no JSON names (`layers.md`, "The nested
-  modules"). Rejected: `schema` aliasing them, which ties schema "2" to an unversioned package
-  and has every reader of the run directory, `cmd/docinfer` among them, compile `stages` and the
-  format packages for its shapes.
+  library (the shapes) and docproc (the manifest), in the form the follow-up settled, which
+  supersedes round 5's: the stage table's shapes are declared once in `dispatch`, `Tool` with an
+  `error` string beside an untagged `Err`, `Row`, and `State` (wired, missing, excluded), with
+  JSON names and versioned by `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s
+  manifest uses them, filled by `run` from `stages.Set`, so `schema` imports no docproc package
+  but `dispatch` and `inspect` (`layers.md`, "Dispatch", "The nested modules"). Rejected:
+  `schema` aliasing `stages`' shapes, which ties schema "2" to an unversioned package and has
+  `schema`, and so `cmd/docinfer`, compile `stages` and every format package beneath it; `schema`
+  keeping its own copies, the standards review's interim form, which leaves two definitions of
+  one shape to drift.
 - **DP-17 · Every tool was probed before the inputs were checked.** Accepted → docproc.
 - **DP-18 · `flags.json` repeated the record.** Accepted → docproc. The kept file is
   `quarantine/<sha256>`, named on the line whenever it exists.
@@ -893,6 +903,90 @@ nested modules".
 - **DP-25 · The roadmap's `docproc` summary named a role `stages` now has.** Accepted → docproc
   (its README names `stages` as the shipped wiring and `cmd/docproc` its first caller); the
   summary's rewording is a pending edit.
+
+## Structural single homes
+
+Round 6, the architect's follow-up to DP-16's fix, looked across the artifacts for a shape, a
+vocabulary, or a rule stated in two places, or held by a package that isn't its owner, and
+accepted all nine findings as recommended. Each settles one home; its signatures and change-list
+lines are in `layers.md`, the section an entry names, and the docinfer goal's parts are pending
+edits in the goal record.
+
+- **SH-1 · The Meta keys a consumer reads.** Accepted → library; the docinfer goal reads the
+  constants. Refines PX-11, which put each key in the package whose stage writes it: decision 7
+  moved every writer into `stages`, so a consumer reading `window`, `count`, `page`, or `sheet`
+  would import `stages` and every format package beneath it, as DP-16 found for the manifest.
+  The keys are constants in `dispatch` beside `Output`, each documented with its writer and its
+  format, versioned by `dispatch.Version`; docinfer reads them there (`layers.md`, "Dispatch").
+  Rejected: the constants in `stages`.
+- **SH-2 · The transcript join was inference held in docproc.** Accepted → library (`audio`
+  drops it) and the docinfer goal (`join`), a pending edit. `audio` held `Join`, `JoinRequest`,
+  `Seam`, and `Transcript`, and `Seam` gained JSON tags, only so docinfer's inferences could
+  carry it: nothing in docproc joins transcripts, docinfer's `Version` versioned a shape docproc
+  declared, and docinfer's root imported `audio` for it. They move to a small `join` package
+  beside `chunk`, `JoinRequest` as `Request`, stating docinfer's own seam-word setting, versioned
+  by `docinfer.Version`; docinfer needs nothing of docproc but `dispatch`, and `rundir` for
+  `cmd/docinfer` (`layers.md`, "The pipeline", "Assumptions"). Rejected: `audio` keeping the join
+  for docinfer to import.
+- **SH-3 · The envelope's cases were tested three times.** Accepted → ooxml (writes the table and
+  its `tools/` wiring), mail (the shared crate reads it), library (`internal/cli` reads it). The
+  warning escape, the split of a stderr line into `where` and `what`, the media name a payload's
+  bytes and stored name make, the exit codes' meanings, and the literal-text escape were stated
+  once in prose and tested in C#, Rust, and Go, each over its own cases; ML-9's drifts came from
+  copies of this kind. One committed table, `tools/envelope/cases.json`, is read in place by all
+  three, and `internal/cli` exports the schema constant and the version pattern once for the
+  readers' specs (`layers.md`, "Common envelope"). Rejected: each language keeping its own cases.
+- **SH-4 · The found-part hash check read a name as a hash.** Accepted → library. The dispatcher
+  checked a found part whose name was a SHA-256, so the envelope's media name rule had a second
+  home in `dispatch` beside `internal/cli`, and a part named like a hash was checked while one
+  whose stage knew its hash under another name was not. A stage claims a found part's SHA-256 on
+  `Found`, which the dispatcher checks as it checks `Input.SHA256`; the media name rule stays in
+  `internal/cli` alone (`layers.md`, "Dispatch"). Rejected: the dispatcher keeping the rule.
+- **SH-5 · A refusal's reason was mapped stage by stage.** Accepted → ooxml (its encrypted
+  refusal), onenote (its goldens), library (the mapping, the outcome). office's and onenote's
+  stages each mapped a reason beginning `encrypted`, onenote's stage matched its table of
+  contents' fixed reason, and the contract stated no reason docproc-ooxml gives an encrypted
+  package, an OLE compound file as a legacy document is. "Common envelope" holds one vocabulary:
+  for every tool a reason beginning `encrypted` means an encrypted input, and onenote's
+  table-of-contents reason is fixed text. `internal/cli` holds the one prefix mapping, the
+  table-of-contents mapping beside it, which yields `dispatch`'s new outcome `read elsewhere`
+  (`ErrReadElsewhere`): the part's content is read through its sibling sections, so it is no
+  failure. docproc-ooxml refuses an `EncryptedPackage` with a reason beginning `encrypted`, and a
+  legacy OLE file with one that neither begins with nor contains the word; goldens pin the texts
+  (ooxml's encrypted fixture's `.stderr`, `Encryption.one`, a `.onetoc2`). Rejected: each stage
+  mapping its own tool's reasons.
+- **SH-6 · The content store's layout was written twice.** Accepted → library (`dispatch`) and
+  docproc (`rundir`). `FileContent`'s layout, sharded by a name's first two hex digits, was its
+  own, and `rundir.ContentPath`, which DP-7 made part of schema "2", restated it. `dispatch`
+  exports it once, `ContentFile(sha256)`, a path relative to the store's directory, whose doc
+  states the layout stable; `FileContent` writes by it, and `ContentPath` joins the run
+  directory's content directory to it (`layers.md`, "Content"). Rejected: `rundir` restating the
+  layout under schema "2".
+- **SH-7 · A record output didn't say what it holds.** Accepted → library. A record output's
+  shape, an audio or video plan or a tool's lines, was known only from its stage and its name,
+  versioned by nothing a reader could check. Its `Output.MediaType` names the shape and its
+  version (`application/vnd.docproc.audio-plan+json; version=1`, a tool's lines with
+  `schema=2`), constants in `dispatch` beside `OutputKind` and the Meta keys, which `stages`
+  sets (`layers.md`, "Dispatch"). Rejected: a Meta key for the shape's version.
+- **SH-8 · `ContentType.Detected` was a host's field in a shared shape.** Accepted → docproc
+  (`rundir/schema`'s `File`, `cmd/docproc`'s `run`), library (`dispatch` drops it), and the
+  docinfer goal (the metadata function), a pending edit. `Detected` was `cmd/docproc`'s sniffed
+  type of an input, which no stage fills and a stream never has, inside a shape every event
+  carries, and docinfer's metadata text read it from the depth-0 part, built by `job` and by
+  `cmd/docinfer` alike. It moves to `rundir/schema`'s `File`, filled by `run` beside `Statx`;
+  docinfer builds an input's metadata text with one function over `dispatch.Part`, and
+  `cmd/docinfer` adds its file lines (`layers.md`, "One job, and its cancellation"). Rejected:
+  keeping it in `dispatch.ContentType`, left empty everywhere but `cmd/docproc`.
+- **SH-9 · `dispatch.Version` didn't say what it covers.** Accepted → library; the docinfer goal
+  for its version's doc. `Version` named "the shapes below", while the shapes carry route's
+  `Kind` and `Route` and inspect's `Check`, `Class`, and `Flag`, which change without a field
+  changing, and the index's `Key`, `Entry`, `Recorded`, and `Child` are what a provider stores;
+  no golden held a routed or flagged part, and docinfer's "1" carried dispatch's shapes without
+  saying so. `Version`'s doc names the shapes, the vocabularies they carry, and the index's
+  shapes; `dispatch`'s goldens hold a routed, flagged part and an entry's log; docinfer's "1"
+  states that it includes dispatch's "1", as `rundir`'s "2" does (`layers.md`, "Dispatch",
+  "docinfer's shapes"). Rejected: a version of their own for route's, inspect's, and the index's
+  vocabularies.
 
 ## Releases
 

@@ -57,6 +57,10 @@ text" states and applies field by field.
   three. `<where>` and `<what>` are escaped: a backslash before a backslash, `\n` and `\r` for a
   line feed and a carriage return, and, in `<where>`, `:\ ` for a colon followed by a space;
   docproc inverts it. A `<reason>` never leads with the input path, which docproc already knows.
+- **Refusal reasons.** One vocabulary for every tool: a `<reason>` beginning `encrypted` means the
+  input is encrypted, and docproc-onenote's table-of-contents reason is fixed text
+  ("docproc-onenote"); any other reason is prose for a person, and docproc reads nothing else
+  from it.
 - **Version.** `--version` writes the version alone on its first line and `schema <n>` on its
   second, exit 0, so a reader's spec refuses a tool of another schema at startup.
 - **Exit codes.** 0 read, skipped items included; 1 stdout or media not written; 2 usage; 3
@@ -64,6 +68,11 @@ text" states and applies field by field.
   meanings (office, mail, and onenote READMEs, "Usage").
 - **Determinism.** The same input gives byte-identical stdout and media, proven by committed
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
+- **Cases.** One committed table, `tools/envelope/cases.json`, holds the envelope's cases: the
+  warning escape, a stderr line and the `where` and `what` it splits to, a payload's bytes and
+  stored name and the media name they make, the exit codes' meanings, and the literal-text
+  escape; docproc-ooxml's tests, the shared Rust crate's, and docproc's `internal/cli`'s read it
+  in place, so no language restates a case.
 - **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
   docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
 
@@ -495,14 +504,16 @@ The library's packages:
 route, inspect             what a file is, whether it is safe to open, which stage reads it  changed; Flag tagged
 tool                       the exec and container runners; only the exec runner needs Linux  changed
 internal/cli               the envelope reader: lines, stderr, exit codes, the media name    grown
-                             rule; Spool, LimitedBuffer
+                             rule, the refusal reasons' mapping, the schema and version
+                             pattern; Spool, LimitedBuffer
 office, email, onenote     a tool's reader, decoding its schema "2"; exec runner only        changed
-document, picture,         the other formats, on their tools; audio's Seam JSON-tagged,      changed
-  audio, media, sevenzip     audio's and media's plan records beside it
+document, picture,         the other formats, on their tools; audio's and media's plan       changed
+  audio, media, sevenzip     records beside them
 dispatch                   the walk over an input's parts, the Stage contract and its error  changed
-                             classes, the content store and the index; the shapes of its
-                             events, parts, outputs, and warnings; imports route and inspect
-                             only, any platform
+                             classes, the content store and its layout, the index; the
+                             shapes of its events, parts, outputs, warnings, and stage
+                             table, the Meta keys and record media types consumers read;
+                             imports route and inspect only, any platform
 dispatch/dispatchtest      the Index and Content conformance suites and the fixture stage    new
 stages                     Build and its Options, the stage adapters, unexported, the        moved from the spike's docproc,
                              failure classification, the identities                            grown
@@ -511,8 +522,8 @@ rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and wri
 
 No root package: `doc.go`'s comment alone is processing's, and nothing needs it. Another module
 reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`, `stages.Build`, `rundir`, and the
-record types docinfer decodes (`audio.Seam`, the plan records, the readers' line types,
-`email.Threader`); the module builds on every platform, and only running a tool needs Linux.
+record types docinfer decodes (the plan records, the readers' line types, `email.Threader`); the
+module builds on every platform, and only running a tool needs Linux.
 
 ### Inspection and routing
 
@@ -599,18 +610,22 @@ func (t *Tool) AtLeast(minimum string) error // a *VersionError when older
 `Spec.Env`), and kills its process group whenever the leader has exited.
 
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`, through the exec runner
-only: a constructor refuses a tool whose image is a container. `internal/cli` holds the one
-envelope reader all three run: it runs the tool with stdout and stderr on pipes, checks the first
-line's kind and `schema` (one `ErrSchema`), yields each line's kind and raw JSON, parses stderr as
-it arrives into a warning's `where` and `what`, maps exit codes 1 to 4 and a signal to one
-`ExitError`, and resolves a media name in the media directory by the envelope's name rule. A
-reader keeps its request, its arguments, and its line types, decodes its tool's schema "2" line
-by line (the contracts above), and keeps an unknown kind as an `Unknown*` value. The readers'
-types follow the contracts: `office.Document` becomes the `document` line, `office.Sheet` the
-`sheet` line and `office.Rows` a `rows` line, `email.Message` takes `Markdown` up,
-`Address.SMTPAddress`, and `Media`, and `onenote.Page` takes `Markdown`, `Media`, and
-`InkAlternatives`. Each reader streams its tool's lines as records, office's included, so no
-reader holds a whole sheet, and returns the sequence itself, so no `Stream` type holds a context.
+only: a constructor refuses a tool whose image is a container. `internal/cli` holds the one envelope
+reader all three run: it runs the tool with stdout and stderr on pipes, checks the first line's kind
+and `schema` (one `ErrSchema`), yields each line's kind and raw JSON, parses stderr as it arrives
+into a warning's `where` and `what`, maps exit codes 1 to 4 and a signal to one `ExitError`, and
+resolves a media name in the media directory by the envelope's name rule. It exports the schema
+constant (`"2"`) and the version pattern, which requires `--version`'s schema line, once, so each
+reader's `Spec` takes them, and holds the one mapping of a refusal's reason ("Common envelope"): a
+reason beginning `encrypted` to `dispatch.ErrEncrypted`, and, beside it, onenote's table-of-contents
+reason to `dispatch.ErrReadElsewhere`. A reader keeps its request, its arguments, and its line
+types, decodes its tool's schema "2" line by line (the contracts above), and keeps an unknown kind
+as an `Unknown*` value. The readers' types follow the contracts: `office.Document` becomes the
+`document` line, `office.Sheet` the `sheet` line and `office.Rows` a `rows` line, `email.Message`
+takes `Markdown` up, `Address.SMTPAddress`, and `Media`, and `onenote.Page` takes `Markdown`,
+`Media`, and `InkAlternatives`. Each reader streams its tool's lines as records, office's included,
+so no reader holds a whole sheet, and returns the sequence itself, so no `Stream` type holds a
+context.
 
 ```go
 package email // onenote has the same shape
@@ -678,7 +693,8 @@ func (d *Dispatcher) Content() Content // Config.Content, for a host's own puts 
 func (d *Dispatcher) Index() Index     // Config.Index, for a host's drop of an entry
 
 type Outcome string   // prepared, no processor yet, seen, cycle, quarantined, encrypted,
-                      // failed, limited
+                      // read elsewhere (a table of contents, whose sections are read as their
+                      // own parts; not a failure), failed, limited
 type Item struct { // one is set
     Output  *Output
     Part    *Found
@@ -686,7 +702,8 @@ type Item struct { // one is set
     Flag    *inspect.Flag // a flag a stage raises about its own part
     After   uint64 // a store's: set on a message's last output, the message's cursor
 }
-var ErrEncrypted, ErrNoProcessor, ErrRefused, ErrTooLarge error // a stage's classes
+// A stage's classes.
+var ErrEncrypted, ErrReadElsewhere, ErrNoProcessor, ErrRefused, ErrTooLarge error
 var ErrClaimLost error // a renewal refused: the dispatch ends, transient
 ```
 
@@ -730,8 +747,10 @@ the content's, recorded     the tool exited nonzero by its own code, 3 and 4 inc
 the run's, retried          the context ended; SIGKILL or SIGTERM docproc didn't send; the
                             program didn't start; exit 1 (not written) or 2 (usage); any error
                             on docproc's side of the pipe
-encrypted                   a stage's ErrEncrypted alone, mapped from a refusal's reason by one
-                            function beside the envelope's ExitError
+encrypted                   a stage's ErrEncrypted alone, mapped from a refusal's reason by
+                            internal/cli's one mapping ("Running the tools")
+read elsewhere              a stage's ErrReadElsewhere alone, onenote's table-of-contents
+                            refusal, by the same mapping
 ```
 
 A unit's failure of the content's class is a warning, and the part is prepared with the outputs it
@@ -760,9 +779,12 @@ the walk's goroutine. The queue drains before a found part is dispatched and bef
 event, so concurrency exists across runs of consecutive outputs (a PDF's pages, a video's frames);
 a stopped loop or an ended context waits for the puts in flight before `Dispatch` returns. A put
 that fails with `ErrTooLarge`, which a provider maps from its store's, fails the part, recorded;
-any other put error stops the dispatch, as an index failure does. A found part whose name is a
-SHA-256, the envelope's media rule, is checked against the hash the dispatcher takes anyway, and a
-mismatch, a file a killed tool left short, fails that child as the run's fault.
+any other put error stops the dispatch, as an index failure does. A stage that knows a found
+part's SHA-256 claims it on `Found` (`Found.SHA256`), as a reader's medium named by the envelope's
+media rule is known, and the dispatcher checks the claim as it checks `Input.SHA256`, against the
+hash it takes anyway: a mismatch, a file a killed tool left short, fails that child as the run's
+fault. The dispatcher never reads a name as a hash; the media name rule is `internal/cli`'s
+alone.
 
 An output is appended before its event is yielded, and a part's entry is recorded before the
 part's own event, so an attempt stopped at that event still leaves the entry. An event's files are
@@ -830,22 +852,30 @@ Every string of the wire shapes leaves the dispatcher under one rule, applied be
 yielded or an item appended: valid UTF-8, no U+0000, no C0 or C1 control but tab and line feed in
 a reason, and a stated cap per field (a name, a `Where`, a reason, a warning's parts, a flag's
 evidence, a Meta value). The wire's package is `encoding/json` for `dispatch`'s shapes and the
-index; a record output is the bytes its stage made. The `Meta` keys a consumer reads are exported
-constants in the package whose stage writes them, each documented with its format.
+index; a record output is the bytes its stage made, and its `MediaType` names that shape and
+its version, so a reader checks what it decodes. The `Meta` keys a consumer reads (`window`,
+`count`, `page`, `sheet`, …) and the record outputs' media types
+(`application/vnd.docproc.audio-plan+json; version=1`, and a tool's lines under that tool's
+media type with `schema=2`) are exported constants in `dispatch`, beside `Output` and
+`OutputKind`, each documented with the stage that writes it and its format, and versioned by
+`dispatch.Version`; `stages` writes them, and a consumer reads them without importing `stages`.
 
 `dispatch` declares the JSON shapes of what it yields beside its other types, on the standard
-library alone: an event, its part, its stage's `Identity`, an output, a warning. `Event` is itself
-the shape, one for each of its three kinds: a part's own event, an output's, and a warning's,
-each setting only its own fields, so no parallel wire type copies it. `Part` takes the shape of
-the spike's docproc `schema.Part` (`spike-ai-pipeline/internal/docproc/schema/part.go`), its
-local fields left out of the JSON, and gains `ID`, which `Parent` carries in place of the
-parent's SHA-256; processing's `Part.Kind`, `Route`, `Reason`, and `MIME` move into its
-`ContentType`. `Identity` is the spike's docproc `schema.Stage` as JSON, so no `Stage` type is
-added; `Stage` stays the interface.
+library alone: an event, its part, its stage's `Identity`, an output, a warning, and the stage table
+a host reports (`Tool`, `Row`, `State`). `Event` is itself the shape, one for each of its three
+kinds: a part's own event, an output's, and a warning's, each setting only its own fields, so no
+parallel wire type copies it. `Part` takes the shape of the spike's docproc `schema.Part`
+(`spike-ai-pipeline/internal/docproc/schema/part.go`), its local fields left out of the JSON, and
+gains `ID`, which `Parent` carries in place of the parent's SHA-256; processing's `Part.Kind`,
+`Route`, `Reason`, and `MIME` move into its `ContentType`. `Identity` is the spike's docproc
+`schema.Stage` as JSON, so no `Stage` type is added; `Stage` stays the interface.
 
 ```go
 package dispatch
-const Version = "1" // of the shapes below, grown by addition only
+// Version is "1", grown by addition only. It versions the shapes below and the vocabularies
+// they carry (route's Kind and Route; inspect's Check, Class, and Flag), the index's shapes
+// (Key, Entry, Recorded, Child), the stage table, the Meta keys, and the record media types.
+const Version = "1"
 type Event struct {
     Part     Part     `json:"part,omitzero"` // left out when zero: rundir's error line
     Stage    Identity `json:"stage,omitzero"`
@@ -877,8 +907,7 @@ type ContentType struct {
     Kind        route.Kind  `json:"kind,omitzero"`
     Route       route.Route `json:"route,omitzero"`
     RouteReason string      `json:"route_reason,omitzero"`
-    Stored      string      `json:"stored,omitzero"`   // the stored MIME type
-    Detected    string      `json:"detected,omitzero"` // cmd/docproc's: an input's sniffed type
+    Stored      string      `json:"stored,omitzero"` // the stored MIME type
 }
 type Identity struct {
     Name    string `json:"name"`
@@ -899,12 +928,30 @@ type Warning struct {
     Where string `json:"where"`
     What  string `json:"what"`
 }
+type Tool struct { // a tool stages.Build tried
+    Program string `json:"program"`
+    Minimum string `json:"minimum"`
+    From    string `json:"from,omitzero"`    // the path it was found at, or its image
+    Version string `json:"version,omitzero"` // its whole version line
+    Error   string `json:"error,omitzero"`   // Err's text
+    Err     error  `json:"-"`
+}
+type State string // wired, missing, excluded; a missing or excluded route has no processor yet
+type Row struct { // one route's line of the stage table
+    Route  route.Route `json:"route"`
+    State  State       `json:"state"`
+    Stage  Identity    `json:"stage,omitzero"` // the wired stage's
+    Tools  string      `json:"tools,omitzero"` // its tools and their versions
+    Reason string      `json:"reason,omitzero"`
+}
 ```
 
 A count left out is zero, as the common envelope's absence rule has it. `Err` stays local: a
 failed part's `Reason` already holds its text, as processing sets both. `Output.Path` and `Value`
 never marshal: an output's content is found by its `SHA256` in `Content`, so the index records an
-output without them and nothing clears them.
+output without them and nothing clears them. `Tool.Err` stays local beside its text in `Error`, as
+`Event.Err` beside `Reason`. `ContentType` holds what routing read of a part, never a host's own
+sniffing of an input, which is the host's record's (`rundir/schema`'s `File`).
 
 `stages` moves from `spike-ai-pipeline/internal/docproc/stages`, less its `WriteTable`, so
 `cmd/docproc` and Cerebro wire the same stages from the tools a host holds. It also holds the
@@ -930,7 +977,7 @@ type Options struct { // the zero value is processing's wiring, with no bound
     Video       media.VideoPlan        // moved from dispatch with the plan records
 }
 type Set struct {
-    Stages dispatch.Stages; Tools []Tool; Rows []Row // Row: route, wired|missing|excluded
+    Stages dispatch.Stages; Tools []dispatch.Tool; Rows []dispatch.Row // a row per route
     Inspect inspect.Options // for dispatch.Config.Inspect, so one value exists
 }
 ```
@@ -970,13 +1017,17 @@ type Content interface {
 }
 func NewFileContent(dir string, renew time.Duration) (*FileContent, error) // 0 never rewrites
 func NewMemoryContent() *MemoryContent
+// ContentFile is the content sha256 names' file, relative to a FileContent's directory: its first
+// two hex digits, then the whole name. The layout is stable, a reader that isn't Go following it.
+func ContentFile(sha256 string) string
 ```
 
 The interface has no renewal of its own. An implementation reads a content's age from its
 store's modification time (`FileContent` its file's, `docproc/storage` go-storage's
 `Object.ModifiedAt` from `Stat`), so a content prepared again is rewritten once it is older than
 the renew age, and its age restarts. A put is all or nothing: `FileContent` writes a temporary
-file in its directory and renames it, and a reader never sees part of a content.
+file in its directory and renames it to `ContentFile`'s path, and a reader never sees part of a
+content.
 
 The host sweeps content by age, never by reference. Its retention is at least the index entries'
 retention plus the renew age plus the job stream's retention: every put an entry's preparation
@@ -1043,7 +1094,9 @@ processing's `Outputs`, `Children`, `Append`, and `AppendChild`. `Child` holds t
 `Part` whole, in place of processing's `SHA256`, `Name`, `Where`, `Size`, and `Route`, so a
 replayed child's part is the part as found, less its place: the index keeps its `Where` and
 ignores its `ID`, `Parent`, and `Depth`, which the replaying walk sets ("Dispatch"). `Path` and
-`After`, local, are never recorded.
+`After`, local, are never recorded. `Key`, `Entry`, `Recorded`, and `Child` are versioned by
+`dispatch.Version` with the event shapes, since a provider stores them and a replay reads them
+back; `dispatch`'s goldens hold an entry's log beside a dispatch whose part is routed and flagged.
 
 A claim is a lease, and every implementation honors one contract. `Claim` returns the lease with
 the token, since the lease belongs to the claim the index granted, and a provider that sets it
@@ -1133,6 +1186,7 @@ The library's packages:
 docinfer               the pipeline over go-ai, the cache, batches as made;       new, from the spike's docinfer
                          the shapes of its results
 chunk                  the chunker                                                moved from the spike's docinfer
+join                   a part's window transcripts joined at their seams          moved from docproc's audio
 job                    one job: dispatch, then inference, under its context;      new
                          its updates
 internal/endpointtest  a fake OpenAI-compatible endpoint for go-ai's client       from the spike's docinfer apptest
@@ -1142,12 +1196,12 @@ processing's model-calling helpers, `internal/visiontest` and `internal/audiotes
 spike with its findings and bake-off tiers; docinfer's model tests take a copy of what they score
 with (`design.md`, decision 18).
 
-The inference package is the module's root, `docinfer`, so a caller writes `docinfer.Pipeline`
-and `docinfer.Batch`, not `infer.Pipeline` under a module already named for inference. `chunk`
-stands alone, and the root imports it. `job` composes docproc's dispatcher with the pipeline,
-which `cmd/docinfer` runs without it, so the root never imports `job`. The imports run one way:
-the root imports docproc's `dispatch` and `audio` and go-ai's `client` and `protocol`; `job`
-imports `dispatch` and the root.
+The inference package is the module's root, `docinfer`, so a caller writes `docinfer.Pipeline` and
+`docinfer.Batch`, not `infer.Pipeline` under a module already named for inference. `chunk` and
+`join` stand alone, and the root imports them. `job` composes docproc's dispatcher with the
+pipeline, which `cmd/docinfer` runs without it, so the root never imports `job`. The imports run one
+way: the root imports docproc's `dispatch` alone and go-ai's `client` and `protocol`; `job` imports
+`dispatch` and the root.
 
 ### The cache
 
@@ -1220,7 +1274,7 @@ type Config struct {
     Pending       int               // a job's inputs admitted and not yet finished
     EmbedBatch    int               // texts per Embed call
     BatchBytes    int               // a result batch's marshalled JSON's cap ("Batches as made")
-    Join          audio.JoinRequest // how a part's window transcripts join
+    Join          join.Request      // how a part's window transcripts join
 }
 // Bounds bounds the requests in flight per capability, across every Pipeline built with it.
 type Bounds struct{ … }
@@ -1249,6 +1303,8 @@ type Input struct {
     Event    dispatch.Event
     Metadata string // or the input's metadata text, Event then the depth-0 part's own event
 }
+// MetadataText is an input's metadata text, from its depth-0 part: the one builder of it.
+func MetadataText(p dispatch.Part) string
 // MissingError is Run's error for an input whose content Run's content misses: Event is the
 // input's, and Err is Content.Open's, which matches fs.ErrNotExist. Permanent doesn't report it.
 type MissingError struct { Event dispatch.Event; Err error }
@@ -1275,7 +1331,8 @@ text per input. `Input` is the spike's source under another name, since `Source`
 origin in docinfer's shapes, and it carries dispatch's event as it is. `job` feeds `Run` from
 dispatch's events, over the dispatcher's content store. `cmd/docinfer` feeds it from a
 `cmd/docproc` run directory through its `source` package, which reads it with docproc's `rundir`,
-over the run directory's `FileContent`, its metadata text the spike's `metadataText`.
+over the run directory's `FileContent`, its metadata text `MetadataText`'s with the run
+directory's file lines added.
 
 Extraction runs a caller's prompt and JSON schema, the run's `Extract`, over each source text the
 pipeline chunks: each text and Markdown output, each vision text, and each joined transcript,
@@ -1310,6 +1367,13 @@ func (s Splitter) Split(text string) []Chunk
 func Split(text string, bound int) []Chunk
 ```
 
+`join` is docproc's `audio` join, moved: its `Join`, `JoinRequest` as `Request`, `Seam`, and
+`Transcript`. `Seam` takes the spike's docinfer `outdir.Seam`'s JSON names (`matched`, `matches`,
+`overlap`, `position`), versioned by `docinfer.Version`. `Request` states docinfer's own seam-word
+setting, the words matched across a seam, with its default; a window's place in its part comes
+from the audio stage's outputs, read by `dispatch`'s Meta keys. docproc cuts windows and joins
+nothing.
+
 ### Batches as made
 
 The spike's docinfer runs each capability over every input in turn and writes `chunks.jsonl`
@@ -1337,9 +1401,12 @@ A batch carries no index: Cerebro identifies it ("Results and the manifest"), an
 
 ```go
 package docinfer
-const Version = "1" // of the shapes below and job's, grown by addition only
-// A chunk's span is chunk.Span; a transcript's seams are docproc's audio.Seam, whose JSON names
-// are outdir.Seam's; Counts follows.
+// Version is "1", grown by addition only: of the shapes below, job's, and join's. It includes
+// dispatch.Version "1", whose shapes Input, Batch, and Source carry, so a break there is a
+// break here.
+const Version = "1"
+// A chunk's span is chunk.Span; a transcript's seams are join.Seam, whose JSON names are
+// outdir.Seam's; Counts follows.
 type Capability string // vision, transcription, extraction, embeddings
 type Identity struct {
     Capability Capability `json:"capability"`
@@ -1375,8 +1442,8 @@ type Inference struct {
                                                               // of a model
     TextSHA256    string       `json:"text_sha256,omitzero"` // the text, in docproc's Content
     Text          string       `json:"-"`                    // local: job puts it in Content
-    Seams         []audio.Seam `json:"seams,omitempty"`      // a transcript's, as audio.Join
-                                                              // made them
+    Seams         []join.Seam  `json:"seams,omitempty"`      // a transcript's, as join made
+                                                              // them
     Usage         Usage        `json:"usage,omitzero"`
     TookMS        int64        `json:"took_ms"`
 }
@@ -1525,10 +1592,12 @@ skips none whose batches are not. A host resumes from the last checkpoint: Cereb
 the job's subject and sets `Input.After` on the redelivery, and docproc records no entry for the
 resumed input ("Input from a stream, or a path").
 
-The metadata text of a job's input is the spike's docinfer `metadataText` over what a stream has:
-its lines `file name`, `size`, `kind`, `route`, `route reason`, `stored MIME type`, and `detected
-MIME type`, from the depth-0 part, in the spike's order and form. `job` feeds it to the pipeline
-as the `Metadata` of the depth-0 part's own event.
+The metadata text of a job's input is `MetadataText`'s, the spike's docinfer `metadataText` over
+what a part has: its lines `file name`, `size`, `kind`, `route`, `route reason`, and `stored MIME
+type`, from the depth-0 part, in the spike's order and form. `job` feeds it to the pipeline as the
+`Metadata` of the depth-0 part's own event; `cmd/docinfer` adds the lines of the run directory's
+`File`, `detected MIME type` among them, after `MetadataText`'s, so no second builder restates the
+part's lines.
 
 `job` threads no mail. A store's message and conversation records are record outputs, held in
 `Content` like any other, and carry the threading keys; a consumer threads them with docproc's
@@ -1992,8 +2061,10 @@ From spike-ai-pipeline-office 0.1.0, settled in `design.md`, "docproc-ooxml".
   ends in one always-running `ci` job, the one check a GitHub ruleset on docproc requires, so a
   job its paths skip never blocks a merge; rulesets for other repositories are out of scope.
   This task also lands the wiring every tool shares: one pack script and one notices script
-  under `tools/`, each taking the tool's name, and a `go.mod` at `tools/`, a module boundary
-  that keeps the subtree, fixtures included, out of the library's module zip.
+  under `tools/`, each taking the tool's name, a `go.mod` at `tools/`, a module boundary
+  that keeps the subtree, fixtures included, out of the library's module zip, and the envelope's
+  case table, `tools/envelope/cases.json` ("Common envelope"), which the stderr writer's, the
+  media name's, and the escape's tests read in place.
 - **glibc.** The README states the binary's glibc floor, and the release job checks it on the
   built binary.
 - **One run.** `--format json|markdown` goes: one run writes the compact `document` line, then
@@ -2031,7 +2102,10 @@ From spike-ai-pipeline-office 0.1.0, settled in `design.md`, "docproc-ooxml".
 - **`_xHHHH_`.** Shared and inline strings decode SpreadsheetML's escapes, `_x005F_` the escaped
   underscore, with a generated fixture cell.
 - **Refusals.** A path that isn't a regular file is refused as "not a file"; the main part's
-  exact content type decides the format, so xlsb is "not a docx, xlsx, or pptx package".
+  exact content type decides the format, so xlsb is "not a docx, xlsx, or pptx package". An OLE
+  compound file holding an `EncryptedPackage` stream is refused with a reason beginning
+  `encrypted`, by the envelope's vocabulary, and a legacy OLE document with one that neither
+  begins with nor contains the word; the encrypted fixture's `.stderr` pins the first.
 - **Kept.** The sheets' cells, in `rows` lines, as office's `TableCell` less its docx-only
   fields; the Markdown renderer, its xlsx Markdown split by sheet.
 - **Properties.** `properties` (core, app, custom), read by "docproc-ooxml"'s rule.
@@ -2108,7 +2182,8 @@ From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
   a space, a control character, `<`, or `>` as `<…>` with `<` and `>` escaped, else bare with
   its parentheses escaped; and the warning writer, which writes a colon followed by a space in
   `<where>` with the space escaped and escapes control characters in `<where>` and `<what>`, with
-  unit tests for each. docproc's CI runs both Rust tools' checks when the crate changes.
+  unit tests for each; the crate's tests read `tools/envelope/cases.json` in place ("Common
+  envelope"). docproc's CI runs both Rust tools' checks when the crate changes.
 - **Notices.** Release packing writes a third-party notices file from the locked graph into the
   archive, and the check fails on a license outside the permissive set.
 - **Faults.** An HTML body nested past 512 open elements, counted by a pass over its tags before
@@ -2223,8 +2298,8 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
   name's control characters only; a unit test shows a name holding `": "` and a message holding a
   line break.
 - **Tables of contents.** `--file-only`, which docproc always passes, refuses a `.onetoc2`, exit 3,
-  with "docproc-onenote"'s fixed reason, before any section is read; the notebook read warns at
-  `/` when it read no entry.
+  with "docproc-onenote"'s fixed reason, before any section is read, which a `.onetoc2`'s golden
+  pins; the notebook read warns at `/` when it read no entry.
 - **Encryption.** After a section's parse fails, the tool scans the file for 2.5.19's header and
   footer constants; found, the reason begins `encrypted` and a `skipped` line carries
   `encrypted: true`, as "docproc-onenote" states, where the spike reports the parser's
@@ -2342,19 +2417,22 @@ internal/cli        grown: the envelope reader ("Running the tools"), one ErrSch
                     pipe parsed line by line, split at the first three ": " and unescaped, a line
                     that doesn't fit a warning's what alone, warnings delivered before the read's
                     final error, the run's message the last error: line; the media name rule in
-                    place of three path checks; the encrypted reason's mapping beside ExitError;
+                    place of three path checks; the one mapping of a refusal's reason, encrypted
+                    to ErrEncrypted and onenote's table of contents to ErrReadElsewhere beside it;
+                    the schema constant and the version pattern exported once; its tests reading
+                    tools/envelope/cases.json in place;
                     lineWriter from audio and media; Spool, and LimitedBuffer for soffice and gs,
                     kept; Labels, office's alone, Program.Labels, and the path argument go
 internal/tooltest   new: the stand-in tool every package's unit tier runs, Main, Link, and the run
                     log, a stand-in's settings in a file its link names so tests run in parallel
 office, email,      changed: Read and Convert return iter.Seq2[Record, error], the three Stream
   onenote           types, their contexts, and read-once guards gone; the exec runner only, a
-                    container refused at construction; the specs name docproc-ooxml,
-                    docproc-mail, and docproc-onenote, their minimums the first schema "2" tags,
-                    their patterns requiring the schema line; each medium and attachment returned
-                    with its Path, unrouted, the route import gone; testdata copies, MANIFEST
-                    tests, TestRealVersion, the fixtures tasks and scripts, and the three mise
-                    pins go, office's legacy, RTF, and picture fixtures staying
+                    container refused at construction; the specs name docproc-ooxml, docproc-mail,
+                    and docproc-onenote, their minimums the first schema "2" tags, their schema and
+                    version pattern internal/cli's; each medium and attachment returned with its
+                    Path, unrouted, the route import gone; testdata copies, MANIFEST tests,
+                    TestRealVersion, the fixtures tasks and scripts, and the three mise pins go,
+                    office's legacy, RTF, and picture fixtures staying
 office              changed: decodes the schema "2" document, sheet, and rows lines, each with its
                     Markdown, streamed as records; Convert reads Request.Path, in place of its
                     io.Reader, copying only a legacy document or an RTF; the Document yielded
@@ -2394,8 +2472,7 @@ picture             changed: Request takes the caller's Kind and an output stem,
                     ImageMagick's limits, -limit on every run; the one LibreOffice runner,
                     exported, office's too, with an optional profile registry; correct.go,
                     ErrNoLibreOffice, and ErrNoMagick go, ErrNoReader staying
-audio               changed: Seam gains JSON tags (matched, matches, overlap, position), the
-                    spike's docinfer outdir.Seam's names, so docinfer's inferences carry it; one
+audio               changed: Join, JoinRequest, Seam, and Transcript go to docinfer's join; one
                     decode cut into windows by a stream cutter, Splitter.Windows one decodeArgs
                     run byte for byte v0.9.0's windows; the tracker alone, silencedetect and the
                     Detector switch gone; the plan ends at the decoded samples, ffprobe's duration
@@ -2419,54 +2496,62 @@ dispatch            changed, as "Input from a stream, or a path", "Dispatch", "C
                     put before it is recorded, through the ordered queue of Config.Puts, its own
                     part's SHA-256 reused, ErrTooLarge failing the part; Dispatcher.Content
                     returning it, Dispatcher.Index returning Config.Index, and Output.Ref gone;
-                    Item.Warning and Event.Warning, typed, in place of a warnings record output
-                    and Meta["warnings"]; Item.Flag in place of QuarantineError and
-                    ErrQuarantined; Found's unread child; the classes ErrEncrypted,
-                    ErrNoProcessor, ErrRefused, ErrTooLarge, and ErrClaimLost, encrypted(p.Flags)
-                    gone; Item.After and Event.After, set by the mail stage, compared by equality;
-                    Part.ID, Where normalised, unique by the stage or the sibling set; the one
-                    wire-string guard and its hostile-bytes test; a seen part replays its entry's
-                    log by SHA-256, with no file, its Stages checked, a stale entry dropped then
-                    claimed, children resolved before the first event, a miss prepared by the
-                    nearest part with a file, the replay checked against the entry's counts and
-                    counted toward Limits, a resumed input's replay skipping through its cursor's
-                    item; the verdict over recorded and name flags under the current Options;
-                    Keep, the kept map, and clean's walk go, an output appended and an entry
-                    recorded before its event; a resumed input's entry never recorded; New
-                    validating Inspect and refusing two identities under one name; one renewer
-                    per dispatch; Config.Release; Record under the dispatch's context; Pool keeps
-                    one context for its inputs, its hand-back for the files alone; a failure of
-                    the index or the content store typed apart from an input's, so a host stops
-                    its run on it where the pool yields it with its input; the doc's
-                    "Resuming a store" rewritten around Event.After; the stage adapters move to
-                    stages, HashConfig staying; no build tag. Index: Items and Append over
-                    Recorded, which carries After, replace Outputs, Children, Append, and
-                    AppendChild; Entry gains Stages and Flags; Flags and RecordFlags go; Claim
-                    returns the lease; Renew and Drop are new; an append may be buffered; Items
-                    fails on a replaced entry; Child becomes {Part, Outcome}, the found Part
+                    Item.Warning and Event.Warning, typed, in place of a warnings record output and
+                    Meta["warnings"]; Item.Flag in place of QuarantineError and ErrQuarantined;
+                    Found's unread child; Found.SHA256, a stage's claim, checked as Input.SHA256 is,
+                    in place of a check on a name shaped as a hash; the classes ErrEncrypted,
+                    ErrReadElsewhere (the outcome read elsewhere), ErrNoProcessor, ErrRefused,
+                    ErrTooLarge, and ErrClaimLost, encrypted(p.Flags) gone; Item.After and
+                    Event.After, set by the mail stage, compared by equality; Part.ID, Where
+                    normalised, unique by the stage or the sibling set; the one wire-string guard
+                    and its hostile-bytes test; a seen part replays its entry's log by SHA-256, with
+                    no file, its Stages checked, a stale entry dropped then claimed, children
+                    resolved before the first event, a miss prepared by the nearest part with a
+                    file, the replay checked against the entry's counts and counted toward Limits, a
+                    resumed input's replay skipping through its cursor's item; the verdict over
+                    recorded and name flags under the current Options; Keep, the kept map, and
+                    clean's walk go, an output appended and an entry recorded before its event; a
+                    resumed input's entry never recorded; New validating Inspect and refusing two
+                    identities under one name; one renewer per dispatch; Config.Release; Record
+                    under the dispatch's context; Pool keeps one context for its inputs, its
+                    hand-back for the files alone; a failure of the index or the content store typed
+                    apart from an input's, so a host stops its run on it where the pool yields it
+                    with its input; the doc's "Resuming a store" rewritten around Event.After; the
+                    stage adapters move to stages, HashConfig staying; no build tag. Index: Items
+                    and Append over Recorded, which carries After, replace Outputs, Children,
+                    Append, and AppendChild; Entry gains Stages and Flags; Flags and RecordFlags go;
+                    Claim returns the lease; Renew and Drop are new; an append may be buffered;
+                    Items fails on a replaced entry; Child becomes {Part, Outcome}, the found Part
                     whole, less its ID, Parent, and Depth, in place of its SHA256, Name, Where,
                     Size, and Route; FileIndex and MemoryIndex record one log per entry; FileIndex
                     single-process, its claims MemoryIndex's, its log renamed at Record, leftover
                     temporary logs removed at open, its claim files, reclaim, the poll,
-                    DefaultStale, DefaultPoll, and FileOptions gone; FileIndex and FileContent
-                    shard by the name's first two hex digits, take no clock, and age content with
-                    os.Chtimes in tests. Its shapes, beside its other types, with Version "1",
-                    marshalled with encoding/json: Event gains JSON tags, Err left out, Part
-                    omitzero;
-                    Part takes the spike's docproc schema.Part shape plus ID, its Kind, Route,
-                    Reason, and MIME moving into the new ContentType; Identity takes
-                    schema.Stage's JSON names; Output takes the spike's docproc JSON names less
-                    ref, plus sha256, Path and Value never marshalled; Warning {tool, where, what}
-                    is new, parsed from the envelope's stderr line, since the spike's docproc
-                    schema has no Warning type and processing carries tool warnings as []string
-                    (email.Stream.Warnings, office.Result.Warnings); one golden JSON Lines file of
-                    a dispatch over the fixture stage and one of an entry's log, compared as text
+                    DefaultStale, DefaultPoll, and FileOptions gone; FileIndex and FileContent shard
+                    by the name's first two hex digits, take no clock, and age content with
+                    os.Chtimes in tests; ContentFile, the content store's file layout exported once
+                    and stated stable, FileContent writing by it. Its shapes, beside its other
+                    types, with Version "1", marshalled with encoding/json: Event gains JSON tags,
+                    Err left out, Part omitzero; Part takes the spike's docproc schema.Part shape
+                    plus ID, its Kind, Route, Reason, and MIME moving into the new ContentType;
+                    Identity takes schema.Stage's JSON names; Output takes the spike's docproc JSON
+                    names less ref, plus sha256, Path and Value never marshalled; Warning {tool,
+                    where, what} is new, parsed from the envelope's stderr line, since the spike's
+                    docproc schema has no Warning type and processing carries tool warnings as
+                    []string (email.Stream.Warnings, office.Result.Warnings); Tool, Row, and State,
+                    the stage table's shapes, from stages and the spike's docproc schema.Tool and
+                    StageState, Tool's error text beside its untagged Err; the Meta keys a consumer
+                    reads and the record outputs' media types, each documented with its writer and
+                    format, as constants beside Output and OutputKind; Version's doc naming what it
+                    covers, the shapes, route's and inspect's vocabularies they carry, the index's
+                    shapes, the stage table, the Meta keys, and the media types; one golden JSON
+                    Lines file of a dispatch over the fixture stage, its part routed and flagged,
+                    and one of an entry's log, compared as text
 dispatch/           new, public: the Index and Content conformance suites and the fixture stage,
   dispatchtest      run by MemoryIndex, FileIndex, MemoryContent, FileContent, and both providers;
                     docinfer's job tests use the fixture stage
 stages              moved from the root's internal/docproc/stages, less WriteTable, and grown:
-                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; Tool and Row with
-                    no JSON names, the run manifest declaring its own; the stage adapters,
+                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; Set holding
+                    dispatch's Tool and Row, its own Tool, Row, and State gone; the stage adapters,
                     unexported, each taking its tools as required fields, their partial modes and
                     the qpdf identity field gone; one function classifying a run's error, for a
                     unit and a part alike; a unit's failure of the content's class a warning, its
@@ -2474,7 +2559,8 @@ stages              moved from the root's internal/docproc/stages, less WriteTab
                     when nothing of it reads; each identity the resolved request hashed whole with
                     the tools' whole version lines and the adapter's version; one function
                     turning a line's media into found parts or unread children, Where
-                    <line>, media <n>, an attachment keeping attachment <n>, office's converted
+                    <line>, media <n>, an attachment keeping attachment <n>, each medium's SHA-256
+                    claimed on Found from internal/cli's resolved name, office's converted
                     pictures through it after the batch; the archive stage's unwritten entries,
                     a reader's contentless medium or attachment, and a skipped line naming a
                     section or message as unread children; the document stage yielding qpdf's
@@ -2482,12 +2568,12 @@ stages              moved from the root's internal/docproc/stages, less WriteTab
                     stage holding what it writes for one archive to the bomb rule's total; a
                     warning made a dispatch.Warning with the tool's name; the onenote stage
                     taking a medium of no known signature's route from its stored type, passing
-                    --file-only, recording a table of contents' refusal as the part's outcome,
-                    not a failure, and mapping a refusal whose reason begins encrypted to
-                    ErrEncrypted, as office's stage does; office's stage passing the part's path,
+                    --file-only, and taking a refusal's class from internal/cli's one mapping, as
+                    office's stage does, a table of contents read elsewhere, not a failure, and an
+                    encrypted section ErrEncrypted; office's stage passing the part's path,
                     yielding an xlsx's Markdown and typed cells per sheet, and making embedded
                     and OLE media child parts; the document stage's Ghostscript fallback gone;
-                    the Meta keys a consumer reads exported as constants in the writing package,
+                    Meta keys and record media types set from dispatch's constants,
                     "markdown": "follows", outcome, check, class, evidence, and warnings leaving
                     Meta, a window's typed facts in its plan record alone
 rundir,             moved from the root's internal/docproc/{rundir,schema} [docproc]: public
@@ -2498,14 +2584,17 @@ rundir,             moved from the root's internal/docproc/{rundir,schema} [docp
                     rundir.json; Manifest, Record, and every other method taking an id refusing one
                     that isn't a run of the directory, ValidID unexported, Runs listing runs alone;
                     Latest the latest ended run; Record an iter.Seq2, an unended run's last line
-                    without a newline dropped; ContentPath; Begin removing leftover .work-*
+                    without a newline dropped; ContentPath, the content directory joined to
+                    dispatch.ContentFile; Begin removing leftover .work-*
                     directories; each record line flushed as written, no fsync; Quarantine keeping
                     quarantine/<sha256>, flags.json gone; Store, its counter, stageDir, the
                     extension table, Load, WriteRunFile, WriteFile, Run.Record, and the manifest's
                     record go; the doc stating one writer per run directory. rundir/schema shapes
                     alone: the event line with its kind and error, the manifest gaining docproc and
-                    collected, its Tool and StageState its own, filled by cmd/docproc's run from
-                    stages.Set, so schema imports no stages; Version, Time, and TimeOf, which
+                    collected, its tools and stage table dispatch's Tool and Row, filled by
+                    cmd/docproc's run from stages.Set, so schema imports no docproc package but
+                    dispatch and inspect; File gaining detected, an input's sniffed type, which
+                    leaves dispatch.ContentType; Version, Time, and TimeOf, which
                     converts to UTC, the writer's one way to make a Time; a TestMain under
                     Europe/London; rundir/testdata one committed schema "2" run directory, read
                     through the reader's API and written again through the writer's, compared as
@@ -2550,18 +2639,24 @@ docinfer             new, the root package: Pipeline, Config, Bounds, Options, E
                      Vision, Transcription, Extraction, and Embeddings over go-ai's client, with the
                      go-ai mapping ("docinfer's go-ai use"). Extraction, its Progress,
                      Options.Final, and the join of work in flight are new; Run takes the content
-                     store its inputs' content is opened from, and Input holds no file. Its shapes,
-                     beside its other types, with Version "1": Capability, Identity, Usage, Profile,
-                     Outcome, Inference and Progress (each naming its content by ContentSHA256),
-                     Batch (no index; its digest a method), Held, Counts, its Source less
-                     Ref and File, plus the source's part, stage, and output, and its Line as Chunk,
-                     embedding chunk.Chunk, less the input's file fields, its part, and its output,
-                     plus Digest, its source by index into the batch; a transcript's seams are
-                     docproc's audio.Seam
+                     store its inputs' content is opened from, and Input holds no file;
+                     MetadataText, the one builder of an input's metadata text over its
+                     dispatch.Part, cmd/docinfer adding its file lines; dispatch's Meta keys read by
+                     their constants. Its shapes, beside its other types, with Version "1", which
+                     states that it includes dispatch.Version "1": Capability, Identity, Usage,
+                     Profile, Outcome, Inference and Progress (each naming its content by
+                     ContentSHA256), Batch (no index; its digest a method), Held, Counts, its Source
+                     less Ref and File, plus the source's part, stage, and output, and its Line as
+                     Chunk, embedding chunk.Chunk, less the input's file fields, its part, and its
+                     output, plus Digest, its source by index into the batch; a transcript's seams
+                     are join.Seam
 chunk                moved from the root's internal/docinfer/chunk, which holds Version,
                      Chunk{Text, Start, End}, and Split; Chunk's Start and End become its Span,
                      outdir.Span moved here, and its fields gain JSON tags (text, span);
                      Splitter is new, its Bound and its Settings, Version and Bound
+join                 moved from docproc's audio: Join, JoinRequest as Request, Seam, and
+                     Transcript, Seam's JSON names outdir.Seam's, under docinfer's Version;
+                     Request stating docinfer's own seam-word setting
 job                  new: dispatch, then inference, under one job's context, Run taking the
                      input and the run's Options; the low watermark from Event.After, the
                      last message in read order; Done's counts by part ID; Update,
@@ -2594,34 +2689,33 @@ library requires go-cli-sdk or go-core.
 ```text
 docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
                                    requires docproc, go-cli-sdk, go-core, and golang.org/x/sys;
-                                   main.go at the module's root, app, apptest, run, and report
-                                   under internal/ (below); app and apptest started from
-                                   go-cli-sdk-template at v0.4.0, not ported; the graph's node
-                                   the stage builder, stages.Build over exec.LookPath, which
-                                   apptest.Tools and apptest.Stages replace, export_test.go
-                                   gone; wires docproc's stages, keeps WriteTable; run collects
-                                   the inputs before it builds the stages, follows a named
-                                   argument that is a symbolic link, and fails on one that is
-                                   neither file nor directory, or on arguments that yield no
-                                   input; run is a runner struct with one method, its recorder
-                                   writing one line per event, replay.go, its subtrees, and the
-                                   warnings counters and row gone; run holds one fileOf, over
-                                   Statx on golang.org/x/sys, and detect, from schema's Statx,
-                                   FileOf, Stater, and Detect, the birth-time probe its one
-                                   export_test.go hook; an input's time from its first event to
-                                   its last, on the loop's goroutine; copies a quarantined
-                                   part's file in its loop body, Keep gone, and stores outputs
-                                   in the run directory's FileContent, its output handler
-                                   writing the line alone; stops the run, exit 1, on a store's
-                                   failure, failed parts and error inputs exit 0, stated in the
-                                   help, the summary's last line counting both; --workers at
-                                   least 1; its configuration ships the operator's starting
-                                   bounds, which the library leaves none: dispatch.Limits
-                                   (parts, bytes, depth), Config.Release, stages.Options'
-                                   Timeout, Idle, Memory, and Concurrency, and the outputs' caps
-                                   in each stage's request (pages, frames, MaxPixels, a frame's
-                                   MaxSide); docproc's README names stages as the shipped wiring
-                                   and cmd/docproc its first caller
+                                   main.go at the module's root, app, apptest, run, and report under
+                                   internal/ (below); app and apptest started from
+                                   go-cli-sdk-template at v0.4.0, not ported; the graph's node the
+                                   stage builder, stages.Build over exec.LookPath, which
+                                   apptest.Tools and apptest.Stages replace, export_test.go gone;
+                                   wires docproc's stages, keeps WriteTable; run collects the inputs
+                                   before it builds the stages, follows a named argument that is a
+                                   symbolic link, and fails on one that is neither file nor
+                                   directory, or on arguments that yield no input; run is a runner
+                                   struct with one method, its recorder writing one line per event,
+                                   replay.go, its subtrees, and the warnings counters and row gone;
+                                   run holds one fileOf, over Statx on golang.org/x/sys, and detect,
+                                   from schema's Statx, FileOf, Stater, and Detect, filling File's
+                                   detected beside Statx, the birth-time probe its one
+                                   export_test.go hook; an input's time from its first event to its
+                                   last, on the loop's goroutine; copies a quarantined part's file
+                                   in its loop body, Keep gone, and stores outputs in the run
+                                   directory's FileContent, its output handler writing the line
+                                   alone; stops the run, exit 1, on a store's failure, failed parts
+                                   and error inputs exit 0, stated in the help, the summary's last
+                                   line counting both; --workers at least 1; its configuration ships
+                                   the operator's starting bounds, which the library leaves none:
+                                   dispatch.Limits (parts, bytes, depth), Config.Release,
+                                   stages.Options' Timeout, Idle, Memory, and Concurrency, and the
+                                   outputs' caps in each stage's request (pages, frames, MaxPixels,
+                                   a frame's MaxSide); docproc's README names stages as the shipped
+                                   wiring and cmd/docproc its first caller
                        [reports]   the report: a page per distinct input content, named by its
                                    SHA-256, listing every input path that holds it with its file
                                    metadata, outcome, and time, the tree and outputs once; the
@@ -2670,7 +2764,8 @@ func (d *Dir) Latest() (string, error)                         // the latest run
 func (d *Dir) Manifest(id string) (schema.Manifest, error)
 func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] // its lines, in order
 func (d *Dir) Content() dispatch.Content                       // the run directory's FileContent
-func ContentPath(sha256 string) string                         // a content's file, from the root
+func ContentPath(sha256 string) string // a content's file from the root: the content directory
+                                       // joined to dispatch.ContentFile(sha256)
 // The writer's, on a Dir from Create:
 func (d *Dir) Index() dispatch.Index
 func (d *Dir) Begin(m schema.Manifest) (*Run, error)
@@ -2691,14 +2786,14 @@ The run directory moves to schema "2", which includes `dispatch`'s shapes at `di
 so a break there is a break here. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
 `Identity` as its `Stage`, `Output`, and `Warning`, and `inspect.Flag`), so no shape is defined
 twice, and a part's `parent` becomes its parent's ID, a change of meaning "1" can't take. The
-manifest's `Tool` and `StageState` stay `schema`'s, filled by `cmd/docproc`'s `run` from
-`stages.Set`: `stages` carries no version of its shapes, so an alias would change "2" with any
-change to it, and `schema` imports no docproc package but `dispatch` and `inspect`, so a reader of
-the run directory, `cmd/docinfer` among them, never compiles `stages` and the format packages
-beneath it. An output's content is in the run directory's `FileContent`, found by its `sha256` in
-place of "1"'s `ref` path under `outputs/`; the content store's directory and a content's path in it
-(`ContentPath`) are part of "2", since the report links a content's file and a reader that isn't Go
-follows it.
+manifest's tools and stage table are `dispatch.Tool` and `dispatch.Row`, which `stages.Set` holds
+and `cmd/docproc`'s `run` copies in, so `schema` imports no docproc package but `dispatch` and
+`inspect`, and a reader of the run directory, `cmd/docinfer` among them, never compiles `stages` and
+the format packages beneath it. An output's content is in the run directory's `FileContent`, found
+by its `sha256` in place of "1"'s `ref` path under `outputs/`; the content store's directory and a
+content's path in it (`ContentPath`, the content directory joined to `dispatch.ContentFile`'s
+layout) are part of "2", since the report links a content's file and a reader that isn't Go follows
+it.
 
 The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
 input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch
@@ -2719,20 +2814,21 @@ type Event struct {
 }
 ```
 
-`quarantine` names the kept file whenever it exists, whether this event copied it or an earlier
-run did, and the flags are the line's, with no `flags.json`. The record's other shapes, `File`,
-`Span`, and the manifest, stay its own. The manifest keeps `schema` and `run` for a manifest read
-alone, drops `record`, whose path is the layout's (`runs/<id>/record.jsonl`), and gains `docproc`,
-the command's module version and the library's from the build info, and `collected`, the number
-of inputs its arguments named. Every `Time` is UTC, made by `TimeOf`. `cmd/docinfer`'s `source`
-reads "2" alone, as the spike's reads "1" alone. `schema`'s `Statx` (`stat_linux.go`, on
-`golang.org/x/sys/unix`), `FileOf`, `Stater`, and `Detect`, which imports `net/http`, move to
-`cmd/docproc`'s `run`, their one caller, so `rundir/schema` is shapes alone and the base module
-requires `golang.org/x/text` alone.
+`quarantine` names the kept file whenever it exists, whether this event copied it or an earlier run
+did, and the flags are the line's, with no `flags.json`. The record's other shapes, `File`, `Span`,
+and the manifest, stay its own; `File` holds what `cmd/docproc` knows of an input's file beside the
+part, its `detected` the sniffed MIME type, filled by `run` beside `Statx`. The manifest keeps
+`schema` and `run` for a manifest read alone, drops `record`, whose path is the layout's
+(`runs/<id>/record.jsonl`), and gains `docproc`, the command's module version and the library's from
+the build info, and `collected`, the number of inputs its arguments named. Every `Time` is UTC, made
+by `TimeOf`. `cmd/docinfer`'s `source` reads "2" alone, as the spike's reads "1" alone. `schema`'s
+`Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`), `FileOf`, `Stater`, and `Detect`, which
+imports `net/http`, move to `cmd/docproc`'s `run`, their one caller, so `rundir/schema` is shapes
+alone and the base module requires `golang.org/x/text` alone.
 
 `cmd/docinfer`'s directory moves to schema "2" with it, since its chunk lines embed docproc's
 `Part` and its held results become docinfer's `Held`. In "2" it takes docinfer's shapes rather
-than defining them again: `Seam` is `audio.Seam`, `Span` `chunk.Span`, `Usage`, `Tokens`,
+than defining them again: `Seam` is `join.Seam`, `Span` `chunk.Span`, `Usage`, `Tokens`,
 `Counts`, `VisionCounts`, and `TranscriptionCounts` docinfer's, counting occurrences, and
 `Source` docinfer's, an inference text found under `texts/` by its SHA-256 in place of its
 `File`, and the manifest's transcripts are docinfer's transcription `Inference`s, so its
@@ -2784,9 +2880,9 @@ Queued as data-intelligence.md's asks of go-messaging, sized by the capstone's `
 - Assumes the spike's docproc `stages` belongs in docproc, so Cerebro and `cmd/docproc` wire stages
   alike, and its `schema` and `rundir` become docproc's public `rundir` and `rundir/schema`, so
   `cmd/docinfer` in docinfer's repository reads a `cmd/docproc` run directory.
-- Assumes inference needs nothing of docproc beyond `dispatch` (its dispatcher, events, and
-  shapes), `audio`'s join and its `Seam`, and, for `cmd/docinfer`, `rundir`, so docproc depends on
-  no model concept and imports no docinfer package.
+- Assumes inference needs nothing of docproc beyond `dispatch` (its dispatcher, events, shapes,
+  and Meta keys) and, for `cmd/docinfer`, `rundir`, so docproc depends on no model concept and
+  imports no docinfer package.
 - Assumes every stream input is spooled to scratch before its stages run, since every stage and
   tool reads a path; no stage reads a stream directly.
 - Assumes one `docinfer.Bounds` per replica, shared by its pipelines, one per profile, rather
