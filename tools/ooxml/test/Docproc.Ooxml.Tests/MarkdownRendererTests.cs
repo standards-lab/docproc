@@ -7,40 +7,29 @@ namespace Docproc.Ooxml.Tests;
 // written by hand from GFM's rules, never a snapshot of docproc-ooxml's own output.
 public sealed class MarkdownRendererTests
 {
-    // The envelope's literal-text rule (context/layers.md, "Common envelope"): its characters
-    // anywhere, `$` among them; a `<` only where it could open a tag, a comment, or an
-    // instruction, or ends the line; `>` only at a line's start.
+    // A paragraph's text is escaped by the envelope's literal-text rule, whose cases are
+    // tools/envelope/cases.json's (EnvelopeTests): its characters anywhere, and at the start of
+    // each line the paragraph makes, after its whitespace is trimmed and a line break, which
+    // becomes a hard break, starts a line.
     [Fact]
     public void TextMarkdownWouldMisreadIsEscaped()
     {
         var markdown = Render(
-            Para("Stars *a* and _b_, [link](x), <tag>, a | pipe, & amp, ~strike~, `code`, $5, back\\slash"),
-            Para("a < b > c, 1<2, <!-- c -->, <?x?>, </p>, </ and <"),
-            Para("# not a heading"),
-            Para("> not a quote"),
-            Para("1. not a list"),
-            Para("- not a bullet"),
+            Para("Stars *a* and _b_, a | pipe"),
+            Para("  # not a heading"),
             Para("  indented text\twith a tab"),
-            Para("line one\nline two"));
+            Para("line one\n1. not a list"));
 
         Assert.Equal(
             """
-            Stars \*a\* and \_b\_, \[link\](x), \<tag>, a \| pipe, \& amp, \~strike\~, \`code\`, \$5, back\\slash
-
-            a < b > c, 1<2, \<!-- c -->, \<?x?>, \</p>, </ and \<
+            Stars \*a\* and \_b\_, a \| pipe
 
             \# not a heading
-
-            \> not a quote
-
-            1\. not a list
-
-            \- not a bullet
 
             indented text with a tab
 
             line one\
-            line two
+            1\. not a list
 
             """,
             markdown);

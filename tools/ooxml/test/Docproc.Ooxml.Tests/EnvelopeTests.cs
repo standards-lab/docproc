@@ -96,7 +96,7 @@ public sealed class EnvelopeTests
     public void AReasonsLineBreakIsEscaped() =>
         Assert.Equal("docproc-ooxml: error: a\\nb\\rc\\\\d: e\n", Stderr.ErrorLine("a\nb\rc\\d: e"));
 
-    // The stderr writer writes UTF-8 bytes and drops a line it can't write.
+    // The stderr writer writes UTF-8 bytes, whatever the locale.
     [Fact]
     public void TheStderrWriterWritesUtf8()
     {
