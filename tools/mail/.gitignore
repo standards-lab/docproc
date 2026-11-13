@@ -1,0 +1,9 @@
+# Build output.
+target/
+
+# The fixtures generator's build output.
+generator/bin/
+generator/obj/
+
+# Untracked state: the publish task's binary.
+.state/

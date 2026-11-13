@@ -1,0 +1,242 @@
+# mise: docproc-mail's toolchain and its check, publish, golden, mboxrd, currency, and upgrade
+# tasks. The toolchain is pinned here alone, and the fixture generator's in mise.fixtures.toml,
+# loaded only with MISE_ENV=fixtures; docproc's root check, currency, and upgrade run this file's
+# tasks through its TOOLS list (`mise -C tools/mail run check`), and tools/pack.sh runs `publish`.
+# Each task runs in this directory.
+[tools]
+cargo-deny = "0.20.2"
+# tools/notices.sh runs it, in this environment, for the release's third-party notices and their
+# license check (about.toml). It is not in mise's registry, so it comes from its GitHub release.
+"github:EmbarkStudios/cargo-about" = "0.9.3"
+jq = "1.8.2"
+rust = { version = "1.100.0", profile = "minimal", components = "clippy,rustfmt", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" }
+shellcheck = "0.11.0"
+
+# A task's shell keeps the caller's PATH order, so where a host `cargo` (/usr/bin/cargo) comes
+# before mise's install, a bare `cargo` would run it, and the host's Rust. Each task that runs
+# cargo first puts rustup's proxies, in mise's CARGO_HOME, ahead of the rest of PATH; mise's
+# RUSTUP_TOOLCHAIN then picks the pinned toolchain.
+[env]
+# The hold list: a pin `upgrade` leaves where it is and `currency` reports as held, not trailing.
+# One line each, "<item> <pin>: <reason>", the item named as currency names it: a crate, a mise
+# tool, or a generator package. A hold names its pin, so a pin moved by hand is no longer held.
+HOLDS = '''
+MimeKit 4.18.2: MsgKit 3.0.6 and PstBuilder.Eml 1.3.0 are built on MimeKit 4
+'''
+
+# The binary is static, linked against musl, so it needs no glibc and sets no GLIBC_FLOOR. Every
+# test runs the release musl binary, overflow checks on (Cargo.toml), so no debug build is made.
+# The shared envelope crate, tools/envelope, has no lock or toolchain of its own: each Rust tool's
+# check formats, lints, and tests it with the tool's, against the tool's Cargo.lock, so it is
+# tested in every graph that links it, and docproc's root check reaches it through TOOLS. Its
+# manifest is formatted by path, which reads no lock and writes none.
+[tasks.check]
+description = "Shellcheck the scripts, format-check, lint, and test docproc-mail and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$CARGO_HOME/bin:$PATH"
+target="$(uname -m)-unknown-linux-musl"
+git ls-files -z '*.sh' | xargs -0 -r shellcheck
+cargo fmt --check
+cargo fmt --check --manifest-path ../envelope/Cargo.toml
+cargo clippy --all-targets --locked --target "$target" -p docproc-mail -p docproc-envelope -- -D warnings
+cargo test --release --locked --target "$target" -p docproc-mail -p docproc-envelope
+"target/$target/release/docproc-mail" --version
+'''
+
+# tools/pack.sh runs it to build the release binary it packs; the release workflow runs that on each
+# runner, natively.
+[tasks.publish]
+description = "Build the static musl release binary for this machine from the locked crate graph; writes only target/ and .state/publish/"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$CARGO_HOME/bin:$PATH"
+target="$(uname -m)-unknown-linux-musl"
+cargo build --release --locked --target "$target"
+rm -rf .state/publish
+mkdir -p .state/publish
+cp "target/$target/release/docproc-mail" .state/publish/
+'''
+
+# The goldens are the release binary's own output, so a change to it is reviewed as a diff of them;
+# the check compares against them and never writes them.
+[tasks.golden]
+description = "Re-record the .jsonl and .stderr goldens from the static musl release binary, through the tests' UPDATE_GOLDEN; the check never runs it; writes only target/ and the goldens"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$CARGO_HOME/bin:$PATH"
+target="$(uname -m)-unknown-linux-musl"
+UPDATE_GOLDEN=1 cargo test --release --locked --target "$target" -p docproc-mail
+'''
+
+[tasks.mboxrd]
+description = "Write the MIME group's mboxrd, tests/fixtures/mime/nine.mboxrd, from its nine .eml; the check rebuilds it and compares it byte for byte"
+dir = "{{config_root}}"
+run = "scripts/mboxrd.sh"
+
+# Read-only and development-time: it reads the network, so CI never runs it, and RustSec's
+# advisories are read here, never in the check, so a newly published advisory is reported without
+# failing a build. The workflows' action pins are the root's currency's.
+[tasks.currency]
+description = "Report every crate behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, every mise tool behind its latest, and every fixture generator package behind its latest, a held one as held; writes only generator/obj/ and cargo-deny's advisory database"
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+export PATH="$CARGO_HOME/bin:$PATH"
+stale=0
+report() {
+  echo "tools/mail: $1"
+  stale=1
+}
+# A held item is reported, with the hold's reason, and leaves the exit status alone.
+hold() {
+  grep -m1 "^$1 $2: " <<<"$HOLDS" | cut -d: -f2- | sed 's/^ //'
+}
+trailing() {
+  local reason
+  reason=$(hold "$2" "$3")
+  if [ -n "$reason" ]; then
+    echo "tools/mail: $1: $2 $3 -> $4 held: $reason"
+  else
+    report "$1: $2 $3 -> $4"
+  fi
+}
+
+# Crates, direct and indirect: updates within each requirement ("Updating"), and newer releases
+# beyond it ("Unchanged ... (available: ...)"). --dry-run leaves Cargo.lock as it is.
+crates=$(cargo update --dry-run --verbose 2>&1 |
+  sed -nE 's/^ *(Updating|Unchanged) +([^ ]+) +v([^ ]+)( -> v([^ ]+)| \(available: v([^)]+)\))$/\2 \3 \5\6/p')
+while read -r name pinned latest; do
+  [ -n "$name" ] && trailing Cargo.lock "$name" "$pinned" "$latest"
+done <<<"$crates"
+
+# Crates in the locked graph with a RustSec advisory: a vulnerability, an unmaintained or unsound
+# crate, or a yanked release. cargo-deny fetches the advisory database first.
+if ! advisories=$(cargo deny --color never check advisories 2>&1); then
+  while read -r line; do
+    [ -n "$line" ] && report "Cargo.lock: $line"
+  done < <(grep -E '^(error|warning)\[' <<<"$advisories")
+fi
+
+# mise tools pinned below their latest version: this file's, Rust among them, and with
+# MISE_ENV=fixtures, mise.fixtures.toml's, the generator's .NET SDK. The root's are its own.
+outdated=$(MISE_ENV=fixtures mise outdated --bump --json |
+  jq -r --arg dir "$PWD" 'to_entries[] |
+    select(.value.bump != null and (.value.source.path | startswith($dir + "/mise."))) |
+    "\(.value.source.path | split("/") | last) \(.key) \(.value.requested) \(.value.bump)"')
+while read -r file name pinned latest; do
+  [ -n "$file" ] && trailing "$file" "$name" "$pinned" "$latest"
+done <<<"$outdated"
+
+# The fixture generator's NuGet packages with a newer release, run from generator/ so its
+# global.json picks the SDK, the pinned SDK's directory first on PATH.
+packages=$(cd generator && MISE_ENV=fixtures mise exec -- bash -c \
+  'export PATH="$DOTNET_ROOT:$PATH"; dotnet list package --outdated --format json' |
+  jq -r '.projects[] | .frameworks[]?.topLevelPackages[]? |
+    "\(.id) \(.requestedVersion | ltrimstr("[") | rtrimstr("]")) \(.latestVersion)"')
+while read -r name pinned latest; do
+  [ -n "$name" ] && trailing generator/Generator.csproj "$name" "$pinned" "$latest"
+done <<<"$packages"
+
+exit "$stale"
+'''
+
+# Development-time, as currency is, and its counterpart: it moves every pin currency reports as
+# trailing to its latest, but a held one, so a currency run after it reports none of them but the
+# held, and an advisory only a newer release of a crate can clear. It rewrites only this
+# directory's pins, never the root's: the mise tools here and in mise.fixtures.toml, then, with
+# them, the crates and the fixture generator's packages. The crates' requirements include the
+# shared envelope crate's, tools/envelope/Cargo.toml, which has no lock of its own and is resolved
+# in this graph alone, so this upgrade moves them too, by the same rules: each raised to its
+# latest, an exact pin ("=") kept exact. A bump of the envelope's ICU4X crates that moves the
+# Unicode version fails the unit test asserting it, so it stays a reviewed change. Run it, review
+# the diff, and run the check.
+[tasks.upgrade]
+description = "Bump every mise tool here and in mise.fixtures.toml, every crate, and every fixture generator package to its latest, but a held one, rewriting the mise files, global.json, Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form"
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+held() {
+  grep -q "^$1 $2: " <<<"$HOLDS"
+}
+# Each tool is rewritten in place, its version alone, as `mise use` would write rust's table as a
+# bare version; the SDK's pin in global.json moves with dotnet's. A backend-qualified name, such as
+# "github:EmbarkStudios/cargo-about", is a quoted key holding a "/", so the name is matched with its
+# quotes optional and its regex characters escaped, under a "|" delimiter.
+tools=$(MISE_ENV=fixtures mise outdated --bump --json |
+  jq -r --arg dir "$PWD" 'to_entries[] |
+    select(.value.bump != null and (.value.source.path | startswith($dir + "/mise."))) |
+    "\(.value.source.path | split("/") | last) \(.key) \(.value.requested) \(.value.bump)"')
+while read -r file name pinned latest; do
+  [ -n "$file" ] || continue
+  held "$name" "$pinned" && continue
+  key=$(sed 's/[][\\.*^$|+?(){}]/\\&/g' <<<"$name")
+  sed -i -E "s|^(\"?$key\"? = (\\{ version = )?\")$pinned\"|\\1$latest\"|" "$file"
+  if [ "$name" = dotnet ]; then
+    sed -i -E "s/(\"version\": \")$pinned\"/\\1$latest\"/" generator/global.json
+  fi
+done <<<"$tools"
+# A new mise process, so the crates and packages are upgraded with the tools just pinned.
+mise run upgrade:packages
+'''
+
+[tasks."upgrade:packages"]
+description = "Bump every crate and fixture generator package to its latest, but a held one, rewriting Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form; upgrade runs it after the mise tools"
+hide = true
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+export PATH="$CARGO_HOME/bin:$PATH"
+held() {
+  grep -q "^$1 $2: " <<<"$HOLDS"
+}
+# A direct dependency with a release beyond its requirement gets that release as its requirement,
+# an exact pin ("=") kept exact, in each manifest that requires it: docproc-mail's and the shared
+# envelope crate's, both direct here, serde and serde_json in both. An indirect one beyond its
+# requirement moves only when the crate that requires it does. Each line of direct is a crate's
+# name, then the manifest requiring it; the envelope itself, by path, has no release to move to.
+direct=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] |
+  select(.name == "docproc-mail" or .name == "docproc-envelope") |
+  .manifest_path as $manifest | .dependencies[] | select(.path == null) | "\(.name) \($manifest)"')
+beyond=$(cargo update --dry-run --verbose 2>&1 |
+  sed -nE 's/^ *Unchanged +([^ ]+) +v([^ ]+) \(available: v([^)]+)\)$/\1 \2 \3/p')
+while read -r name pinned latest; do
+  [ -n "$name" ] || continue
+  held "$name" "$pinned" && continue
+  while read -r manifest; do
+    sed -i -E "s/^($name = (\\{ version = )?\"=?)[^\"]+\"/\\1$latest\"/" "$manifest"
+  done < <(sed -n "s/^$name //p" <<<"$direct")
+done <<<"$beyond"
+# Then every crate within its requirement to its latest, held ones left at their pins.
+within=$(cargo update --dry-run --verbose 2>&1 |
+  sed -nE 's/^ *Updating +([^ ]+) +v([^ ]+) -> v[^ ]+$/\1 \2/p')
+while read -r name pinned; do
+  [ -n "$name" ] || continue
+  held "$name" "$pinned" && continue
+  cargo update --quiet "$name@$pinned"
+done <<<"$within"
+
+# The fixture generator's packages, each pinned exactly in Generator.csproj: each with a newer
+# release is pinned at it in place, then the lock file rewritten from the project and checked in
+# locked mode, as the fixtures task restores it.
+cd generator
+MISE_ENV=fixtures mise exec -- bash -euo pipefail -c '
+export PATH="$DOTNET_ROOT:$PATH"
+dotnet restore --force-evaluate >/dev/null
+dotnet list package --outdated --format json |
+  jq -r ".projects[] | .frameworks[]?.topLevelPackages[]? |
+    \"\(.id) \(.requestedVersion | ltrimstr(\"[\") | rtrimstr(\"]\")) \(.latestVersion)\""
+' | while read -r name pinned latest; do
+  [ -n "$name" ] || continue
+  held "$name" "$pinned" && continue
+  sed -i "s/Include=\"$name\" Version=\"\\[$pinned\\]\"/Include=\"$name\" Version=\"[$latest]\"/" Generator.csproj
+done
+MISE_ENV=fixtures mise exec -- bash -euo pipefail -c '
+export PATH="$DOTNET_ROOT:$PATH"
+dotnet restore --force-evaluate >/dev/null
+dotnet restore --locked-mode >/dev/null
+'
+'''

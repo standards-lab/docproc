@@ -11,8 +11,8 @@ shellcheck = "0.11.0"
 GO_MODULES = ""
 # Space-separated list of the system tools under tools/, each with its own mise.toml that pins its
 # toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
-# turn.
-TOOLS = "ooxml"
+# turn: docproc-ooxml (.NET) and docproc-mail (Rust).
+TOOLS = "ooxml mail"
 
 # The one check: read-only and deterministic, stopping at the first failure.
 [tasks.check]

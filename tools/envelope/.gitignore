@@ -1,0 +1,4 @@
+# Build output, when cargo runs here rather than through a Rust tool's check.
+target/
+# The crate has no lock of its own: each Rust tool's Cargo.lock pins its graph.
+Cargo.lock

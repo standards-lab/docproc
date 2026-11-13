@@ -1,0 +1,41 @@
+[package]
+name = "docproc-mail"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "docproc's mail tool: Outlook .pst stores, .msg messages, .eml messages and mbox files to a JSON model"
+publish = false
+
+[dependencies]
+# docproc's Rust tools' common envelope: faults and exit codes, stderr lines, the lines writer, the
+# guard, the media store, the Markdown escapes, and the content rule, with its Markdown-to-plain
+# reader (`markdown`). Untagged, by path; its tests run in this tool's check, against this
+# Cargo.lock.
+docproc-envelope = { path = "../envelope", features = ["markdown"] }
+# Pinned exactly: the CLI works around known faults of this release, in src/pst.rs.
+outlook-pst = "=1.2.0"
+# Code pages to text (src/codepage.rs): codepage maps a Windows code page to its encoding_rs
+# encoding, which decodes it, and a charset an HTML body's <meta> names, a WHATWG label encoding_rs
+# knows, back to its code page.
+codepage = "0.1.3"
+encoding_rs = "0.8.44"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+# Microsoft's MS-OXRTFCP decompressor: PidTagRtfCompressed to RTF. Pinned exactly: the CLI
+# works around its panics on short or oversized input (src/rtf.rs).
+compressed-rtf = "=1.0.1"
+# HTML to Markdown, for the derived Markdown body; it brings html5ever.
+htmd = "0.5.6"
+# Compound File Binary (MIT): the container of a .msg, under the CLI's own MS-OXMSG reader
+# (src/msg.rs). It brings fnv, uuid and web-time.
+cfb = "0.16.0"
+# Stalwart's RFC 5322 and MIME parser (Apache-2.0 OR MIT): the reader of an .eml and of an
+# mbox's messages (src/eml.rs, src/mbox.rs). It brings hashify and encodify; full_encoding
+# brings encoding_rs's multi-byte charsets, ISO-2022-JP and GB2312 among them.
+mail-parser = { version = "1.0.1", features = ["full_encoding"] }
+
+# A release binary checks integer arithmetic as a debug one does: an overflow panics, a fault the
+# CLI reports, instead of wrapping silently into a wrong offset or length. The check runs every
+# test against this profile.
+[profile.release]
+overflow-checks = true

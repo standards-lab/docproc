@@ -40,12 +40,13 @@ text" states and applies field by field.
   value, as processing's `office/model.go`, `email/model.go`, and `onenote/model.go` do.
 - **Absence.** A field with no value, or an empty list, is left out, never `null`.
 - **Text layer.** A line that holds text carries it as `markdown`: docproc-ooxml's `document`,
-  docproc-mail's `message`, docproc-onenote's `page`. Literal text is escaped by htmd's rules, which
-  mail's and onenote's Markdown share (onenote README, "Markdown"), and docproc-ooxml's matches
-  (onenote `src/markdown.rs`, `escape`): a backslash before each of ``\ * _ ` [ ] | ~ & $``,
-  and before `<` when what follows could open an HTML tag, comment, or instruction (a letter,
-  `/` then a letter or nothing, `!`, `?`, or the text's end); at a line's start, before a first
-  `-`, `=`, `+`, `#`, or `>`, and before the `.` or `)` after one to nine digits.
+  docproc-mail's `message`, docproc-onenote's `page`. Literal text is escaped by htmd's rules, as
+  the docproc-envelope crate's literal-text escape (`tools/envelope/src/markdown.rs`) writes them
+  for the Rust tools and docproc-ooxml's escape matches: a backslash before each of
+  ``\ * _ ` [ ] | ~ & $``, and before `<` when what follows could open an HTML tag, comment, or
+  instruction (a letter, `/` then a letter or nothing, `!`, `?`, or the text's end); at a line's
+  start, before a first `-`, `=`, `+`, `#`, or `>`, and before the `.` or `)` after one to nine
+  digits.
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
   line that names it. Its name is the lowercase hex SHA-256 of its bytes plus `.` and the stored
@@ -71,7 +72,7 @@ text" states and applies field by field.
 - **Cases.** One committed table, `tools/envelope/cases.json`, holds the envelope's cases: the
   warning escape, a stderr line and the `where` and `what` it splits to, a payload's bytes and
   stored name and the media name they make, the exit codes' meanings, and the literal-text
-  escape; docproc-ooxml's tests, the shared Rust crate's, and docproc's `internal/cli`'s read it
+  escape; docproc-ooxml's tests, docproc-envelope's, and docproc's `internal/cli`'s read it
   in place, so no language restates a case.
 - **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
   docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
@@ -162,15 +163,17 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   body's Markdown is. The source text is the text body; a message with an RTF body and no text
   body has the RTF's text, read by the RTF specification: the body decompressed, control words
   and ignorable groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as
-  line breaks, symbol words (`\rquote`, `\emdash`, …) as their characters, and `\'hh` decoded in
-  the `\ansicpg` code page. An RTF that encapsulates HTML (`\fromhtml`) has that HTML's text.
+  line breaks, `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and
+  `\'hh` decoded in the `\ansicpg` code page; nothing separates a table's cells. An RTF that
+  encapsulates HTML (`\fromhtml`) has that HTML's text.
 - The content rule compares a source text with a Markdown text by standards alone, so no
-  fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in one crate
-  under `tools/` that docproc-mail and docproc-onenote both depend on. Its Unicode version, the
-  one its pinned crates carry (18.0 today), is part of schema "2": the normalization, the word and
-  sentence boundaries, and the general categories are that version's, a unit test asserts it, and
-  another version is a change of meaning, so a crate bump that moves it fails the check and
-  becomes a reviewed change, the goldens re-recorded and the CHANGELOG naming the version.
+  fixture tunes it; docproc-onenote's OCR text is planned to follow it too. It is written once,
+  in the docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail depends
+  on and docproc-onenote is planned to. Its Unicode version, 18.0.0, the one its exactly pinned
+  ICU4X 2.4.0 crates carry, is part of schema "2": the normalization, the word and sentence
+  boundaries, and the general categories are that version's, a unit test asserts it, and another
+  version is a change of meaning, so a crate bump that moves it fails the check and becomes a
+  reviewed change, the goldens re-recorded and the CHANGELOG naming the version.
   - **Plain text.** Both are normalized to Unicode NFC. The Markdown is read by CommonMark's
     semantics: a link as its text followed by its destination as one URL token, an image as its
     alt text followed by its destination, emphasis and backslash escapes removed.
@@ -200,8 +203,8 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
 - `smtp_address` is an Exchange (`EX`) address's SMTP address, which schema "1" leaves out
   (README "Known limits"): a recipient's from its `PidTagSmtpAddress` (0x39FE), the sender's from
   the message's `PidTagSenderSmtpAddress` (0x5D01). It is left out when the input doesn't hold it,
-  as no committed fixture holds the sender's, and docproc's typed metadata then takes the sender's
-  SMTP address from `transport_headers`' From.
+  and docproc's typed metadata then takes the sender's SMTP address from `transport_headers`'
+  From. Of the committed fixtures, only Tika's `testPST_variousBodyTypes.pst` holds a sender's.
 - `inline` means the Markdown links the attachment, in every input format. Attachments are read
   before the Markdown is made, a nested message's included, and the HTML's image sources are
   rewritten to their media names: a `cid:` source, percent-decoded, matches an attachment's
@@ -365,23 +368,29 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   feeds, CR LF as one), whitespace collapsed and trimmed, empty lines skipped, compared with its
   message's Markdown by the duplication rule above. Of 1,235,972 B of text-body lines, 19,149 B in
   15 messages are not in the Markdown by that rule, all where the Markdown is made from HTML; where
-  it is made from the text body, nothing is. Compared by docproc-mail's content rule instead
-  (UAX #29 by uniseg 0.10.1 on Unicode 16.0, CommonMark by markdown-it-py; the mail task reruns it
-  on the content rule's version), the sentences it
-  appends are 295 B in 7 messages, each a text body that says what its HTML doesn't: cpython's
-  `msg_10.eml` (143 B, the encodings its text parts name) and `msg_15.eml` (18 B), the generated
-  inline-image message as `.eml`, `.msg`, and in `mailbox.pst` (30 B each, "It is taped into the
-  log book.", where the HTML shows the image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg`
-  (16 B), and Tika's `testMSG_chinese.msg` (28 B). Outlook 2003's welcome message, once in
-  Tika's `test-outlook2003.msg` and twice in libyal's `outlook.pst`, appends nothing: its stored
-  text body holds U+0099 where its HTML holds `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code
-  unit 0x0099), a character the sending client mis-decoded, not one docproc-mail decodes, and as
-  a control and a symbol both only separate words, so `SharePoint` matches. No decoder
+  it is made from the text body, nothing is. docproc-mail's content rule is measured over the
+  same `~/docs` as docproc-mail ships it: the docproc-envelope crate on Rust 1.100.0, with NFC,
+  the dictionary-free UAX #29 word and sentence boundaries, and general categories from ICU4X
+  2.4.0 on Unicode 18.0.0, CommonMark read by pulldown-cmark 0.13.6, and the crate's own Myers
+  alignment. A scratch build of the tool writes each comparison to stderr, comparing the Markdown
+  htmd makes from the HTML before anything is appended. Of the 31 messages whose Markdown is made
+  from HTML, 28 with a source text, the sentences the rule appends are 295 B in 7 messages, each
+  a text body that says what its HTML doesn't: cpython's `msg_10.eml` (143 B, the encodings its
+  text parts name) and `msg_15.eml` (18 B), the generated inline-image message as `.eml`, `.msg`,
+  and in `mailbox.pst` (30 B each, "It is taped into the log book.", where the HTML shows the
+  image), POI's `ASCII_UTF-8_CP1252_LCID1031_HTML.msg` (16 B), and Tika's `testMSG_chinese.msg`
+  (28 B). Outlook 2003's welcome message, once in Tika's `test-outlook2003.msg` and twice in
+  libyal's `outlook.pst`, appends nothing: its stored text body holds U+0099 where its HTML holds
+  `™` (the .msg's `PidTagBody` is `PT_UNICODE`, code unit 0x0099), a character the sending client
+  mis-decoded, not one docproc-mail decodes, and as a control and a symbol both only separate
+  words, so `SharePoint` matches. No decoder
   correction applies: PT_STRING8 is read in its message's code page, and a MIME part's charset
   label as the WHATWG Encoding Standard reads it (mail-parser maps `iso-8859-1` and `us-ascii` to
   windows-1252). The RTF's text, read as "docproc-mail" states, compared the same way, lacks
-  nothing where the Markdown is made from it; beside a stored HTML body it lacks 28 B, the line
-  `testMSG_chinese.msg`'s text body also holds.
+  nothing where the Markdown is made from it (2 messages); beside a stored HTML body (2 messages)
+  it lacks 57 B, all in `testMSG_chinese.msg`: 28 B, the line its text body also holds, and 29 B,
+  a table's numbers 1 to 19, which the RTF's text runs together into one word, since nothing
+  separates its cells.
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
@@ -2051,119 +2060,27 @@ spike-ai-pipeline-office 0.1.0. What it leaves to later tasks:
 
 ### docproc-mail [mail]
 
-From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
+Built at `tools/mail/`: its README states the tool, and its CHANGELOG how it differs from
+spike-ai-pipeline-mail 0.3.1. What it leaves to later tasks:
 
-- **Toolchain.** The content rule adds a crate for each of its parts, named in Cargo.toml with
-  its reason, as the spike's comments do: NFC normalization, UAX #29 word and sentence
-  boundaries, Unicode general categories, a CommonMark reader, and a diff. codepage-strings goes:
-  `decode` is about 30 lines over `codepage::to_encoding` and encoding_rs's
-  `decode_without_bom_handling`, so a PT_STRING8 that starts FF FE is read in its code page, a
-  code page `codepage` doesn't know decoded lossily as 1252 with the existing note, and the exact
-  pin and its US-ASCII workaround go; a DOS code page the review of ~/docs finds becomes a table
-  in the tool.
-- **Unicode version.** The content rule's, as "docproc-mail" states; the payload measurement's
-  content-rule figures are rerun on it.
-- **Fixture generator.** MimeKit holds at the latest 4.x, a recorded hold until MsgKit 3.0.6
-  (MimeKit >= 4.18.1) or PstBuilder.Eml 1.3.0 (>= 4.17.0) releases on MimeKit 5. The generator
-  moves from `net10.0` and SDK 10.0.402 to .NET 11, beside docproc-ooxml, and regenerates its
-  `.pst` and `.msg` fixtures once, with the schema "2" re-record, so the goldens change a single
-  time.
-- **Layout.** Nested as `tools/mail/`: `src/`, `tests/`, the generator's `fixtures` mode, and its
-  own `mise.toml`, whose tasks resolve paths from their own directory and which the root's
-  `check`, `currency`, and `upgrade` call. The tool's name comes from `CARGO_PKG_NAME` in `src/`
-  and `tests/`, so the rename is Cargo.toml's line and the goldens. The root workflow releases a
-  `tools/mail/v*` tag as `docproc-mail-v<version>-linux-<arch>.tar.gz` with `SHA256SUMS`, and the
-  task adds mail's path filter to docproc's CI ("docproc-ooxml [ooxml]").
-- **Left in the spike.** The scorer `bench/findings.rs`, `bench/rusage.c`, `scripts/findings.sh`,
-  the generator's `Scale.cs` and `scale` mode, and `docs/findings/`, at v0.3.1; the README's cost
-  figures cite the spike's finding.
-- **Check.** The release profile sets `overflow-checks = true`, so a wrapped length is a guarded
-  panic in the binary that ships, and the check runs
-  `cargo test --release --locked --target <musl>`, so the goldens run against the release artifact
-  and the graph builds once; the debug build leaves the check.
-- **Shared crate.** This task writes the untagged path crate under `tools/` that holds the Rust
-  tools' whole envelope: the fault type with its exit codes, the error and warning lines, the
-  lines writer, the record guard, the media store (the name rule, write-once, the directory
-  created once the input is read), the literal-text escape, and the content rule. mail keeps its
-  flags, readers, and model; its text body is escaped by the shared escape, not through html5ever
-  and htmd. Its usage error writes `error:`, `--version` on a failed stdout exits 1, and its media
-  directory follows the crate's rule, where the spike's drifted from the envelope. The crate,
-  written here once for both tools ("docproc-onenote" adopts it), also holds: the content rule's
-  entry point over plain token sequences, with the Markdown-to-plain reader behind a Cargo
-  feature only docproc-mail enables; its Unicode crates required exactly (`=`), so both tools'
-  locks resolve to the version this section states; the media store streaming each medium,
-  hashed while copied through a fixed buffer into a temporary file renamed to its hash name, or
-  hashed only without `--media`; one Markdown destination writer, writing a destination holding
-  a space, a control character, `<`, or `>` as `<…>` with `<` and `>` escaped, else bare with
-  its parentheses escaped; and the warning writer, which writes a colon followed by a space in
-  `<where>` with the space escaped and escapes control characters in `<where>` and `<what>`, with
-  unit tests for each; the crate's tests read `tools/envelope/cases.json` in place ("Common
-  envelope"). docproc's CI runs both Rust tools' checks when the crate changes.
-- **Notices.** `tools/notices.sh`, which reads a .NET tool's graph alone and carries MIT's text
-  alone, gains a cargo branch: release packing writes a third-party notices file from the locked
-  graph into the archive, and the check fails on a license outside the permissive set.
-- **Faults.** An HTML body nested past 512 open elements, counted by a pass over its tags before
-  htmd, gives way to the text body, else the HTML's text, with a warning ("docproc-mail"). The
-  per-record guard wraps the read, the mapping, and the derivation, so a fault there is that
-  record's `skipped` line and exit 4 is left for faults outside any record; stdout is flushed
-  after each message line. Unit tests cover the cap and one past it, and an mbox test puts the
-  deep message between two good ones whose lines both arrive.
-- **Folder cycles.** A `.pst` walk, and the `--after` pre-walk, keep the folder node ids they
-  have entered; a hierarchy row naming one is a `skipped` line of kind `folder`, reason "already
-  read", with a warning. A unit test over a libyal store with one hierarchy row rewritten shows
-  it.
-- **Markdown order.** Stored HTML, HTML recovered from the RTF, the text body, then the RTF's
-  text, as "docproc-mail" states, where the spike's message with a plain RTF body alone has no
-  Markdown. The RTF text reader is `rtf.rs`'s lexer and group stack with a second sink, not a
-  second walker; a built-message unit test covers a plain-RTF-only and a `\fromtext` message.
-- **Inline images.** Attachments are read before the Markdown, a nested message's included, and
-  the HTML's image sources are rewritten to media names before htmd runs, as "docproc-mail"
-  states: a percent-decoded `cid:` matched to `content_id`, another source to the
-  Content-Location (MAPI's 0x3713 read for matching only), a `data:` image written as media
-  without an attachment record, and an unmatched source kept with a warning. `inline` means the
-  Markdown links it, where the spike's is `ATT_MHTML_REF` in MAPI and Content-Disposition in
-  MIME. Unit tests over built messages show each case.
-- **Places.** A `.pst` warning's `<where>` names a folder by node id (`folder 32802, message
-  2097188, attachment 5`), where the spike joins display names, which can hold `": "`.
-- **Cut.** `body` (`text`, `html`, `rtf`, `derived.html`); folder `display_name`. RTF and HTML
-  are still decoded, since the Markdown is made from them. The `.msg` named-property reader and
-  `Value::Multiple`, read for no field; a multi-valued property becomes `Value::Other`.
-- **Into the Markdown.** When the Markdown is made from HTML, stored or recovered from the RTF, the
-  source text's sentences the Markdown lacks, as "docproc-mail" states: the text body's, or an
-  RTF-only message's RTF text. The content rule is in the shared crate. The goldens of
-  `generated/eml/03-html-inline-image`, `generated/msg/03-html-inline-image`,
-  `generated/pst/mailbox`, `msg/poi-ASCII_UTF-8_CP1252_LCID1031_HTML`, and
-  `msg/tika-testMSG_chinese` show it. `msg/tika-test-outlook2003`'s and `pst/libyal-outlook`'s
-  append nothing: their text body differs from the HTML only in links written as `<url>` and a
-  stored U+0099 where the HTML holds `™`, neither a word.
-- **Kept.** The store's `display_name`, a label kept as metadata.
-- **Moved.** `body.derived.markdown` up to the message's `markdown`.
-- **Added.** `smtp_address` on an Exchange (`EX`) address: a recipient's from `PidTagSmtpAddress`
-  (0x39FE), the sender's from `PidTagSenderSmtpAddress` (0x5D01), left out when absent. No
-  committed fixture holds 0x5D01, so a unit test over a built `.msg` shows the sender's; the
-  goldens show the recipients'.
-- **Flags.** `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
-- **Envelope.** `schema` "2". `--version` writes `schema 2` on its second line; the shared
-  crate's warning writer uses the envelope's stated escape, `:\ ` for a colon followed by a space
-  in `<where>`, which docproc-onenote takes through the crate; an error's reason never leads with
-  the input path. A `message` line's optional `media` lists each `data:` image's file
-  ("docproc-mail"); a unit test over a built message shows it.
-- **Inputs.** A leading UTF-8 byte-order mark is skipped before the header check. An mbox whose
-  every entry fails it is refused, its `store` line held until the first message parses. A TNEF
-  part and an opaque S/MIME part are a warning on the message and a README limit; reading them
-  is backlog.
-- **RTF size.** A compressed RTF whose raw size passes nine times its compressed length, more
-  than its tokens can yield, is refused before decompressing, a note on the message.
-- **Memory.** A `.pst` attachment is hashed and written from the reader's buffer, not a copy. The
-  README states the bound: peak memory is a small multiple of the largest single attachment, or
-  of the file for an `.eml`.
-- **Goldens.** `tests/golden/{msg,pst,generated}/` re-recorded under "2", and goldens added for
-  every committed input the MIME group holds, `.eml`, mboxrd, and mbox, and for
-  `tests/fixtures/generated/eml/`; `03-html-inline-image`, which ~/docs also holds as `.eml`,
-  shows the appended line "It is taped into the log book." One golden helper in `tests/common`
-  runs each input, asserts exit 0, and compares its `.jsonl` and `.stderr`, `UPDATE_GOLDEN`
-  re-recording them. An ANSI `.pst` joins the fixtures if a freely licensed one is found; until
-  then the README's limit stands.
+- **Shared crate.** The docproc-envelope crate at `tools/envelope` holds the Rust tools' common
+  envelope and the content rule; its `src/lib.rs` lists the parts. It has no lock or toolchain of
+  its own: each Rust tool's check formats, lints, and tests it against that tool's Cargo.lock, and
+  each Rust tool's CI filter takes the `&envelope` anchor, so a change to the crate runs every
+  Rust tool and no .NET one. mail's `upgrade` raises the crate's requirements with its own.
+  docproc-onenote adopts it ("docproc-onenote [onenote]").
+- **Holds.** A tool's hold list is `HOLDS` in its `mise.toml`'s `[env]`, one
+  `<item> <pin>: <reason>` per line, which `upgrade` skips and `currency` reports as held; a hold
+  names its pin, so moving the pin by hand ends it. mail's list holds its fixture generator's
+  MimeKit at 4.18.2.
+- **Notices.** `tools/notices.sh`'s cargo branch runs cargo-about, pinned in each Rust tool's
+  `mise.toml`, against the accepted licenses in the tool's `about.toml`; mail's accepts MIT,
+  Apache-2.0, BSD-3-Clause, and Unicode-3.0. cargo-about walks proc macros' build-time
+  subtrees too, so the notices name those crates.
+- **Code pages.** A DOS code page the review of ~/docs finds, which the `codepage` crate doesn't
+  know, becomes a table in the tool, as US-ASCII (20127) is in `src/codepage.rs`.
+- **Memory.** Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in
+  the spike.
 
 ### docproc-onenote [onenote]
 
@@ -2175,31 +2092,34 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
   tool's own tested code: a table of contents and a failed section told by the error message's
   prefix, the `println!` on a malformed node kept off stdout (`stdout.rs`), and the recycle bin
   read through `cab`, a direct dependency, with the parser's name normalisation mirrored.
-  typed-path held at 0.12.4; it moves to 0.13.0 only with onenote_parser.
+  typed-path is held at 0.12.4 in the tool's hold list ("docproc-mail [mail]", Holds); it moves
+  to 0.13.0 only with onenote_parser. Whether the math port's general categories move from
+  finl_unicode to icu_properties, which docproc-envelope already links, is the task's to decide.
 - **Layout.** Nested as `tools/onenote/`: `src/`, `tests/`, the release files, and its own
   `mise.toml`, whose tasks resolve paths from their own directory and which the root's `check`,
   `currency`, and `upgrade` call; the nested `.gitattributes` keeps its fixture rules. The root
   workflow releases a `tools/onenote/v*` tag as `docproc-onenote-v<version>-linux-<arch>.tar.gz`
   with `SHA256SUMS` through the shared pack script, and the task adds onenote's path filter to
-  docproc's CI. The tool's `currency` reports its crates and mise tools only; the action pins are the
-  root's.
+  docproc's CI. The tool's `currency` reports its crates and mise tools only; the action pins are
+  the root's.
 - **Left in the spike.** `bench/findings.rs`, `bench/rusage.c`, `scripts/findings.sh`, the
   `[[example]]`, the `findings` task, and `docs/findings/`, at v0.1.0; a per-tool timing, if one
   is wanted, is one harness for all three tools, in the acceptance task.
-- **Shared crate.** onenote adopts the untagged path crate under `tools/` that docproc-mail's
-  task writes ("docproc-mail [mail]", Shared crate), in place of its own `jsonl.rs`, `guard.rs`,
-  fault and warning code, media name rule, and `escape`. Its media directory is created once the
-  input is read, where the spike's is created at its first file; it takes the content rule over
-  plain tokens without the CommonMark feature, comparing an image's `ocr_text` with its
-  `alt_text`.
+- **Shared crate.** onenote adopts docproc-envelope ("docproc-mail [mail]", Shared crate) in
+  place of its own `jsonl.rs`, `guard.rs`, fault and warning code, media name rule, and `escape`.
+  Its check tests the crate against onenote's Cargo.lock, and its CI filter takes the `&envelope`
+  anchor. A panic's reason becomes the crate's "the reader panicked: <message>", where the
+  spike's reads "the parser panicked". Its media directory is created once the input is read,
+  where the spike's is created at its first file; it takes the content rule over plain tokens
+  without the CommonMark feature, comparing an image's `ocr_text` with its `alt_text`.
 - **Check.** The release profile sets `overflow-checks = true`, and the check runs
   `cargo test --release --locked --target <musl>`, so the goldens run against the release artifact
   and the debug build leaves the check. The media test writes under `CARGO_TARGET_TMPDIR`, not the
   system temporary directory, so the check writes only `target/`.
-- **Notices.** Release packing writes a third-party notices file from the locked graph into the
-  archive, and the check fails on a license outside the permissive set. The Rust tools' license
-  check allows MPL-2.0 by name for docproc-onenote alone, for onenote_parser, and the notices
-  state where onenote_parser's source is.
+- **Notices.** `tools/notices.sh`'s cargo branch writes the notices and checks the licenses
+  ("docproc-mail [mail]", Notices). onenote's `about.toml` accepts MPL-2.0 by name, for
+  onenote_parser, beside the licenses its graph needs, and the notices state where
+  onenote_parser's source is.
 - **Memory.** Media go through the shared crate's streaming store, where the spike reads each
   whole and writes the final name directly, so a killed run left a truncated file under the full
   content's name.

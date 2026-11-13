@@ -1,0 +1,38 @@
+[package]
+name = "docproc-envelope"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+description = "The common envelope of docproc's Rust system tools: faults and exit codes, stderr lines, the lines writer, the guard, the media store, the Markdown escapes, and the content rule"
+# Untagged and unpublished: each Rust tool under tools/ depends on it by path, and its tests run in
+# each tool's check, against that tool's Cargo.lock.
+publish = false
+
+[dependencies]
+serde = "1.0.229"
+serde_json = "1.0.154"
+# RustCrypto's SHA-256: a medium is named by the hash of its content.
+sha2 = "0.11.1"
+# The content rule's Unicode (src/content.rs), all ICU4X 2.4.0 on Unicode 18.0.0, a version that
+# is part of schema "2": each is required exactly, so every tool's lock resolves to this release,
+# and a bump that moves the Unicode version fails the unit test asserting it, a reviewed change.
+# NFC normalization.
+icu_normalizer = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+# Unicode general categories: a word token holds a letter or a digit (L* or N*).
+icu_properties = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+# UAX #29 word and sentence boundaries, the word segmenter's dictionary-free, rule-based form: no
+# LSTM model (the `auto` and `lstm` features) and no dictionaries are linked.
+icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
+# The data the three carry, linked through them already, named here for the Unicode version each
+# states, which a unit test asserts. Not dev-dependencies: the crate is tested from each tool's
+# graph, where it is no workspace member, and cargo tests no such crate with dev-dependencies.
+icu_normalizer_data = "=2.4.0"
+icu_properties_data = "=2.4.0"
+icu_segmenter_data = "=2.4.0"
+# A CommonMark reader (src/content/markdown.rs), for a tool that compares a source text with its
+# Markdown; behind the `markdown` feature, so a tool comparing two plain texts links none.
+pulldown-cmark = { version = "=0.13.6", default-features = false, optional = true }
+
+[features]
+# The content rule's Markdown-to-plain reader, which docproc-mail enables.
+markdown = ["dep:pulldown-cmark"]
