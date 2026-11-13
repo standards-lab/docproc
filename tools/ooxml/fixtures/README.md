@@ -1,9 +1,10 @@
 # Fixtures
 
-The documents docproc-ooxml's tests read, committed and never generated in the check. The pool is two
-sets, and nothing else: the generated set in `generated/`, its refused documents among them, and
-the real-world set in `realworld/`. The hermetic check, `mise run check`, runs both, wherever it runs, locally or in
-CI; no test reads a document from anywhere else, and none is fetched.
+The documents docproc-ooxml's tests read, committed and never generated in the check. The pool
+is two sets, and nothing else: the generated set in `generated/`, its refused documents among
+them, and the real-world set in `realworld/`. The hermetic check, `mise run check`, runs both,
+wherever it runs, locally or in CI; no test reads a document from anywhere else, and none is
+fetched.
 
 ## Real-world set
 
@@ -50,8 +51,8 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   carries a real application's XML. Both are kept: the first is the XML the script means to
   write, the second what an editor makes of it, and docproc-ooxml must read both the same way.
 - `<name>.truth.json`: the ground truth both files share, written by the script from the same
-  definitions. Its shape is its own, not docproc-ooxml's model, so the tests compare the model against
-  it element by element. It holds:
+  definitions. Its shape is its own, not docproc-ooxml's model, so the tests compare the model
+  against it element by element. It holds:
   - `elements`: the accepted-state text of each element in document order:
     - `heading`, with its level.
     - `paragraph`.
@@ -92,8 +93,9 @@ The xlsx fixtures are in `generated/xlsx/`, the same three or four files each:
   8601, from the date the script gave openpyxl), its `formula` or its shared formula's anchor
   (`sharedFrom`), its `colSpan` and `rowSpan` when merged, and its external hyperlink's
   `target`; then its charts and pictures, a picture with its `sheet` (the sheet's index, from
-  0), then its objects, each its preview's `media` and its payload's `embedded` or `ole`. The re-save has its own truth wherever its cells differ, which is in
-  every fixture with a formula, a boolean, or an error.
+  0), then its objects, each its preview's `media` and its payload's `embedded` or `ole`. The
+  re-save has its own truth wherever its cells differ, which is in every fixture with a formula,
+  a boolean, or an error.
 
 The pptx fixtures are in `generated/pptx/`:
 
@@ -107,8 +109,9 @@ The pptx fixtures are in `generated/pptx/`:
 - `<name>.truth.json` and `<name>.libreoffice.truth.json`: each slide in presentation order, its
   `number`, whether it is `hidden`, its elements in the docx truth's shape (a title is a level-1
   `heading`; a picture's `media` and a payload's `embedded` or `ole` have their `slide`, the
-  slide's index), and its `notes`' elements when it has notes. `absent` holds the layouts' and master's prompt texts and LibreOffice's
-  notes-page slide-number field, which must appear nowhere.
+  slide's index), and its `notes`' elements when it has notes. `absent` holds the layouts' and
+  master's prompt texts and LibreOffice's notes-page slide-number field, which must appear
+  nowhere.
 
 | Fixture | Covers |
 | --- | --- |

@@ -1,7 +1,7 @@
-# mise: docproc-ooxml's toolchain and its check, publish, currency, fixtures, and golden tasks. The
-# toolchain is pinned here alone; docproc's root check and currency run this file's tasks through
-# its TOOLS list (`mise -C tools/ooxml run check`), and tools/pack.sh runs `publish`. Each task
-# runs in this directory.
+# mise: docproc-ooxml's toolchain and its check, publish, currency, upgrade, fixtures, and golden
+# tasks. The toolchain is pinned here alone; docproc's root check, currency, and upgrade run this
+# file's tasks through its TOOLS list (`mise -C tools/ooxml run check`), and tools/pack.sh runs
+# `publish`. Each task runs in this directory.
 [tools]
 dotnet = "11.0.100"
 jq = "1.8.2"
