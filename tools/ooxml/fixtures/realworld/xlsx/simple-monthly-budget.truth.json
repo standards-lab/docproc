@@ -1,0 +1,405 @@
+{
+  "fixture": "simple-monthly-budget",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Simple Monthly Budget",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "SIMPLE MONTHLY BUDGET"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "B3",
+                  "type": "text",
+                  "value": "MONTHLY INCOME"
+                },
+                {
+                  "ref": "E3",
+                  "type": "text",
+                  "value": "PERCENTAGE OF INCOME SPENT"
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "B4",
+                  "type": "text",
+                  "value": "Item"
+                },
+                {
+                  "ref": "C4",
+                  "type": "text",
+                  "value": "Amount"
+                },
+                {
+                  "ref": "E4",
+                  "type": "number",
+                  "value": 2336,
+                  "formula": "TotalMonthlyExpenses",
+                  "colSpan": 3,
+                  "rowSpan": 2
+                },
+                {
+                  "ref": "H4",
+                  "type": "number",
+                  "value": 0.6229333333333333,
+                  "formula": "TotalMonthlyExpenses/TotalMonthlyIncome",
+                  "colSpan": 1,
+                  "rowSpan": 2
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "B5",
+                  "type": "text",
+                  "value": "Income 1"
+                },
+                {
+                  "ref": "C5",
+                  "type": "number",
+                  "value": 2500
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "B6",
+                  "type": "text",
+                  "value": "Income 2"
+                },
+                {
+                  "ref": "C6",
+                  "type": "number",
+                  "value": 1000
+                }
+              ]
+            },
+            {
+              "row": 7,
+              "cells": [
+                {
+                  "ref": "B7",
+                  "type": "text",
+                  "value": "Other"
+                },
+                {
+                  "ref": "C7",
+                  "type": "number",
+                  "value": 250
+                },
+                {
+                  "ref": "E7",
+                  "type": "text",
+                  "value": "SUMMARY"
+                }
+              ]
+            },
+            {
+              "row": 8,
+              "cells": [
+                {
+                  "ref": "E8",
+                  "type": "text",
+                  "value": "Total Monthly Income"
+                },
+                {
+                  "ref": "F8",
+                  "type": "text",
+                  "value": "Total Monthly Expenses"
+                },
+                {
+                  "ref": "G8",
+                  "type": "text",
+                  "value": "Balance",
+                  "colSpan": 2,
+                  "rowSpan": 1
+                }
+              ]
+            },
+            {
+              "row": 9,
+              "cells": [
+                {
+                  "ref": "B9",
+                  "type": "text",
+                  "value": "MONTHLY EXPENSES"
+                },
+                {
+                  "ref": "E9",
+                  "type": "number",
+                  "value": 3750,
+                  "formula": "TotalMonthlyIncome"
+                },
+                {
+                  "ref": "F9",
+                  "type": "number",
+                  "value": 2336,
+                  "formula": "TotalMonthlyExpenses"
+                },
+                {
+                  "ref": "G9",
+                  "type": "number",
+                  "value": 1414,
+                  "formula": "TotalMonthlyIncome-TotalMonthlyExpenses",
+                  "colSpan": 2,
+                  "rowSpan": 1
+                }
+              ]
+            },
+            {
+              "row": 10,
+              "cells": [
+                {
+                  "ref": "B10",
+                  "type": "text",
+                  "value": "Item"
+                },
+                {
+                  "ref": "C10",
+                  "type": "text",
+                  "value": "Amount"
+                }
+              ]
+            },
+            {
+              "row": 11,
+              "cells": [
+                {
+                  "ref": "B11",
+                  "type": "text",
+                  "value": "Rent/mortgage"
+                },
+                {
+                  "ref": "C11",
+                  "type": "number",
+                  "value": 800
+                }
+              ]
+            },
+            {
+              "row": 12,
+              "cells": [
+                {
+                  "ref": "B12",
+                  "type": "text",
+                  "value": "Electric"
+                },
+                {
+                  "ref": "C12",
+                  "type": "number",
+                  "value": 120
+                }
+              ]
+            },
+            {
+              "row": 13,
+              "cells": [
+                {
+                  "ref": "B13",
+                  "type": "text",
+                  "value": "Gas"
+                },
+                {
+                  "ref": "C13",
+                  "type": "number",
+                  "value": 50
+                }
+              ]
+            },
+            {
+              "row": 14,
+              "cells": [
+                {
+                  "ref": "B14",
+                  "type": "text",
+                  "value": "Cell phone"
+                },
+                {
+                  "ref": "C14",
+                  "type": "number",
+                  "value": 45
+                }
+              ]
+            },
+            {
+              "row": 15,
+              "cells": [
+                {
+                  "ref": "B15",
+                  "type": "text",
+                  "value": "Groceries"
+                },
+                {
+                  "ref": "C15",
+                  "type": "number",
+                  "value": 500
+                }
+              ]
+            },
+            {
+              "row": 16,
+              "cells": [
+                {
+                  "ref": "B16",
+                  "type": "text",
+                  "value": "Car payment"
+                },
+                {
+                  "ref": "C16",
+                  "type": "number",
+                  "value": 273
+                }
+              ]
+            },
+            {
+              "row": 17,
+              "cells": [
+                {
+                  "ref": "B17",
+                  "type": "text",
+                  "value": "Auto expenses"
+                },
+                {
+                  "ref": "C17",
+                  "type": "number",
+                  "value": 120
+                }
+              ]
+            },
+            {
+              "row": 18,
+              "cells": [
+                {
+                  "ref": "B18",
+                  "type": "text",
+                  "value": "Student loans"
+                },
+                {
+                  "ref": "C18",
+                  "type": "number",
+                  "value": 50
+                }
+              ]
+            },
+            {
+              "row": 19,
+              "cells": [
+                {
+                  "ref": "B19",
+                  "type": "text",
+                  "value": "Credit cards"
+                },
+                {
+                  "ref": "C19",
+                  "type": "number",
+                  "value": 100
+                }
+              ]
+            },
+            {
+              "row": 20,
+              "cells": [
+                {
+                  "ref": "B20",
+                  "type": "text",
+                  "value": "Auto Insurance"
+                },
+                {
+                  "ref": "C20",
+                  "type": "number",
+                  "value": 78
+                }
+              ]
+            },
+            {
+              "row": 21,
+              "cells": [
+                {
+                  "ref": "B21",
+                  "type": "text",
+                  "value": "Personal care"
+                },
+                {
+                  "ref": "C21",
+                  "type": "number",
+                  "value": 50
+                }
+              ]
+            },
+            {
+              "row": 22,
+              "cells": [
+                {
+                  "ref": "B22",
+                  "type": "text",
+                  "value": "Entertainment"
+                },
+                {
+                  "ref": "C22",
+                  "type": "number",
+                  "value": 100
+                }
+              ]
+            },
+            {
+              "row": 23,
+              "cells": [
+                {
+                  "ref": "B23",
+                  "type": "text",
+                  "value": "Miscellaneous"
+                },
+                {
+                  "ref": "C23",
+                  "type": "number",
+                  "value": 50
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "series": [
+            {
+              "name": "ChartData",
+              "categories": [
+                "Income",
+                "Expenses"
+              ],
+              "values": [
+                3750,
+                2336
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

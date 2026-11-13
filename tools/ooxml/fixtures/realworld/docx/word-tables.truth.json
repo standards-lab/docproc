@@ -1,0 +1,835 @@
+{
+  "fixture": "word-tables",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Test with tables"
+    },
+    {
+      "kind": "paragraph",
+      "text": "A uniform table"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with horizontal spans"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 1.1 1.2"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 2.1 2.2"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with horizontal spans in inner columns"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.3"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 1.1 1.2"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.3"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 2.1 2.2"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.3"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with vertical spans"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 1.1 2.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 3.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 3.1 4.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 3.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 4.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 4.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with all kinds of spans and empty cells"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 1.1 2.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 2.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 3.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 3.1 4.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 3.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 3
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 4.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 4.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 4.4 5.4"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 5,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 8.4"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with a row starting late"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Cell 1.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1,
+            "skipBefore": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A non-uniform table with a vertical span over a row starting late"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.0"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Header 0.1"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Merged Cell 0.2 1.2"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          }
+        ],
+        []
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

@@ -1,0 +1,134 @@
+{
+  "fixture": "tables",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Tables"
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Region"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Q3"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Q4"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "North"
+              },
+              {
+                "kind": "paragraph",
+                "text": "(provisional)"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Pending audit"
+              }
+            ],
+            "colSpan": 2,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "West"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 2
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "12"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "14"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ],
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "9"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "11 | revised"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Text after the table."
+    }
+  ],
+  "absent": [],
+  "once": []
+}

@@ -1,0 +1,442 @@
+{
+  "fixture": "chartex",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": ""
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": ""
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": false,
+      "text": ""
+    },
+    {
+      "kind": "chart",
+      "chartType": "bar",
+      "title": "my chart looks nice",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            4.3,
+            2.5,
+            3.5,
+            4.5
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2.4,
+            4.4,
+            1.8,
+            2.8
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2,
+            2,
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "I want more charts"
+    },
+    {
+      "kind": "chart",
+      "chartType": "line",
+      "title": "This is a line chart I just made",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            4.3,
+            2.5,
+            3.5,
+            4.5
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2.4,
+            4.4,
+            1.8,
+            2.8
+          ]
+        },
+        {
+          "name": "Series 3",
+          "categories": [
+            "Category 1",
+            "Category 2",
+            "Category 3",
+            "Category 4"
+          ],
+          "values": [
+            2,
+            2,
+            3,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "radar",
+      "title": "This is a radar chart",
+      "series": [
+        {
+          "name": "Series 1",
+          "categories": [
+            "37261",
+            "37262",
+            "37263",
+            "37264",
+            "37265"
+          ],
+          "values": [
+            32,
+            32,
+            28,
+            12,
+            15
+          ]
+        },
+        {
+          "name": "Series 2",
+          "categories": [
+            "37261",
+            "37262",
+            "37263",
+            "37264",
+            "37265"
+          ],
+          "values": [
+            12,
+            12,
+            12,
+            21,
+            28
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "boxWhisker",
+      "title": "this is a box and whisker chart",
+      "series": [
+        {
+          "name": "Series1",
+          "categories": [
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3"
+          ],
+          "values": [
+            -7,
+            -10,
+            -28,
+            47,
+            11,
+            -24,
+            -24,
+            36,
+            10,
+            -78,
+            47,
+            -24,
+            -17,
+            -12,
+            -11,
+            17,
+            14,
+            46,
+            -18,
+            19,
+            -26,
+            -20
+          ]
+        },
+        {
+          "name": "Series2",
+          "categories": [
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3"
+          ],
+          "values": [
+            -3,
+            1,
+            -6,
+            10,
+            34,
+            128,
+            22,
+            -12,
+            -28,
+            6,
+            31,
+            3,
+            12,
+            -12,
+            -13,
+            6,
+            15,
+            41,
+            16,
+            10,
+            23,
+            16
+          ]
+        },
+        {
+          "name": "Series3",
+          "categories": [
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 1",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 2",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3",
+            "Category 3"
+          ],
+          "values": [
+            -24,
+            11,
+            34,
+            -19,
+            4,
+            27,
+            27,
+            -3,
+            44,
+            50,
+            91,
+            -8,
+            36,
+            16,
+            24,
+            46,
+            14,
+            -6,
+            48,
+            23,
+            23,
+            -18
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "stock",
+      "title": "This is a stock chart",
+      "series": [
+        {
+          "name": "High",
+          "categories": [
+            "37261",
+            "37262",
+            "37263",
+            "37264",
+            "37265"
+          ],
+          "values": [
+            55,
+            57,
+            57,
+            58,
+            58
+          ]
+        },
+        {
+          "name": "Low",
+          "categories": [
+            "37261",
+            "37262",
+            "37263",
+            "37264",
+            "37265"
+          ],
+          "values": [
+            11,
+            12,
+            13,
+            11,
+            35
+          ]
+        },
+        {
+          "name": "Close",
+          "categories": [
+            "37261",
+            "37262",
+            "37263",
+            "37264",
+            "37265"
+          ],
+          "values": [
+            32,
+            35,
+            34,
+            35,
+            43
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "chart",
+      "chartType": "sunburst",
+      "title": "this is a sunburst chart",
+      "series": [
+        {
+          "name": "Series1",
+          "categories": [
+            "Leaf 1",
+            "Leaf 2",
+            "Leaf 3",
+            "Leaf 4",
+            "Leaf 5",
+            "Leaf 6",
+            "Leaf 7",
+            "Leaf 8",
+            "Leaf 9",
+            "Leaf 10",
+            "Leaf 11",
+            "Leaf 12",
+            "Leaf 13",
+            "Leaf 14",
+            "Leaf 15",
+            "Leaf 16"
+          ],
+          "values": [
+            22,
+            12,
+            18,
+            87,
+            88,
+            17,
+            14,
+            25,
+            16,
+            24,
+            89,
+            16,
+            19,
+            86,
+            23,
+            21
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

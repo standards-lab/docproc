@@ -1,0 +1,6 @@
+# Build output.
+bin/
+obj/
+
+# Untracked state: the check's NativeAOT publish.
+.state/

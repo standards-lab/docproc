@@ -49,9 +49,9 @@ text" states and applies field by field.
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
   line that names it. Its name is the lowercase hex SHA-256 of its bytes plus `.` and the stored
-  extension when that is 1 to 8 ASCII letters and digits. A line names it in `file`, and the
-  Markdown links it by that name. Without `--media` nothing is written to disk and the names stand.
-  A linked or by-reference target is named, never fetched.
+  extension, its case kept, when that is 1 to 8 ASCII letters and digits. A line names it in
+  `file`, and the Markdown links it by that name. Without `--media` nothing is written to disk and
+  the names stand. A linked or by-reference target is named, never fetched.
 - **stderr.** One line each: `<tool>: warning: <where>: <what>`, and for exit codes 1 to 4
   `<tool>: error: <reason>`. `<where>` never holds `": "`, so a warning line splits at its first
   three. `<where>` and `<what>` are escaped: a backslash before a backslash, `\n` and `\r` for a
@@ -105,9 +105,10 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables and its
   pictures' links, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
   bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The
-  lines' Markdown fragments concatenate in order with nothing between them, each ending in its
-  own newlines, into office's whole rendering. A picture's image text is its `alt`, or its `title` when it has no
-  `alt` (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
+  lines' Markdown fragments concatenate in order with nothing between them into office's whole
+  rendering: each ends in its own newline and opens with the blank line that separates it from
+  the chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`
+  (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
   `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
   its image's Markdown title, `![alt](file "title")`.
 - `media` holds every picture office writes (`Media` blocks, `Reading/MediaStore.cs`), plus
@@ -117,8 +118,8 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   story part's, sheet's, or slide's own embedded-package and embedded-object relationships; a
   chart's embedded source workbook is never media. The Markdown links a payload as
   `[<prog_id, or the part's file name>](<file>)` after its preview picture. `part` is the
-  package part, `target` a linked picture's URL; the placement is the docx section, the ordinal
-  of the xlsx sheet's `sheet` line, or the pptx slide index.
+  package part, `target` a linked picture's URL; the placement is the docx section's index from
+  0, the ordinal from 1 of the xlsx sheet's `sheet` line, or the pptx slide's index from 0.
 - `properties` is read from the three parts as XML. A core value is a string as stored, dates
   included; an extended value is a number when it is all digits, else a string; a custom value
   takes its variant's type, a file time as its stored ISO 8601 text. Keys keep their stored
@@ -2035,104 +2036,18 @@ per fixture, compared byte for byte, which tests its determinism.
 
 ### docproc-ooxml [ooxml]
 
-From spike-ai-pipeline-office 0.1.0, settled in `design.md`, "docproc-ooxml".
+Built at `tools/ooxml/`: its README states the tool, and its CHANGELOG how it differs from
+spike-ai-pipeline-office 0.1.0. What it leaves to later tasks:
 
-- **Toolchain.** .NET 10 to .NET 11 (`Directory.Build.props`' `net10.0`, mise's `dotnet`
-  10.0.400). System.CommandLine goes: the arguments (one input, `--media`, `--version`,
-  `--help`) are parsed by hand, the usage text a constant, so DocumentFormat.OpenXml 3.5.1,
-  kept, is the only package.
-- **Audit.** NuGet's audit is off in the check's and the release's builds and runs in
-  `currency`, so a published advisory fails no build; the publish's `-p:NuGetAudit=false`, which
-  the ILCompiler 10.0.13 advisory forced under .NET 10, goes.
-- **Layout.** Nested as `tools/ooxml/`: `src/`, `test/`, `fixtures/` with `generate.py`, its own
-  `mise.toml` (toolchain pins; tasks `check`, `currency`, `fixtures`, `golden`), `CHANGELOG.md`,
-  `README.md`, and `.gitignore`. Names: `DocprocOoxml.slnx`, `src/Docproc.Ooxml`, namespace
-  `Docproc.Ooxml`, binary `docproc-ooxml`, and "docproc-ooxml" for "office" in messages and the
-  README.
-- **Left in the spike.** The baseline harness, `bench/` and its tests, with Markdig,
-  `scripts/baseline.sh`, and `docs/findings/`; the acceptance rerun over ~/docs measures from then
-  on.
-- **CI and release.** docproc's root `mise run check` runs each tool's own check: the root
-  `mise.toml` pins the tools' toolchains and loops a `TOOLS` list beside `GO_MODULES`. This task
-  builds docproc's CI, a tool-by-runner matrix on native x64 and arm64 runners, and the one root
-  workflow that releases a `tools/*/v*` tag, deriving the directory, changelog, and version
-  (`${TAG##*/v}`) from the tag and writing `docproc-ooxml-v<version>-<rid>.tar.gz` with
-  `SHA256SUMS` and the repository's LICENSE. mail and onenote add a matrix row each. The CI
-  ends in one always-running `ci` job, the one check a GitHub ruleset on docproc requires, so a
-  job its paths skip never blocks a merge; rulesets for other repositories are out of scope.
-  This task also lands the wiring every tool shares: one pack script and one notices script
-  under `tools/`, each taking the tool's name, a `go.mod` at `tools/`, a module boundary
-  that keeps the subtree, fixtures included, out of the library's module zip, and the envelope's
-  case table, `tools/envelope/cases.json` ("Common envelope"), which the stderr writer's, the
-  media name's, and the escape's tests read in place.
-- **glibc.** The README states the binary's glibc floor, and the release job checks it on the
-  built binary.
-- **One run.** `--format json|markdown` goes: one run writes the compact `document` line, then
-  each xlsx sheet's `sheet` and `rows` lines ("docproc-ooxml"), where office writes one
-  rendering, its JSON indented (indentation is 62% of its output, measured above). No line holds
-  a whole sheet's cells, so a reader streams it.
-- **Streaming.** Each worksheet part is read twice, forward-only: a validate pass that writes
-  nothing collects each sheet's used columns, shared-formula anchors, merges, and media hashes;
-  a write pass emits the `sheet` line and each `rows` line as its rows are read. docx and pptx
-  keep the whole-model path. Acceptance measures peak memory over ~/docs.
-- **Drawings.** A sheet's chart tables and picture links move onto its closing `rows` line, and
-  the lines' Markdown concatenates with nothing between ("docproc-ooxml").
-- **Writer.** The model's types become internal and lose their JSON attributes, converters, and
-  source-generated context; one `Utf8JsonWriter` writer spells out each line's fields in order
-  and measures a `rows` line against 256 KiB. `InlineText.Of`, `OfficeReader.Read`, and
-  `Cli.Version` become internal, visible to the tests.
-- **Cut.** The block tree (headings, paragraphs, lists, docx tables, their inlines), sections,
-  headers and footers, notes, comments, chart blocks, and picture `alt` and `title`; their text is
-  the Markdown's.
-- **Into the Markdown.** A picture's `title`, which office's renderer leaves out, as
-  "docproc-ooxml" states. The goldens of `media.python-docx.docx`, `sections.python-docx.docx`,
-  and `slide-objects.python-pptx.pptx` show it.
-- **Links.** External hyperlinks render as `[text](target)` in docx, xlsx, and pptx, an internal
-  anchor staying text. Each unread kind a document holds (text boxes, equations, SmartArt, pptx
-  comments, xlsx notes) gets one warning, such as `slide 4: comments not read`; reading them is
-  backlog.
-- **Escaping.** `MarkdownRenderer.Escape` takes the envelope's list ("Common envelope"), where
-  office escapes `<` and `>` everywhere and leaves `$`.
-- **Chart in a cell.** A chart in a docx table cell renders as its own chunk after the table, its
-  title left in the cell, where office keeps the title alone.
-- **Footnote labels.** A paragraph renders as segments, each text run escaped and each label
-  appended, in place of office's U+E000 placeholders.
-- **Elapsed time.** A value in an elapsed format (`[h]`, `[m]`, `[s]`) stays a number, as stored,
-  where office writes a date in 1900 past a day.
-- **`_xHHHH_`.** Shared and inline strings decode SpreadsheetML's escapes, `_x005F_` the escaped
-  underscore, with a generated fixture cell.
-- **Refusals.** A path that isn't a regular file is refused as "not a file"; the main part's
-  exact content type decides the format, so xlsb is "not a docx, xlsx, or pptx package". An OLE
-  compound file holding an `EncryptedPackage` stream is refused with a reason beginning
-  `encrypted`, by the envelope's vocabulary, and a legacy OLE document with one that neither
-  begins with nor contains the word; the encrypted fixture's `.stderr` pins the first.
-- **Kept.** The sheets' cells, in `rows` lines, as office's `TableCell` less its docx-only
-  fields; the Markdown renderer, its xlsx Markdown split by sheet.
-- **Properties.** `properties` (core, app, custom), read by "docproc-ooxml"'s rule.
-- **Embedded and OLE.** `media` as one list in document order, each with its placement (section,
-  `sheet` line ordinal, or slide); `embedded` packages and `ole` parts as stored, with `prog_id`,
-  found through each story part's, sheet's, and slide's relationships, a chart's source workbook
-  left out, and linked in the Markdown after the preview picture. Generated xlsx and pptx
-  fixtures gain an embedded package and an OLE object.
-- **Envelope.** `line` and `schema` "2"; snake_case names (office's are camelCase); media names
-  keep the stored extension only when it is 1 to 8 ASCII letters and digits, where `MediaStore`
-  keeps `Path.GetExtension` whole. `--version` writes `schema 2` on its second line; the stderr
-  writer escapes `<where>` and `<what>` by the envelope's stated form, since this tool doesn't
-  use the Rust crate; an error's reason never leads with the input path ("Common envelope").
-- **stderr and exit codes.** One stderr writer, the tool's name one constant, writes
-  `error:` for codes 1 to 4, usage included, where office writes `refused:`, `failed:`, and
-  `media not written:`; `<where>` is a place in the document (`section 3`, `sheet 2` by ordinal),
-  never the input path. An I/O error on stdout, a broken pipe included, exits 1, where office
-  exits 4 or 0; the entry point catches every fault, so none leaves as 134.
-- **UTF-8.** stdout and stderr are written as UTF-8 bytes to the raw streams, never through
-  `Console.Out`, so the locale can't change them; a CLI test runs a non-ASCII fixture under
-  `LC_ALL=en_US.ISO-8859-1` against its golden.
-- **Goldens.** `test/…/Expected/*.json` and `*.md` become one `.jsonl` and `.stderr` per fixture,
-  all 72, the 30 real-world files included, compared on the published binary with no shared-file
-  fallback; a `golden` task re-records them and the check never does. An xlsx fixture's `.jsonl`
-  holds its `document` line, then each sheet's `sheet` and `rows` lines; a unit test over a built
-  sheet past the bound shows the split. The `truth.json` tests stay, as tests of the internal
-  model.
+- **A tool's wiring.** Each tool's `mise.toml` pins its toolchain alone and defines `check`,
+  `publish`, `golden`, `currency`, and `upgrade`, and `GLIBC_FLOOR` when its binary links glibc;
+  the root's `TOOLS` lists it. CI's tool matrix runs the tools whose path filter in the `changes`
+  job matched, so mail and onenote each add a filter, and the steps their Rust toolchain needs.
+  `tools/pack.sh` and the release workflow take any tool by its name.
+- **Memory.** Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in
+  the spike.
+- **Unread kinds.** Reading text boxes, equations, SmartArt, pptx comments, and xlsx notes is
+  backlog; each kind a document holds is one warning.
 
 ### docproc-mail [mail]
 
@@ -2155,10 +2070,10 @@ From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
   time.
 - **Layout.** Nested as `tools/mail/`: `src/`, `tests/`, the generator's `fixtures` mode, and its
   own `mise.toml`, whose tasks resolve paths from their own directory and which the root's
-  `check` and `currency` call. The tool's name comes from `CARGO_PKG_NAME` in `src/` and
-  `tests/`, so the rename is Cargo.toml's line and the goldens. The root workflow releases a
+  `check`, `currency`, and `upgrade` call. The tool's name comes from `CARGO_PKG_NAME` in `src/`
+  and `tests/`, so the rename is Cargo.toml's line and the goldens. The root workflow releases a
   `tools/mail/v*` tag as `docproc-mail-v<version>-linux-<arch>.tar.gz` with `SHA256SUMS`, and the
-  task adds mail's row to docproc's CI matrix.
+  task adds mail's path filter to docproc's CI ("docproc-ooxml [ooxml]").
 - **Left in the spike.** The scorer `bench/findings.rs`, `bench/rusage.c`, `scripts/findings.sh`,
   the generator's `Scale.cs` and `scale` mode, and `docs/findings/`, at v0.3.1; the README's cost
   figures cite the spike's finding.
@@ -2184,8 +2099,9 @@ From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
   `<where>` with the space escaped and escapes control characters in `<where>` and `<what>`, with
   unit tests for each; the crate's tests read `tools/envelope/cases.json` in place ("Common
   envelope"). docproc's CI runs both Rust tools' checks when the crate changes.
-- **Notices.** Release packing writes a third-party notices file from the locked graph into the
-  archive, and the check fails on a license outside the permissive set.
+- **Notices.** `tools/notices.sh`, which reads a .NET tool's graph alone and carries MIT's text
+  alone, gains a cargo branch: release packing writes a third-party notices file from the locked
+  graph into the archive, and the check fails on a license outside the permissive set.
 - **Faults.** An HTML body nested past 512 open elements, counted by a pass over its tags before
   htmd, gives way to the text body, else the HTML's text, with a warning ("docproc-mail"). The
   per-record guard wraps the read, the mapping, and the derivation, so a fault there is that
@@ -2261,11 +2177,11 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
   read through `cab`, a direct dependency, with the parser's name normalisation mirrored.
   typed-path held at 0.12.4; it moves to 0.13.0 only with onenote_parser.
 - **Layout.** Nested as `tools/onenote/`: `src/`, `tests/`, the release files, and its own
-  `mise.toml`, whose tasks resolve paths from their own directory and which the root's `check`
-  and `currency` call; the nested `.gitattributes` keeps its fixture rules. The root workflow
-  releases a `tools/onenote/v*` tag as `docproc-onenote-v<version>-linux-<arch>.tar.gz` with
-  `SHA256SUMS` through the shared pack script, and the task adds onenote's row to docproc's CI
-  matrix. The tool's `currency` reports its crates and mise tools only; the action pins are the
+  `mise.toml`, whose tasks resolve paths from their own directory and which the root's `check`,
+  `currency`, and `upgrade` call; the nested `.gitattributes` keeps its fixture rules. The root
+  workflow releases a `tools/onenote/v*` tag as `docproc-onenote-v<version>-linux-<arch>.tar.gz`
+  with `SHA256SUMS` through the shared pack script, and the task adds onenote's path filter to
+  docproc's CI. The tool's `currency` reports its crates and mise tools only; the action pins are the
   root's.
 - **Left in the spike.** `bench/findings.rs`, `bench/rusage.c`, `scripts/findings.sh`, the
   `[[example]]`, the `findings` task, and `docs/findings/`, at v0.1.0; a per-tool timing, if one
@@ -2612,9 +2528,8 @@ postgres (module)   new: dispatch.Index in PostgreSQL over sqlate, an entry's ro
                     token, and its migrations
 ```
 
-docproc's root `mise run check` runs each tool's check through `TOOLS` beside `GO_MODULES`
-(ooxml wires it); this task adds CI's Go job and the releases of the Go modules beside ooxml's
-`tools/*/v*` workflow. Its check lints the unit tier and the `integration` tag alone.
+docproc's root `mise run check` runs each tool's check through `TOOLS` beside `GO_MODULES`; this
+task adds CI's Go job and the releases of the Go modules beside the `tools/*/v*` workflow. Its check lints the unit tier and the `integration` tag alone.
 
 The acceptance task dispatches PI-1's two bombs, a many-entry one and a 999:1 one, through
 `cmd/docproc`; counts recorded failures by class over ~/docs; measures `tool`'s memory bound on

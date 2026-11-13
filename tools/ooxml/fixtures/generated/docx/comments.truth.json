@@ -1,0 +1,111 @@
+{
+  "fixture": "comments",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Comments"
+    },
+    {
+      "kind": "paragraph",
+      "text": "The budget figures need review.",
+      "marks": [
+        {
+          "at": 18,
+          "kind": "comment",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "A comment that spans two"
+    },
+    {
+      "kind": "paragraph",
+      "text": "paragraphs of text.",
+      "marks": [
+        {
+          "at": 10,
+          "kind": "comment",
+          "n": 2
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "The timeline is new.",
+      "marks": [
+        {
+          "at": 12,
+          "kind": "comment",
+          "n": 3
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "comments": [
+    {
+      "author": "Ana Reviewer",
+      "anchor": "budget figures",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Please check these figures."
+        }
+      ],
+      "replies": [
+        {
+          "author": "Ben Author",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Checked against the ledger."
+            }
+          ]
+        },
+        {
+          "author": "Ana Reviewer",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Thanks."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "author": "Ben Author",
+      "anchor": "spans two\nparagraphs",
+      "resolved": true,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "This comment spans two paragraphs."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Its text has two paragraphs as well."
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Cleo Editor",
+      "anchor": "timeline",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "An open comment over tracked text."
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

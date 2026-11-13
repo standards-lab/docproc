@@ -1,0 +1,75 @@
+{
+  "$comment": [
+    "The common envelope's cases (context/layers.md, \"Common envelope\"), stated once for every system tool",
+    "and for docproc: docproc-ooxml's tests, the shared Rust crate's, and docproc's internal/cli's read this",
+    "file in place, so no language restates a case. A case is added here, never in one tool's tests.",
+    "exit_codes: each exit code and its meaning.",
+    "warnings: a warning's where and what as the tool has them, and the stderr line it writes for them, its",
+    "  tool's name spelled \"tool\"; split at its first three \": \" and unescaped, the line gives them back.",
+    "errors: an error's reason and the stderr line it writes for it, its tool's name spelled \"tool\".",
+    "media_names: a payload's bytes, in lowercase hex, and the name it is stored under, and the media name",
+    "  they make: the bytes' lowercase hex SHA-256, then \".\" and the stored extension when that is 1 to 8",
+    "  ASCII letters and digits.",
+    "literal_escape: a line of literal text and its Markdown; no case holds a line break."
+  ],
+  "exit_codes": [
+    { "code": 0, "meaning": "read, skipped items included" },
+    { "code": 1, "meaning": "stdout or media not written" },
+    { "code": 2, "meaning": "usage" },
+    { "code": 3, "meaning": "refused before any output" },
+    { "code": 4, "meaning": "a fault of the tool's own" }
+  ],
+  "warnings": [
+    { "where": "sheet 2", "what": "comments not read", "line": "tool: warning: sheet 2: comments not read" },
+    { "where": "slide 4", "what": "a note: with a colon", "line": "tool: warning: slide 4: a note: with a colon" },
+    { "where": "section 3: header", "what": "x", "line": "tool: warning: section 3:\\ header: x" },
+    { "where": "a:b", "what": "c:d", "line": "tool: warning: a:b: c:d" },
+    { "where": "a\\b", "what": "c\\d", "line": "tool: warning: a\\\\b: c\\\\d" },
+    { "where": "a\\: b", "what": "c", "line": "tool: warning: a\\\\:\\ b: c" },
+    { "where": "line\none", "what": "two\r\nlines", "line": "tool: warning: line\\none: two\\r\\nlines" },
+    { "where": "trailing:", "what": ": leading", "line": "tool: warning: trailing:: : leading" },
+    { "where": "東京 1", "what": "ünïcödé", "line": "tool: warning: 東京 1: ünïcödé" }
+  ],
+  "errors": [
+    { "reason": "not a file", "line": "tool: error: not a file" },
+    { "reason": "encrypted package; decrypt it first", "line": "tool: error: encrypted package; decrypt it first" },
+    { "reason": "a reason: with a colon", "line": "tool: error: a reason: with a colon" }
+  ],
+  "media_names": [
+    { "bytes_hex": "616263", "stored_name": "image1.png", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.png" },
+    { "bytes_hex": "", "stored_name": "empty.bin", "name": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855.bin" },
+    { "bytes_hex": "616263", "stored_name": "IMAGE1.JPEG", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.JPEG" },
+    { "bytes_hex": "616263", "stored_name": "archive.tar.gz", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.gz" },
+    { "bytes_hex": "616263", "stored_name": "media/image1.png", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.png" },
+    { "bytes_hex": "616263", "stored_name": "drawing.12345678", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad.12345678" },
+    { "bytes_hex": "616263", "stored_name": "drawing.123456789", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "616263", "stored_name": "no-extension", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "616263", "stored_name": "trailing.", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "616263", "stored_name": "a.dir/file", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "616263", "stored_name": "dash.jp-g", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "616263", "stored_name": "accent.pngé", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
+    { "bytes_hex": "89504e470d0a", "stored_name": "", "name": "823ceb99fcef5252333ede1b2202341c3b287b6d47571963e6b0ddf393a24f82" }
+  ],
+  "literal_escape": [
+    { "text": "plain text", "markdown": "plain text" },
+    { "text": "Stars *a* and _b_", "markdown": "Stars \\*a\\* and \\_b\\_" },
+    { "text": "[link](x)", "markdown": "\\[link\\](x)" },
+    { "text": "a | pipe, & amp, ~strike~, `code`, $5", "markdown": "a \\| pipe, \\& amp, \\~strike\\~, \\`code\\`, \\$5" },
+    { "text": "back\\slash", "markdown": "back\\\\slash" },
+    { "text": "<tag>", "markdown": "\\<tag>" },
+    { "text": "a < b > c, 1<2", "markdown": "a < b > c, 1<2" },
+    { "text": "<!-- c -->, <?x?>, </p>, </ and <", "markdown": "\\<!-- c -->, \\<?x?>, \\</p>, </ and \\<" },
+    { "text": "</", "markdown": "\\</" },
+    { "text": "# not a heading", "markdown": "\\# not a heading" },
+    { "text": "> not a quote", "markdown": "\\> not a quote" },
+    { "text": "- not a bullet", "markdown": "\\- not a bullet" },
+    { "text": "+ not a bullet", "markdown": "\\+ not a bullet" },
+    { "text": "= not an underline", "markdown": "\\= not an underline" },
+    { "text": "a # > - + = mid-line", "markdown": "a # > - + = mid-line" },
+    { "text": "1. not a list", "markdown": "1\\. not a list" },
+    { "text": "123456789) not a list", "markdown": "123456789\\) not a list" },
+    { "text": "1234567890. ten digits", "markdown": "1234567890. ten digits" },
+    { "text": "2026", "markdown": "2026" },
+    { "text": "3.14", "markdown": "3\\.14" }
+  ]
+}

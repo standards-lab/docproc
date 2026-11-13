@@ -1,0 +1,135 @@
+{
+  "fixture": "drawings",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Sales",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "Quarter"
+                },
+                {
+                  "ref": "B1",
+                  "type": "text",
+                  "value": "Revenue"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "Q1"
+                },
+                {
+                  "ref": "B2",
+                  "type": "number",
+                  "value": 12.5
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "text",
+                  "value": "Q2"
+                },
+                {
+                  "ref": "B3",
+                  "type": "number",
+                  "value": 14
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "A4",
+                  "type": "text",
+                  "value": "Q3"
+                },
+                {
+                  "ref": "B4",
+                  "type": "number",
+                  "value": 15.25
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "title": "Revenue by quarter",
+          "series": [
+            {
+              "name": null,
+              "categories": [],
+              "values": []
+            }
+          ]
+        },
+        {
+          "kind": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "A red square",
+          "sheet": 0
+        },
+        {
+          "kind": "media",
+          "name": "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446.png",
+          "contentType": "image/png",
+          "alt": "The red square again",
+          "sheet": 0
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Other",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "A picture follows."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "media",
+          "name": "10a86bd779a80e60e5d3314ec1edeab643cb454a4c7dfee671132090878d7aea.png",
+          "contentType": "image/png",
+          "alt": "A blue square",
+          "sheet": 1
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

@@ -1,0 +1,38 @@
+{
+  "fixture": "test-comment",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "this is a comment paragraph!",
+      "marks": [
+        {
+          "at": 18,
+          "kind": "comment",
+          "n": 1
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "comments": [
+    {
+      "author": "poi",
+      "anchor": "comment ",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "comment content"
+        },
+        {
+          "kind": "media",
+          "name": "ee1633f0032a29e970528567327aff815faf291fdb66e83e79cdf1ac8b1ea0ef.png",
+          "contentType": "image/png"
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

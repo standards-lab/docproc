@@ -1,0 +1,10 @@
+{"line":"document","schema":"2","format":"xlsx","properties":{"core":{"created":"2026-10-30T20:15:41Z","creator":"openpyxl","language":"en-US","modified":"2026-10-30T20:15:41Z","revision":"0"},"app":{"TotalTime":0,"Application":"LibreOffice/26.8.1.1$Linux_X86_64 LibreOffice_project/680$Build-1","AppVersion":"15.0000"}}}
+{"line":"sheet","name":"Zeta","markdown":"# Zeta\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | the first sheet |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"the first sheet"}]}]}
+{"line":"sheet","name":"Hidden","hidden":true,"markdown":"\n# Hidden (hidden)\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | a hidden sheet |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"a hidden sheet"}]}]}
+{"line":"sheet","name":"Alpha","markdown":"\n# Alpha\n\n|  | A | B | C |\n| --- | --- | --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | Title |  |  |\n| 2 | Rows | 1 | beside |\n| 3 |  | 2 |  |\n| 5 |  | Block |  |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"Title","col_span":3}]},{"row":2,"cells":[{"ref":"A2","value_type":"text","value":"Rows","row_span":2},{"ref":"B2","value_type":"number","value":1},{"ref":"C2","value_type":"text","value":"beside"}]},{"row":3,"cells":[{"ref":"B3","value_type":"number","value":2}]},{"row":5,"cells":[{"ref":"B5","value_type":"text","value":"Block","col_span":2,"row_span":2}]}]}
+{"line":"sheet","name":"Empty","markdown":"\n# Empty\n"}
+{"line":"sheet","name":"Very hidden","hidden":true,"markdown":"\n# Very hidden (hidden)\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | a very hidden sheet |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"a very hidden sheet"}]}]}

@@ -1,0 +1,673 @@
+{
+  "fixture": "powerpoint-sample",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Test Table Slide"
+        },
+        {
+          "kind": "paragraph",
+          "text": "With footnote"
+        },
+        {
+          "kind": "table",
+          "rows": [
+            [
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Class1"
+                  }
+                ],
+                "colSpan": 3,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "Class2"
+                  }
+                ],
+                "colSpan": 3,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "A merged with B"
+                  }
+                ],
+                "colSpan": 2,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "C"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "A"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "B"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "C"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "R1"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "R2"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "R3"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 2
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "R4"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 3
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ],
+            [
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "True"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              },
+              {
+                "elements": [
+                  {
+                    "kind": "paragraph",
+                    "text": "False"
+                  }
+                ],
+                "colSpan": 1,
+                "rowSpan": 1
+              }
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Second slide title"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Let’s introduce a list"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "With foo"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "Bar"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "And baz things"
+        },
+        {
+          "kind": "paragraph",
+          "text": "A rectangle shape with this text inside."
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Some notes on the second slide."
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 3,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": true,
+          "text": "List item4"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "List item5"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "List item6"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "I1"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "I2"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "I3"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "I4"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Some info:"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Item A"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "Item B"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Maybe a list?"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": true,
+          "text": "List1"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "List2"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": true,
+          "start": false,
+          "text": "List3"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "l1 "
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "l2"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": false,
+          "text": "l3"
+        }
+      ],
+      "notes": [
+        {
+          "kind": "paragraph",
+          "text": "Final notes on the third slide."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Second line of notes."
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style"
+  ],
+  "once": []
+}

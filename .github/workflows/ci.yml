@@ -1,0 +1,137 @@
+# CI runs on every pull request into main and every push to main. Each system tool's check runs
+# once per runner, natively on x64 and arm64, followed by its third-party notices, but only when
+# the tool's directory or the wiring every tool shares changed; the lint job runs the root's
+# shellcheck and actionlint only when a script, a workflow, or the root mise.toml changed. The
+# `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
+# any job it needs failed or was cancelled, and passes when they succeeded or their paths skipped
+# them, so a skipped job never blocks a merge. Actions are pinned by their exact release tag,
+# which `mise run currency` compares with each action's latest release. A newer run on the same
+# ref cancels the one it supersedes.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      tools: ${{ steps.tools.outputs.changes }}
+      lint: ${{ steps.lint.outputs.lint }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # One filter per tool, named as its directory under tools/, so the filters that match are
+      # the matrix's tools. Each begins with the wiring every tool shares, anchored on the first:
+      # this workflow, the root mise.toml its check loads, and tools/'s scripts and envelope table.
+      - id: tools
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            ooxml:
+              - &shared ['.github/workflows/ci.yml', 'mise.toml', 'tools/*.sh', 'tools/envelope/**']
+              - 'tools/ooxml/**'
+
+      - id: lint
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            lint:
+              - '.github/workflows/**'
+              - '**/*.sh'
+              - 'mise.toml'
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.lint == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # The lint needs only the root's shellcheck and actionlint, not its Go toolchain.
+      - uses: jdx/mise-action@v5.2.8
+        with:
+          install_args: actionlint shellcheck
+
+      - name: mise run lint
+        run: mise run lint
+
+  tool:
+    name: check (${{ matrix.tool }}, ${{ matrix.runner }})
+    needs: changes
+    if: needs.changes.outputs.tools != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        tool: ${{ fromJSON(needs.changes.outputs.tools) }}
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    env:
+      TOOL: ${{ matrix.tool }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # NativeAOT links with clang against zlib.
+      - name: Install the NativeAOT prerequisites
+        if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+
+      # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
+      # one installed; the tool's tasks put it ahead of the runner's own dotnet on PATH.
+      - uses: jdx/mise-action@v5.2.8
+        with:
+          working_directory: tools/${{ matrix.tool }}
+
+      # The packages the tool's lock files pin, as downloaded; bin/ and obj/ are built fresh.
+      - uses: actions/cache@v6.1.0
+        if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/**/packages.lock.json', matrix.tool)) }}
+          restore-keys: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: mise run check
+        working-directory: tools/${{ matrix.tool }}
+        run: mise run check
+
+      # The notices a release would pack for this runner, so a package the script can't give a
+      # notice for fails here, not at the tag.
+      - name: Third-party notices
+        working-directory: tools/${{ matrix.tool }}
+        run: |
+          case "$(uname -m)" in
+            x86_64) rid=linux-x64 ;;
+            aarch64) rid=linux-arm64 ;;
+            *) echo "ci: no runtime identifier for $(uname -m)"; exit 1 ;;
+          esac
+          mise exec -- ../notices.sh "$TOOL" "$rid" >/dev/null
+
+  ci:
+    if: always()
+    needs: [changes, lint, tool]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Fail if a needed job failed or was cancelled
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "ci: needed jobs' results: $RESULTS"
+          for result in $RESULTS; do
+            case "$result" in
+              success | skipped) ;;
+              *) echo "ci: a needed job's result is $result"; exit 1 ;;
+            esac
+          done

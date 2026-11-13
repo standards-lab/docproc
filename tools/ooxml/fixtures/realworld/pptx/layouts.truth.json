@@ -1,0 +1,452 @@
+{
+  "fixture": "layouts",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Centered Title"
+        },
+        {
+          "kind": "paragraph",
+          "text": "subtitle"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Title"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Content"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        },
+        {
+          "kind": "listItem",
+          "level": 3,
+          "ordered": false,
+          "start": true,
+          "text": "Level 4"
+        },
+        {
+          "kind": "listItem",
+          "level": 4,
+          "ordered": false,
+          "start": true,
+          "text": "Level 5"
+        },
+        {
+          "kind": "listItem",
+          "level": 5,
+          "ordered": false,
+          "start": true,
+          "text": "Level 6"
+        },
+        {
+          "kind": "listItem",
+          "level": 6,
+          "ordered": false,
+          "start": true,
+          "text": "Level 7"
+        },
+        {
+          "kind": "listItem",
+          "level": 7,
+          "ordered": false,
+          "start": true,
+          "text": "Level 8"
+        },
+        {
+          "kind": "listItem",
+          "level": 8,
+          "ordered": false,
+          "start": true,
+          "text": "Level 9"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 3,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Section Title"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Section Header"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 4,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Title"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Left"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        },
+        {
+          "kind": "listItem",
+          "level": 3,
+          "ordered": false,
+          "start": true,
+          "text": "Level 4"
+        },
+        {
+          "kind": "listItem",
+          "level": 4,
+          "ordered": false,
+          "start": true,
+          "text": "Level 5"
+        },
+        {
+          "kind": "listItem",
+          "level": 5,
+          "ordered": false,
+          "start": true,
+          "text": "Level 6"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Right"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        },
+        {
+          "kind": "listItem",
+          "level": 3,
+          "ordered": false,
+          "start": true,
+          "text": "Level 4"
+        },
+        {
+          "kind": "listItem",
+          "level": 4,
+          "ordered": false,
+          "start": true,
+          "text": "Level 5"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 5,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Title"
+        },
+        {
+          "kind": "paragraph",
+          "text": "file1"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Comparison1"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        },
+        {
+          "kind": "paragraph",
+          "text": "file2"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Comparison2"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 6,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Title Only"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 7,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Blank with Default Title"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Default Text"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Default"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Text with levels"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Level 1"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 8,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Caption"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "Level 1"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Level 2"
+        },
+        {
+          "kind": "listItem",
+          "level": 2,
+          "ordered": false,
+          "start": true,
+          "text": "Level 3"
+        },
+        {
+          "kind": "listItem",
+          "level": 3,
+          "ordered": false,
+          "start": true,
+          "text": "Level 4"
+        },
+        {
+          "kind": "listItem",
+          "level": 4,
+          "ordered": false,
+          "start": true,
+          "text": "Level 5"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Content with caption"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 9,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Picture with Caption"
+        },
+        {
+          "kind": "media",
+          "name": "8345fcf9642a79651ea36935f736e753e355a4df2d85eaaa1589837143b8f2f0.jpg",
+          "contentType": "image/jpeg",
+          "slide": 8
+        },
+        {
+          "kind": "paragraph",
+          "text": "Some text"
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 10,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Headers & Footers"
+        },
+        {
+          "kind": "listItem",
+          "level": 0,
+          "ordered": false,
+          "start": true,
+          "text": "This slide has the following stuff:"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": true,
+          "text": "Header"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": false,
+          "text": "Date/Time placeholder"
+        },
+        {
+          "kind": "listItem",
+          "level": 1,
+          "ordered": false,
+          "start": false,
+          "text": "Slide Number"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Friday, October 21, 2011"
+        },
+        {
+          "kind": "paragraph",
+          "text": "Apache Software Foundation"
+        },
+        {
+          "kind": "paragraph",
+          "text": "10"
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style"
+  ],
+  "once": []
+}

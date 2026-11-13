@@ -1,0 +1,41 @@
+{
+  "fixture": "headers-even-off",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "Body text without even-page or first-page variants."
+    }
+  ],
+  "absent": [
+    "Unused first header",
+    "Unused even header"
+  ],
+  "once": [],
+  "sections": [
+    {
+      "headers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Plain header"
+            }
+          ]
+        }
+      ],
+      "footers": [
+        {
+          "kind": "default",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Plain footer"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

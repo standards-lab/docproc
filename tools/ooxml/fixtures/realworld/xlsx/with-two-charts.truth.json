@@ -1,0 +1,250 @@
+{
+  "fixture": "with-two-charts",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Sheet1",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "number",
+                  "value": 1
+                },
+                {
+                  "ref": "B1",
+                  "type": "number",
+                  "value": 10
+                },
+                {
+                  "ref": "D1",
+                  "type": "number",
+                  "value": 5
+                },
+                {
+                  "ref": "E1",
+                  "type": "number",
+                  "value": 25,
+                  "formula": "D1*D1"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "number",
+                  "value": 2
+                },
+                {
+                  "ref": "B2",
+                  "type": "number",
+                  "value": 12
+                },
+                {
+                  "ref": "D2",
+                  "type": "number",
+                  "value": 6
+                },
+                {
+                  "ref": "E2",
+                  "type": "number",
+                  "value": 36,
+                  "formula": "D2*D2"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "number",
+                  "value": 3
+                },
+                {
+                  "ref": "B3",
+                  "type": "number",
+                  "value": 14
+                },
+                {
+                  "ref": "D3",
+                  "type": "number",
+                  "value": 7
+                },
+                {
+                  "ref": "E3",
+                  "type": "number",
+                  "value": 49,
+                  "formula": "D3*D3"
+                }
+              ]
+            },
+            {
+              "row": 4,
+              "cells": [
+                {
+                  "ref": "A4",
+                  "type": "number",
+                  "value": 4
+                },
+                {
+                  "ref": "B4",
+                  "type": "number",
+                  "value": 9
+                },
+                {
+                  "ref": "D4",
+                  "type": "number",
+                  "value": 8
+                },
+                {
+                  "ref": "E4",
+                  "type": "number",
+                  "value": 64,
+                  "formula": "D4*D4"
+                }
+              ]
+            },
+            {
+              "row": 5,
+              "cells": [
+                {
+                  "ref": "A5",
+                  "type": "number",
+                  "value": 5
+                },
+                {
+                  "ref": "B5",
+                  "type": "number",
+                  "value": 15
+                },
+                {
+                  "ref": "D5",
+                  "type": "number",
+                  "value": 9
+                },
+                {
+                  "ref": "E5",
+                  "type": "number",
+                  "value": 81,
+                  "sharedFrom": "E4"
+                }
+              ]
+            },
+            {
+              "row": 6,
+              "cells": [
+                {
+                  "ref": "A6",
+                  "type": "number",
+                  "value": 6
+                },
+                {
+                  "ref": "B6",
+                  "type": "number",
+                  "value": 17
+                },
+                {
+                  "ref": "D6",
+                  "type": "number",
+                  "value": 10
+                },
+                {
+                  "ref": "E6",
+                  "type": "number",
+                  "value": 100,
+                  "sharedFrom": "E4"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet2",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "chart",
+          "chartType": "line",
+          "series": [
+            {
+              "name": "1st Column",
+              "categories": [],
+              "values": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+              ]
+            },
+            {
+              "name": "2nd Column",
+              "categories": [],
+              "values": [
+                10,
+                12,
+                14,
+                9,
+                15,
+                17
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Sheet3",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "chart",
+          "chartType": "area",
+          "series": [
+            {
+              "name": "Squares",
+              "categories": [],
+              "values": [
+                25,
+                36,
+                49,
+                64,
+                81,
+                100
+              ]
+            },
+            {
+              "name": "Base Numbers",
+              "categories": [],
+              "values": [
+                5,
+                6,
+                7,
+                8,
+                9,
+                10
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

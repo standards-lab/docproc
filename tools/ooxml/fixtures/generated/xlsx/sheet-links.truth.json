@@ -1,0 +1,59 @@
+{
+  "fixture": "sheet-links",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Links",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "The docproc guide",
+                  "target": "https://example.invalid/docproc?page=1&lang=en"
+                },
+                {
+                  "ref": "B1",
+                  "type": "text",
+                  "value": "Noted"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "number",
+                  "value": 42,
+                  "target": "https://example.invalid/answer"
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "text",
+                  "value": "Back to the top"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "A note on this cell."
+  ],
+  "once": []
+}

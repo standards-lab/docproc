@@ -1,0 +1,14 @@
+{
+  "fixture": "ruby",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "paragraph",
+      "text": "東京"
+    }
+  ],
+  "absent": [
+    "とうきょう"
+  ],
+  "once": []
+}

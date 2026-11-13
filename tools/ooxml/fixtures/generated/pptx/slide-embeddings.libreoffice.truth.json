@@ -1,0 +1,76 @@
+{
+  "fixture": "slide-embeddings",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Embeddings"
+        },
+        {
+          "kind": "chart",
+          "chartType": "bar",
+          "title": "Units",
+          "series": [
+            {
+              "name": "Units",
+              "categories": [
+                "A",
+                "B"
+              ],
+              "values": [
+                3,
+                4
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "media",
+          "name": "8b593ff2b3621b88e351e139e1d83834eb5655f3a33d465565c80e5b62b3cf97.png",
+          "contentType": "image/png",
+          "slide": 1
+        },
+        {
+          "kind": "ole",
+          "name": "6c1632e53bcc4f90f95756dd1c7a05d207433a4474550da7e689a4a09b5a77ab.doc",
+          "contentType": "application/msword",
+          "progId": "Word.Document.8",
+          "slide": 1
+        },
+        {
+          "kind": "media",
+          "name": "6b56cc15ceb6127178192e73ffc85e4433c607acfd667728766a01d051253693.png",
+          "contentType": "image/png",
+          "slide": 1
+        },
+        {
+          "kind": "embedded",
+          "name": "50d1627919eac530ab32ae7fce1d1aa88a73363b7f0e66385071c265c2fed094.docx",
+          "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "progId": "Word.Document.12",
+          "slide": 1
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": []
+}

@@ -1,0 +1,208 @@
+# mise: docproc-ooxml's toolchain and its check, publish, currency, upgrade, fixtures, and golden
+# tasks. The toolchain is pinned here alone; docproc's root check, currency, and upgrade run this
+# file's tasks through its TOOLS list (`mise -C tools/ooxml run check`), and tools/pack.sh runs
+# `publish`. Each task runs in this directory.
+[tools]
+dotnet = "11.0.100"
+jq = "1.8.2"
+uv = "0.13.8"
+
+# A task's shell keeps the caller's PATH order, so where a host `dotnet` without the pinned SDK
+# (/usr/bin/dotnet) comes before mise's installs, a bare `dotnet` would run it. Each task that runs
+# dotnet first puts the pinned SDK's directory, mise's DOTNET_ROOT, ahead of the rest of PATH.
+[env]
+DOTNET_CLI_TELEMETRY_OPTOUT = "1"
+DOTNET_NOLOGO = "1"
+# The newest glibc symbol version the published binary may require: NativeAOT links libc and libm
+# dynamically. tools/pack.sh refuses to pack a binary that requires a newer one.
+GLIBC_FLOOR = "2.34"
+
+[tasks.check]
+description = "Restore the locked package graph, format, build, publish the CLI with NativeAOT, and test, the CLI tests on the published binary, all warnings as errors; writes only bin/, obj/, and .state/"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "check: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+# Every later step uses this restore: a package graph that differs from the committed lock files
+# fails here.
+dotnet restore DocprocOoxml.slnx --locked-mode
+dotnet format DocprocOoxml.slnx --verify-no-changes --no-restore
+dotnet build DocprocOoxml.slnx --no-restore -warnaserror
+# The tests run the CLI's process contract on this binary, so it is published first.
+dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror -o .state/aot
+dotnet test --solution DocprocOoxml.slnx --no-build
+.state/aot/docproc-ooxml --version
+'''
+
+# tools/pack.sh runs it to build the release binary it packs; the release workflow runs that on each
+# runner, natively.
+[tasks.publish]
+description = "Publish the release binary for this machine's runtime identifier from the locked package graph, its version the csproj's alone; writes only bin/, obj/, and .state/publish/"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "publish: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+dotnet restore DocprocOoxml.slnx --locked-mode
+# Without the commit suffix the check's builds carry (0.1.0+<sha>), --version prints exactly the
+# version the csproj records, which pack.sh compares with the tag's.
+rm -rf .state/publish
+dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror \
+  -p:IncludeSourceRevisionInInformationalVersion=false -o .state/publish
+'''
+
+# Read-only and development-time: it reads the network, so CI never runs it. NuGet's audit runs
+# here, never in a build, so a newly published advisory is reported without failing the check.
+[tasks.currency]
+description = "Report every NuGet package behind its latest or with a known vulnerability, every fixture generator package and mise tool behind its latest; writes only obj/"
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+export PATH="$DOTNET_ROOT:$PATH"
+stale=0
+report() {
+  echo "tools/ooxml: $1"
+  stale=1
+}
+dotnet restore DocprocOoxml.slnx --locked-mode >/dev/null
+
+# Direct NuGet packages with a newer release.
+packages=$(dotnet list DocprocOoxml.slnx package --outdated --format json |
+  jq -r '.projects[] | .path as $p | .frameworks[]?.topLevelPackages[]? |
+    "\($p | split("/") | last): \(.id) \(.requestedVersion) -> \(.latestVersion)"')
+while read -r line; do
+  [ -n "$line" ] && report "$line"
+done <<<"$packages"
+
+# NuGet packages, direct and transitive, with a published advisory.
+vulnerable=$(dotnet list DocprocOoxml.slnx package --vulnerable --include-transitive --format json |
+  jq -r '.projects[] | .path as $p | .frameworks[]? | (.topLevelPackages[]?, .transitivePackages[]?) |
+    select(.vulnerabilities) | .id as $id | .resolvedVersion as $v | .vulnerabilities[] |
+    "\($p | split("/") | last): \($id) \($v) vulnerable (\(.severity)): \(.advisoryurl)"')
+while read -r line; do
+  [ -n "$line" ] && report "$line"
+done <<<"$vulnerable"
+
+# The fixture generator's Python packages, pinned in its script, with a newer release.
+generator=$(uv tree -q --script fixtures/generate.py --outdated --depth 0 --locked | sed -n '/(latest: /p')
+while read -r line; do
+  [ -n "$line" ] && report "fixtures/generate.py: $line"
+done <<<"$generator"
+
+# mise tools, the .NET SDK among them, pinned below their latest version.
+outdated=$(mise outdated --bump --local --json |
+  jq -r 'to_entries[] | "mise.toml: \(.key) \(.value.requested) -> \(.value.bump)"')
+while read -r line; do
+  [ -n "$line" ] && report "$line"
+done <<<"$outdated"
+
+exit "$stale"
+'''
+
+# Development-time, as currency is, and its counterpart: it moves every pin currency reports as
+# trailing to its latest, so a currency run after it reports none of them but a vulnerable
+# transitive package, which only a newer direct one can move. It rewrites only this directory's
+# pins, never the root's: the mise tools here, then, with them, the NuGet packages and the
+# fixture generator's packages. Run it, review the diff, and run the check.
+[tasks.upgrade]
+description = "Bump every mise tool in this file, every direct NuGet package, and every fixture generator package to its latest, rewriting mise.toml, the csproj files, the lock files in locked form, generate.py, and its lock"
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+# The tools pinned in this file alone: mise reads the root's config too, whose pins the root's
+# upgrade owns. Each is written to this file at its latest.
+config=$(realpath mise.toml)
+tools=$(mise outdated --bump --no-global --json |
+  jq -r --arg config "$config" 'to_entries[] | select(.value.source.path == $config and .value.bump != null) |
+    "\(.key)@\(.value.bump)"')
+for tool in $tools; do
+  mise use --path mise.toml "$tool"
+done
+# A new mise process, so the packages are upgraded with the tools just pinned: a new SDK moves
+# the runtime packs the NativeAOT publish locks.
+mise run upgrade:packages
+'''
+
+[tasks."upgrade:packages"]
+description = "Bump every direct NuGet package and fixture generator package to its latest, rewriting the lock files in locked form; upgrade runs it after the mise tools"
+hide = true
+dir = "{{config_root}}"
+run = '''
+set -euo pipefail
+export PATH="$DOTNET_ROOT:$PATH"
+# Restored afresh first, as the SDK may be new, then each direct package with a newer release is
+# written to its project at the latest, and the lock files rewritten from the projects and
+# checked in locked mode, as the check restores them.
+dotnet restore DocprocOoxml.slnx --force-evaluate >/dev/null
+packages=$(dotnet list DocprocOoxml.slnx package --outdated --format json |
+  jq -r '.projects[] | .path as $p | .frameworks[]?.topLevelPackages[]? | "\($p) \(.id) \(.latestVersion)"')
+while read -r project id version; do
+  [ -n "$project" ] && dotnet package add "$id" --project "$project" --version "$version" --no-restore
+done <<<"$packages"
+dotnet restore DocprocOoxml.slnx --force-evaluate >/dev/null
+dotnet restore DocprocOoxml.slnx --locked-mode >/dev/null
+
+# The fixture generator's packages, pinned exactly in its script's header: each with a newer
+# release is pinned at it in place (uv add would rewrite the header's list across lines), then
+# the script is re-locked, its other locked packages kept where they are, and the lock checked.
+generator=$(uv tree -q --script fixtures/generate.py --outdated --depth 0 --locked |
+  sed -n 's/^\([^ ]*\) v\([^ ]*\) (latest: v\([^)]*\))$/\1 \2 \3/p')
+while read -r name pinned latest; do
+  [ -n "$name" ] && sed -i "1,/^# \/\/\/\$/s/\"$name==$pinned\"/\"$name==$latest\"/" fixtures/generate.py
+done <<<"$generator"
+uv lock -q --script fixtures/generate.py
+uv lock -q --script fixtures/generate.py --check
+'''
+
+[tasks.fixtures]
+description = "Regenerate the generated fixtures and their ground truth; needs LibreOffice's soffice; the check never runs it"
+dir = "{{config_root}}"
+run = "uv run --script fixtures/generate.py"
+
+# The goldens are the published binary's own output, so a change to it is reviewed as a diff of
+# them; the check compares against them and never writes them.
+[tasks.golden]
+description = "Publish the CLI with NativeAOT and re-record each fixture's .jsonl and .stderr golden, and a refused fixture's .exit, from it; the check never runs it; writes only bin/, obj/, .state/, and the goldens"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "golden: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+dotnet restore DocprocOoxml.slnx --locked-mode
+dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror -o .state/aot
+# Each fixture's goldens sit at its path under fixtures/, less its extension, so a removed
+# fixture's goldens go with the directory.
+golden=test/Docproc.Ooxml.Tests/Expected
+rm -rf "$golden"
+for fixture in fixtures/generated/*/* fixtures/realworld/*/*; do
+  case "$fixture" in
+    *.docx | *.xlsx | *.pptx | *.doc) ;;
+    *) continue ;;
+  esac
+  stem="$golden/${fixture#fixtures/}"
+  stem="${stem%.*}"
+  mkdir -p "$(dirname "$stem")"
+  # A fixture that exits other than 0 is recorded too, its exit code in a .exit golden beside
+  # the other two, and reported; a fixture with no .exit golden exits 0.
+  status=0
+  .state/aot/docproc-ooxml "$fixture" >"$stem.jsonl" 2>"$stem.stderr" || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "$status" >"$stem.exit"
+    echo "golden: $fixture exited $status"
+  fi
+done
+echo "golden: $(find "$golden" -name '*.jsonl' | wc -l) fixtures recorded"
+'''

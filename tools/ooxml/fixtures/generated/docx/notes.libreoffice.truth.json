@@ -1,0 +1,96 @@
+{
+  "fixture": "notes",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Notes"
+    },
+    {
+      "kind": "paragraph",
+      "text": "Revenue rose sharply in the third quarter.",
+      "marks": [
+        {
+          "at": 20,
+          "kind": "footnote",
+          "n": 1
+        },
+        {
+          "at": 42,
+          "kind": "endnote",
+          "n": 1
+        }
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "Costs held steady.",
+      "marks": [
+        {
+          "at": 17,
+          "kind": "footnote",
+          "n": 2
+        }
+      ]
+    },
+    {
+      "kind": "listItem",
+      "level": 0,
+      "ordered": false,
+      "start": true,
+      "text": "An item with an endnote",
+      "marks": [
+        {
+          "at": 23,
+          "kind": "endnote",
+          "n": 2
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "A withdrawn footnote"
+  ],
+  "once": [],
+  "footnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " Figures are unaudited."
+        }
+      ]
+    },
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " The method has two parts."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Its second part is a second paragraph."
+        }
+      ]
+    }
+  ],
+  "endnotes": [
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " Source: the regional ledgers."
+        }
+      ]
+    },
+    {
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": " An endnote from a list item."
+        }
+      ]
+    }
+  ]
+}
