@@ -16,9 +16,7 @@
 //! - an `\*\mhtmltag` group is skipped (2.1.3.1.5): it holds a rewritten copy of a tag whose
 //!   original, its `cid:` reference included, is in an `\*\htmltag` group (footnote 8).
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
-
-use docproc_envelope::panic_text;
+use docproc_envelope::guarded;
 
 use crate::codepage::{self, FALLBACK};
 
@@ -38,7 +36,7 @@ const RATIO_MAX: u64 = 9;
 /// input by the header's sizes unchecked, and allocates the header's raw size, up to 4 GiB, which
 /// a failed allocation aborts on, unseen by any guard: so those sizes are checked first, a raw
 /// size more than [`RATIO_MAX`] times the data after the header can yield refused, and any other
-/// panic it raises is caught here and becomes the reason.
+/// panic it raises is caught by the envelope's guard and becomes the reason.
 pub fn decompress(compressed: &[u8]) -> Result<String, String> {
     if compressed.len() < HEADER {
         return Err(format!(
@@ -67,16 +65,9 @@ pub fn decompress(compressed: &[u8]) -> Result<String, String> {
              can yield; not decompressed"
         ));
     }
-    match catch_unwind(AssertUnwindSafe(|| {
-        compressed_rtf::decompress_rtf(compressed)
-    })) {
-        Ok(Ok(rtf)) => Ok(rtf),
-        Ok(Err(err)) => Err(format!("can't be decompressed ({err})")),
-        Err(payload) => Err(format!(
-            "can't be decompressed (the decompressor panicked: {})",
-            panic_text(&*payload)
-        )),
-    }
+    // The envelope's guard, so a panic is worded as every other reader's: "the reader panicked".
+    guarded(|| compressed_rtf::decompress_rtf(compressed))
+        .map_err(|failure| format!("can't be decompressed ({})", failure.reason))
 }
 
 /// What an RTF document encapsulates (MS-OXRTFEX 2.2.3.1).
