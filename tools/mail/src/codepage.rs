@@ -1,10 +1,9 @@
-//! String decoding by code page, through codepage-strings. PT_UNICODE is UTF-16LE, code page
-//! 1200; PT_STRING8 is in the code page of its message, else of its store ([`message_code_page`]),
-//! or for a .msg, which has no store, the one [`msg_code_page`] falls back to. A string that isn't
-//! valid in its code page, or whose code page codepage-strings can't decode, is decoded lossily
-//! and noted, and the caller turns each note into a warning.
-
-use codepage_strings::Coding;
+//! String decoding by code page: codepage maps a Windows code page to the encoding_rs encoding
+//! that decodes it. PT_UNICODE is UTF-16LE, code page 1200; PT_STRING8 is in the code page of its
+//! message, else of its store ([`message_code_page`]), or for a .msg, which has no store, the one
+//! [`msg_code_page`] falls back to. A string that isn't valid in its code page, or whose code page
+//! codepage doesn't know, is decoded lossily and noted, and the caller turns each note into a
+//! warning.
 
 use crate::props::{Bag, Value, integer, tag};
 
@@ -14,13 +13,13 @@ const UTF16LE: u16 = 1200;
 /// UTF-8.
 pub const UTF8: u16 = 65001;
 
-/// US-ASCII, which Outlook names for HTML bodies in plain ASCII and codepage-strings doesn't
-/// know; [`decode`] reads it itself.
-const US_ASCII: u16 = 20127;
-
 /// Windows-1252, for PT_STRING8 when neither the message nor the store names a code page, and
-/// for lossy decoding when the named code page can't be decoded at all.
+/// for lossy decoding when codepage doesn't know the named code page.
 pub const FALLBACK: u16 = 1252;
+
+/// US-ASCII, which Outlook names for messages and HTML bodies in plain ASCII, as Apache POI's
+/// example_sent_regular.msg does, and codepage doesn't know; [`decode`] reads it itself.
+const US_ASCII: u16 = 20127;
 
 /// The store's code page: PidTagMessageCodepage, else PidTagCodePageId, on the store's own
 /// properties, else [`FALLBACK`].
@@ -181,30 +180,28 @@ impl Strings {
 
 /// The text of `bytes` in `code_page`, and when the decoding is lossy, why, worded to follow
 /// the name of what was decoded: "is not valid in code page 65001; decoded lossily".
+///
+/// The bytes are read in their code page alone, never sniffed: a PT_STRING8 in 1252 that starts
+/// FF FE is "ÿþ", not UTF-16. US-ASCII is read here, and any other code page codepage doesn't
+/// know is read as [`FALLBACK`], with a note: the DOS (OEM) code pages, and the code pages
+/// codepage gives as the WHATWG replacement encoding, which would read a whole string as one
+/// U+FFFD.
 pub fn decode(bytes: &[u8], code_page: u16) -> (String, Option<String>) {
     if code_page == US_ASCII {
         return ascii(bytes);
     }
-    match Coding::new(code_page) {
-        Ok(coding) => match coding.decode(bytes) {
-            Ok(text) => (text.into_owned(), None),
-            Err(_) => (
-                coding.decode_lossy(bytes).into_owned(),
-                Some(format!(
-                    "is not valid in code page {code_page}; decoded lossily"
-                )),
-            ),
-        },
-        Err(err) => (
-            Coding::new(FALLBACK)
-                .map(|coding| coding.decode_lossy(bytes).into_owned())
-                .unwrap_or_else(|_| String::from_utf8_lossy(bytes).into_owned()),
-            Some(format!(
-                "is in code page {code_page}, which can't be decoded ({err}); \
-                 decoded lossily as code page {FALLBACK}"
-            )),
-        ),
-    }
+    let known = codepage::to_encoding(code_page).filter(|known| *known != encoding_rs::REPLACEMENT);
+    let Some(encoding) = known else {
+        let (text, _) = encoding_rs::WINDOWS_1252.decode_without_bom_handling(bytes);
+        let note = format!(
+            "is in code page {code_page}, which can't be decoded; \
+             decoded lossily as code page {FALLBACK}"
+        );
+        return (text.into_owned(), Some(note));
+    };
+    let (text, lossy) = encoding.decode_without_bom_handling(bytes);
+    let note = lossy.then(|| format!("is not valid in code page {code_page}; decoded lossily"));
+    (text.into_owned(), note)
 }
 
 /// How far into an HTML document its `<meta>` charset is looked for, as the HTML standard's
@@ -413,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn us_ascii_is_read_though_codepage_strings_lacks_it() {
+    fn us_ascii_is_read_though_codepage_lacks_it() {
         assert_eq!(
             decode(b"<p>Hi</p>", US_ASCII),
             ("<p>Hi</p>".to_owned(), None)
@@ -423,6 +420,35 @@ mod tests {
         assert_eq!(
             lossy.as_deref(),
             Some("is not valid in code page 20127; decoded lossily")
+        );
+    }
+
+    /// A code page codepage doesn't know reads as 1252, with a note naming it: a DOS code page
+    /// among them, and ISO-2022-KR, the replacement encoding to WHATWG, read as 1252, not as one
+    /// U+FFFD.
+    #[test]
+    fn an_unknown_code_page_reads_as_the_fallback_with_a_note() {
+        let note = |code_page: u16| {
+            format!(
+                "is in code page {code_page}, which can't be decoded; \
+                 decoded lossily as code page 1252"
+            )
+        };
+        assert_eq!(
+            decode(b"a\xE9", 50225),
+            ("aé".to_owned(), Some(note(50225)))
+        );
+        assert_eq!(decode(b"\x80", 437), ("€".to_owned(), Some(note(437))));
+    }
+
+    /// Bytes are read in their code page, never sniffed for a byte-order mark.
+    #[test]
+    fn a_leading_byte_order_mark_is_text_of_the_code_page() {
+        assert_eq!(decode(b"\xFF\xFEa\0", 1252), ("ÿþa\0".to_owned(), None));
+        assert_eq!(decode(b"\xEF\xBB\xBFa", 1252), ("ï»¿a".to_owned(), None));
+        assert_eq!(
+            decode(b"\xFF\xFEH\0i\0", 1200),
+            ("\u{FEFF}Hi".to_owned(), None)
         );
     }
 

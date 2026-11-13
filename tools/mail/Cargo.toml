@@ -11,12 +11,11 @@ publish = false
 # guard, the media store, and the Markdown escapes. Untagged, by path; its tests run in this
 # tool's check, against this Cargo.lock.
 docproc-envelope = { path = "../envelope" }
-# Pinned exactly: the CLI works around known faults of these releases, outlook-pst's in
-# src/pst.rs and codepage-strings' missing US-ASCII in src/codepage.rs.
+# Pinned exactly: the CLI works around known faults of this release, in src/pst.rs.
 outlook-pst = "=1.2.0"
-codepage-strings = "=1.0.2"
-# A charset an HTML body's <meta> names, to its code page: encoding_rs knows the WHATWG labels
-# and codepage maps them to Windows code pages. codepage-strings decodes, through them both.
+# Code pages to text (src/codepage.rs): codepage maps a Windows code page to its encoding_rs
+# encoding, which decodes it, and a charset an HTML body's <meta> names, a WHATWG label encoding_rs
+# knows, back to its code page.
 codepage = "0.1.3"
 encoding_rs = "0.8.44"
 serde = { version = "1.0.229", features = ["derive"] }
