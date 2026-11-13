@@ -64,12 +64,10 @@ the tools part to the system tools under `tools/`.
   at its module's root and its packages, `app`, `apptest`, `run`, and `report`, under `internal/`,
   where `cli-applications.md` has `cmd/<name>/main.go` and `topology-and-naming.md` domain
   packages at the root level, since the module's one public surface is the command.
-- A mature system tool is run through an adapter, never reimplemented in Go.
-- An adapter declares `Spec()` and `Minimum`, unprefixed with one tool and named for the tool with
-  several, and checks its tools' versions through `Tool.AtLeast` alone, when it is built, so a
-  missing, outdated, or other-schema tool fails at startup.
-- A tool runs under the caller's context, and its temporary files live in a directory the caller
-  owns.
+- `architecture/standards/go-elemental/principles/system-tools.md`: an adapter declares `Spec()`
+  and `Minimum`, unprefixed with one tool and named for the tool with several. It checks its
+  tools' versions through `Tool.AtLeast` alone, so a tool of another schema fails at startup, as
+  an outdated one does. A tool's temporary files live in a directory the caller owns.
 - A tool's options, a bound or an output cap among them, are per-request values, never library
   policy.
 - No stage re-encodes a picture lossily; a conversion writes PNG.
