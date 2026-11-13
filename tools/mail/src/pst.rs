@@ -85,8 +85,7 @@ pub fn read(
         && !walk.holds(&root, after)
     {
         return Err(Fault::Refused(format!(
-            "{}: --after {after}: no message in the store has that node id",
-            path.display()
+            "--after {after}: no message in the store has that node id"
         )));
     }
     walk.files.create()?;
@@ -117,7 +116,7 @@ impl Pst {
     /// Opens the file at `path` and reads its header and its store's root; a failure is the
     /// refusal's reason.
     fn open(path: &Path, encoding: Encoding) -> Result<Self, String> {
-        let file = File::open(path).map_err(|err| format!("{}: {err}", path.display()))?;
+        let file = File::open(path).map_err(|err| format!("the input can't be read: {err}"))?;
         let failed = |what: &str| {
             let what = what.to_owned();
             move |failure: Failure| format!("{what}: {}", failure.reason)
@@ -356,8 +355,10 @@ impl<W: Write> Walk<'_, W> {
         mut path: Vec<String>,
     ) -> Result<(), Fault> {
         let (display_name, container_class, notes) = mapping::folder(&data.props, self.code_page);
-        path.push(display_name.clone().unwrap_or_default());
-        let place = format!("/{}", path.join("/"));
+        path.push(display_name.unwrap_or_default());
+        // A place names the folder by its node id, never by its path: a display name can hold
+        // ": " or a line break, and the folder's line already joins the id to its path.
+        let place = format!("folder {}", data.id);
         warn_all(&place, notes);
         self.out
             .write(&model::Folder {
@@ -365,7 +366,6 @@ impl<W: Write> Walk<'_, W> {
                 id: data.id,
                 parent,
                 path: path.clone(),
-                display_name,
                 container_class,
             })
             .map_err(Fault::Output)?;
@@ -553,6 +553,8 @@ fn bag<'a>(props: impl Iterator<Item = (&'a u16, &'a PropertyValue)>) -> Bag {
     props.map(|(id, value)| (*id, convert(value))).collect()
 }
 
+/// A property's value in the readers' form. A multi-valued property, which no field reads, is
+/// [`Value::Other`].
 fn convert(value: &PropertyValue) -> Value {
     match value {
         PropertyValue::Integer16(value) => Value::Integer(i64::from(*value)),
@@ -563,29 +565,8 @@ fn convert(value: &PropertyValue) -> Value {
         PropertyValue::Binary(value) => Value::Binary(value.buffer().to_vec()),
         PropertyValue::String8(value) => Value::String8(value.buffer().to_vec()),
         PropertyValue::Unicode(value) => Value::Unicode(utf16le(value.buffer())),
-        PropertyValue::MultipleInteger16(values) => {
-            multiple(values, |v| Value::Integer((*v).into()))
-        }
-        PropertyValue::MultipleInteger32(values) => {
-            multiple(values, |v| Value::Integer((*v).into()))
-        }
-        PropertyValue::MultipleInteger64(values) => multiple(values, |v| Value::Integer(*v)),
-        PropertyValue::MultipleTime(values) => multiple(values, |v| Value::Time(*v)),
-        PropertyValue::MultipleBinary(values) => {
-            multiple(values, |v| Value::Binary(v.buffer().to_vec()))
-        }
-        PropertyValue::MultipleString8(values) => {
-            multiple(values, |v| Value::String8(v.buffer().to_vec()))
-        }
-        PropertyValue::MultipleUnicode(values) => {
-            multiple(values, |v| Value::Unicode(utf16le(v.buffer())))
-        }
         _ => Value::Other,
     }
-}
-
-fn multiple<T>(values: &[T], convert: impl Fn(&T) -> Value) -> Value {
-    Value::Multiple(values.iter().map(convert).collect())
 }
 
 fn utf16le(units: &[u16]) -> Vec<u8> {

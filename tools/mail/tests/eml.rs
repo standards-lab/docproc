@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{built, fixture, names, run, run_in, scratch, sha256};
+use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha256};
 use serde_json::{Value, json};
 
 /// The MIME group's hand-written sources, under tests/fixtures/mime/eml.
@@ -145,23 +145,7 @@ fn assert_message(got: &Value, truth: &Value, source: &str, nested: bool) {
     for field in ["id", "folder", "class"] {
         assert_eq!(got.get(field), None, "{source}: {field}");
     }
-    for body in ["text", "html"] {
-        let got = got["body"]
-            .get(body)
-            .map(|text| text.as_str().unwrap().replace("\r\n", "\n"));
-        assert_eq!(
-            got.as_deref(),
-            truth["body"].get(body).map(|t| t.as_str().unwrap()),
-            "{source}: body {body}"
-        );
-    }
-    assert_eq!(got["body"].get("rtf"), None, "{source}: body rtf");
-    let derived = got["body"]["derived"].as_object().unwrap();
-    assert_eq!(
-        derived.keys().collect::<Vec<_>>(),
-        ["markdown"],
-        "{source}: derived bodies"
-    );
+    assert_markdown(got, &truth["body"], source);
 
     let expected = attachments(truth);
     let records = got.get("attachments").and_then(Value::as_array);
@@ -206,7 +190,7 @@ fn assert_group_matches_its_truth(group: &str, sources: &[&str]) {
         assert_eq!(lines.len(), 2, "{source}");
         assert_eq!(
             lines[0],
-            json!({"line": "store", "schema": "1", "format": "eml"}),
+            json!({"line": "store", "schema": "2", "format": "eml"}),
             "{source}"
         );
         assert_message(&lines[1], &truth["messages"][source], source, false);
@@ -271,10 +255,7 @@ fn the_mime_group_matches_its_sha256_list() {
 fn markdown_is_made_from_the_html_else_the_text() {
     let markdown = |source: &str| {
         let out = run(&[fixture(&format!("generated/eml/{source}"))]);
-        out.lines()[1]["body"]["derived"]["markdown"]
-            .as_str()
-            .unwrap()
-            .to_owned()
+        out.lines()[1]["markdown"].as_str().unwrap().to_owned()
     };
     assert_eq!(
         markdown("03-html-inline-image.eml"),
@@ -287,14 +268,14 @@ fn markdown_is_made_from_the_html_else_the_text() {
     );
 }
 
-/// With --attachments, each distinct content is written once, named by its SHA-256 and
+/// With --media, each distinct content is written once, named by its SHA-256 and
 /// extension, in a directory created as it was missing; an embedded message has no file.
 #[test]
 fn attachments_are_written_by_content() {
     for source in SOURCES {
         let dir = scratch(&format!("eml-attachments-{source}")).join("created");
         let path = fixture(&format!("generated/eml/{source}"));
-        let out = run(&[path.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+        let out = run(&[path.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
         assert_eq!(out.code, Some(0), "{source}: {}", out.stderr);
         let lines = out.lines();
         let mut expected: Vec<String> = lines[1]
@@ -314,7 +295,7 @@ fn attachments_are_written_by_content() {
     }
 }
 
-/// Without --attachments, a run writes nothing to disk: its working directory stays empty.
+/// Without --media, a run writes nothing to disk: its working directory stays empty.
 #[test]
 fn nothing_is_written_without_the_flag() {
     let dir = scratch("eml-no-attachments");
@@ -369,7 +350,7 @@ fn importance_comes_from_importance_else_x_priority() {
     }
 }
 
-/// Sensitivity's three values, whatever their case, in schema "1"'s words.
+/// Sensitivity's three values, whatever their case, in schema "2"'s words.
 #[test]
 fn sensitivity_values_map_to_the_schemas() {
     let cases = [
@@ -541,10 +522,7 @@ fn an_eml_of_4_gib_is_refused() {
     assert_eq!(out.stdout, "");
     assert_eq!(
         out.stderr,
-        format!(
-            "docproc-mail: error: {}: an .eml of 4 GiB or more is not read\n",
-            path.display()
-        )
+        "docproc-mail: error: an .eml of 4 GiB or more is not read\n"
     );
 }
 
@@ -639,7 +617,7 @@ fn an_encoded_message_is_embedded() {
         at = &record["message"];
         assert_eq!(at["subject"], format!("level {level}"));
     }
-    assert_eq!(at["body"]["text"], "last\r\n");
+    assert_eq!(at["markdown"], "last");
 }
 
 /// A transfer-encoded message/rfc822 part nests to 16 levels below the top as an unencoded one
@@ -680,8 +658,9 @@ fn encoded_nesting_stops_at_16_levels() {
     );
 }
 
-/// The text body is the text parts joined in order, an attachment between them; each
-/// attachment part is a record in order, its filename, type and content ID from the part.
+/// The text body is the text parts joined in order, an attachment between them, a line each in
+/// the Markdown; each attachment part is a record in order, its filename, type and content ID
+/// from the part.
 #[test]
 fn text_parts_are_joined_and_attachments_listed_in_order() {
     let dir = scratch("eml-ordered-attachments");
@@ -698,11 +677,11 @@ fn text_parts_are_joined_and_attachments_listed_in_order() {
           Content-Transfer-Encoding: base64\r\n\r\nAAEC\r\n\
           --b--\r\n",
     );
-    let out = run(&[path.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[path.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stderr, "");
     let message = &out.lines()[1];
-    assert_eq!(message["body"]["text"], "one\ntwo");
+    assert_eq!(message["markdown"], "one  \ntwo");
     let sha = "ae4b3280e56e2faf83f414a6e3dabe9d5fbe18976544c05fed121accb85b53fc";
     assert_eq!(
         message["attachments"],
@@ -717,7 +696,8 @@ fn text_parts_are_joined_and_attachments_listed_in_order() {
     assert_eq!(names(&dir), [sha.to_owned(), format!("{sha}.bin")]);
 }
 
-/// US-ASCII and ISO-8859-1, in parts and in encoded words, decode as windows-1252.
+/// US-ASCII and ISO-8859-1, in parts and in encoded words, decode as windows-1252: the HTML
+/// part, which the Markdown is made from, and, alone, a text part.
 #[test]
 fn latin1_and_ascii_decode_as_windows_1252() {
     let (message, stderr) = read(
@@ -732,8 +712,15 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     );
     assert_eq!(stderr, "");
     assert_eq!(message["subject"], "€5café");
-    assert_eq!(message["body"]["text"], "café € Ÿ");
-    assert_eq!(message["body"]["html"], "<p>\u{201c}café\u{201d}</p>");
+    assert_eq!(message["markdown"], "\u{201c}café\u{201d}");
+    let (message, stderr) = read(
+        "latin1-text.eml",
+        b"From: ann@example.com\r\n\
+          Content-Type: text/plain; charset=ISO-8859-1\r\n\
+          Content-Transfer-Encoding: quoted-printable\r\n\r\ncaf=E9 =80 =9F\r\n",
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(message["markdown"], "café € Ÿ");
 }
 
 /// A byte windows-1252 leaves undefined becomes U+FFFD, and malformed base64 is decoded as
@@ -752,7 +739,7 @@ fn lossy_decoding_gives_a_warning_naming_the_record() {
           Content-Disposition: attachment\r\n\r\nplain\r\n\
           --b--\r\n",
     );
-    assert_eq!(message["body"]["text"], "A\u{fffd}B\u{fffd}");
+    assert_eq!(message["markdown"], "A\u{fffd}B\u{fffd}");
     assert_eq!(message["attachments"][0]["size"], 3);
     assert_eq!(
         stderr,

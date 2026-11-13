@@ -9,7 +9,7 @@ use std::path::Path;
 use docproc_envelope::{Fault, Lines, Media};
 
 use crate::model::{self, Skipped, Store};
-use crate::{mime, warn_below};
+use crate::{mime, unreadable, warn_below};
 
 /// The size mail-parser parses up to: its offsets are 32-bit.
 const SIZE_MAX: u64 = 1 << 32;
@@ -17,19 +17,15 @@ const SIZE_MAX: u64 = 1 << 32;
 /// Reads the .eml at `path` and writes its store line, its message line and its skipped
 /// attachments' lines to `out`.
 pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Result<(), Fault> {
-    let input = path.display();
-    let refused = |err: std::io::Error| Fault::Refused(format!("{input}: {err}"));
-    let size = std::fs::metadata(path).map_err(refused)?.len();
+    let size = std::fs::metadata(path).map_err(unreadable)?.len();
     if size >= SIZE_MAX {
-        return Err(Fault::Refused(format!(
-            "{input}: an .eml of 4 GiB or more is not read"
-        )));
+        return Err(Fault::Refused(
+            "an .eml of 4 GiB or more is not read".to_owned(),
+        ));
     }
-    let raw = std::fs::read(path).map_err(refused)?;
+    let raw = std::fs::read(path).map_err(unreadable)?;
     let Some(parsed) = mime::parser().parse(&raw) else {
-        return Err(Fault::Refused(format!(
-            "{input}: the message can't be parsed"
-        )));
+        return Err(Fault::Refused("the message can't be parsed".to_owned()));
     };
     files.create()?;
     out.write(&Store {

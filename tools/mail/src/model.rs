@@ -1,11 +1,11 @@
-//! The lines of schema "1". Each line is one JSON object whose "line" field names it: a store
+//! The lines of schema "2". Each line is one JSON object whose "line" field names it: a store
 //! line first, then folder, message and skipped lines. Fields serialize in declaration order,
 //! and a property with no value is left out, never written as null.
 
 use serde::Serialize;
 
 /// The schema every line of this output follows.
-pub const SCHEMA: &str = "1";
+pub const SCHEMA: &str = "2";
 
 /// The first line: the source's facts.
 #[derive(Serialize)]
@@ -33,10 +33,9 @@ pub struct Folder {
     /// The parent folder's node id; the IPM subtree's root has none.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<u32>,
-    /// The display names from the IPM subtree's root down to this folder.
+    /// The display names from the IPM subtree's root down to this folder, its own last, which
+    /// is why the folder has no display_name of its own.
     pub path: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub container_class: Option<String>,
 }
@@ -95,8 +94,12 @@ pub struct Message {
     /// Lowercase hex of the stored bytes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation_index: Option<String>,
-    #[serde(skip_serializing_if = "Body::is_empty")]
-    pub body: Body,
+    /// The message's text as Markdown, made from the first body it holds: its stored HTML, else
+    /// the HTML recovered from its RTF body (\fromhtml1, MS-OXRTFEX), else its plain text, read
+    /// literally. Images keep their `cid:` sources, which name attachments' content_id. The
+    /// bodies themselves are no part of the line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub markdown: Option<String>,
     /// In the attachment table's order, less those that couldn't be read.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub attachments: Vec<Attachment>,
@@ -116,51 +119,6 @@ pub struct Address {
 impl Address {
     pub fn is_empty(&self) -> bool {
         self.name.is_none() && self.address.is_none() && self.address_type.is_none()
-    }
-}
-
-/// A message's bodies. The stored ones sit at the top level, each written as stored; the ones
-/// the CLI makes from them sit under `derived`, so a stored body and a derived one never share a
-/// place and a reader tells them apart by where they are.
-#[derive(Default, Serialize)]
-pub struct Body {
-    /// The stored plain-text body, PidTagBody; in a MIME message, its text-body parts joined.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    /// The stored HTML body, PidTagHtml, decoded by its internet code page; in a MIME message,
-    /// its HTML-body parts joined.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub html: Option<String>,
-    /// The stored RTF body, PidTagRtfCompressed, decompressed. RTF is 7-bit text; any byte
-    /// past ASCII is written as the character of the same number.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub rtf: Option<String>,
-    #[serde(skip_serializing_if = "Derived::is_empty")]
-    pub derived: Derived,
-}
-
-impl Body {
-    pub fn is_empty(&self) -> bool {
-        self.text.is_none() && self.html.is_none() && self.rtf.is_none() && self.derived.is_empty()
-    }
-}
-
-/// The bodies the CLI makes; none of them is stored in the message.
-#[derive(Default, Serialize)]
-pub struct Derived {
-    /// The HTML recovered from the RTF body when it encapsulates HTML (\fromhtml1, MS-OXRTFEX).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub html: Option<String>,
-    /// Markdown made from the stored HTML, else from the HTML recovered from RTF, else from the
-    /// plain text, read literally. Images keep their `cid:` sources, which name attachments'
-    /// content_id.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub markdown: Option<String>,
-}
-
-impl Derived {
-    pub fn is_empty(&self) -> bool {
-        self.html.is_none() && self.markdown.is_none()
     }
 }
 
@@ -191,7 +149,7 @@ pub struct Attachment {
     /// The content's size in bytes, when its content is read.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
-    /// In a .msg or a MIME message, an embedded message's own message, with its bodies and its
+    /// In a .msg or a MIME message, an embedded message's own message, with its Markdown and its
     /// own attachments, nested to any depth the reader allows. A .pst's embedded messages have
     /// none.
     #[serde(skip_serializing_if = "Option::is_none")]

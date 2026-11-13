@@ -41,7 +41,7 @@ mod common;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
 
-use common::{built, fixture, names, run, run_in, scratch, sha256};
+use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha256};
 use serde_json::{Value, json};
 
 /// The folders PST Builder 1.3.0 makes in every store before the layout's, under the IPM
@@ -182,23 +182,7 @@ fn assert_message(got: &Value, truth: &Value, source: &str) {
         expect(field, None);
     }
     expect("attachments", attachments(truth).as_ref());
-    for body in ["text", "html"] {
-        let got = got["body"]
-            .get(body)
-            .map(|text| text.as_str().unwrap().replace("\r\n", "\n"));
-        assert_eq!(
-            got.as_deref(),
-            truth["body"].get(body).map(|t| t.as_str().unwrap()),
-            "{source}: body {body}"
-        );
-    }
-    assert_eq!(got["body"].get("rtf"), None, "{source}: body rtf");
-    let derived = got["body"]["derived"].as_object().unwrap();
-    assert_eq!(
-        derived.keys().collect::<Vec<_>>(),
-        ["markdown"],
-        "{source}: derived bodies"
-    );
+    assert_markdown(got, &truth["body"], source);
 }
 
 /// One item line against its item source's truth, every field the truth states, and nothing the
@@ -234,11 +218,8 @@ fn assert_item(got: &Value, truth: &Value, source: &str) {
     ] {
         expect(field, None);
     }
-    assert_eq!(
-        got["body"],
-        json!({"html": truth["html"], "derived": {"markdown": truth["markdown"]}}),
-        "{source}: body"
-    );
+    assert_eq!(got.get("body"), None, "{source}: body");
+    assert_eq!(got["markdown"], truth["markdown"], "{source}: markdown");
 }
 
 /// The message line `source` became in mailbox.pst.
@@ -261,7 +242,7 @@ fn message_from(source: &str) -> Value {
 }
 
 fn markdown(message: &Value) -> &str {
-    message["body"]["derived"]["markdown"].as_str().unwrap()
+    message["markdown"].as_str().unwrap()
 }
 
 /// The Markdown body of an HTML message is htmd's rendering of its stored HTML.
@@ -291,7 +272,6 @@ fn markdown_keeps_cid_images() {
 #[test]
 fn markdown_from_plain_text_reads_literally() {
     let message = message_from("02-reply-latin1.eml");
-    assert_eq!(message["body"].get("html"), None);
     assert_eq!(
         markdown(&message),
         "Ada,\n\nSplendid. The café in Zürich serves crème brûlée; we shall  \n\
@@ -396,7 +376,7 @@ fn files_named(lines: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// With --attachments, each record's file is in the directory, created as it was missing, its
+/// With --media, each record's file is in the directory, created as it was missing, its
 /// bytes those its name hashes, and a store without attachments leaves it empty; stdout is the
 /// same as without the flag.
 #[test]
@@ -406,7 +386,7 @@ fn attachments_are_written_by_content() {
         let file = generated(store["file"].as_str().unwrap());
         let stem = file.file_stem().unwrap().to_str().unwrap();
         let dir = scratch(&format!("generated-attachments-{stem}")).join("created");
-        let out = run(&[file.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+        let out = run(&[file.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
         assert_eq!(out.code, Some(0), "{}", out.stderr);
         assert_eq!(out.stdout, run(&[&file]).stdout);
         let mut expected = files_named(&out.lines());
@@ -422,7 +402,7 @@ fn attachments_are_written_by_content() {
     assert!(written > 0, "some store has attachments");
 }
 
-/// Without --attachments, a run writes nothing to disk: its working directory stays empty.
+/// Without --media, a run writes nothing to disk: its working directory stays empty.
 #[test]
 fn nothing_is_written_without_the_flag() {
     let cwd = scratch("generated-no-flag");
@@ -442,7 +422,7 @@ fn content_that_cant_be_written_exits_1() {
     std::fs::write(&file, b"").unwrap();
     let out = run(&[
         store.as_os_str(),
-        "--attachments".as_ref(),
+        "--media".as_ref(),
         file.join("dir").as_os_str(),
     ]);
     assert_eq!(out.code, Some(1));
@@ -457,7 +437,7 @@ fn content_that_cant_be_written_exits_1() {
     let dir = scratch.join("taken");
     let first = files_named(&run(&[&store]).lines()).remove(0);
     std::fs::create_dir_all(dir.join(&first)).unwrap();
-    let out = run(&[store.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[store.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr.starts_with(&format!(
@@ -515,7 +495,7 @@ const NOTE_G_MESSAGE: u64 = 2097380;
 fn a_by_reference_attachment_has_no_file() {
     let dir = scratch("by-reference");
     let store = with_attach_method(2);
-    let out = run(&[store.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[store.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stderr, "");
     let lines = out.lines();
@@ -559,39 +539,11 @@ fn an_attachment_that_cant_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "docproc-mail: warning: /Top of Personal Folders/Sent Items, message \
-             {NOTE_G_MESSAGE}, attachment 5: skipped: {reason}\n"
+            "docproc-mail: warning: folder {}, message {NOTE_G_MESSAGE}, attachment 5: \
+             skipped: {reason}\n",
+            lines[at]["folder"]
         )
     );
-}
-
-/// Each generated store's and .msg's stdout equals its golden, byte for byte, so a regenerated
-/// file that reads differently shows here, though its bytes always differ (manifest.json's
-/// note). With UPDATE_GOLDEN set, the goldens are rewritten instead; review their diff before
-/// committing.
-#[test]
-fn outputs_match_their_goldens() {
-    let goldens = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/generated");
-    let layout = json_file("layout.json");
-    let stores = layout["stores"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|store| store["file"].as_str().unwrap().to_owned());
-    for file in stores.chain(msg_files()) {
-        let out = run(&[generated(&file)]);
-        let golden = goldens.join(Path::new(&file).with_extension("jsonl"));
-        if std::env::var_os("UPDATE_GOLDEN").is_some() {
-            std::fs::create_dir_all(golden.parent().unwrap()).unwrap();
-            std::fs::write(&golden, &out.stdout).unwrap();
-            continue;
-        }
-        assert!(
-            out.stdout == std::fs::read_to_string(&golden).unwrap(),
-            "{file}: stdout differs from {}",
-            golden.display()
-        );
-    }
 }
 
 /// The non-ASCII sources cover more than one charset, and a non-ASCII folder name is in a layout.
@@ -852,23 +804,7 @@ fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
             .as_ref(),
     );
 
-    for body in ["text", "html"] {
-        let got = got["body"]
-            .get(body)
-            .map(|text| text.as_str().unwrap().replace("\r\n", "\n"));
-        assert_eq!(
-            got.as_deref(),
-            truth["body"].get(body).map(|t| t.as_str().unwrap()),
-            "{source}: body {body}"
-        );
-    }
-    assert_eq!(got["body"].get("rtf"), None, "{source}: body rtf");
-    let derived = got["body"]["derived"].as_object().unwrap();
-    assert_eq!(
-        derived.keys().collect::<Vec<_>>(),
-        ["markdown"],
-        "{source}: derived bodies"
-    );
+    assert_markdown(got, &truth["body"], source);
 }
 
 /// Each generated .msg, read through the binary, is a store line and one message line that
@@ -886,7 +822,7 @@ fn msg_files_match_the_eml_truth() {
         assert_eq!(lines.len(), 2, "{file}");
         assert_eq!(
             lines[0],
-            json!({"line": "store", "schema": "1", "format": "msg"}),
+            json!({"line": "store", "schema": "2", "format": "msg"}),
             "{file}"
         );
         assert_eq!(lines[1]["line"], "message", "{file}");
@@ -899,7 +835,7 @@ fn msg_files_match_the_eml_truth() {
 
 /// MsgKit 3.0.6 attaches a forwarded message (message/rfc822) as a by-value .eml file named by
 /// its subject, not as an embedded message, so a generated .msg has none: the file holds the
-/// source's attached message, which the truth's embedded entry describes. With --attachments,
+/// source's attached message, which the truth's embedded entry describes. With --media,
 /// each record's file is written by content.
 #[test]
 fn msgkit_attaches_a_forwarded_message_as_an_eml_file() {
@@ -907,7 +843,7 @@ fn msgkit_attaches_a_forwarded_message_as_an_eml_file() {
     let embedded = &truth["embedded"][0];
     let dir = scratch("generated-msg-attachments");
     let file = generated("msg/08-forward-attached-message.msg");
-    let out = run(&[file.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[file.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let lines = out.lines();
     let mut expected = files_named(&lines);

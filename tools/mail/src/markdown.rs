@@ -1,9 +1,9 @@
-//! The derived Markdown body, made by htmd from HTML, or from plain text through the envelope's
+//! A message's Markdown, made by htmd from HTML, or from plain text through the envelope's
 //! literal-text escape, so that Markdown reads none of the text as markup.
 
 use docproc_envelope::markdown::escape;
 
-/// The derived Markdown body, by the one rule every format follows: made from `html` when the
+/// A message's Markdown, by the one rule every format follows: made from `html` when the
 /// message has an HTML body, else from `text`, read literally. One that can't be made is left
 /// out, with a note.
 pub fn derive(html: Option<&str>, text: Option<&str>, notes: &mut Vec<String>) -> Option<String> {

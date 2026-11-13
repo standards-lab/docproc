@@ -1,9 +1,7 @@
-//! Reading .pst stores: the committed public stores against their goldens and the hand truth,
-//! their attachments, and the skip policy on stores corrupted in the test.
+//! Reading .pst stores: the committed public stores against the hand truth (tests/golden.rs holds
+//! their goldens), their attachments, and the skip policy on stores corrupted in the test.
 
 mod common;
-
-use std::path::Path;
 
 use common::{built, fixture, names, run, scratch, sha256};
 use serde_json::Value;
@@ -17,38 +15,6 @@ const STORES: &[&str] = &[
     "java-libpst/passworded.pst",
 ];
 
-/// Each store's stdout and stderr equal its goldens, byte for byte, and it exits 0. With
-/// UPDATE_GOLDEN set, the goldens are rewritten instead; review their diff before committing.
-#[test]
-fn stores_match_their_goldens() {
-    let goldens = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/pst");
-    for store in STORES {
-        let out = run(&[fixture(&format!("pst/{store}"))]);
-        assert_eq!(out.code, Some(0), "{store}: {}", out.stderr);
-        let stem = store.replace('/', "-").replace(".pst", "");
-        let (stdout, stderr) = (
-            goldens.join(format!("{stem}.jsonl")),
-            goldens.join(format!("{stem}.stderr")),
-        );
-        if std::env::var_os("UPDATE_GOLDEN").is_some() {
-            std::fs::create_dir_all(&goldens).unwrap();
-            std::fs::write(&stdout, &out.stdout).unwrap();
-            std::fs::write(&stderr, &out.stderr).unwrap();
-            continue;
-        }
-        assert!(
-            out.stdout == std::fs::read_to_string(&stdout).unwrap(),
-            "{store}: stdout differs from {}",
-            stdout.display()
-        );
-        assert_eq!(
-            out.stderr,
-            std::fs::read_to_string(&stderr).unwrap(),
-            "{store}: stderr"
-        );
-    }
-}
-
 /// The same input always gives byte-identical output.
 #[test]
 fn output_is_byte_identical_across_runs() {
@@ -58,15 +24,15 @@ fn output_is_byte_identical_across_runs() {
     }
 }
 
-/// The shape of schema "1": the store line first with its facts, then folders depth-first, each
+/// The shape of schema "2": the store line first with its facts, then folders depth-first, each
 /// before its messages; every message names a folder already written; no field is null.
 #[test]
-fn lines_follow_schema_1() {
+fn lines_follow_schema_2() {
     for store in STORES {
         let lines = run(&[fixture(&format!("pst/{store}"))]).lines();
         let first = &lines[0];
         assert_eq!(first["line"], "store", "{store}");
-        assert_eq!(first["schema"], "1", "{store}");
+        assert_eq!(first["schema"], "2", "{store}");
         assert_eq!(first["format"], "pst", "{store}");
         assert_eq!(first["encoding"], "unicode", "{store}");
         let mut folders: Vec<(u64, Vec<Value>)> = Vec::new();
@@ -162,11 +128,13 @@ fn the_first_tika_message_matches_tikas_assertions() {
     assert_eq!(first["delivery_time"], "2014-02-26T07:51:02Z");
     assert_eq!(first["creation_time"], "2014-02-26T07:51:02Z");
     assert_eq!(first["modification_time"], "2014-02-26T12:37:43Z");
+    // A folder's display name is its path's last, the folder line holding no other.
     let folder = &lines[1];
     assert_eq!(
-        folder["display_name"],
-        "Début du fichier de données Outlook"
+        folder["path"],
+        serde_json::json!(["Début du fichier de données Outlook"])
     );
+    assert_eq!(folder.get("display_name"), None);
 }
 
 #[test]
@@ -210,10 +178,8 @@ fn a_message_outlook_pst_cannot_read_is_skipped() {
             .collect();
         assert_eq!(
             skips,
-            [
-                "docproc-mail: warning: /Top of Personal Folders/Contacts, message \
-              2097188: skipped: Missing Sub-Node Tree on message"
-            ]
+            ["docproc-mail: warning: folder 33090, message \
+              2097188: skipped: Missing Sub-Node Tree on message"]
         );
     }
 }
@@ -241,20 +207,15 @@ fn embedded_messages_are_listed_with_a_warning() {
     for (store, place, message, ids) in [
         (
             "java-libpst/dist-list.pst",
-            "/Top of Personal Folders/Calendar",
+            "folder 33058",
             2097348,
             &[32933, 32997][..],
         ),
-        (
-            "tika/testPST.pst",
-            "/Début du fichier de données Outlook",
-            2097380,
-            &[32805][..],
-        ),
+        ("tika/testPST.pst", "folder 32802", 2097380, &[32805][..]),
     ] {
         let dir = scratch(&format!("embedded-{}", store.replace('/', "-")));
         let path = fixture(&format!("pst/{store}"));
-        let out = run(&[path.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+        let out = run(&[path.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
         assert_eq!(out.code, Some(0), "{store}: {}", out.stderr);
         let expected = vec![embedded.clone(); ids.len()];
         assert_eq!(attachments(&out.lines()), [(message, expected)], "{store}");
@@ -278,12 +239,12 @@ fn embedded_messages_are_listed_with_a_warning() {
 }
 
 /// libyal's store has two messages with the same eleven pictures: 22 records, and with
-/// --attachments, eleven files, each content written once.
+/// --media, eleven files, each content written once.
 #[test]
 fn each_distinct_content_is_written_once() {
     let dir = scratch("dedup");
     let store = fixture("pst/libyal/outlook.pst");
-    let out = run(&[store.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[store.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let records: Vec<Value> = attachments(&out.lines())
         .into_iter()
@@ -324,7 +285,7 @@ fn records_after_a_reader_panic_are_still_read() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(
         out.stderr,
-        "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
+        "docproc-mail: warning: folder 33090, message 2097188: \
          skipped: the reader panicked: attempt to multiply with overflow\n"
     );
     // Every line but the panicked message's is the intact store's.
@@ -377,9 +338,7 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     let warnings: Vec<&str> = out.stderr.lines().collect();
     assert_eq!(warnings.len(), skipped.len());
     assert!(
-        warnings[0].starts_with(
-            "docproc-mail: warning: /Top of Personal Folders, folder 32930: skipped: "
-        )
+        warnings[0].starts_with("docproc-mail: warning: folder 32802, folder 32930: skipped: ")
     );
     assert!(
         lines
@@ -392,7 +351,7 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     assert_eq!(out.code, Some(0));
     assert_eq!(
         out.stderr,
-        "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188: \
+        "docproc-mail: warning: folder 33090, message 2097188: \
          skipped: Invalid internal block btype: 0xFF\n"
     );
     let messages = out
@@ -428,7 +387,7 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "docproc-mail: warning: /Top of Personal Folders, hierarchy table: \
+            "docproc-mail: warning: folder 32802, hierarchy table: \
              skipped: {lost}\n"
         )
     );
@@ -452,7 +411,7 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
     assert_eq!(
         out.stderr,
         format!(
-            "docproc-mail: warning: /Top of Personal Folders/Inbox, contents table: \
+            "docproc-mail: warning: folder 33090, contents table: \
              skipped: {lost}\n"
         )
     );
@@ -481,7 +440,7 @@ fn attachments_after_a_reader_panic_are_still_read() {
     assert_eq!(
         out.stderr,
         format!(
-            "docproc-mail: warning: /Top of Personal Folders/Inbox, message 2097188, \
+            "docproc-mail: warning: folder 33090, message 2097188, \
              attachment 32805: skipped: {reason}\n"
         )
     );
@@ -533,68 +492,30 @@ fn every_store_has_a_matching_sources_entry() {
 }
 
 /// Tika's testPST_variousBodyTypes.pst forwards one message as HTML, as RTF and as plain text.
-/// Each body is written as stored, and the Markdown comes from the HTML where there is some,
-/// else from the plain text. Its RTF is Word's own, not \fromhtml1, so no HTML is recovered
-/// from it.
+/// The Markdown comes from the HTML where there is some, else from the plain text: its RTF is
+/// Word's own, not \fromhtml1, so no HTML is recovered from it. No body is written.
 #[test]
-fn bodies_are_written_as_stored_with_markdown() {
+fn markdown_comes_from_the_html_else_the_text() {
     let lines = run(&[fixture("pst/tika/testPST_variousBodyTypes.pst")]).lines();
-    let bodies: Vec<&Value> = lines
-        .iter()
-        .filter(|l| l["line"] == "message")
-        .map(|l| &l["body"])
-        .collect();
-    let kinds = |body: &Value| -> Vec<String> {
-        let mut kinds: Vec<String> = body.as_object().unwrap().keys().cloned().collect();
-        kinds.extend(
-            body["derived"]
-                .as_object()
-                .unwrap()
-                .keys()
-                .map(|kind| format!("derived.{kind}")),
-        );
-        kinds
-    };
-    let text = |body: &Value| body["text"].as_str().unwrap().to_owned();
-    let (html, forwarded_html, rtf, plain) = (bodies[0], bodies[1], bodies[2], bodies[3]);
-
-    assert_eq!(kinds(html), ["derived", "html", "text", "derived.markdown"]);
-    assert_eq!(text(html), "This is the original email (html)\r\n\r\n");
-    let stored = html["html"].as_str().unwrap();
-    assert!(stored.starts_with("<html xmlns:v="), "{stored}");
-    assert!(
-        stored.ends_with(
-            "This is the <b>original</b> email (html)<o:p></o:p></p></div></body></html>"
-        )
+    let messages: Vec<&Value> = lines.iter().filter(|l| l["line"] == "message").collect();
+    assert!(messages.iter().all(|message| message.get("body").is_none()));
+    let markdown = |message: &Value| message["markdown"].as_str().unwrap().to_owned();
+    let (html, forwarded_html, rtf, plain) = (
+        markdown(messages[0]),
+        markdown(messages[1]),
+        markdown(messages[2]),
+        markdown(messages[3]),
     );
-    assert_eq!(
-        html["derived"]["markdown"],
-        "This is the **original** email (html)"
-    );
-
-    assert_eq!(kinds(forwarded_html), kinds(html));
+    assert_eq!(html, "This is the **original** email (html)");
     assert!(
-        forwarded_html["derived"]["markdown"]
-            .as_str()
-            .unwrap()
+        forwarded_html
             .ends_with("This is the **original** email (html)\n\n\u{A0}\n\n**Forwarded** (html)")
     );
-
-    assert_eq!(kinds(rtf), ["derived", "rtf", "text", "derived.markdown"]);
-    let stored = rtf["rtf"].as_str().unwrap();
-    assert!(stored.starts_with("{\\rtf1\\adeflang1025\\ansi\\ansicpg1252\\uc1"));
-    assert!(!stored.contains("\\fromhtml1"));
-    assert!(text(rtf).ends_with("Forwarded RTF\r\n"));
-    assert!(rtf["derived"]["markdown"].as_str().unwrap().ends_with(
+    assert!(rtf.ends_with(
         "Subject: original email\n\nThis is the original email (html)\n\nForwarded RTF"
     ));
-
-    assert_eq!(kinds(plain), ["derived", "text", "derived.markdown"]);
     assert!(
-        plain["derived"]["markdown"]
-            .as_str()
-            .unwrap()
-            .starts_with("From: Allison, Timothy B.  \nSent: Wednesday, August 30, 2017 3:26 PM  \nTo: Allison, Timothy B. \\<tallison@mitre.org>  \n")
+        plain.starts_with("From: Allison, Timothy B.  \nSent: Wednesday, August 30, 2017 3:26 PM  \nTo: Allison, Timothy B. \\<tallison@mitre.org>  \n")
     );
 }
 
@@ -605,11 +526,7 @@ fn markdown_from_plain_text_escapes_markup() {
     let lines = run(&[fixture("pst/tika/testPST.pst")]).lines();
     let markdown = |id: u64| {
         let message = lines.iter().find(|l| l["id"] == id).unwrap();
-        assert_eq!(message["body"].get("html"), None);
-        message["body"]["derived"]["markdown"]
-            .as_str()
-            .unwrap()
-            .to_owned()
+        message["markdown"].as_str().unwrap().to_owned()
     };
     let resolved = markdown(2097284);
     assert!(

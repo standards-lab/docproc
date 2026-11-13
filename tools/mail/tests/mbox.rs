@@ -75,11 +75,7 @@ fn the_mboxrd_is_rebuilt_byte_for_byte() {
 #[test]
 fn the_mboxrd_gives_its_sources_by_ordinal() {
     let dir = scratch("mboxrd-attachments");
-    let out = run(&[
-        mboxrd().as_os_str(),
-        "--attachments".as_ref(),
-        dir.as_os_str(),
-    ]);
+    let out = run(&[mboxrd().as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stderr, "");
     let lines = out.lines();
@@ -91,7 +87,7 @@ fn the_mboxrd_gives_its_sources_by_ordinal() {
         let dir = scratch(&format!("mboxrd-source-{n}"));
         let out = run(&[
             fixture(source).as_os_str(),
-            "--attachments".as_ref(),
+            "--media".as_ref(),
             dir.as_os_str(),
         ]);
         assert_eq!(out.code, Some(0), "{source}: {}", out.stderr);
@@ -108,14 +104,14 @@ fn the_mboxrd_gives_its_sources_by_ordinal() {
 }
 
 /// 09's body lines starting "From " and ">From ", quoted in the mboxrd, are read back as they
-/// were.
+/// were: each a line of the Markdown, the ">" escaped so it is no quote.
 #[test]
 fn from_lines_survive_the_mboxrd() {
     let out = run(&[mboxrd()]);
     let lines = out.lines();
-    let text = lines[9]["body"]["text"].as_str().unwrap();
+    let text = lines[9]["markdown"].as_str().unwrap();
     assert!(text.contains("\nFrom the table in Note G"), "{text}");
-    assert!(text.contains("\n>From your last letter"), "{text}");
+    assert!(text.contains("\n\\>From your last letter"), "{text}");
 }
 
 #[test]
@@ -239,8 +235,8 @@ fn an_mboxo_body_line_that_was_quoted_loses_its_quote() {
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let lines = out.lines();
     assert_eq!(
-        lines[1]["body"]["text"],
-        "From a line that was \"From \"\nFrom a line that was \">From \"\n"
+        lines[1]["markdown"],
+        "From a line that was \"From \"  \nFrom a line that was \">From \""
     );
 }
 
@@ -264,7 +260,7 @@ fn an_mboxcl_content_length_is_ignored() {
     let lines = out.lines();
     assert_eq!(lines.len(), 3);
     assert_eq!(lines[1]["id"], 1);
-    assert_eq!(lines[1]["body"]["text"], "first line\n");
+    assert_eq!(lines[1]["markdown"], "first line");
     assert_eq!(lines[2]["line"], "skipped");
     assert_eq!(lines[2]["kind"], "message");
     assert_eq!(lines[2]["id"], 2);

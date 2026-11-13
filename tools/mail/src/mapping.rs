@@ -5,7 +5,7 @@
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
-use crate::model::{Address, Attachment, Body, Derived, Message};
+use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::{markdown, rtf};
 
@@ -53,7 +53,7 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec
         references: strings.text(props, tag::INTERNET_REFERENCES),
         conversation_topic: strings.text(props, tag::CONVERSATION_TOPIC),
         conversation_index: binary(props, tag::CONVERSATION_INDEX).map(hex),
-        body: body(&mut strings, props, code_page, &mut notes),
+        markdown: markdown(&mut strings, props, code_page, &mut notes),
         ..Message::default()
     };
     for (row, recipient) in recipients.iter().enumerate() {
@@ -80,10 +80,15 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Vec
     (message, all)
 }
 
-/// A message's bodies: the stored plain text, HTML and RTF, then the HTML recovered from the
-/// RTF and the Markdown made from the HTML, else from the plain text. A body that can't be
-/// read is left out with a note, and the message keeps the rest.
-fn body(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Body {
+/// A message's Markdown, made from its stored HTML, else the HTML recovered from its RTF body,
+/// else its plain text. Each body is still read, and decoded, to make it; a body that can't be
+/// read is passed over with a note, and the Markdown is made from the next.
+fn markdown(
+    strings: &mut Strings,
+    props: &Bag,
+    code_page: u16,
+    notes: &mut Vec<String>,
+) -> Option<String> {
     let text = strings.text(props, tag::BODY);
     let html = html(strings, props, code_page);
     let rtf = binary(props, tag::RTF_COMPRESSED).and_then(|compressed| {
@@ -100,20 +105,11 @@ fn body(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<Stri
         notes.append(&mut lossy);
         html
     });
-    let markdown = markdown::derive(
+    markdown::derive(
         html.as_deref().or(from_rtf.as_deref()),
         text.as_deref(),
         notes,
-    );
-    Body {
-        text,
-        html,
-        rtf,
-        derived: Derived {
-            html: from_rtf,
-            markdown,
-        },
-    }
+    )
 }
 
 /// The stored HTML body. PidTagHtml is PT_BINARY, decoded in the code page
@@ -196,7 +192,8 @@ fn method(props: &Bag, notes: &mut Vec<String>) -> Option<&'static str> {
     Some(name)
 }
 
-/// A folder's display name and container class, decoded in `code_page`.
+/// A folder's display name, the last of its path, and its container class, decoded in
+/// `code_page`.
 pub fn folder(props: &Bag, code_page: u16) -> (Option<String>, Option<String>, Vec<String>) {
     let mut strings = Strings::new(code_page);
     let name = strings.text(props, tag::DISPLAY_NAME);

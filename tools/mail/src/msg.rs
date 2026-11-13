@@ -4,15 +4,15 @@
 //!   properties: a header, 32 bytes on the top-level message, 24 on an embedded one and 8 on a
 //!   recipient or an attachment, then one 16-byte entry per property, fixed-size values inline;
 //! - a `__substg1.0_XXXXYYYY` stream for each variable-size value, XXXX its property id and YYYY
-//!   its type, and for a multi-valued one, its lengths, each value in a stream suffixed
-//!   `-NNNNNNNN`;
+//!   its type;
 //! - a `__recip_version1.0_#NNNNNNNN` storage per recipient and an `__attach_version1.0_#NNNNNNNN`
 //!   storage per attachment, numbered in hex;
 //! - in an attachment, a `__substg1.0_3701000D` storage for an embedded message, a message of
-//!   its own with the embedded form of the header, or for afStorage, the stored storage;
-//! - at the top level only, `__nameid_version1.0`, the named properties' mapping.
+//!   its own with the embedded form of the header, or for afStorage, the stored storage.
 //!
-//! Properties fill the same bags the .pst reader fills and go through the one mapping, so a .msg
+//! The named properties' mapping, `__nameid_version1.0`, is not read, since no field reads a
+//! named property, and a multi-valued property is kept as [`Value::Other`], unread, since no
+//! field reads one either. Properties fill the same bags the .pst reader fills and go through the one mapping, so a .msg
 //! message line is what a .pst gives for the same properties.
 //!
 //! Every read runs inside [`guarded`]: a recipient, attachment or embedded message that can't be
@@ -21,7 +21,6 @@
 //! one the file is reopened. The top-level message itself is the input's root: a compound file
 //! without one, or with one that can't be read, is refused.
 
-use std::collections::BTreeMap;
 use std::convert::Infallible;
 use std::fs::File;
 use std::io::{self, Cursor, Read, Write};
@@ -42,11 +41,6 @@ const RECIPIENT: &str = "__recip_version1.0_#";
 const ATTACHMENT: &str = "__attach_version1.0_#";
 /// The storage of PidTagAttachDataObject: an embedded message, or afStorage's storage.
 const ATTACH_OBJECT: &str = "__substg1.0_3701000D";
-/// The named properties' mapping, and its GUID, entry and string streams (MS-OXMSG 2.2.3).
-const NAMEID: &str = "__nameid_version1.0";
-const NAMEID_GUIDS: &str = "__substg1.0_00020102";
-const NAMEID_ENTRIES: &str = "__substg1.0_00030102";
-const NAMEID_STRINGS: &str = "__substg1.0_00040102";
 
 /// How deep embedded messages are read: an embedded message nested deeper is listed without
 /// its message, with a warning. A compound file's directory can't loop (cfb refuses one that
@@ -58,7 +52,8 @@ pub const DEPTH_MAX: usize = 16;
 const AF_EMBEDDED_MESSAGE: i64 = 5;
 const AF_STORAGE: i64 = 6;
 
-/// Property types (MS-OXCDATA 2.11.1) the reader reads; any other is kept as [`Value::Other`].
+/// Property types (MS-OXCDATA 2.11.1) the reader reads; any other, a multi-valued one among them,
+/// is kept as [`Value::Other`].
 const PT_SHORT: u16 = 0x0002;
 const PT_LONG: u16 = 0x0003;
 const PT_BOOLEAN: u16 = 0x000B;
@@ -67,8 +62,6 @@ const PT_STRING8: u16 = 0x001E;
 const PT_UNICODE: u16 = 0x001F;
 const PT_SYSTIME: u16 = 0x0040;
 const PT_BINARY: u16 = 0x0102;
-/// The flag of a multi-valued type.
-const MV: u16 = 0x1000;
 
 /// The header before a property stream's entries (MS-OXMSG 2.4.1).
 #[derive(Clone, Copy, Debug)]
@@ -95,10 +88,9 @@ impl Header {
 /// Reads the .msg at `path`, writes its store line and its message line to `out`, and its
 /// attachments' contents, nested messages' included, through `files`.
 pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Result<(), Fault> {
-    let input = path.display();
     let file = guarded(|| cfb::open(path)).map_err(|failure| {
         Fault::Refused(format!(
-            "{input}: the compound file can't be read: {}",
+            "the compound file can't be read: {}",
             failure.reason
         ))
     })?;
@@ -106,14 +98,13 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
     let message = guarded(|| Ok::<_, Infallible>(file.is_stream(root.join(PROPERTIES))));
     if !message.is_ok_and(|message| message) {
         return Err(Fault::Refused(format!(
-            "{input}: a compound file, but not an Outlook message: it has no {PROPERTIES} stream"
+            "a compound file, but not an Outlook message: it has no {PROPERTIES} stream"
         )));
     }
     let mut walk = Walk {
         path: path.to_path_buf(),
         file,
         files,
-        named: BTreeMap::new(),
     };
     let (props, notes) = walk
         .read(|file| properties_at(file, root, Header::TopLevel))
@@ -133,7 +124,6 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
 
     let place = "message";
     warn_all(place, notes);
-    walk.named(root);
     let (message, skipped) = walk.message(root, &props, None, 0, place)?;
     out.write(&message).map_err(Fault::Output)?;
     for (id, reason) in skipped {
@@ -154,13 +144,6 @@ struct Walk<'a> {
     path: PathBuf,
     file: CompoundFile<File>,
     files: &'a mut Media,
-    /// The named properties' mapping, by property id.
-    #[allow(
-        dead_code,
-        reason = "the model reads no named property yet; the mapping is read, and its faults \
-                  warned about, so the first field that needs one has it"
-    )]
-    named: BTreeMap<u16, NamedProperty>,
 }
 
 impl Walk<'_> {
@@ -285,19 +268,6 @@ impl Walk<'_> {
         let (mut message, _) = self.message(object, &props, Some(parent), depth, &place)?;
         message.line = "";
         Ok(Some(message))
-    }
-
-    /// Reads the named properties' mapping, when the message has one; a fault in it is a
-    /// warning.
-    fn named(&mut self, root: &Path) {
-        let place = "named properties";
-        match self.read(|file| named_at(file, root)) {
-            Ok((named, notes)) => {
-                warn_all(place, notes);
-                self.named = named;
-            }
-            Err(reason) => warn(place, &format!("can't be read ({reason}); left out")),
-        }
     }
 
     /// Runs one read against the file inside [`guarded`]. A panic may have poisoned cfb's
@@ -439,7 +409,8 @@ pub fn properties(
     Ok((bag, notes))
 }
 
-/// One property's value, or why it can't be read, worded to follow its name.
+/// One property's value, or why it can't be read, worded to follow its name. A multi-valued
+/// property, whose values no field reads, is [`Value::Other`], its streams unread.
 fn value(
     id: u16,
     kind: u16,
@@ -457,40 +428,7 @@ fn value(
     };
     match kind {
         PT_STRING8 | PT_UNICODE | PT_BINARY => Ok(variable(kind, read(&name)?)),
-        _ if kind & MV == 0 => Ok(Value::Other),
-        _ => {
-            let single = kind & !MV;
-            let bytes = read(&name)?;
-            if let Some(width) = width(single) {
-                return Ok(Value::Multiple(
-                    bytes
-                        .chunks_exact(width)
-                        .filter_map(|bytes| fixed(single, bytes))
-                        .collect(),
-                ));
-            }
-            // A variable-size multi-valued property: its stream holds each value's length, 4
-            // bytes for a string, 8 for a binary, and each value is in its own stream.
-            let length = match single {
-                PT_STRING8 | PT_UNICODE => 4,
-                PT_BINARY => 8,
-                _ => return Ok(Value::Other),
-            };
-            (0..bytes.len() / length)
-                .map(|index| Ok(variable(single, read(&format!("{name}-{index:08X}"))?)))
-                .collect::<Result<_, _>>()
-                .map(Value::Multiple)
-        }
-    }
-}
-
-/// The size of a fixed-size type the reader reads, as a multi-valued property stores it.
-fn width(kind: u16) -> Option<usize> {
-    match kind {
-        PT_SHORT => Some(2),
-        PT_LONG => Some(4),
-        PT_I8 | PT_SYSTIME => Some(8),
-        _ => None,
+        _ => Ok(Value::Other),
     }
 }
 
@@ -556,116 +494,6 @@ fn storage_bytes(file: &mut CompoundFile<File>, storage: &Path) -> io::Result<Ve
     }
     copy.flush()?;
     Ok(copy.into_inner().into_inner())
-}
-
-/// A named property: its property set's GUID, as stored, and its name.
-#[derive(Debug, PartialEq)]
-pub struct NamedProperty {
-    pub guid: [u8; 16],
-    pub name: Name,
-}
-
-/// A named property's name: a number or a string.
-#[derive(Debug, PartialEq)]
-pub enum Name {
-    Id(u32),
-    String(String),
-}
-
-/// PS_MAPI and PS_PUBLIC_STRINGS, as stored: GUID indexes 1 and 2 name them, and index 3 on
-/// names the GUID stream's first GUID on.
-const PS_MAPI: [u8; 16] = guid(0x0002_0328);
-const PS_PUBLIC_STRINGS: [u8; 16] = guid(0x0002_0329);
-
-/// {XXXXXXXX-0000-0000-C000-000000000046}, in the mixed-endian form a GUID is stored in.
-const fn guid(data1: u32) -> [u8; 16] {
-    let d = data1.to_le_bytes();
-    [
-        d[0], d[1], d[2], d[3], 0, 0, 0, 0, 0xC0, 0, 0, 0, 0, 0, 0, 0x46,
-    ]
-}
-
-/// The first property id of a named property: a named property's id is this plus its index.
-const NAMED_BASE: u16 = 0x8000;
-
-fn named_at(
-    file: &mut CompoundFile<File>,
-    root: &Path,
-) -> io::Result<(BTreeMap<u16, NamedProperty>, Vec<String>)> {
-    let storage = root.join(NAMEID);
-    if !file.is_storage(&storage) {
-        return Ok((BTreeMap::new(), Vec::new()));
-    }
-    let mut read = |name: &str| {
-        let path = storage.join(name);
-        if file.is_stream(&path) {
-            read_stream(file, &path)
-        } else {
-            Ok(Vec::new())
-        }
-    };
-    let guids = read(NAMEID_GUIDS)?;
-    let entries = read(NAMEID_ENTRIES)?;
-    let strings = read(NAMEID_STRINGS)?;
-    Ok(named(&guids, &entries, &strings))
-}
-
-/// The named properties' mapping from its GUID, entry and string streams (MS-OXMSG 2.2.3.1):
-/// each 8-byte entry is a number, or a string's offset in the string stream, then the
-/// property's kind in bit 0, its GUID index in bits 1 to 15, and its index in bits 16 to 31.
-/// An entry that can't be read is left out with a note.
-pub fn named(
-    guids: &[u8],
-    entries: &[u8],
-    strings: &[u8],
-) -> (BTreeMap<u16, NamedProperty>, Vec<String>) {
-    let mut named = BTreeMap::new();
-    let mut notes = Vec::new();
-    let (entries, _) = entries.as_chunks::<8>();
-    for (at, entry) in entries.iter().enumerate() {
-        let [a, b, c, d, e, f, g, h] = *entry;
-        let (first, second) = (
-            u32::from_le_bytes([a, b, c, d]),
-            u32::from_le_bytes([e, f, g, h]),
-        );
-        let (string, guid_index, index) = (second & 1 == 1, (second >> 1) & 0x7FFF, second >> 16);
-        let guid = match guid_index {
-            1 => Some(PS_MAPI),
-            2 => Some(PS_PUBLIC_STRINGS),
-            n => n
-                .checked_sub(3)
-                .and_then(|n| usize::try_from(n).ok())
-                .and_then(|n| guids.get(n * 16..n * 16 + 16))
-                .map(|bytes| bytes.try_into().unwrap()),
-        };
-        let name = if string {
-            usize::try_from(first)
-                .ok()
-                .and_then(|offset| name_string(strings, offset))
-                .map(Name::String)
-        } else {
-            Some(Name::Id(first))
-        };
-        let id = u16::try_from(index)
-            .ok()
-            .and_then(|index| NAMED_BASE.checked_add(index));
-        match (guid, name, id) {
-            (Some(guid), Some(name), Some(id)) => {
-                named.insert(id, NamedProperty { guid, name });
-            }
-            _ => notes.push(format!("entry {at} can't be read; left out")),
-        }
-    }
-    (named, notes)
-}
-
-/// The string at `offset` in the string stream: its length in bytes, then UTF-16LE.
-fn name_string(strings: &[u8], offset: usize) -> Option<String> {
-    let length = u32::from_le_bytes(strings.get(offset..offset + 4)?.try_into().ok()?);
-    let bytes = strings.get(offset + 4..offset + 4 + usize::try_from(length).ok()?)?;
-    let (units, _) = bytes.as_chunks::<2>();
-    let units: Vec<u16> = units.iter().map(|unit| u16::from_le_bytes(*unit)).collect();
-    String::from_utf16(&units).ok()
 }
 
 fn invalid(reason: String) -> io::Error {
@@ -809,56 +637,30 @@ mod tests {
         );
     }
 
+    /// A multi-valued property is kept unread, as Other, its streams never opened: a missing
+    /// one is no note.
     #[test]
-    fn multi_valued_values_are_in_their_streams() {
+    fn multi_valued_values_are_other() {
         let bytes = stream(
             Header::Child,
             &[
                 (0x8001_1003, inline(&8u32.to_le_bytes())),
                 (0x8002_101F, inline(&8u32.to_le_bytes())),
                 (0x8003_1102, inline(&8u32.to_le_bytes())),
-                (0x8004_101E, inline(&4u32.to_le_bytes())),
             ],
         );
         let longs = [7i32.to_le_bytes(), (-1i32).to_le_bytes()].concat();
-        let (bag, notes) = read(
-            &bytes,
-            Header::Child,
-            &[
-                ("__substg1.0_80011003", &longs),
-                ("__substg1.0_8002101F", &[0; 8]),
-                ("__substg1.0_8002101F-00000000", &utf16("a\0")),
-                ("__substg1.0_8002101F-00000001", &utf16("bc")),
-                ("__substg1.0_80031102", &[0; 8]),
-                ("__substg1.0_80031102-00000000", b"\x01\x02"),
-                ("__substg1.0_8004101E", &[0; 4]),
-            ],
-        )
-        .unwrap();
+        let (bag, notes) =
+            read(&bytes, Header::Child, &[("__substg1.0_80011003", &longs)]).unwrap();
         assert_eq!(
             bag,
             Bag::from([
-                (
-                    0x8001,
-                    Value::Multiple(vec![Value::Integer(7), Value::Integer(-1)])
-                ),
-                (
-                    0x8002,
-                    Value::Multiple(vec![
-                        Value::Unicode(utf16("a")),
-                        Value::Unicode(utf16("bc")),
-                    ])
-                ),
-                (
-                    0x8003,
-                    Value::Multiple(vec![Value::Binary(b"\x01\x02".to_vec())])
-                ),
+                (0x8001, Value::Other),
+                (0x8002, Value::Other),
+                (0x8003, Value::Other),
             ])
         );
-        assert_eq!(
-            notes,
-            ["property 0x8004 has no stream __substg1.0_8004101E-00000000; left out"]
-        );
+        assert!(notes.is_empty());
     }
 
     #[test]
@@ -872,67 +674,5 @@ mod tests {
         );
         let (bag, _) = read(&bytes, Header::Child, &[]).unwrap();
         assert_eq!(bag[&0x0017], Value::Integer(1));
-    }
-
-    #[test]
-    fn the_named_property_mapping_resolves_guids_numbers_and_strings() {
-        let custom: [u8; 16] = std::array::from_fn(|i| i as u8);
-        let name = utf16("X-Custom");
-        let strings = [(name.len() as u32).to_le_bytes().to_vec(), name, vec![0; 0]].concat();
-        let entry = |first: u32, kind: u32, guid: u32, index: u32| {
-            [
-                first.to_le_bytes(),
-                (kind | guid << 1 | index << 16).to_le_bytes(),
-            ]
-            .concat()
-        };
-        let entries = [
-            entry(0x8580, 0, 1, 0),
-            entry(0, 1, 2, 1),
-            entry(0x0001, 0, 3, 2),
-            entry(0, 0, 4, 3),
-            entry(99, 1, 1, 4),
-        ]
-        .concat();
-        let (named, notes) = super::named(&custom, &entries, &strings);
-        assert_eq!(
-            named,
-            BTreeMap::from([
-                (
-                    0x8000,
-                    NamedProperty {
-                        guid: PS_MAPI,
-                        name: Name::Id(0x8580)
-                    }
-                ),
-                (
-                    0x8001,
-                    NamedProperty {
-                        guid: PS_PUBLIC_STRINGS,
-                        name: Name::String("X-Custom".into())
-                    }
-                ),
-                (
-                    0x8002,
-                    NamedProperty {
-                        guid: custom,
-                        name: Name::Id(1)
-                    }
-                ),
-            ])
-        );
-        assert_eq!(
-            notes,
-            [
-                "entry 3 can't be read; left out",
-                "entry 4 can't be read; left out"
-            ]
-        );
-        assert_eq!(
-            PS_MAPI,
-            [
-                0x28, 0x03, 0x02, 0, 0, 0, 0, 0, 0xC0, 0, 0, 0, 0, 0, 0, 0x46
-            ]
-        );
     }
 }

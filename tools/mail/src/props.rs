@@ -65,10 +65,7 @@ pub enum Value {
     String8(Vec<u8>),
     /// PT_UNICODE: UTF-16LE bytes, without the terminating null.
     Unicode(Vec<u8>),
-    /// A multi-valued property of one of the types above, its values in stored order. The
-    /// mapping reads none yet.
-    Multiple(Vec<Value>),
-    /// Any other type; the mapping reads none.
+    /// Any other type, multi-valued ones included; the mapping reads none.
     Other,
 }
 

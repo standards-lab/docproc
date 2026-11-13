@@ -12,13 +12,13 @@
 //!
 //! The threading and priority headers fill the fields a .pst or a .msg fills from MAPI:
 //! Thread-Topic the conversation topic, Thread-Index the conversation index, Importance (else
-//! X-Priority) the importance and Sensitivity the sensitivity, in schema "1"'s words. A value
+//! X-Priority) the importance and Sensitivity the sensitivity, in the schema's words. A value
 //! that doesn't map is left out, with a note.
 //!
 //! The bodies are mail-parser's body lists (RFC 8621's textBody and htmlBody): the text body is
 //! the text parts of the one, and the HTML body the HTML parts of the other, each decoded from
-//! its transfer encoding and charset and joined in order; the Markdown body is derived as for a
-//! .pst or a .msg. The attachments are the message's parts that aren't body text, in order: its
+//! its transfer encoding and charset and joined in order, and the Markdown is made from them as
+//! for a .pst or a .msg; neither body is part of the line. The attachments are the message's parts that aren't body text, in order: its
 //! attachments, and the images, audio and video the bodies show. A message/rfc822 or
 //! message/global part is an embedded message, nested under its record to [`DEPTH_MAX`] messages.
 //!
@@ -36,7 +36,7 @@ use mail_parser::{
     MessageParser, MessagePart, MessageRef, PartKind, PartRole,
 };
 
-use crate::model::{Address, Attachment, Body, Derived, Message};
+use crate::model::{Address, Attachment, Message};
 use crate::msg::DEPTH_MAX;
 use crate::{mapping, markdown};
 
@@ -86,7 +86,7 @@ fn read(
 ) -> Result<(Message, Vec<(u32, String)>), Fault> {
     let mut own = Vec::new();
     let mut message = headers(parsed, &mut own);
-    message.body = body(parsed, &mut own);
+    message.markdown = markdown(parsed, &mut own);
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     let mut skipped = Vec::new();
     let parts = parsed
@@ -246,11 +246,10 @@ fn thread_index(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<S
     Some(mapping::hex(&bytes))
 }
 
-/// The text and HTML bodies, and the Markdown derived from them. A body list's parts of the
-/// other kind, the stand-ins RFC 8621 copies in for a missing version, and its media are no
-/// part of it. Parts are joined by a line break, so that one's last line never runs into the
-/// next one's first.
-fn body(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Body {
+/// The Markdown made from the text and HTML bodies. A body list's parts of the other kind, the
+/// stand-ins RFC 8621 copies in for a missing version, and its media are no part of a body. Parts
+/// are joined by a line break, so that one's last line never runs into the next one's first.
+fn markdown(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Option<String> {
     let text = joined(
         parsed.text_body(),
         |kind| matches!(kind, PartKind::Text),
@@ -263,16 +262,7 @@ fn body(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Body {
         "HTML body",
         notes,
     );
-    let markdown = markdown::derive(html.as_deref(), text.as_deref(), notes);
-    Body {
-        text,
-        html,
-        rtf: None,
-        derived: Derived {
-            html: None,
-            markdown,
-        },
-    }
+    markdown::derive(html.as_deref(), text.as_deref(), notes)
 }
 
 /// The text of a body list's parts of one kind, decoded and joined in order, with one note for

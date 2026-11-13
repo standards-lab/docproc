@@ -98,7 +98,7 @@ fn files(stdout: &str) -> BTreeSet<String> {
 }
 
 /// For each committed .pst and mbox, resumed after its first, middle and last message: the
-/// resumed stdout is the whole read's tail byte for byte; the attachments directory holds the
+/// resumed stdout is the whole read's tail byte for byte; the media directory holds the
 /// tail's files, each as the whole read wrote it, and none of the passed-over messages' alone;
 /// and no warning names a passed-over message, since none is read.
 #[test]
@@ -106,11 +106,7 @@ fn a_resumed_read_is_the_whole_reads_tail() {
     for (n, input) in INPUTS.iter().enumerate() {
         let path = fixture(input);
         let whole_dir = scratch(&format!("after-whole-{n}"));
-        let whole = run(&[
-            path.as_os_str(),
-            "--attachments".as_ref(),
-            whole_dir.as_os_str(),
-        ]);
+        let whole = run(&[path.as_os_str(), "--media".as_ref(), whole_dir.as_os_str()]);
         assert_eq!(whole.code, Some(0), "{input}: {}", whole.stderr);
         let ids = messages(&whole.stdout);
         assert!(ids.len() >= 2, "{input} has a first and a last message");
@@ -122,7 +118,7 @@ fn a_resumed_read_is_the_whole_reads_tail() {
                 path.as_os_str(),
                 "--after".as_ref(),
                 cursor.to_string().as_ref(),
-                "--attachments".as_ref(),
+                "--media".as_ref(),
                 dir.as_os_str(),
             ]);
             let what = format!("{input} --after {cursor}");
@@ -169,7 +165,7 @@ fn after_the_last_message_only_the_folders_are_written() {
         path.as_os_str(),
         "--after".as_ref(),
         last.to_string().as_ref(),
-        "--attachments".as_ref(),
+        "--media".as_ref(),
         dir.as_os_str(),
     ]);
     assert_eq!(resumed.code, Some(0), "{}", resumed.stderr);
@@ -235,21 +231,11 @@ fn an_id_not_in_the_store_is_refused() {
         assert_refused(
             &pst,
             id,
-            &format!(
-                "{}: --after {id}: no message in the store has that node id",
-                pst.display()
-            ),
+            &format!("--after {id}: no message in the store has that node id"),
         );
     }
     let mboxrd = fixture("mime/nine.mboxrd");
-    assert_refused(
-        &mboxrd,
-        "10",
-        &format!(
-            "{}: --after 10: the mbox's last message is 9",
-            mboxrd.display()
-        ),
-    );
+    assert_refused(&mboxrd, "10", "--after 10: the mbox's last message is 9");
     // A lone separator line is one empty entry: ordinal 1, the store line alone after it.
     let empty = built(
         "after-empty.mbox",
@@ -258,14 +244,7 @@ fn an_id_not_in_the_store_is_refused() {
     let out = run(&[empty.as_os_str(), "--after".as_ref(), "1".as_ref()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stdout, run(&[&empty]).stdout);
-    assert_refused(
-        &empty,
-        "2",
-        &format!(
-            "{}: --after 2: the mbox's last message is 1",
-            empty.display()
-        ),
-    );
+    assert_refused(&empty, "2", "--after 2: the mbox's last message is 1");
 }
 
 /// An id's leading zeros are read: `--after 005` resumes an mbox as `--after 5` does, and

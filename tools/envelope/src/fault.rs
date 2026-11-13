@@ -65,13 +65,19 @@ pub fn run(tool: &str, usage: &str, run: impl FnOnce() -> Result<(), Fault>) -> 
     }
 }
 
-/// Writes `--version`'s output, `version` on its own line, to stdout. A stdout that can't take it
-/// is an output fault, exit 1, never a panic.
-pub fn version(version: &str) -> Result<(), Fault> {
+/// Writes `--version`'s output to stdout: `version` alone on the first line, which a release
+/// compares with its tag's, and `schema <schema>` on the second, which a reader compares with the
+/// schema it reads. A stdout that can't take it is an output fault, exit 1, never a panic.
+pub fn version(version: &str, schema: &str) -> Result<(), Fault> {
     let mut out = io::stdout().lock();
-    writeln!(out, "{version}")
+    write!(out, "{}", version_text(version, schema))
         .and_then(|()| out.flush())
         .map_err(Fault::Output)
+}
+
+/// `--version`'s output, both of its lines.
+fn version_text(version: &str, schema: &str) -> String {
+    format!("{version}\nschema {schema}\n")
 }
 
 /// The message a panic was raised with.
@@ -133,6 +139,11 @@ mod tests {
             "internal fault: index out of bounds"
         );
         assert_eq!(Fault::Refused("not a file".into()).reason(), "not a file");
+    }
+
+    #[test]
+    fn the_version_is_its_own_line_then_the_schema() {
+        assert_eq!(version_text("0.1.0", "2"), "0.1.0\nschema 2\n");
     }
 
     #[test]

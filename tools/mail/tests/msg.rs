@@ -1,10 +1,8 @@
-//! Reading .msg files: the committed public messages against their goldens and what Tika's and
-//! Apache POI's own tests assert of them, and messages built in the test for the reader's rules, its code pages,
-//! nesting, afStorage, and the skip policy.
+//! Reading .msg files: what Tika's and Apache POI's own tests assert of the committed public
+//! messages (tests/golden.rs holds their goldens), and messages built in the test for the
+//! reader's rules, its code pages, nesting, afStorage, and the skip policy.
 
 mod common;
-
-use std::path::Path;
 
 use common::msg::{Attachment, Child, Message, Object, Prop, build};
 use common::{fixture, names, run, scratch, sha256};
@@ -51,38 +49,6 @@ fn message(path: &str) -> Value {
     out.lines().remove(1)
 }
 
-/// Each message's stdout and stderr equal its goldens, byte for byte, and it exits 0. With
-/// UPDATE_GOLDEN set, the goldens are rewritten instead; review their diff before committing.
-#[test]
-fn messages_match_their_goldens() {
-    let goldens = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/msg");
-    for path in MESSAGES {
-        let out = run(&[fixture(&format!("msg/{path}"))]);
-        assert_eq!(out.code, Some(0), "{path}: {}", out.stderr);
-        let stem = path.replace('/', "-").replace(".msg", "");
-        let (stdout, stderr) = (
-            goldens.join(format!("{stem}.jsonl")),
-            goldens.join(format!("{stem}.stderr")),
-        );
-        if std::env::var_os("UPDATE_GOLDEN").is_some() {
-            std::fs::create_dir_all(&goldens).unwrap();
-            std::fs::write(&stdout, &out.stdout).unwrap();
-            std::fs::write(&stderr, &out.stderr).unwrap();
-            continue;
-        }
-        assert!(
-            out.stdout == std::fs::read_to_string(&stdout).unwrap(),
-            "{path}: stdout differs from {}",
-            stdout.display()
-        );
-        assert_eq!(
-            out.stderr,
-            std::fs::read_to_string(&stderr).unwrap(),
-            "{path}: stderr"
-        );
-    }
-}
-
 /// The same input always gives byte-identical output.
 #[test]
 fn output_is_byte_identical_across_runs() {
@@ -106,7 +72,7 @@ fn a_msg_is_a_store_line_and_a_message_line() {
         assert_eq!(lines.len(), 2, "{path}");
         assert_eq!(
             lines[0],
-            json!({"line": "store", "schema": "1", "format": "msg"}),
+            json!({"line": "store", "schema": "2", "format": "msg"}),
             "{path}"
         );
         assert_eq!(lines[1]["line"], "message", "{path}");
@@ -147,8 +113,7 @@ fn an_embedded_message_is_nested_under_its_attachment() {
         nested["message_id"],
         "<3975CB0784A2C249A2EDDD4D43C53D08045B971A82@Stitch.pof.com.au>"
     );
-    assert_eq!(nested["body"]["text"], "Blah blah blah\r\n\r\n");
-    assert!(nested["body"]["derived"]["html"].is_string());
+    assert_eq!(nested["markdown"], "Blah blah blah");
     assert_eq!(attachments[1]["filename"], "smbprn.00009008.KdcPjl.pdf");
     assert_eq!(attachments[1]["method"], "by_value");
     assert_eq!(attachments[1]["size"], 13539);
@@ -164,37 +129,23 @@ fn an_ansi_message_is_decoded_by_its_code_page() {
         "Alfresco MSG format testing ( MSG 格式測試 )"
     );
     assert_eq!(message["sender"]["name"], "Tests Chang@FT (張毓倫)");
-    let text = message["body"]["text"].as_str().unwrap();
+    let markdown = message["markdown"].as_str().unwrap();
     assert!(
-        text.starts_with("Alfresco MSG format testing ( MSG 格式測試 ) 中文測試\r\n"),
-        "{text}"
-    );
-    assert!(
-        message["body"]["html"]
-            .as_str()
-            .unwrap()
-            .contains("中文測試")
+        markdown.starts_with("Alfresco MSG format testing ( MSG 格式測試 ) 中文測試  \n"),
+        "{markdown}"
     );
 }
 
 /// Tika's testMSG_forwarded.msg stores its body as RTF that encapsulates HTML (\fromhtml1) and as
-/// plain text, with no HTML: the HTML is recovered from the RTF, and the Markdown made from it.
-/// Its threading fields are as stored.
+/// plain text, with no HTML: the HTML is recovered from the RTF, and the Markdown made from it,
+/// not from the text, so it has the HTML's bold header names. Its threading fields are as stored.
 #[test]
 fn html_is_recovered_from_a_fromhtml1_rtf() {
     let message = message("tika/testMSG_forwarded.msg");
-    let body = &message["body"];
-    assert!(body.get("html").is_none());
-    assert!(body["rtf"].as_str().unwrap().contains("\\fromhtml1"));
-    let html = body["derived"]["html"].as_str().unwrap();
-    assert!(html.starts_with("<html "), "{html}");
-    assert!(
-        html.ends_with("<p class=MsoNormal>Original Body<o:p></o:p></p></div></body></html>"),
-        "{html}"
-    );
-    let markdown = body["derived"]["markdown"].as_str().unwrap();
+    let markdown = message["markdown"].as_str().unwrap();
     assert!(markdown.starts_with("Forwarded Body\n"), "{markdown}");
     assert!(markdown.contains("**From:** Paul Allan Hill"), "{markdown}");
+    assert!(markdown.ends_with("\nOriginal Body"), "{markdown}");
     let parent =
         "<C8508767C15DBF40A21693142739EA8D564D18FDA1@EXVMBX018-1.exch018.msoutlookonline.net>";
     assert_eq!(message["in_reply_to"], parent);
@@ -209,7 +160,7 @@ fn html_is_recovered_from_a_fromhtml1_rtf() {
 fn attachments_are_written_by_content() {
     let dir = scratch("msg-attachments");
     let file = fixture("msg/tika/test-outlook2003.msg");
-    let out = run(&[file.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[file.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stdout, run(&[&file]).stdout);
     let attachments = out.lines()[1]["attachments"].as_array().unwrap().clone();
@@ -293,8 +244,10 @@ fn fields_match_the_tika_truth() {
 }
 
 /// What Apache POI's HSMF tests assert of its .msg files, as poi-truth.json writes it, is in the
-/// CLI's message lines: equal fields, the Java String.hashCode of a body, and the lengths of
-/// the recipient lists.
+/// CLI's message lines: equal fields, and the lengths of the recipient lists. Its assertions on
+/// the stored bodies, written as pointers under /body (equal values and Java String.hashCodes),
+/// name a field schema "2" cuts: the message's Markdown is made from the bodies, and no body is
+/// written, so those are passed over, and counted.
 #[test]
 fn fields_match_the_poi_truth() {
     let truth: Value =
@@ -304,14 +257,28 @@ fn fields_match_the_poi_truth() {
         from("poi"),
         "every committed POI message has its truth"
     );
-    let mut checked = 0;
+    let (mut checked, mut bodies) = (0, 0);
     for (path, entry) in truth["messages"].as_object().unwrap() {
         let got = message(path);
-        for (pointer, want) in entry["fields"].as_object().unwrap() {
+        assert_eq!(got.get("body"), None, "{path}: body");
+        let fields = entry["fields"].as_object().unwrap();
+        let hashes = entry["java_hashes"].as_object().into_iter().flatten();
+        for (pointer, _) in fields.iter().chain(hashes) {
+            if pointer.starts_with("/body/") {
+                bodies += 1;
+            }
+        }
+        for (pointer, want) in fields {
+            if pointer.starts_with("/body/") {
+                continue;
+            }
             assert_eq!(got.pointer(pointer), Some(want), "{path}: {pointer}");
             checked += 1;
         }
         for (pointer, want) in entry["java_hashes"].as_object().into_iter().flatten() {
+            if pointer.starts_with("/body/") {
+                continue;
+            }
             let text = got.pointer(pointer).and_then(Value::as_str);
             assert_eq!(
                 text.map(java_hash),
@@ -330,7 +297,7 @@ fn fields_match_the_poi_truth() {
             checked += 1;
         }
     }
-    assert_eq!(checked, 31);
+    assert_eq!((checked, bodies), (27, 4));
 }
 
 /// Java's String.hashCode: s[0]*31^(n-1) + ... + s[n-1] over UTF-16 code units, wrapping.
@@ -447,7 +414,7 @@ fn nested_attachments_are_written_by_content() {
         },
     );
     let dir = scratch("msg-nested-attachments");
-    let out = run(&[msg.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[msg.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stderr, "");
     let middle = &out.lines()[1]["attachments"][0]["message"];
@@ -609,7 +576,7 @@ fn an_af_storage_attachment_is_written_as_a_compound_file() {
         },
     );
     let dir = scratch("msg-storage");
-    let out = run(&[msg.as_os_str(), "--attachments".as_ref(), dir.as_os_str()]);
+    let out = run(&[msg.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(out.stderr, "");
     assert_eq!(out.stdout, run(&[&msg]).stdout);

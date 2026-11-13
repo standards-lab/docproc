@@ -4,15 +4,20 @@ mod common;
 
 use common::{built, fixture, run};
 
-const USAGE: &str = "usage: docproc-mail [--attachments <dir>] [--after <id>] <input>
+const USAGE: &str = "usage: docproc-mail [--media <dir>] [--after <id>] <input>
        docproc-mail --version
 ";
 
+/// The bare crate version on the first line, which a release compares with its tag's, and the
+/// schema on the second.
 #[test]
-fn version_prints_the_bare_crate_version() {
+fn version_prints_the_bare_crate_version_then_the_schema() {
     let out = run(&["--version"]);
     assert_eq!(out.code, Some(0));
-    assert_eq!(out.stdout, format!("{}\n", env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        out.stdout,
+        format!("{}\nschema 2\n", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(out.stderr, "");
 }
 
@@ -47,18 +52,15 @@ fn usage_errors_exit_2_with_usage() {
         (&[store, store], "more than one input"),
         (&["--frobnicate", store], "unknown option --frobnicate"),
         (&["--version", store], "--version takes no other arguments"),
-        (&[store, "--attachments"], "--attachments needs a directory"),
+        (&[store, "--media"], "--media needs a directory"),
+        (&["--media", "", store], "--media needs a directory"),
         (
-            &["--attachments", "", store],
-            "--attachments needs a directory",
+            &["--media", "a", "--media", "b", store],
+            "--media is given more than once",
         ),
         (
-            &["--attachments", "a", "--attachments", "b", store],
-            "--attachments is given more than once",
-        ),
-        (
-            &["--attachments", not_a_dir, store],
-            &format!("--attachments {not_a_dir} is not a directory"),
+            &["--media", not_a_dir, store],
+            &format!("--media {not_a_dir} is not a directory"),
         ),
         (&[store, "--after"], "--after needs a message id"),
         (&["--after", "", store], "--after needs a message id"),
@@ -127,7 +129,7 @@ fn after_with_a_single_message_is_a_usage_error() {
             out.stderr,
             format!(
                 "docproc-mail: error: --after resumes a .pst or an mbox; \
-                 {path} is {kind}, a single message\n{USAGE}"
+                 the input is {kind}, a single message\n{USAGE}"
             ),
             "{input}"
         );
@@ -137,16 +139,16 @@ fn after_with_a_single_message_is_a_usage_error() {
     assert_eq!(out.code, Some(3), "{}", out.stderr);
 }
 
-/// --attachments is accepted before or after the input, and a directory that doesn't exist yet
+/// --media is accepted before or after the input, and a directory that doesn't exist yet
 /// is accepted: it is created once the input is read.
 #[test]
-fn attachments_is_accepted_with_the_input() {
+fn media_is_accepted_with_the_input() {
     let store = fixture("pst/libyal/outlook.pst");
-    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("attachments-unmade");
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("media-unmade");
     let without = run(&[&store]);
     for args in [
-        [store.as_os_str(), "--attachments".as_ref(), dir.as_os_str()],
-        ["--attachments".as_ref(), dir.as_os_str(), store.as_os_str()],
+        [store.as_os_str(), "--media".as_ref(), dir.as_os_str()],
+        ["--media".as_ref(), dir.as_os_str(), store.as_os_str()],
     ] {
         let out = run(&args);
         assert_eq!(out.code, Some(0), "{}", out.stderr);
@@ -155,30 +157,22 @@ fn attachments_is_accepted_with_the_input() {
     }
 }
 
-/// The attachments directory follows the envelope's rule: created once the input is read, with
+/// The media directory follows the envelope's rule: created once the input is read, with
 /// no attachment to write in it, and never for an input that is refused.
 #[test]
-fn the_attachments_directory_is_created_once_the_input_is_read() {
+fn the_media_directory_is_created_once_the_input_is_read() {
     let tmp = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
-    let made = tmp.join("attachments-plain");
-    let refused = tmp.join("attachments-refused");
+    let made = tmp.join("media-plain");
+    let refused = tmp.join("media-refused");
     for dir in [&made, &refused] {
         let _ = std::fs::remove_dir_all(dir);
     }
     let plain = fixture("generated/eml/01-plain.eml");
-    let out = run(&[
-        plain.as_os_str(),
-        "--attachments".as_ref(),
-        made.as_os_str(),
-    ]);
+    let out = run(&[plain.as_os_str(), "--media".as_ref(), made.as_os_str()]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     assert_eq!(std::fs::read_dir(&made).unwrap().count(), 0);
-    let foreign = built("attachments-refused.txt", b"neither mail nor a store\n");
-    let out = run(&[
-        foreign.as_os_str(),
-        "--attachments".as_ref(),
-        refused.as_os_str(),
-    ]);
+    let foreign = built("media-refused.txt", b"neither mail nor a store\n");
+    let out = run(&[foreign.as_os_str(), "--media".as_ref(), refused.as_os_str()]);
     assert_eq!(out.code, Some(3), "{}", out.stderr);
     assert!(!refused.exists());
 }
@@ -206,11 +200,8 @@ fn an_ost_is_refused_with_how_to_export_it() {
     let ost = built("refused.ost", &pst_header(b"SO", 36));
     assert_refused(
         &[&ost],
-        &format!(
-            "{}: an .ost, the offline cache of a server mailbox, is not read; \
-             export the mailbox from Outlook as a .pst",
-            ost.display()
-        ),
+        "an .ost, the offline cache of a server mailbox, is not read; \
+         export the mailbox from Outlook as a .pst",
     );
 }
 
@@ -228,11 +219,7 @@ fn a_pst_version_outlook_pst_does_not_read_is_refused() {
     let pst = built("4k-pages.pst", &pst_header(b"SM", 36));
     assert_refused(
         &[&pst],
-        &format!(
-            "{}: PST version 36 is not read; \
-             only versions 14 and 15 (ANSI) and 23 (Unicode) are",
-            pst.display()
-        ),
+        "PST version 36 is not read; only versions 14 and 15 (ANSI) and 23 (Unicode) are",
     );
 }
 
@@ -291,10 +278,8 @@ fn an_unreadable_compound_file_is_refused() {
     assert_eq!(out.code, Some(3));
     assert_eq!(out.stdout, "");
     assert!(
-        out.stderr.starts_with(&format!(
-            "docproc-mail: error: {}: the compound file can't be read: ",
-            msg.display()
-        )),
+        out.stderr
+            .starts_with("docproc-mail: error: the compound file can't be read: "),
         "{}",
         out.stderr
     );
@@ -311,11 +296,8 @@ fn a_compound_file_that_is_not_a_message_is_refused() {
     file.flush().unwrap();
     assert_refused(
         &[&path],
-        &format!(
-            "{}: a compound file, but not an Outlook message: \
-             it has no __properties_version1.0 stream",
-            path.display()
-        ),
+        "a compound file, but not an Outlook message: \
+         it has no __properties_version1.0 stream",
     );
 }
 
@@ -346,25 +328,17 @@ fn none_of_the_four_formats_is_refused() {
         ),
     ] {
         let input = built(name, bytes);
-        assert_refused(
-            &[&input],
-            &format!(
-                "{}: neither a .pst, a .msg, an .eml nor an mbox",
-                input.display()
-            ),
-        );
+        assert_refused(&[&input], "neither a .pst, a .msg, an .eml nor an mbox");
     }
 }
 
+/// A missing input is refused, its reason not leading with the path, which the caller knows.
 #[test]
 fn a_missing_input_is_refused() {
     let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("missing.pst");
     assert_refused(
         &[&missing],
-        &format!(
-            "{}: No such file or directory (os error 2)",
-            missing.display()
-        ),
+        "the input can't be read: No such file or directory (os error 2)",
     );
 }
 
@@ -376,9 +350,6 @@ fn a_path_that_is_not_utf8_is_read_as_a_path() {
     let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     assert_refused(
         &[&missing],
-        &format!(
-            "{}: No such file or directory (os error 2)",
-            missing.display()
-        ),
+        "the input can't be read: No such file or directory (os error 2)",
     );
 }

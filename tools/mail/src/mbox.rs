@@ -25,7 +25,7 @@ use mail_parser::MessageBuffers;
 use mail_parser::mailbox::mbox::{Message, MessageIterator};
 
 use crate::model::{self, Skipped, Store};
-use crate::{mime, sniff, warn, warn_below};
+use crate::{mime, sniff, unreadable, warn, warn_below};
 
 /// Reads the mbox at `path` and writes its store line and the lines of its messages, those after
 /// ordinal `after` when it is given, to `out`.
@@ -35,12 +35,11 @@ pub fn read(
     out: &mut Lines<impl Write>,
     files: &mut Media,
 ) -> Result<(), Fault> {
-    let input = path.display();
-    let file = File::open(path).map_err(|err| Fault::Refused(format!("{input}: {err}")))?;
+    let file = File::open(path).map_err(unreadable)?;
     let mut entries = (1u32..).zip(MessageIterator::new(BufReader::new(file)));
     let ended = match after {
         Some(after) => skip_to(&mut entries, after)
-            .map_err(|reason| Fault::Refused(format!("{input}: --after {after}: {reason}")))?,
+            .map_err(|reason| Fault::Refused(format!("--after {after}: {reason}")))?,
         None => false,
     };
     files.create()?;
