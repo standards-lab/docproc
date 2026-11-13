@@ -125,11 +125,13 @@ public sealed class CompoundFileTests
         Assert.Equal(reason, e.Message);
     }
 
-    // A DIFAT chain that loops is malformed: the directory's sector sits where the FAT sector
-    // that covers it is the DIFAT chain's second sector's to name, and the first names itself as
-    // the next.
-    [Fact]
-    public void ADifatCycleIsRefused()
+    // A DIFAT chain that loops, or names a sector past the file, is malformed: the directory's
+    // sector sits where the FAT sector that covers it is the DIFAT chain's second sector's to
+    // name, and the first names itself, or a sector past the end, as the next.
+    [Theory]
+    [InlineData(110u, "DIFAT sector 110 reached twice")]
+    [InlineData(40_000u, "DIFAT sector 40000 past the file's 30209")]
+    public void ADifatChainThatLoopsOrLeavesTheFileIsRefused(uint next, string reason)
     {
         const uint far = 236 * 128;
         var image = new Image(3, sectors: (int)far + 1);
@@ -137,12 +139,12 @@ public sealed class CompoundFileTests
         {
             image.Fat(i, 1 + i);
         }
-        image.DifatChain(110, next: 110);
+        image.DifatChain(110, next);
         image.Header(44, 300);
         image.Header(48, far);
 
         var e = Assert.Throws<MalformedCompoundFileException>(() => image.RootChildren());
-        Assert.Equal("DIFAT sector 110 past the file's 30209 or reached twice", e.Message);
+        Assert.Equal(reason, e.Message);
     }
 
     // A last sector the file cuts short reads as zeros past the end.

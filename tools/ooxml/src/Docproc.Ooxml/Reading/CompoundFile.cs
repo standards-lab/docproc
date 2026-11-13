@@ -190,9 +190,13 @@ internal static class CompoundFile
                 var difat = (int)((index - HeaderDifatEntries) / perDifat);
                 while (difatSectors.Count <= difat)
                 {
-                    if (nextDifat > MaxRegularSector || nextDifat >= sectorCount || !difatSeen.Add(nextDifat))
+                    if (nextDifat > MaxRegularSector || nextDifat >= sectorCount)
                     {
-                        throw new MalformedCompoundFileException($"DIFAT sector {nextDifat} past the file's {sectorCount} or reached twice");
+                        throw new MalformedCompoundFileException($"DIFAT sector {nextDifat} past the file's {sectorCount}");
+                    }
+                    if (!difatSeen.Add(nextDifat))
+                    {
+                        throw new MalformedCompoundFileException($"DIFAT sector {nextDifat} reached twice");
                     }
                     difatSectors.Add(nextDifat);
                     var next = new byte[4];
