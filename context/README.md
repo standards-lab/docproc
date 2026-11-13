@@ -14,7 +14,9 @@ v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipel
 and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) states the
 boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) as signatures and
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
-review's settled design and disposition for each evaluated finding.
+review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
+disposition of every evaluated finding, and each artifact's first tag and the task that releases
+it.
 
 ## Capability map
 
@@ -32,4 +34,6 @@ review's settled design and disposition for each evaluated finding.
 - **Run directory**: `cmd/docproc`'s, read and written by `rundir` and `rundir/schema`
   (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested
-  modules").
+  modules"; `design.md`, "cmd/docproc").
+- **Releases**: each artifact's first tag and the task that tags it, the tools on linux-x64 and
+  linux-arm64 (`design.md`, "Releases").

@@ -5,7 +5,40 @@ the architect settled every finding in one review round per artifact, 2026-11-12
 holds the boundaries and the change lists; this note holds each finding's settled design and its
 disposition, with the evidence that justified it, since the evaluations themselves are not kept.
 An entry names the task that carries it, and the `layers.md` section that states it where one
-does; it doesn't restate a signature that section holds.
+does; it doesn't restate a signature that section holds. The note opens with how the review
+changes the goal's tasks and closes with each artifact's first tag and the task that releases it.
+
+## How the review changes the goal's tasks
+
+The settled designs grow every build task and move work between them. The changes are pending
+edits in the goal record, applied to the roadmap at SHIP.
+
+- **ooxml** grew most, and took docproc's CI from `library`: xlsx streamed in two passes, `ole`
+  media as stored, hyperlinks and unread-kind warnings, hand-parsed arguments in place of
+  System.CommandLine; docproc's CI with its always-running `ci` gate and ruleset, the root
+  workflow releasing `tools/*/v*` tags, the root check's `TOOLS` list, and `tools/go.mod` with
+  the shared pack and notices scripts.
+- **mail** builds the shared Rust envelope crate under `tools/`, which onenote adopts, and gains
+  `smtp_address` for senders and recipients; its fixture generator holds MimeKit at 4.x on .NET 11.
+- **onenote** gains the file-only option and the table-of-contents refusal, the encryption
+  signal, each drawing's ink alt text, an exact onenote_parser pin with owned workarounds,
+  MPL-2.0 allowed by name, release overflow checks, and third-party notices.
+- **Every tool** gains the envelope additions: `--version`'s `schema <n>`, the warning escape, and
+  error reasons that never lead with the input path; mail its message `media`.
+- **library** adds the Go job and the Go module releases to ooxml's CI, classifies failures once,
+  replays a miss from the nearest ancestor with a file, sets no default bounds, records a table
+  of contents' refusal and a death by signal, and corrects the signed-PDF cause; unrouted
+  formats, HTML, and ClamAV stay backlog.
+- **docproc** gains a tag, the base module's v0.2.0 when `rundir` lands, reversing "`docproc`
+  releases nothing", with `rundir` as one handle and its README naming `stages` as the shipped
+  wiring.
+- **reports** writes a page per input content and tags `cmd/docproc/v0.1.0`.
+- **acceptance** gains measurements over ~/docs: each tool's peak memory, the word error rate of
+  its audio before the tag, and the inspection evaluation's bombs through `cmd/docproc`'s
+  starting bounds.
+- **The docinfer goal** counts a job's outputs by part ID and owns `outdir`'s atomic write; the
+  **architecture** task takes the architecture-page edits (the `tools/` module zip, a nested
+  command's layout, the rule for external repositories, CI's gate job).
 
 ## docproc-ooxml
 
@@ -857,3 +890,35 @@ nested modules".
 - **DP-25 · The roadmap's `docproc` summary named a role `stages` now has.** Accepted → docproc
   (its README names `stages` as the shipped wiring and `cmd/docproc` its first caller); the
   summary's rewording is a pending edit.
+
+## Releases
+
+Every new artifact starts at v0.1.0, whatever its spike's version, and its CHANGELOG's first
+entry links the spike release, or commit, it is promoted from. The tools release first, since the library's
+readers take their first schema "2" tags as their minimums.
+
+```text
+tools/ooxml/v0.1.0     docproc-ooxml     ooxml      from spike-ai-pipeline-office v0.1.0
+tools/mail/v0.1.0      docproc-mail      mail       from spike-ai-pipeline-mail v0.3.1
+tools/onenote/v0.1.0   docproc-onenote   onenote    from spike-ai-pipeline-onenote v0.1.0
+v0.1.0                 docproc           library    from spike-ai-pipeline-processing v0.9.0
+storage/v0.1.0         docproc/storage   library    new
+postgres/v0.1.0        docproc/postgres  library    new
+v0.2.0                 docproc           docproc    rundir and rundir/schema landed
+cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's docproc at 6a631f1
+```
+
+- **The tools.** The root workflow ooxml builds releases each `tools/*/v*` tag: it derives the
+  tool's directory, changelog, and version from the tag and publishes
+  `docproc-<format>-v<version>-<rid>.tar.gz` for linux-x64 and linux-arm64, built on native
+  runners, each archive holding the binary, the repository's LICENSE, and the tool's
+  third-party notices, with `SHA256SUMS` over the archives. ooxml's release job checks its glibc
+  floor. mail and onenote add a matrix row each.
+- **The library.** `library` tags the base module, `storage`, and `postgres`, through the Go
+  module releases it adds to docproc's CI.
+- **docproc.** The `docproc` task tags the base module v0.2.0 when `rundir` lands (DP-3), and a
+  committed `go.work` over the base module and `cmd/docproc` carries changes between tags.
+- **reports.** `reports` tags the base module again only if it changed `rundir`, then
+  `cmd/docproc/v0.1.0`.
+- **Untagged.** The shared Rust crate under `tools/` is a path dependency of mail and onenote and
+  is never tagged; a change to it runs both tools' checks.
