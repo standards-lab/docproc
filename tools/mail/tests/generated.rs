@@ -256,7 +256,8 @@ fn markdown_is_made_from_the_html() {
 }
 
 /// An inline picture's cid: source, which names the content_id of the attachment it is, links
-/// that attachment's file in the Markdown, and the attachment is inline.
+/// that attachment's file in the Markdown, and the attachment is inline. The text body's sentence
+/// the HTML shows as the picture follows, appended by the content rule.
 #[test]
 fn markdown_links_cid_images_to_their_files() {
     let message = message_from("03-html-inline-image.eml");
@@ -266,7 +267,8 @@ fn markdown_links_cid_images_to_their_files() {
     assert_eq!(
         markdown(&message),
         format!(
-            "We found a **moth** in relay 70, panel F.\n\n![moth]({})",
+            "We found a **moth** in relay 70, panel F.\n\n![moth]({})\n\n\
+             It is taped into the log book.",
             attachment["file"].as_str().unwrap()
         )
     );

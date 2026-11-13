@@ -8,9 +8,10 @@ publish = false
 
 [dependencies]
 # docproc's Rust tools' common envelope: faults and exit codes, stderr lines, the lines writer, the
-# guard, the media store, and the Markdown escapes. Untagged, by path; its tests run in this
-# tool's check, against this Cargo.lock.
-docproc-envelope = { path = "../envelope" }
+# guard, the media store, the Markdown escapes, and the content rule, with its Markdown-to-plain
+# reader (`markdown`). Untagged, by path; its tests run in this tool's check, against this
+# Cargo.lock.
+docproc-envelope = { path = "../envelope", features = ["markdown"] }
 # Pinned exactly: the CLI works around known faults of this release, in src/pst.rs.
 outlook-pst = "=1.2.0"
 # Code pages to text (src/codepage.rs): codepage maps a Windows code page to its encoding_rs

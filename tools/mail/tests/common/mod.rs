@@ -87,8 +87,10 @@ pub fn golden(input: &str) {
 /// What a truth's `body` (its `text` and `html`, as a source holds them) says of a message
 /// line's `markdown`, schema "2" carrying no body of its own: with an HTML body, it is htmd's
 /// rendering of that HTML, each `cid:` image source naming an attachment of the line, by its
-/// content_id, read as that attachment's file; with a text body alone, it reads as that text,
-/// word for word, once its backslash escapes are read; with neither, there is none.
+/// content_id, read as that attachment's file, then, when the text body holds sentences that
+/// rendering lacks, a paragraph of the content rule's appended sentences, whose words are the
+/// text body's, in its order; with a text body alone, it reads as that text, word for word, once
+/// its backslash escapes are read; with neither, there is none.
 pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source: &str) {
     assert_eq!(got.get("body"), None, "{source}: no body");
     let markdown = got.get("markdown").map(|text| text.as_str().unwrap());
@@ -104,7 +106,27 @@ pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source
             }
         }
         let html = htmd::convert(&html).unwrap();
-        assert_eq!(markdown, Some(html.as_str()), "{source}: markdown");
+        let markdown = markdown.unwrap_or_else(|| panic!("{source}: no markdown"));
+        let appended = markdown
+            .strip_prefix(html.as_str())
+            .unwrap_or_else(|| panic!("{source}: markdown {markdown:?} is not htmd's {html:?}"));
+        if !appended.is_empty() {
+            let paragraph = appended
+                .strip_prefix("\n\n")
+                .filter(|paragraph| !paragraph.contains('\n'))
+                .unwrap_or_else(|| panic!("{source}: {appended:?} is no appended paragraph"));
+            let text = body
+                .get("text")
+                .and_then(|text| text.as_str())
+                .unwrap_or("");
+            let mut words = text.split_whitespace();
+            for word in words_of_markdown(paragraph) {
+                assert!(
+                    words.any(|text| text == word),
+                    "{source}: appended {word:?} is not the text body's, in its order"
+                );
+            }
+        }
     } else if let Some(text) = body.get("text") {
         let text: Vec<String> = text
             .as_str()

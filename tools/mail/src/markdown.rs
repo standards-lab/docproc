@@ -15,11 +15,17 @@
 //! `media`. A source that names nothing is kept as written, with a note. An attachment is
 //! `inline` when the Markdown links it, and a `data:` payload is written, and listed, only when
 //! the Markdown links it, so every file written is named by a line.
+//!
+//! Markdown made from HTML is compared with the message's source text by the content rule, the
+//! shared crate's (context/layers.md, schema "2"): the source text's sentences the Markdown lacks
+//! are appended to it, in order, as one paragraph escaped as a text body's Markdown is
+//! ([`with_missing`]). The source text is the text body, else the RTF body's own text.
 
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ops::Range;
 
+use docproc_envelope::content::{self, Text};
 use docproc_envelope::markdown::escape;
 use docproc_envelope::{Fault, Media};
 use mail_parser::Encoding;
@@ -31,10 +37,12 @@ use crate::model::{Medium, Message};
 pub const NESTING_MAX: usize = 512;
 
 /// A message's bodies as its Markdown is made from them: its HTML, stored or recovered from its
-/// RTF body, and its plain text, the text body or else the RTF body's own text.
+/// RTF body, and its plain text, the text body or else the RTF body's own text. Beside HTML and no
+/// text body, `rtf_text` is the RTF body's own text, read for the content rule alone.
 pub struct Bodies {
     pub html: Option<String>,
     pub text: Option<String>,
+    pub rtf_text: Option<String>,
 }
 
 /// Makes `message`'s Markdown from `bodies`, once its attachments are read: its images linked to
@@ -53,6 +61,7 @@ pub fn make(
     let markdown = derive(
         bodies.html.as_deref(),
         bodies.text.as_deref(),
+        bodies.text.as_deref().or(bodies.rtf_text.as_deref()),
         &mut |src| images.resolve(src),
         notes,
     );
@@ -259,13 +268,15 @@ fn percent_decoded(bytes: &[u8]) -> Vec<u8> {
 }
 
 /// A message's Markdown, by the one rule every format follows: made from `html` when the
-/// message has an HTML body, its images' sources first rewritten by `images`, else from `text`,
-/// read literally. An HTML body nested past [`NESTING_MAX`] open elements gives way to `text`,
-/// else to its own text with its tags stripped, with a note, and its images are not read. One
-/// that can't be made is left out, with a note.
+/// message has an HTML body, its images' sources first rewritten by `images`, and the sentences
+/// of `source` it lacks appended ([`with_missing`]), else from `text`, read literally. An HTML
+/// body nested past [`NESTING_MAX`] open elements gives way to `text`, else to its own text with
+/// its tags stripped, with a note, and its images are not read. One that can't be made is left
+/// out, with a note.
 pub fn derive(
     html: Option<&str>,
     text: Option<&str>,
+    source: Option<&str>,
     images: &mut dyn FnMut(&str) -> Option<String>,
     notes: &mut Vec<String>,
 ) -> Option<String> {
@@ -284,12 +295,32 @@ pub fn derive(
             ));
             Ok(made)
         }
-        (Some(html), _) => from_html(&rewritten(html, images)),
+        (Some(html), _) => {
+            from_html(&rewritten(html, images)).map(|markdown| with_missing(markdown, source))
+        }
         (None, Some(text)) => Ok(from_text(text)),
         (None, None) => return None,
     };
     made.map_err(|reason| notes.push(format!("the Markdown body {reason}; left out")))
         .ok()
+}
+
+/// `markdown`, made from HTML, followed by the sentences of `source` it lacks by the content rule,
+/// in order, as one paragraph: joined by a space, and escaped as a line of a text body is.
+fn with_missing(markdown: String, source: Option<&str>) -> String {
+    let Some(source) = source else {
+        return markdown;
+    };
+    let missing = content::missing(&Text::plain(source), &Text::markdown(&markdown));
+    if missing.is_empty() {
+        return markdown;
+    }
+    let paragraph = from_text(&missing.join(" "));
+    if markdown.trim().is_empty() {
+        paragraph
+    } else {
+        format!("{markdown}\n\n{paragraph}")
+    }
 }
 
 /// `html` with each `<img>`'s `src` rewritten to the name `images` gives for it, its character
@@ -740,6 +771,40 @@ mod tests {
         format!("{}word</{tag}>", format!("<{tag}>").repeat(depth))
     }
 
+    /// Markdown made from HTML is followed by the source text's sentences it lacks, in order, as
+    /// one paragraph escaped as a text body's line; HTML that lacks none, and Markdown made from
+    /// the text itself, gain nothing.
+    #[test]
+    fn html_markdown_gains_the_sentences_it_lacks() {
+        let mut notes = Vec::new();
+        let source = "We found a moth.\r\n# It is *taped* in. Done\r\n";
+        let made = |html: Option<&str>, notes: &mut Vec<String>| {
+            derive(html, Some(source), Some(source), &mut |_| None, notes)
+        };
+        assert_eq!(
+            made(Some("<p>We found a <b>moth</b>!</p>"), &mut notes).as_deref(),
+            Some("We found a **moth**!\n\n\\# It is \\*taped\\* in. Done")
+        );
+        assert_eq!(
+            made(
+                Some("<p>We found a moth. It is taped in.</p><p>Done</p>"),
+                &mut notes
+            )
+            .as_deref(),
+            Some("We found a moth. It is taped in.\n\nDone")
+        );
+        assert_eq!(made(None, &mut notes), Some(from_text(source)));
+        let lacking = derive(
+            Some("<p>x</p>"),
+            None,
+            Some("Only the RTF's text."),
+            &mut |_| None,
+            &mut notes,
+        );
+        assert_eq!(lacking.as_deref(), Some("x\n\nOnly the RTF's text."));
+        assert!(notes.is_empty(), "{notes:?}");
+    }
+
     /// The cap itself: 512 open elements are htmd's to read, and the 513th gives way to the text
     /// body, else to the HTML's text, each with a note.
     #[test]
@@ -748,6 +813,7 @@ mod tests {
         let at_cap = derive(
             Some(&nested("div", 512)),
             Some("text"),
+            None,
             &mut |_| None,
             &mut notes,
         );
@@ -758,11 +824,12 @@ mod tests {
         let from_text = derive(
             Some(&past),
             Some("the *text* body"),
+            None,
             &mut |_| None,
             &mut notes,
         );
         assert_eq!(from_text.as_deref(), Some("the \\*text\\* body"));
-        let from_html = derive(Some(&past), None, &mut |_| None, &mut notes);
+        let from_html = derive(Some(&past), None, None, &mut |_| None, &mut notes);
         assert_eq!(from_html.as_deref(), Some("word"));
         assert_eq!(
             notes,
@@ -898,6 +965,7 @@ mod tests {
         let bodies = Bodies {
             html: Some(html.to_owned()),
             text: None,
+            rtf_text: None,
         };
         let mut notes = Vec::new();
         make(

@@ -90,7 +90,8 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
 
 /// The bodies a message's Markdown is made from, the first it holds of: its stored HTML, the
 /// HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
-/// only when it is the one. The stored HTML, the text and the RTF are each still read, and
+/// only when there is no text body: it is then the Markdown's, or beside HTML the content rule's
+/// source text. The stored HTML, the text and the RTF are each still read, and
 /// decoded; a body that can't be read is passed over with a note, and the Markdown is made from
 /// the next.
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
@@ -111,14 +112,27 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
         html
     });
     let html = html.or(from_rtf);
-    let text = match (&html, text) {
-        (None, None) => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
+    // With no text body, the RTF body's own text is the Markdown's, else, beside HTML, the content
+    // rule's source text; an RTF that encapsulates HTML has none of its own.
+    let rtf_text = match text {
+        Some(_) => None,
+        None => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
             notes.append(&mut lossy);
             text
         }),
-        (_, text) => text,
     };
-    Bodies { html, text }
+    match html {
+        Some(_) => Bodies {
+            html,
+            text,
+            rtf_text,
+        },
+        None => Bodies {
+            html,
+            text: text.or(rtf_text),
+            rtf_text: None,
+        },
+    }
 }
 
 /// The stored HTML body. PidTagHtml is PT_BINARY, decoded in the code page

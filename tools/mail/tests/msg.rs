@@ -679,6 +679,43 @@ fn a_fromtext_rtf_gives_way_to_the_text_body() {
     assert_eq!(message["markdown"], "The text body");
 }
 
+/// Beside a stored HTML body and no text body, a plain RTF body's own text is the source text the
+/// content rule compares the HTML's Markdown with: its sentence the HTML lacks is appended. With a
+/// text body, the text body is the source text, and the RTF is not read.
+#[test]
+fn a_plain_rtf_beside_html_is_the_source_text() {
+    let body = "{\\rtf1\\ansi\\ansicpg1252\\deff0 We found a moth.\\par It is taped in.\\par}";
+    let html = || Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec());
+    let mut props = subject("html and rtf");
+    props.push((RTF_COMPRESSED, rtf(body)));
+    props.push((HTML, html()));
+    let (message, stderr) = read_built(
+        "html-rtf.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "We found a **moth**.\n\nIt is taped in."
+    );
+
+    let mut props = subject("html, rtf and text");
+    props.push((RTF_COMPRESSED, rtf(body)));
+    props.push((HTML, html()));
+    props.push((BODY, Prop::Unicode("We found a moth.".into())));
+    let (message, _) = read_built(
+        "html-rtf-text.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(message["markdown"], "We found a **moth**.");
+}
+
 /// An Exchange address's SMTP address: the sender's from PidTagSenderSmtpAddress, a recipient's
 /// from PidTagSmtpAddress. An SMTP address has none written, its address being the one to write
 /// to, and an Exchange address without one has none.

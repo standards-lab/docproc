@@ -253,8 +253,8 @@ fn the_mime_group_matches_its_sha256_list() {
     assert_eq!(listed, committed, "the list names every file of the group");
 }
 
-/// The Markdown body is made from the HTML, its cid: image linking the attachment's file, else
-/// from the text.
+/// The Markdown body is made from the HTML, its cid: image linking the attachment's file, and
+/// followed by the text body's sentence the HTML lacks, else from the text.
 #[test]
 fn markdown_is_made_from_the_html_else_the_text() {
     let markdown = |source: &str| {
@@ -263,7 +263,10 @@ fn markdown_is_made_from_the_html_else_the_text() {
     };
     assert_eq!(
         markdown("03-html-inline-image.eml"),
-        format!("We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})")
+        format!(
+            "We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})\n\n\
+             It is taped into the log book."
+        )
     );
     assert_eq!(
         markdown("02-reply-latin1.eml"),
@@ -730,7 +733,8 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     );
     assert_eq!(stderr, "");
     assert_eq!(message["subject"], "€5café");
-    assert_eq!(message["markdown"], "\u{201c}café\u{201d}");
+    // The text part's sentence holds `Ÿ`, which the HTML lacks, so the content rule appends it.
+    assert_eq!(message["markdown"], "\u{201c}café\u{201d}\n\ncafé € Ÿ");
     let (message, stderr) = read(
         "latin1-text.eml",
         b"From: ann@example.com\r\n\

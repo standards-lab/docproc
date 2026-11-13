@@ -316,7 +316,11 @@ fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
         "HTML body",
         notes,
     );
-    Bodies { html, text }
+    Bodies {
+        html,
+        text,
+        rtf_text: None,
+    }
 }
 
 /// The text of a body list's parts of one kind, decoded and joined in order, with one note for
