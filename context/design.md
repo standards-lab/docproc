@@ -740,4 +740,120 @@ API" sections. An entry merged into a PX finding is settled there and only point
 - **PX-16 · Conventions the groups each asked for once per package.** Accepted → library, the six
   lines into docproc's STANDARDS.md with it; decision 17.
 
-The remaining artifact's review, cmd/docproc's, follows in its own section.
+## cmd/docproc
+
+From spike-ai-pipeline's docproc command at `6a631f1`, over its library,
+spike-ai-pipeline-processing v0.9.0, with the spike's docinfer read for its use of `rundir`. Every
+finding was found by reading; `go vet` passed over the command, and nothing else ran. Round 5
+accepted every finding, DP-3 and DP-10 in the form it settled. An entry is carried by docproc
+unless it names another task; the command's changes are in `layers.md`, "The nested modules",
+and `rundir`'s in the `rundir` row of "docproc's packages [library]", with its API under "The
+nested modules".
+
+- **DP-1 · The schema "2" event line couldn't be the embed `layers.md` listed.** Accepted →
+  docproc, and library for `Part`'s `omitzero`. Five things didn't fit. An input's error line
+  carried its text in `error` (run/execute.go:235), and `dispatch.Event.Err` never marshals, so
+  the text had no field; `Event.Part`, a value tagged `part`, would marshal an empty part on an
+  error line, where "1" leaves it out; `schema.Event`'s kind field is named `Event`, and
+  embedding `dispatch.Event` declares a second field of that name, which doesn't compile; "1"'s
+  `warning`, the command's note that no record held a seen part's children (run/replay.go:240),
+  has no successor once the library replays children, while dispatch's `Warning` is a line kind
+  "1" never had; and a zero count is now left out. The line is the kind as `event`, `input`,
+  `dispatch.Event` inline, `file`, `quarantine`, `time`, and `error`, set on an error line
+  alone; `Event.Part` gains `omitzero`; the kinds are `part`, `output`, `warning`, and `error`.
+  Corrects `layers.md`'s event-line paragraph, whose "in place of a string" goes.
+- **DP-2 · The record was the one file not written whole, and a killed run's was unreadable.**
+  Accepted → docproc. `Run.Write` encoded into a 4,096-byte `bufio.Writer` flushed only in `End`;
+  run 1 over ~/docs wrote 12,008 lines in 9.5 MB, about 800 bytes a line, so the file on disk
+  ended mid-line for nearly all of its 27 minutes. A run killed by SIGKILL, the OOM killer, power
+  loss, or a panic never reaches `End`: its manifest has no `end`, its record ends in a torn line
+  with up to a buffer of finished lines lost though the index recorded their parts, and
+  `ReadRecord` fails the whole record (`event N: unexpected EOF`), so `docproc report` and
+  docinfer's `source` both refused the run. `Latest` returned the greatest id, ended or not, so
+  the default run of both was that one, or one still running, and the killed run's `.work-*`
+  directory stayed. Each line is flushed as written, one `write`, no fsync; a reader drops an
+  unended run's last line when it has no newline; `Latest` is the latest ended run, and a reader
+  given an unended run by id says so; `Begin` removes leftover `.work-*` directories, under one
+  writer per run directory, which `rundir`'s doc states.
+- **DP-3 · `rundir` landed in the library's module after `library` tagged it.** Settled → docproc
+  and reports. `rundir` and `rundir/schema` are base-module packages the `docproc` task builds,
+  after `library` tags the base module v0.1.0, and `cmd/docproc`'s module requires the base
+  module by version, so `cmd/docproc/v0.1.0` had no tagged library holding `rundir` to require,
+  nor had `cmd/docinfer`, under round 1's "`docproc` releases nothing". The `docproc` task tags
+  the base module's next minor, v0.2.0, when `rundir` lands; `reports` tags it again only if it
+  changes `rundir`, before it tags `cmd/docproc/v0.1.0`; a committed `go.work` over the base
+  module and `cmd/docproc` carries changes between tags. Reverses "`docproc` releases
+  nothing". Rejected: `library` building `rundir` so v0.1.0 holds it, which tags a public
+  package before its one writer exists.
+- **DP-4 · The copy of a seen part's subtree goes.** Accepted → docproc. The spike's dispatcher
+  never replayed a seen part's children, so `run/replay.go` (249 lines) copied each subtree from
+  the earliest record holding it, loading every earlier record into memory first, with a second
+  copy of the report's tree builder and a warnings column. The library's dispatcher replays the
+  log, children included, so the file, the counters, and the summary's warnings row go, and an
+  index kept while `runs/` is deleted replays fully.
+- **DP-5 · `rundir` becomes one handle that a reader opens without creating anything.** Accepted →
+  docproc, and the docinfer goal for `outdir`'s own atomic write, a pending edit. `Open` made the
+  directory and its index, so readers used seven free functions over `(root, id)`, `ValidID` a
+  check each caller had to remember (four sites), passing any path element, and `Runs` counting
+  any stray directory. `Open` reads and creates nothing, `Create` writes; every id is checked as a
+  run of the directory; `Load`, `WriteRunFile`, and `WriteFile` leave the API, the report writing
+  its pages with the command's own helper.
+- **DP-6 · The run directory carried no version of its own.** Accepted → docproc. Only docinfer
+  compared the manifest's schema; `docproc run` opened an index and store of any layout, and
+  ~/docs holds schema "1" directories the acceptance rerun will meet. `Create` writes
+  `rundir.json`, and `Open` and `Create` refuse another schema, or `runs/` without the file,
+  naming both versions; the schema page states that "2" includes `dispatch`'s shapes at
+  `dispatch.Version` "1", a break there a break here.
+- **DP-7 · The content store's layout joins the contract.** Accepted → docproc (the layout and its
+  path), and reports (the pages). The "1" report linked each output under `outputs/` by an
+  extension a browser opens; a content named by its SHA-256 has none, so a linked text
+  downloads, and a page that names a content's file fixes `FileContent`'s layout for every reader
+  that isn't Go. The layout is part of schema "2" and `rundir` exports a content's path; the
+  report inlines text, Markdown, and records from the content store, points `<img>` and
+  `<audio>` at the file, and renders over the reader's handle.
+- **DP-8 · A page per input SHA-256 collided, and some inputs have none.** Accepted → reports. 17
+  of ~/docs's 592 inputs share their content with another, and an input stopped before its own
+  event has no SHA-256. A page per distinct input content lists every input path holding it with
+  each one's file metadata, outcome, and time, the tree and outputs once; the index page lists
+  every input, error inputs included. The roadmap's `reports` summary says "per input content", a
+  pending edit.
+- **DP-9 · An index failure was an input's error, and the run exited 0.** Accepted → library (the
+  error's type) and docproc. The pool yields an index or content-store failure with its input, so
+  a full disk became an `error` line per input and exit 0. The library types a store's failure
+  apart from an input's; `run` stops on it, exit 1; failed parts and unreadable inputs keep exit
+  0, stated in the help, the summary's last line counting both.
+- **DP-10 · The nested module's layout.** Settled → docproc; STANDARDS.md states the exception.
+  go-web-service's `tools/slab` puts domain packages at the nested module's root, which here
+  would make the install path `cmd/docproc/cmd/docproc` and `run.Commands` API under
+  `cmd/docproc/v0.1.0`. `main.go` sits at the module's root, installed by
+  `go install github.com/standards-lab/docproc/cmd/docproc@…`, with `app`, `apptest`, `run`, and
+  `report` under `internal/`. Rejected: slab's layout. The architecture page's nested-command
+  layout is a pending edit for the `architecture` task.
+- **DP-11 · `rundir`'s contract was tested only from the command.** Accepted → docproc.
+  `rundir/testdata` holds one committed schema "2" run directory that `rundir`'s tests read
+  through the reader's API and write again through the writer's.
+- **DP-12 · A symbolic link or special file argument yielded nothing, silently.** Accepted →
+  docproc. A named argument that is a link is followed; one that is neither file nor directory,
+  or arguments yielding no input, fail the run before any tool is probed.
+- **DP-13 · `export_test.go` exported the command's body.** Accepted → docproc. The graph's node
+  becomes the stage builder, which `apptest` replaces, and `export_test.go` goes.
+- **DP-14 · `FileOf`, `Stater`, and `Detect` move with `Statx`.** Accepted → docproc, so
+  `rundir/schema` is shapes alone.
+- **DP-15 · The manifest's `record` repeated the layout and was trusted as a path.** Accepted →
+  docproc. `record` and `Run.Record` go; `run` stays.
+- **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
+  library (the JSON names) and docproc (the aliases).
+- **DP-17 · Every tool was probed before the inputs were checked.** Accepted → docproc.
+- **DP-18 · `flags.json` repeated the record.** Accepted → docproc. The kept file is
+  `quarantine/<sha256>`, named on the line whenever it exists.
+- **DP-19 · The port to go-cli-sdk v0.4.0 and go-core v0.12.0.** Accepted → docproc, starting
+  `internal/app` and `internal/apptest` from go-cli-sdk-template at v0.4.0.
+- **DP-20 · The manifest didn't say what wrote it or how many inputs it had.** Accepted → docproc.
+- **DP-21 · `--workers` refused a value above the host's CPUs.** Accepted → docproc.
+- **DP-22 · `ReadRecord` returned the whole record.** Accepted → docproc. `Record` is a
+  sequence.
+- **DP-23 · An input's time included its wait at the pool's feeder.** Accepted → docproc.
+- **DP-24 · `execute` took six inputs, and `schema.Time` kept its zone.** Accepted → docproc.
+- **DP-25 · The roadmap's `docproc` summary named a role `stages` now has.** Accepted → docproc
+  (its README names `stages` as the shipped wiring and `cmd/docproc` its first caller); the
+  summary's rewording is a pending edit.

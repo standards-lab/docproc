@@ -836,7 +836,7 @@ added; `Stage` stays the interface.
 package dispatch
 const Version = "1" // of the shapes below, grown by addition only
 type Event struct {
-    Part     Part     `json:"part"`
+    Part     Part     `json:"part,omitzero"` // left out when zero: rundir's error line
     Stage    Identity `json:"stage,omitzero"`
     Output   *Output  `json:"output,omitempty"`  // an output's event
     Warning  *Warning `json:"warning,omitempty"` // a warning's event
@@ -2431,7 +2431,9 @@ dispatch            changed, as "Input from a stream, or a path", "Dispatch", "C
                     recorded before its event; a resumed input's entry never recorded; New
                     validating Inspect and refusing two identities under one name; one renewer
                     per dispatch; Config.Release; Record under the dispatch's context; Pool keeps
-                    one context for its inputs, its hand-back for the files alone; the doc's
+                    one context for its inputs, its hand-back for the files alone; a failure of
+                    the index or the content store typed apart from an input's, so a host stops
+                    its run on it where the pool yields it with its input; the doc's
                     "Resuming a store" rewritten around Event.After; the stage adapters move to
                     stages, HashConfig staying; no build tag. Index: Items and Append over
                     Recorded, which carries After, replace Outputs, Children, Append, and
@@ -2445,7 +2447,8 @@ dispatch            changed, as "Input from a stream, or a path", "Dispatch", "C
                     DefaultStale, DefaultPoll, and FileOptions gone; FileIndex and FileContent
                     shard by the name's first two hex digits, take no clock, and age content with
                     os.Chtimes in tests. Its shapes, beside its other types, with Version "1",
-                    marshalled with encoding/json: Event gains JSON tags, Err left out;
+                    marshalled with encoding/json: Event gains JSON tags, Err left out, Part
+                    omitzero;
                     Part takes the spike's docproc schema.Part shape plus ID, its Kind, Route,
                     Reason, and MIME moving into the new ContentType; Identity takes
                     schema.Stage's JSON names; Output takes the spike's docproc JSON names less
@@ -2458,7 +2461,9 @@ dispatch/           new, public: the Index and Content conformance suites and th
   dispatchtest      run by MemoryIndex, FileIndex, MemoryContent, FileContent, and both providers;
                     docinfer's job tests use the fixture stage
 stages              moved from the root's internal/docproc/stages, less WriteTable, and grown:
-                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; the stage adapters,
+                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; Tool and Row tagged
+                    with the run manifest's JSON names, Tool's failure as Error beside an
+                    untagged Err, so rundir/schema aliases both; the stage adapters,
                     unexported, each taking its tools as required fields, their partial modes and
                     the qpdf identity field gone; one function classifying a run's error, for a
                     unit and a part alike; a unit's failure of the content's class a warning, its
@@ -2483,7 +2488,24 @@ stages              moved from the root's internal/docproc/stages, less WriteTab
                     "markdown": "follows", outcome, check, class, evidence, and warnings leaving
                     Meta, a window's typed facts in its plan record alone
 rundir,             moved from the root's internal/docproc/{rundir,schema} [docproc]: public
-  rundir/schema     packages of this module, as "The nested modules" says
+  rundir/schema     packages of this module, the API "The nested modules" states, the base
+                    module tagged v0.2.0 when they land; one Dir from Open, which reads and
+                    creates nothing, or Create, which makes the directory, rundir.json, the
+                    index, and the content store, both refusing another schema or runs/ with no
+                    rundir.json; Manifest, Record, and every other method taking an id refusing
+                    one that isn't a run of the directory, ValidID unexported, Runs listing runs
+                    alone; Latest the latest ended run; Record an iter.Seq2, an unended run's last
+                    line without a newline dropped; ContentPath; Begin removing leftover .work-*
+                    directories; each record line flushed as written, no fsync; Quarantine
+                    keeping quarantine/<sha256>, flags.json gone; Store, its counter, stageDir,
+                    the extension table, Load, WriteRunFile, WriteFile, Run.Record, and the
+                    manifest's record go; the doc stating one writer per run directory.
+                    rundir/schema shapes alone: the event line with its kind and error, the
+                    manifest gaining docproc and collected, Tool and StageState aliasing
+                    stages', Version, Time, and TimeOf, which converts to UTC, the writer's one
+                    way to make a Time; a TestMain under Europe/London; rundir/testdata one
+                    committed schema "2" run directory, read through the reader's API and
+                    written again through the writer's, compared as text
 internal/goldentest, kept: test helpers that call no model, goldentest for PNG bytes
   mediatest
 internal/corpustest, left in the spike at v0.9.0 with the findings and bake-off tiers, the vision
@@ -2568,16 +2590,43 @@ library requires go-cli-sdk or go-core.
 ```text
 docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
                                    requires docproc, go-cli-sdk, go-core, and golang.org/x/sys;
-                                   wires docproc's stages, keeps WriteTable; run takes schema's
-                                   Statx, on golang.org/x/sys, copies a quarantined part's file
-                                   in its loop body, Keep gone, and stores outputs in the run
-                                   directory's FileContent; its configuration ships the
-                                   operator's starting bounds, which the library leaves none:
-                                   dispatch.Limits (parts, bytes, depth), Config.Release,
-                                   stages.Options' Timeout, Idle,
-                                   Memory, and Concurrency, and the outputs' caps in each
-                                   stage's request (pages, frames, MaxPixels, a frame's
-                                   MaxSide); its report is the reports task's [reports]
+                                   main.go at the module's root, app, apptest, run, and report
+                                   under internal/ (below); app and apptest started from
+                                   go-cli-sdk-template at v0.4.0, not ported; the graph's node
+                                   the stage builder, stages.Build over exec.LookPath, which
+                                   apptest.Tools and apptest.Stages replace, export_test.go
+                                   gone; wires docproc's stages, keeps WriteTable; run collects
+                                   the inputs before it builds the stages, follows a named
+                                   argument that is a symbolic link, and fails on one that is
+                                   neither file nor directory, or on arguments that yield no
+                                   input; run is a runner struct with one method, its recorder
+                                   writing one line per event, replay.go, its subtrees, and the
+                                   warnings counters and row gone; run holds one fileOf, over
+                                   Statx on golang.org/x/sys, and detect, from schema's Statx,
+                                   FileOf, Stater, and Detect, the birth-time probe its one
+                                   export_test.go hook; an input's time from its first event to
+                                   its last, on the loop's goroutine; copies a quarantined
+                                   part's file in its loop body, Keep gone, and stores outputs
+                                   in the run directory's FileContent, its output handler
+                                   writing the line alone; stops the run, exit 1, on a store's
+                                   failure, failed parts and error inputs exit 0, stated in the
+                                   help, the summary's last line counting both; --workers at
+                                   least 1; its configuration ships the operator's starting
+                                   bounds, which the library leaves none: dispatch.Limits
+                                   (parts, bytes, depth), Config.Release, stages.Options'
+                                   Timeout, Idle, Memory, and Concurrency, and the outputs' caps
+                                   in each stage's request (pages, frames, MaxPixels, a frame's
+                                   MaxSide); docproc's README names stages as the shipped wiring
+                                   and cmd/docproc its first caller
+                       [reports]   the report: a page per distinct input content, named by its
+                                   SHA-256, listing every input path that holds it with its file
+                                   metadata, outcome, and time, the tree and outputs once; the
+                                   index page listing every input, error inputs included; text,
+                                   Markdown, and record outputs inlined from the content store,
+                                   <img> and <audio> pointing at ContentPath; Render over
+                                   rundir's handle, its determinism test over a fixture
+                                   directory; the base module tagged again only if rundir
+                                   changed, then cmd/docproc/v0.1.0
 docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
                         goal]      infer, models, outdir, source, report}; requires docinfer,
                                    docproc, go-ai, go-cli-sdk, and go-core; builds
@@ -2590,21 +2639,90 @@ docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest
                                    schema "2"
 ```
 
+`cmd/docproc`'s `main.go` sits at its module's root, so
+`go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs it, and its packages
+sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run` and
+`report`, its command packages. The module's one public surface is the command, and the logic an
+integrator calls is the library's, so it is an exception to Go Elemental's command packages at a
+module's root level, which `STANDARDS.md` states; go-web-service's `tools/slab` layout would make
+the install path `cmd/docproc/cmd/docproc` and `run.Commands` API under its tags.
+
 `rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
 of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory
 through them, and Go's internal rule is by import path, so docproc's `cmd/internal` would bar
-it. They version with the library, which both commands require.
+it. They version with the library, which both commands require: `library` tags the base module
+v0.1.0 without them, the `docproc` task tags v0.2.0 when they land, and `reports` tags it again
+only if it changes them, before `cmd/docproc/v0.1.0`. A committed `go.work` over the base module
+and `cmd/docproc` carries a change between tags.
 
-The run directory moves to schema "2". `schema` aliases the moved shapes (`dispatch.Part`,
-`ContentType`, `Identity` as its `Stage`, `Output`, and `Warning`, and `inspect.Flag`), so no shape
-is defined twice, and a part's `parent` becomes its parent's ID, a change of meaning "1" can't take.
-An output's content is in the run directory's `FileContent`, found by its `sha256` in place of "1"'s
-`ref` path under `outputs/`, and a record's warning is dispatch's `Warning` in place of a string.
-The record's event line embeds `dispatch.Event`, its fields inline, and adds only its own: `event`,
-`input`, `file`, `quarantine`, and `time`. The record's other shapes (`File`, `Quarantine`, `Span`,
-the manifest, `Tool`, and `StageState`) stay its own. `cmd/docinfer`'s `source` reads "2" alone, as
-the spike's reads "1" alone. `schema`'s `Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`) moves
-to `cmd/docproc`'s `run`, its one caller, so the base module requires `golang.org/x/text` alone.
+```go
+package rundir
+// Open opens the run directory at root to read it, creating nothing: it fails with
+// fs.ErrNotExist when root is no run directory, and refuses another schema, naming both.
+func Open(root string) (*Dir, error)
+// Create opens root to write it, making the directory, its rundir.json, the index, and the
+// content store when they are absent; over an existing directory it refuses as Open does.
+func Create(root string) (*Dir, error)
+func (d *Dir) Runs() ([]string, error)                         // its runs' ids, in order
+func (d *Dir) Latest() (string, error)                         // the latest run that ended
+func (d *Dir) Manifest(id string) (schema.Manifest, error)
+func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] // its lines, in order
+func (d *Dir) Content() dispatch.Content                       // the run directory's FileContent
+func ContentPath(sha256 string) string                         // a content's file, from the root
+// The writer's, on a Dir from Create:
+func (d *Dir) Index() dispatch.Index
+func (d *Dir) Begin(m schema.Manifest) (*Run, error)
+func (d *Dir) Quarantine(sha256, path string) (string, error) // quarantine/<sha256>, kept once
+func (r *Run) Write(e schema.Event) error                     // one line, written through
+func (r *Run) End(err error) error
+```
+
+One process writes a run directory. Its root's `rundir.json` holds its schema, and every method
+that takes an id refuses one that isn't a run of the directory, so no caller checks an id first.
+`Begin` removes the `.work-*` directories a killed run left. A record is appended, never renamed:
+each line is written through as it is made, so a killed run's record loses at most its last line,
+and a reader of a run whose manifest has no `end` drops a last line with no newline; `Latest`
+names only a run that ended, and a reader given an unended run by id says so. `Record` yields the
+lines in order and ends on the first that doesn't decode.
+
+The run directory moves to schema "2", which includes `dispatch`'s shapes at `dispatch.Version`
+"1", so a break there is a break here. `schema` aliases the moved shapes (`dispatch.Part`,
+`ContentType`, `Identity` as its `Stage`, `Output`, and `Warning`, `inspect.Flag`, and
+`stages.Tool` and `stages.Row` as its `Tool` and `StageState`), so no shape is defined twice, and a
+part's `parent` becomes its parent's ID, a change of meaning "1" can't take. An output's content
+is in the run directory's `FileContent`, found by its `sha256` in place of "1"'s `ref` path under
+`outputs/`; the content store's directory and a content's path in it (`ContentPath`) are part of
+"2", since the report links a content's file and a reader that isn't Go follows it.
+
+The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
+input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch
+yields; "1"'s `warning`, a string the command wrote on a part line when no record held a seen
+part's children, goes with the copy that wrote it, since the dispatcher replays children. A reader
+may tell the first three kinds by which of `output` and `warning` is set.
+
+```go
+package schema
+type Event struct {
+    Kind  string `json:"event"` // part, output, warning, error
+    Input string `json:"input"` // the input's path argument
+    dispatch.Event              // its fields inline, its Part left out on an error line
+    File       *File  `json:"file,omitempty"`      // an input's own part line
+    Quarantine string `json:"quarantine,omitzero"` // quarantine/<sha256>, while it is kept
+    Time       *Span  `json:"time,omitempty"`      // an input's: its first event to its last
+    Error      string `json:"error,omitzero"`      // an error line's text: Err never marshals
+}
+```
+
+`quarantine` names the kept file whenever it exists, whether this event copied it or an earlier
+run did, and the flags are the line's, with no `flags.json`. The record's other shapes, `File`,
+`Span`, and the manifest, stay its own. The manifest keeps `schema` and `run` for a manifest read
+alone, drops `record`, whose path is the layout's (`runs/<id>/record.jsonl`), and gains `docproc`,
+the command's module version and the library's from the build info, and `collected`, the number
+of inputs its arguments named. Every `Time` is UTC, made by `TimeOf`. `cmd/docinfer`'s `source`
+reads "2" alone, as the spike's reads "1" alone. `schema`'s `Statx` (`stat_linux.go`, on
+`golang.org/x/sys/unix`), `FileOf`, `Stater`, and `Detect`, which imports `net/http`, move to
+`cmd/docproc`'s `run`, their one caller, so `rundir/schema` is shapes alone and the base module
+requires `golang.org/x/text` alone.
 
 `cmd/docinfer`'s directory moves to schema "2" with it, since its chunk lines embed docproc's
 `Part` and its held results become docinfer's `Held`. In "2" it takes docinfer's shapes rather
