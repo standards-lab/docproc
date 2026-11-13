@@ -64,13 +64,17 @@ if [ "$kind" = cargo ]; then
 		linux-arm64) target=aarch64-unknown-linux-musl ;;
 	esac
 	# cargo-about runs in the tool's mise environment, its pinned Rust's cargo ahead of a host
-	# cargo, as the tool's own tasks run it. --frozen keeps Cargo.lock as it is and reads no network,
-	# and --fail fails on a license it can't read or the accepted list can't satisfy. The inner
-	# script is single-quoted so that $CARGO_HOME expands in mise's environment, not this one.
+	# cargo, as the tool's own tasks run it. Its `cargo metadata` reads every crate in Cargo.lock,
+	# on every platform, so `cargo fetch --locked` first downloads any the tool's build didn't (a
+	# no-op once they're in the cache, as cargo test is). --frozen then keeps Cargo.lock as it is
+	# and reads no network, and --fail fails on a license it can't read or the accepted list can't
+	# satisfy. The inner script is single-quoted so that $CARGO_HOME expands in mise's environment,
+	# not this one.
 	# shellcheck disable=SC2016
 	about=$(mise -C "$tool" exec -- bash -c '
 		export PATH="$CARGO_HOME/bin:$PATH"
-		cargo-about --color never generate --format json --frozen --fail --target "$1"
+		cargo fetch --locked --quiet >&2 &&
+			cargo-about --color never generate --format json --frozen --fail --target "$1"
 	' bash "$target") || fail "cargo-about refused $tool's crates for $target"
 
 	echo "Third-party notices for $binary, $rid"
