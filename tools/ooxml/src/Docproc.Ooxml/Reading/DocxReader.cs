@@ -26,7 +26,7 @@ internal static partial class DocxReader
         var sections = ReadSections(context, body);
         var comments = context.Comments.Build(context);
         return new Conversion(
-            new Document(Document.CurrentSchema, SourceFormat.Docx, blocks)
+            new Document(SourceFormat.Docx, blocks)
             {
                 Sections = sections.Any(s => s.Headers is not null || s.Footers is not null) ? sections : null,
                 Footnotes = context.Footnotes.Read is { Count: > 0 } footnotes ? footnotes : null,

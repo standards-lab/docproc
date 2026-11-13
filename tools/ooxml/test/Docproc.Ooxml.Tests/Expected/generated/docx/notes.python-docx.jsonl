@@ -1,0 +1,1 @@
+{"line":"document","schema":"2","format":"docx","markdown":"# Notes\n\nRevenue rose sharply[^1] in the third quarter.[^2]\n\nCosts held steady[^3].\n\n- An item with an endnote[^4]\n\n[^1]: The method has two parts.\n\n    Its second part is a second paragraph.\n\n[^2]: Source: the regional ledgers.\n\n[^3]: Figures are unaudited.\n\n[^4]: An endnote from a list item.\n"}

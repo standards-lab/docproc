@@ -7,12 +7,17 @@ namespace Docproc.Ooxml.Tests;
 // written by hand from GFM's rules, never a snapshot of docproc-ooxml's own output.
 public sealed class MarkdownRendererTests
 {
+    // The envelope's literal-text rule (context/layers.md, "Common envelope"): its characters
+    // anywhere, `$` among them; a `<` only where it could open a tag, a comment, or an
+    // instruction, or ends the line; `>` only at a line's start.
     [Fact]
     public void TextMarkdownWouldMisreadIsEscaped()
     {
         var markdown = Render(
-            Para("Stars *a* and _b_, [link](x), <tag>, a | pipe, & amp, ~strike~, `code`, back\\slash"),
+            Para("Stars *a* and _b_, [link](x), <tag>, a | pipe, & amp, ~strike~, `code`, $5, back\\slash"),
+            Para("a < b > c, 1<2, <!-- c -->, <?x?>, </p>, </ and <"),
             Para("# not a heading"),
+            Para("> not a quote"),
             Para("1. not a list"),
             Para("- not a bullet"),
             Para("  indented text\twith a tab"),
@@ -20,9 +25,13 @@ public sealed class MarkdownRendererTests
 
         Assert.Equal(
             """
-            Stars \*a\* and \_b\_, \[link\](x), \<tag\>, a \| pipe, \& amp, \~strike\~, \`code\`, back\\slash
+            Stars \*a\* and \_b\_, \[link\](x), \<tag>, a \| pipe, \& amp, \~strike\~, \`code\`, \$5, back\\slash
+
+            a < b > c, 1<2, \<!-- c -->, \<?x?>, \</p>, </ and \<
 
             \# not a heading
+
+            \> not a quote
 
             1\. not a list
 
@@ -459,7 +468,7 @@ public sealed class MarkdownRendererTests
 
     private static ListBlock List(bool ordered, string text) => new(ordered, [new ListItem([Para(text)])]);
 
-    private static Document Doc(params Block[] blocks) => new(Document.CurrentSchema, SourceFormat.Docx, blocks);
+    private static Document Doc(params Block[] blocks) => new(SourceFormat.Docx, blocks);
 
     private static string Render(params Block[] blocks) => MarkdownRenderer.Render(Doc(blocks));
 }

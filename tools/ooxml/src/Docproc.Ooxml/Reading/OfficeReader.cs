@@ -8,7 +8,7 @@ namespace Docproc.Ooxml.Reading;
 
 /// <summary>A document docproc-ooxml won't convert, and why. It is raised before any output is
 /// written.</summary>
-public sealed class RefusalException(string message) : Exception(message);
+internal sealed class RefusalException(string message) : Exception(message);
 
 /// <summary>A document docproc-ooxml reads but won't convert, as its readers find it: what in it goes
 /// past a limit, and where. The converter refuses the document with this reason.</summary>
@@ -16,7 +16,7 @@ internal sealed class ContentRefusedException(string reason) : Exception(reason)
 
 /// <summary>A conversion's result: the model, and the embedded media its media blocks name, by
 /// file name.</summary>
-public sealed record Conversion(Document Document, IReadOnlyDictionary<string, byte[]> Media)
+internal sealed record Conversion(Document Document, IReadOnlyDictionary<string, byte[]> Media)
 {
     /// <summary>What the conversion skipped and converted the rest without: a single invalid
     /// reference, such as a header reference of a type no header has, or a sheet that names no
@@ -25,7 +25,7 @@ public sealed record Conversion(Document Document, IReadOnlyDictionary<string, b
 }
 
 /// <summary>Office's converter: a document in, the model and its media out.</summary>
-public static class OfficeReader
+internal static class OfficeReader
 {
     private static readonly byte[] CompoundFileSignature = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
     private static readonly byte[] ZipSignature = [0x50, 0x4B, 0x03, 0x04];

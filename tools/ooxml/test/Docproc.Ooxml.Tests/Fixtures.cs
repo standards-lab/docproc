@@ -70,18 +70,6 @@ internal static class Fixtures
         }
     }
 
-    /// <summary>Every real-world file, docx, xlsx, then pptx, as a fixture of the real-world
-    /// variant.</summary>
-    public static TheoryData<string, string> RealWorldFiles
-    {
-        get
-        {
-            var data = new TheoryData<string, string>();
-            AddRealWorld(data);
-            return data;
-        }
-    }
-
     /// <summary>The generated fixtures' variants, then the real-world files.</summary>
     public static TheoryData<string, string> All
     {
@@ -127,13 +115,16 @@ internal static class Fixtures
         return File.Exists(own) ? own : Path.Combine(directory, $"{name}.truth.json");
     }
 
-    /// <summary>docproc-ooxml's exact output for a fixture variant: the variant's own file where the
-    /// variants' outputs differ (part names, ids), or else one file for both.</summary>
-    public static string Expected(string name, string variant, string extension)
+    /// <summary>The directory of the goldens: each fixture's exact stdout (<c>.jsonl</c>) and
+    /// stderr (<c>.stderr</c>) on the published binary, at the fixture's path under
+    /// <c>fixtures/</c>, less its extension. Only <c>mise run golden</c> writes them.</summary>
+    public static string GoldenRoot { get; } = Path.Combine(Root, "test", "Docproc.Ooxml.Tests", "Expected");
+
+    /// <summary>A fixture variant's golden of the given extension, <c>jsonl</c> or <c>stderr</c>.</summary>
+    public static string GoldenPath(string name, string variant, string extension)
     {
-        var directory = Path.Combine(Root, "test", "Docproc.Ooxml.Tests", "Expected");
-        var own = Path.Combine(directory, $"{name}.{variant}.{extension}");
-        return File.ReadAllText(File.Exists(own) ? own : Path.Combine(directory, $"{name}.{extension}"));
+        var fixture = Path.GetRelativePath(Path.Combine(Root, "fixtures"), DocumentPath(name, variant));
+        return Path.Combine(GoldenRoot, Path.ChangeExtension(fixture, extension));
     }
 
     private static string FindRoot()

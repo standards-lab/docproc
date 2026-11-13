@@ -38,7 +38,7 @@ internal static class XlsxReader
             var hidden = state == S.SheetStateValues.Hidden || state == S.SheetStateValues.VeryHidden;
             blocks.Add(new Model.Sheet(sheet.Name?.Value ?? "", hidden, ReadSheet(context, part, blocks.Count)));
         }
-        return new Conversion(new Document(Document.CurrentSchema, SourceFormat.Xlsx, blocks), context.Media.Files) { Warnings = warnings };
+        return new Conversion(new Document(SourceFormat.Xlsx, blocks), context.Media.Files) { Warnings = warnings };
     }
 
     private sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904)

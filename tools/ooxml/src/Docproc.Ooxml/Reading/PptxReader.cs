@@ -39,7 +39,7 @@ internal static class PptxReader
                 Notes = ReadNotes(slidePart.NotesSlidePart) is { Count: > 0 } notes ? notes : null,
             });
         }
-        return new Conversion(new Document(Document.CurrentSchema, SourceFormat.Pptx, blocks), media.Files);
+        return new Conversion(new Document(SourceFormat.Pptx, blocks), media.Files);
     }
 
     // A notes page's text: its body placeholders' paragraphs, never the slide image, the slide

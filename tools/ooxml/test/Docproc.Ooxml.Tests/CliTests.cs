@@ -2,9 +2,6 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using Docproc.Ooxml.Model;
-using Docproc.Ooxml.Reading;
-using Docproc.Ooxml.Rendering;
 
 namespace Docproc.Ooxml.Tests;
 
@@ -28,45 +25,52 @@ public sealed class CliTests : IDisposable
         Assert.Empty(result.Stderr);
     }
 
+    public static TheoryData<string, string> AllFixtures => Fixtures.All;
+
+    // Each fixture's stdout and stderr, byte for byte, are its goldens, which `mise run golden`
+    // recorded from an earlier run of the published binary; the comparison is a second run, so it
+    // shows a run's bytes are the same every time as well as what they are. Every fixture
+    // converts.
     [Theory]
-    [InlineData("json")]
-    [InlineData(null)]
-    public void JsonIsTheDefaultAndGoesToStdoutAlone(string? format)
+    [MemberData(nameof(AllFixtures))]
+    public void AFixturesOutputIsItsGoldens(string name, string variant)
     {
-        var path = Fixtures.DocumentPath("tracked-changes", "libreoffice");
-        var result = format is null ? Run(path) : Run(path, "--format", format);
+        var result = RunBytes(Fixtures.DocumentPath(name, variant));
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("tracked-changes", "libreoffice", "json"), result.Stdout);
-        Assert.Empty(result.Stderr);
+        Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath(name, variant, "jsonl")), result.Stdout);
+        Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath(name, variant, "stderr")), result.Stderr);
     }
 
+    // The goldens are each fixture's two and nothing else, so none outlives its fixture.
     [Fact]
-    public void MarkdownGoesToStdoutAlone()
+    public void EveryGoldenIsAFixtures()
     {
-        var result = Run(Fixtures.DocumentPath("tables", "libreoffice"), "--format", "markdown");
+        var expected = Fixtures.All.SelectMany(row => new[]
+        {
+            Fixtures.GoldenPath(row.Data.Item1, row.Data.Item2, "jsonl"),
+            Fixtures.GoldenPath(row.Data.Item1, row.Data.Item2, "stderr"),
+        });
 
-        Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("tables", "libreoffice", "md"), result.Stdout);
-        Assert.Empty(result.Stderr);
+        Assert.Equal(
+            expected.Order(StringComparer.Ordinal),
+            Directory.GetFiles(Fixtures.GoldenRoot, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
     }
 
     // Each distinct picture once, named by its bytes, however many parts and blocks hold it: the
     // media fixture's python-docx variant stores the red square in two parts and shows it three
     // times, and links one picture, which is never written. The directory and its missing parent
     // are created.
-    [Theory]
-    [InlineData("json")]
-    [InlineData("markdown")]
-    public void MediaAreWrittenOnceEachNamedByTheirContent(string format)
+    [Fact]
+    public void MediaAreWrittenOnceEachNamedByTheirContent()
     {
         var media = Path.Combine(scratch.FullName, "out", "media");
         var path = Fixtures.DocumentPath("media", "python-docx");
 
-        var result = Run(path, "--format", format, "--media", media);
+        var result = Run(path, "--media", media);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("media", "python-docx", format == "json" ? "json" : "md"), result.Stdout);
+        Assert.Equal(Golden("media", "python-docx"), result.Stdout);
         var files = Directory.GetFiles(media).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(
             [
@@ -79,18 +83,6 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "word/media/", 5, media); // The red square's copy is a fifth part, written as the same file.
     }
 
-    [Theory]
-    [InlineData("json")]
-    [InlineData("markdown")]
-    public void AnXlsxConvertsToStdoutAlone(string format)
-    {
-        var result = Run(Fixtures.DocumentPath("formulas", "libreoffice"), "--format", format);
-
-        Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("formulas", "libreoffice", format == "json" ? "json" : "md"), result.Stdout);
-        Assert.Empty(result.Stderr);
-    }
-
     // The drawings fixture's openpyxl variant stores the red square twice, as two parts of one
     // sheet's drawing, and the blue square on a second sheet: two files.
     [Fact]
@@ -99,10 +91,10 @@ public sealed class CliTests : IDisposable
         var media = Path.Combine(scratch.FullName, "media");
         var path = Fixtures.DocumentPath("drawings", "openpyxl");
 
-        var result = Run(path, "--format", "markdown", "--media", media);
+        var result = Run(path, "--media", media);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("drawings", "openpyxl", "md"), result.Stdout);
+        Assert.Equal(Golden("drawings", "openpyxl"), result.Stdout);
         var files = Directory.GetFiles(media).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(
             [
@@ -113,34 +105,18 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "xl/media/", 3, media);
     }
 
-    // The slides fixture's python-pptx variant presents its slides in an order that isn't their
-    // parts', with a hidden slide and notes.
-    [Theory]
-    [InlineData("json")]
-    [InlineData("markdown")]
-    public void APptxConvertsToStdoutAlone(string format)
-    {
-        var result = Run(Fixtures.DocumentPath("slides", "python-pptx"), "--format", format);
-
-        Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("slides", "python-pptx", format == "json" ? "json" : "md"), result.Stdout);
-        Assert.Empty(result.Stderr);
-    }
-
     // The slide-objects fixture shows the red square on two slides, one part, and the blue
     // square on one: two files, each the bytes of its part.
-    [Theory]
-    [InlineData("json")]
-    [InlineData("markdown")]
-    public void SlidePicturesAreWrittenOnceEachNamedByTheirContent(string format)
+    [Fact]
+    public void SlidePicturesAreWrittenOnceEachNamedByTheirContent()
     {
         var media = Path.Combine(scratch.FullName, "media");
         var path = Fixtures.DocumentPath("slide-objects", "python-pptx");
 
-        var result = Run(path, "--format", format, "--media", media);
+        var result = Run(path, "--media", media);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("slide-objects", "python-pptx", format == "json" ? "json" : "md"), result.Stdout);
+        Assert.Equal(Golden("slide-objects", "python-pptx"), result.Stdout);
         var files = Directory.GetFiles(media).Select(Path.GetFileName).Order(StringComparer.Ordinal).ToList();
         Assert.Equal(
             [
@@ -151,27 +127,6 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "ppt/media/", 2, media);
     }
 
-    public static TheoryData<string, string> RealWorldFiles => Fixtures.RealWorldFiles;
-
-    // Each real-world file, written by Word, Excel, or PowerPoint, converts on the published binary
-    // to what the converter's seam gives, whose model the file's ground truth checks.
-    [Theory]
-    [MemberData(nameof(RealWorldFiles))]
-    public void ARealWorldFileConvertsToStdoutAlone(string name, string variant)
-    {
-        var path = Fixtures.DocumentPath(name, variant);
-        var document = OfficeReader.Read(path);
-
-        foreach (var (format, expected) in new[] { ("json", DocumentJson.Serialize(document)), ("markdown", MarkdownRenderer.Render(document)) })
-        {
-            var result = Run(path, "--format", format);
-
-            Assert.Equal(Cli.Converted, result.ExitCode);
-            Assert.Equal(expected, result.Stdout);
-            Assert.Empty(result.Stderr);
-        }
-    }
-
     [Fact]
     public void NothingIsWrittenWithoutTheMediaOption()
     {
@@ -180,7 +135,7 @@ public sealed class CliTests : IDisposable
         var result = RunIn(scratch.FullName, Fixtures.DocumentPath("media", "python-docx"));
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("media", "python-docx", "json"), result.Stdout);
+        Assert.Equal(Golden("media", "python-docx"), result.Stdout);
         Assert.Empty(Directory.GetFileSystemEntries(scratch.FullName));
         Assert.Equal(before, Directory.GetFileSystemEntries(Path.GetDirectoryName(Fixtures.DocumentPath("media", "python-docx"))!));
     }
@@ -195,7 +150,7 @@ public sealed class CliTests : IDisposable
         var result = Run(Fixtures.DocumentPath("headings", "python-docx"), "--media", media);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("headings", "python-docx", "json"), result.Stdout);
+        Assert.Equal(Golden("headings", "python-docx"), result.Stdout);
         Assert.Empty(Directory.GetFileSystemEntries(media));
     }
 
@@ -229,24 +184,25 @@ public sealed class CliTests : IDisposable
         var input = Path.Combine(scratch.FullName, "-tables.docx");
         File.Copy(Fixtures.DocumentPath("tables", "libreoffice"), input);
 
-        var result = Run("--format=markdown", $"--media={media}", "--", input);
+        var result = Run($"--media={media}", "--", input);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal(Fixtures.Expected("tables", "libreoffice", "md"), result.Stdout);
+        Assert.Equal(Golden("tables", "libreoffice"), result.Stdout);
         Assert.Empty(result.Stderr);
         Assert.True(Directory.Exists(media));
     }
 
+    // --format is gone: one run writes the one contract.
     [Theory]
     [InlineData]
-    [InlineData("--format", "xml", "in.docx")]
-    [InlineData("--format=xml", "in.docx")]
+    [InlineData("--format", "json", "in.docx")]
+    [InlineData("--format=markdown", "in.docx")]
     [InlineData("--bogus", "in.docx")]
     [InlineData("-x", "in.docx")]
     [InlineData("one.docx", "two.docx")]
     [InlineData("in.docx", "--media")]
     [InlineData("--media", "a", "--media", "b", "in.docx")]
-    [InlineData("--format", "json", "--format=json", "in.docx")]
+    [InlineData("--media", "a", "--media=b", "in.docx")]
     [InlineData("--version", "in.docx")]
     [InlineData("--help", "--version")]
     [InlineData("--help=yes")]
@@ -353,10 +309,10 @@ public sealed class CliTests : IDisposable
                 "<w:p><w:r><w:t>kept</w:t></w:r></w:p>" +
                 "<w:sectPr><w:headerReference w:type=\"odd\" r:id=\"rId9\"/><w:footerReference w:type=\"default\" r:id=\"rId8\"/></w:sectPr>"));
 
-        var result = Run(path, "--format", "markdown");
+        var result = Run(path);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal("kept\n", result.Stdout);
+        Assert.Equal("{\"line\":\"document\",\"schema\":\"2\",\"format\":\"docx\",\"markdown\":\"kept\\n\"}\n", result.Stdout);
         Assert.Equal(
             $"docproc-ooxml: warning: {path}: a header reference of type \"odd\" in section 1 was skipped: no header has that type\n",
             result.Stderr);
@@ -390,10 +346,17 @@ public sealed class CliTests : IDisposable
                 "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" +
                 "<row r=\"1\"><c r=\"A1\"><v>42</v></c></row></sheetData></worksheet>"));
 
-        var result = Run(path, "--format", "markdown");
+        var result = Run(path);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
-        Assert.Equal("# Data\n\n|  | A |\n| --- | --- |\n| 1 | 42 |\n", result.Stdout);
+        Assert.Equal(
+            """
+            {"line":"document","schema":"2","format":"xlsx"}
+            {"line":"sheet","name":"Data","markdown":"# Data\n\n|  | A |\n| --- | --- |\n"}
+            {"line":"rows","markdown":"| 1 | 42 |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"number","value":42}]}]}
+
+            """,
+            result.Stdout);
         Assert.Equal(
             $"docproc-ooxml: warning: {path}: sheet \"Module\" was skipped: its relationship id \"\" names no part\n",
             result.Stderr);
@@ -412,11 +375,9 @@ public sealed class CliTests : IDisposable
             "deep.docx: tables nested 9 deep (limit 8), at body paragraph 2");
 
     // Eight tables deep converts, and so does the deepest model that allows: a list nested Word's
-    // nine levels in the innermost cell, past the serializer's default depth of 64.
-    [Theory]
-    [InlineData("json")]
-    [InlineData("markdown")]
-    public void TablesNestedToTheLimitConvertWithTheDeepestList(string format)
+    // nine levels in the innermost cell.
+    [Fact]
+    public void TablesNestedToTheLimitConvertWithTheDeepestList()
     {
         var levels = string.Concat(Enumerable.Range(0, 9).Select(l =>
             $"<w:lvl w:ilvl=\"{l}\"><w:numFmt w:val=\"bullet\"/><w:lvlText w:val=\"-\"/></w:lvl>"));
@@ -442,7 +403,7 @@ public sealed class CliTests : IDisposable
                 "<w:numbering xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\">" +
                 $"<w:abstractNum w:abstractNumId=\"0\">{levels}</w:abstractNum><w:num w:numId=\"1\"><w:abstractNumId w:val=\"0\"/></w:num></w:numbering>"));
 
-        var result = Run(path, "--format", format);
+        var result = Run(path);
 
         Assert.Equal(Cli.Converted, result.ExitCode);
         Assert.Empty(result.Stderr);
@@ -525,7 +486,7 @@ public sealed class CliTests : IDisposable
     private void AssertRefused(string path, string reason)
     {
         var media = Path.Combine(scratch.FullName, "media");
-        var result = Run(path, "--format", "markdown", "--media", media);
+        var result = Run(path, "--media", media);
 
         Assert.Equal(Cli.Refused, result.ExitCode);
         Assert.Empty(result.Stdout);
@@ -567,11 +528,26 @@ public sealed class CliTests : IDisposable
                 "</Relationships>"),
             (part, content));
 
+    // A fixture variant's stdout golden, as text.
+    private static string Golden(string name, string variant) =>
+        File.ReadAllText(Fixtures.GoldenPath(name, variant, "jsonl"));
+
     private sealed record Result(int ExitCode, string Stdout, string Stderr);
+
+    private sealed record BytesResult(int ExitCode, byte[] Stdout, byte[] Stderr);
 
     private static Result Run(params string[] args) => RunIn(Environment.CurrentDirectory, args);
 
     private static Result RunIn(string directory, params string[] args)
+    {
+        var result = RunBytesIn(directory, args);
+        return new Result(result.ExitCode, Encoding.UTF8.GetString(result.Stdout), Encoding.UTF8.GetString(result.Stderr));
+    }
+
+    private static BytesResult RunBytes(params string[] args) => RunBytesIn(Environment.CurrentDirectory, args);
+
+    // The binary's exit code and its stdout's and stderr's bytes, as written.
+    private static BytesResult RunBytesIn(string directory, params string[] args)
     {
         Assert.True(File.Exists(Binary), $"{Binary} is missing: `mise run check` publishes it before the tests run");
         var start = new ProcessStartInfo(Binary)
@@ -579,17 +555,18 @@ public sealed class CliTests : IDisposable
             WorkingDirectory = directory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8,
         };
         foreach (var arg in args)
         {
             start.ArgumentList.Add(arg);
         }
         using var process = Process.Start(start)!;
-        var stderr = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var stdout = process.StandardOutput.ReadToEnd();
+        using var stderr = new MemoryStream();
+        var copying = process.StandardError.BaseStream.CopyToAsync(stderr, TestContext.Current.CancellationToken);
+        using var stdout = new MemoryStream();
+        process.StandardOutput.BaseStream.CopyTo(stdout);
+        copying.Wait(TestContext.Current.CancellationToken);
         process.WaitForExit();
-        return new Result(process.ExitCode, stdout, stderr.Result);
+        return new BytesResult(process.ExitCode, stdout.ToArray(), stderr.ToArray());
     }
 }

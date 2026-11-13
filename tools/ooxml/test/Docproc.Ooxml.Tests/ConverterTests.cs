@@ -1,17 +1,20 @@
 using System.IO.Compression;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Docproc.Ooxml.Model;
 using Docproc.Ooxml.Reading;
 using Docproc.Ooxml.Rendering;
+using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
-// The converter's seam, a document in and the model out, and the Markdown renderer over the
-// model, against the generated fixtures and the real-world files: the model element by element
-// against the ground truth (the generator's, or a real-world file's, written by hand), then, for
-// the generated fixtures, the JSON and the Markdown exactly.
+// The converter's seam, a document in and the model out, and the lines written from the model,
+// against the generated fixtures and the real-world files: the model element by element against
+// the ground truth (the generator's, or a real-world file's, written by hand), and the lines'
+// Markdown against the renderer's whole rendering. The lines' exact bytes are the goldens',
+// compared on the published binary (CliTests).
 public sealed class ConverterTests : IDisposable
 {
     private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("docproc-ooxml-converter-tests-");
@@ -20,9 +23,6 @@ public sealed class ConverterTests : IDisposable
 
     // Every fixture with its ground truth: the generated variants and the real-world files.
     public static TheoryData<string, string> Cases => Fixtures.All;
-
-    // The generated variants, whose exact output the Expected files hold.
-    public static TheoryData<string, string> Generated => Fixtures.Variants;
 
     [Theory]
     [MemberData(nameof(Cases))]
@@ -117,7 +117,7 @@ public sealed class ConverterTests : IDisposable
     {
         var document = OfficeReader.Read(Fixtures.DocumentPath(name, variant));
         var truth = JsonNode.Parse(File.ReadAllText(Fixtures.TruthPath(name, variant)))!;
-        string[] outputs = [DocumentJson.Serialize(document), MarkdownRenderer.Render(document)];
+        string[] outputs = [Write(document), MarkdownRenderer.Render(document)];
 
         foreach (var output in outputs)
         {
@@ -176,7 +176,7 @@ public sealed class ConverterTests : IDisposable
             Write(zip, "[Content_Types].xml", types);
         }
 
-        Assert.Equal(DocumentJson.Serialize(OfficeReader.Read(source)), DocumentJson.Serialize(OfficeReader.Read(path)));
+        Assert.Equal(Write(OfficeReader.Read(source)), Write(OfficeReader.Read(path)));
     }
 
     // An auto-number's startAt is its list's start, and a startAt of 1 is the default's: the
@@ -329,13 +329,48 @@ public sealed class ConverterTests : IDisposable
         writer.Write(content);
     }
 
+    // The lines' Markdown fragments, joined in order with nothing between them, are the whole
+    // rendering: a docx's or pptx's on its document line, and an xlsx's split along its sheets'
+    // lines, its document line holding none. The document line comes first and alone carries
+    // the schema; only an xlsx has sheet and rows lines, a sheet line for each sheet.
     [Theory]
-    [MemberData(nameof(Generated))]
-    public void JsonIsExact(string name, string variant) =>
-        Assert.Equal(Fixtures.Expected(name, variant, "json"), DocumentJson.Serialize(OfficeReader.Read(Fixtures.DocumentPath(name, variant))));
+    [MemberData(nameof(Cases))]
+    public void TheLinesMarkdownJoinsIntoTheWholeRendering(string name, string variant)
+    {
+        var document = OfficeReader.Read(Fixtures.DocumentPath(name, variant));
 
+        var lines = Write(document).Split('\n')[..^1].Select(line => JsonNode.Parse(line)!.AsObject()).ToList();
+
+        Assert.Equal("document", (string?)lines[0]["line"]);
+        Assert.Equal("2", (string?)lines[0]["schema"]);
+        Assert.Equal(Fixtures.Format(name), (string?)lines[0]["format"]);
+        Assert.All(lines.Skip(1), line => Assert.False(line.ContainsKey("schema")));
+        var kinds = lines.Skip(1).Select(line => (string?)line["line"]).ToList();
+        Assert.All(kinds, kind => Assert.True(kind is "sheet" or "rows", kind));
+        Assert.Equal(document.Blocks.OfType<Sheet>().Count(), kinds.Count(kind => kind == "sheet"));
+        if (Fixtures.Format(name) == "xlsx")
+        {
+            Assert.False(lines[0].ContainsKey("markdown"));
+        }
+        Assert.Equal(MarkdownRenderer.Render(document), string.Concat(lines.Select(line => (string?)line["markdown"])));
+    }
+
+    // The document line names every picture the conversion's media files hold, and only those.
     [Theory]
-    [MemberData(nameof(Generated))]
-    public void MarkdownIsExact(string name, string variant) =>
-        Assert.Equal(Fixtures.Expected(name, variant, "md"), MarkdownRenderer.Render(OfficeReader.Read(Fixtures.DocumentPath(name, variant))));
+    [MemberData(nameof(Cases))]
+    public void TheDocumentLineNamesEveryMediaFile(string name, string variant)
+    {
+        var conversion = OfficeReader.Convert(Fixtures.DocumentPath(name, variant));
+
+        var document = JsonNode.Parse(Write(conversion.Document).Split('\n')[0])!;
+        var files = (document["media"]?.AsArray() ?? []).Select(medium => (string?)medium!["file"]).OfType<string>();
+        Assert.Equal(conversion.Media.Keys.Order(StringComparer.Ordinal), files.Distinct().Order(StringComparer.Ordinal));
+    }
+
+    private static string Write(Document document)
+    {
+        using var output = new MemoryStream();
+        Lines.Write(document, output);
+        return Encoding.UTF8.GetString(output.ToArray());
+    }
 }

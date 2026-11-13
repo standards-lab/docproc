@@ -14,6 +14,12 @@
     <Version>0.1.0</Version>
   </PropertyGroup>
 
+  <!-- The model, the reader, the renderer, and the line writer are internal: the binary's process
+       contract is its interface. The tests reach them in process. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Docproc.Ooxml.Tests" />
+  </ItemGroup>
+
   <!-- The Open XML SDK is the CLI's only package; the command line is parsed by hand. -->
   <ItemGroup>
     <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />

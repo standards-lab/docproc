@@ -1,0 +1,3 @@
+{"line":"document","schema":"2","format":"xlsx"}
+{"line":"sheet","name":"Tabelle1","markdown":"# Tabelle1\n\n|  | A | B |\n| --- | --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | Konto | Name |\n| 2 | 100 | Mustermann |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"Konto"},{"ref":"B1","value_type":"text","value":"Name"}]},{"row":2,"cells":[{"ref":"A2","value_type":"number","value":100},{"ref":"B2","value_type":"text","value":"Mustermann"}]}]}

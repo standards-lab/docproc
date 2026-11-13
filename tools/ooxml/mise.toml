@@ -1,4 +1,4 @@
-# mise: docproc-ooxml's toolchain and its check, publish, currency, and fixtures tasks. The
+# mise: docproc-ooxml's toolchain and its check, publish, currency, fixtures, and golden tasks. The
 # toolchain is pinned here alone; docproc's root check and currency run this file's tasks through
 # its TOOLS list (`mise -C tools/ooxml run check`), and tools/pack.sh runs `publish`. Each task
 # runs in this directory.
@@ -106,3 +106,41 @@ exit "$stale"
 description = "Regenerate the generated fixtures and their ground truth; needs LibreOffice's soffice; the check never runs it"
 dir = "{{config_root}}"
 run = "uv run --script fixtures/generate.py"
+
+# The goldens are the published binary's own output, so a change to it is reviewed as a diff of
+# them; the check compares against them and never writes them.
+[tasks.golden]
+description = "Publish the CLI with NativeAOT and re-record each fixture's .jsonl and .stderr golden from it; the check never runs it; writes only bin/, obj/, .state/, and the goldens"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "golden: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+dotnet restore DocprocOoxml.slnx --locked-mode
+dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror -o .state/aot
+# Each fixture's goldens sit at its path under fixtures/, less its extension, so a removed
+# fixture's goldens go with the directory.
+golden=test/Docproc.Ooxml.Tests/Expected
+rm -rf "$golden"
+for fixture in fixtures/generated/*/* fixtures/realworld/*/*; do
+  case "$fixture" in
+    *.docx | *.xlsx | *.pptx) ;;
+    *) continue ;;
+  esac
+  stem="$golden/${fixture#fixtures/}"
+  stem="${stem%.*}"
+  mkdir -p "$(dirname "$stem")"
+  # A fixture that exits other than 0 is recorded too, and reported; the tests say which
+  # outcome each fixture has.
+  status=0
+  .state/aot/docproc-ooxml "$fixture" >"$stem.jsonl" 2>"$stem.stderr" || status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "golden: $fixture exited $status"
+  fi
+done
+echo "golden: $(find "$golden" -name '*.jsonl' | wc -l) fixtures recorded"
+'''

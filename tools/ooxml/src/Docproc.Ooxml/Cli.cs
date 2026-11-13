@@ -1,12 +1,12 @@
 using System.Reflection;
-using Docproc.Ooxml.Model;
+using System.Text;
 using Docproc.Ooxml.Reading;
-using Docproc.Ooxml.Rendering;
+using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml;
 
-/// <summary>The CLI: one document in, its JSON model or Markdown on stdout.</summary>
-public static class Cli
+/// <summary>The CLI: one document in, its lines on stdout.</summary>
+internal static class Cli
 {
     /// <summary>The document was converted and written to stdout.</summary>
     public const int Converted = 0;
@@ -28,26 +28,25 @@ public static class Cli
     public const int Failed = 4;
 
     /// <summary>The CLI's version, from its assembly.</summary>
-    public static string Version =>
+    internal static string Version =>
         typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
     /// <summary>The usage text, written to stdout for <c>--help</c> and to stderr after a usage
     /// error.</summary>
     public const string Usage = """
         Usage:
-          docproc-ooxml <input> [--format json|markdown] [--media <dir>]
+          docproc-ooxml <input> [--media <dir>]
           docproc-ooxml --version
           docproc-ooxml --help
 
-        Converts a docx, xlsx, or pptx document into docproc-ooxml's JSON document model, or its
-        Markdown rendering, on stdout.
+        Converts a docx, xlsx, or pptx document into JSON Lines on stdout, schema "2": a document
+        line holding its Markdown rendering and its pictures, then each xlsx sheet's sheet line and
+        rows lines.
 
         Arguments:
           <input>          The docx, xlsx, or pptx file to convert.
 
         Options:
-          --format <json|markdown>
-                           The rendering written to stdout (default: json).
           --media <dir>    The directory embedded media are written to, each once, named by the
                            SHA-256 of its bytes.
           --version        Print the version and exit.
@@ -76,7 +75,7 @@ public static class Cli
                 stdout.Flush();
                 return Converted;
             default:
-                return Convert(parsed.Input!, parsed.Format, parsed.Media, stdout, stderr);
+                return Convert(parsed.Input!, parsed.Media, stdout, stderr);
         }
     }
 
@@ -87,16 +86,15 @@ public static class Cli
         Version,
     }
 
-    private sealed record Arguments(Command Command, string? Input, string Format, string? Media);
+    private sealed record Arguments(Command Command, string? Input, string? Media);
 
-    // The command line is parsed by hand: one input, --format and --media each taking a value,
-    // given as the next argument or after `=`, at most once, and --version and --help, each
-    // alone. `--` ends the options, so an input may begin with `-`; `-` alone is an input.
+    // The command line is parsed by hand: one input, --media taking a value, given as the next
+    // argument or after `=`, at most once, and --version and --help, each alone. `--` ends the options, so an input may begin with `-`; `-` alone is an input.
     private static bool Parse(string[] args, out Arguments parsed, out string error)
     {
-        parsed = new Arguments(Command.Convert, null, "json", null);
+        parsed = new Arguments(Command.Convert, null, null);
         error = "";
-        string? input = null, format = null, media = null;
+        string? input = null, media = null;
         var action = Command.Convert;
         var options = true;
         for (var i = 0; i < args.Length; i++)
@@ -129,7 +127,7 @@ public static class Cli
                     }
                     action = name == "--help" ? Command.Help : Command.Version;
                     break;
-                case "--format" or "--media":
+                case "--media":
                     string value;
                     if (equals >= 0)
                     {
@@ -144,24 +142,12 @@ public static class Cli
                         error = $"Option '{name}' needs a value.";
                         return false;
                     }
-                    if ((name == "--format" ? format : media) is not null)
+                    if (media is not null)
                     {
                         error = $"Option '{name}' is given more than once.";
                         return false;
                     }
-                    if (name == "--format")
-                    {
-                        if (value is not ("json" or "markdown"))
-                        {
-                            error = $"Option '--format' is json or markdown, not '{value}'.";
-                            return false;
-                        }
-                        format = value;
-                    }
-                    else
-                    {
-                        media = value;
-                    }
+                    media = value;
                     break;
                 default:
                     error = $"Unrecognized option '{arg}'.";
@@ -173,18 +159,18 @@ public static class Cli
             error = "Required argument missing: the input.";
             return false;
         }
-        parsed = new Arguments(action, input, format ?? "json", media);
+        parsed = new Arguments(action, input, media);
         return true;
     }
 
     // Any exception the conversion doesn't expect is a failure of its own, exit code 4, so it can
     // never pass for another outcome, such as exit code 1, which says the media could not be
     // written.
-    private static int Convert(string path, string format, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
+    private static int Convert(string path, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
     {
         try
         {
-            return ConvertDocument(path, format, mediaDirectory, stdout, stderr);
+            return ConvertDocument(path, mediaDirectory, stdout, stderr);
         }
         catch (Exception e)
         {
@@ -193,12 +179,12 @@ public static class Cli
         }
     }
 
-    // The whole conversion and rendering are made before anything is written, so a refusal leaves
+    // The whole conversion and its lines are made before anything is written, so a refusal leaves
     // stdout empty and the media directory untouched. What the conversion skipped goes to stderr
     // as warnings. Media are written next, the directory created if missing, each distinct
     // content once (a file of the same name holds the same bytes, so it is rewritten); stdout
     // comes last, so it is written only when they all were.
-    private static int ConvertDocument(string path, string format, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
+    private static int ConvertDocument(string path, string? mediaDirectory, TextWriter stdout, TextWriter stderr)
     {
         Conversion conversion;
         try
@@ -214,7 +200,9 @@ public static class Cli
         {
             stderr.WriteLine($"docproc-ooxml: warning: {path}: {warning}");
         }
-        var output = format == "markdown" ? MarkdownRenderer.Render(conversion.Document) : DocumentJson.Serialize(conversion.Document);
+        using var lines = new MemoryStream();
+        Lines.Write(conversion.Document, lines);
+        var output = Encoding.UTF8.GetString(lines.GetBuffer(), 0, (int)lines.Length);
         if (mediaDirectory is not null)
         {
             try

@@ -1,0 +1,1 @@
+{"line":"document","schema":"2","format":"docx","markdown":"# Tables\n\n| Region | Q3 | Q4 |\n| --- | --- | --- |\n| North<br>(provisional) | Pending audit |  |\n| West | 12 | 14 |\n|  | 9 | 11 \\| revised |\n\nText after the table.\n"}

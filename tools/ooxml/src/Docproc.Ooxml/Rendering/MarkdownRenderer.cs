@@ -6,7 +6,7 @@ namespace Docproc.Ooxml.Rendering;
 
 /// <summary>The model as GitHub-flavored Markdown: a rendering of the model, never a second
 /// reading of the document.</summary>
-public sealed class MarkdownRenderer
+internal sealed class MarkdownRenderer
 {
     // The labels of the notes and comments referenced so far, numbered in the order the
     // rendering reaches their references: footnotes and endnotes share one count, [^1], [^2], ...,
@@ -255,12 +255,54 @@ public sealed class MarkdownRenderer
 
     // A sheet under a heading of its name, marked when it is hidden, then its blocks: its table,
     // charts, and pictures.
-    private string RenderSheet(Sheet sheet)
+    private string RenderSheet(Sheet sheet) =>
+        string.Join("\n\n", [SheetHeading(sheet.Name, sheet.Hidden), .. RenderBlocks(sheet.Blocks).Select(c => c.Text)]);
+
+    private static string SheetHeading(string name, bool hidden)
     {
-        var name = string.Join(" ", Lines(sheet.Name));
-        var heading = "# " + (name.Length > 0 ? name : "Sheet") + (sheet.Hidden ? " (hidden)" : "");
-        return string.Join("\n\n", [heading, .. RenderBlocks(sheet.Blocks).Select(c => c.Text)]);
+        var text = string.Join(" ", Lines(name));
+        return "# " + (text.Length > 0 ? text : "Sheet") + (hidden ? " (hidden)" : "");
     }
+
+    // An xlsx document's rendering split along its lines (Writing/LineWriter.cs): the document
+    // line holds the Markdown of no sheet, and each sheet's Markdown is a sheet fragment, a row
+    // fragment for each of its table's rows, and a drawing fragment. Each fragment ends in its
+    // own newline and carries the blank line that separates it from the chunk before it, so the
+    // fragments concatenate, with nothing between them, into the whole rendering, and each is
+    // made from what a forward reading of the sheet has at hand when its line is written.
+
+    /// <summary>A sheet's first fragment: its heading and, when it has a table, the table's header
+    /// row of the given columns and its delimiter row; after a blank line when the sheet follows
+    /// another chunk.</summary>
+    internal static string SheetFragment(string name, bool hidden, IReadOnlyList<string> columns, bool follows)
+    {
+        var text = new StringBuilder();
+        if (follows)
+        {
+            text.Append('\n');
+        }
+        text.Append(SheetHeading(name, hidden)).Append('\n');
+        if (columns.Count > 0)
+        {
+            text.Append('\n').Append(Row(["", .. columns], columns.Count + 1)).Append('\n')
+                .Append(Delimiter(columns.Count + 1)).Append('\n');
+        }
+        return text.ToString();
+    }
+
+    /// <summary>A sheet table row's fragment: its line of the table, under the given columns.</summary>
+    internal static string RowFragment(TableRow row, IReadOnlyList<string> columns) =>
+        Row(SheetRowCells(row, columns), columns.Count + 1) + "\n";
+
+    /// <summary>A sheet's drawing fragment: its charts' tables and its pictures' links, each after
+    /// a blank line; empty when the sheet has none.</summary>
+    internal static string DrawingFragment(IReadOnlyList<Block> drawings) =>
+        string.Concat(new MarkdownRenderer().RenderBlocks(drawings).Select(c => "\n" + c.Text + "\n"));
+
+    /// <summary>The column letters a sheet's table uses, in the sheet's order (Z before AA).</summary>
+    internal static List<string> SheetColumns(Table table) =>
+        [.. table.Rows.SelectMany(row => row.Cells).Select(cell => cell.Ref).OfType<string>()
+            .Select(ColumnOf).Distinct().OrderBy(c => c.Length).ThenBy(c => c, StringComparer.Ordinal)];
 
     // A slide under a heading of its number, marked when it is hidden, then its blocks, its
     // title's heading a level below the slide's, and then its notes after a bold "Notes" label,
@@ -329,27 +371,40 @@ public sealed class MarkdownRenderer
     // cell its anchor.
     private static string RenderSheetTable(Table table)
     {
-        var columns = table.Rows.SelectMany(row => row.Cells).Select(cell => cell.Ref).OfType<string>()
-            .Select(ColumnOf).Distinct().OrderBy(c => c.Length).ThenBy(c => c, StringComparer.Ordinal).ToList();
+        var columns = SheetColumns(table);
         if (columns.Count == 0)
         {
             return "";
         }
         List<string?[]> grid = [["", .. columns]];
-        foreach (var row in table.Rows)
-        {
-            var line = new string?[columns.Count + 1];
-            line[0] = row.Row?.ToString(CultureInfo.InvariantCulture) ?? "";
-            foreach (var cell in row.Cells)
-            {
-                if (cell.Ref is { } reference)
-                {
-                    line[columns.IndexOf(ColumnOf(reference)) + 1] = SheetCellText(cell);
-                }
-            }
-            grid.Add(line);
-        }
+        grid.AddRange(table.Rows.Select(row => SheetRowCells(row, columns)));
         return GridTable(grid);
+    }
+
+    private static string?[] SheetRowCells(TableRow row, IReadOnlyList<string> columns)
+    {
+        var line = new string?[columns.Count + 1];
+        line[0] = row.Row?.ToString(CultureInfo.InvariantCulture) ?? "";
+        foreach (var cell in row.Cells)
+        {
+            if (cell.Ref is { } reference)
+            {
+                line[IndexOf(columns, ColumnOf(reference)) + 1] = SheetCellText(cell);
+            }
+        }
+        return line;
+    }
+
+    private static int IndexOf(IReadOnlyList<string> columns, string column)
+    {
+        for (var i = 0; i < columns.Count; i++)
+        {
+            if (columns[i] == column)
+            {
+                return i;
+            }
+        }
+        throw new ArgumentException($"column {column} is not one of the sheet's columns", nameof(column));
     }
 
     private static string ColumnOf(string reference) => new([.. reference.TakeWhile(char.IsAsciiLetter)]);
@@ -398,7 +453,7 @@ public sealed class MarkdownRenderer
         {
             return "";
         }
-        var lines = new List<string> { Row(grid[0], columns), "|" + string.Concat(Enumerable.Repeat(" --- |", columns)) };
+        var lines = new List<string> { Row(grid[0], columns), Delimiter(columns) };
         lines.AddRange(grid.Skip(1).Select(row => Row(row, columns)));
         return string.Join("\n", lines);
     }
@@ -441,6 +496,8 @@ public sealed class MarkdownRenderer
         }
         return $"![{alt}]({destination})";
     }
+
+    private static string Delimiter(int columns) => "|" + string.Concat(Enumerable.Repeat(" --- |", columns));
 
     private static string Row(string?[] cells, int columns) =>
         "|" + string.Concat(Enumerable.Range(0, columns).Select(c => " " + (c < cells.Length ? cells[c] ?? "" : "") + " |"));
@@ -562,21 +619,24 @@ public sealed class MarkdownRenderer
     private static IEnumerable<string> Lines(string text) =>
         text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).Select(Escape);
 
-    // Backslash-escapes what Markdown would read as markup: emphasis, code, links, HTML,
-    // entities, strikethrough, and table pipes anywhere, and at a line's start what would open
-    // a heading, a block quote, a list, or a setext underline.
-    private static string Escape(string line)
+    // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
+    // (context/layers.md, "Common envelope"), which htmd's escaping and so mail's and onenote's
+    // Markdown share: emphasis, code, links, entities, strikethrough, math, and table pipes
+    // anywhere; a `<` that could open an HTML tag, comment, or instruction; and at a line's start
+    // what would open a heading, a block quote, a list, or a setext underline.
+    internal static string Escape(string line)
     {
         var text = new StringBuilder(line.Length + 8);
-        foreach (var c in line)
+        for (var i = 0; i < line.Length; i++)
         {
-            if (c is '\\' or '`' or '*' or '_' or '[' or ']' or '<' or '>' or '~' or '|' or '&')
+            var c = line[i];
+            if (c is '\\' or '`' or '*' or '_' or '[' or ']' or '~' or '|' or '&' or '$' || (c == '<' && OpensHtml(line, i + 1)))
             {
                 text.Append('\\');
             }
             text.Append(c);
         }
-        if (text.Length > 0 && text[0] is '#' or '+' or '-' or '=')
+        if (text.Length > 0 && text[0] is '#' or '+' or '-' or '=' or '>')
         {
             text.Insert(0, '\\');
         }
@@ -591,4 +651,13 @@ public sealed class MarkdownRenderer
         }
         return text.ToString();
     }
+
+    // Whether what follows a `<` could make it an HTML tag, comment, or instruction, as htmd
+    // judges it: a letter, `/` then a letter or nothing, `!`, or `?`. A `<` that ends the text is
+    // escaped too.
+    private static bool OpensHtml(string line, int next) =>
+        next >= line.Length
+        || line[next] is '!' or '?'
+        || char.IsAsciiLetter(line[next])
+        || (line[next] == '/' && (next + 1 >= line.Length || char.IsAsciiLetter(line[next + 1])));
 }
