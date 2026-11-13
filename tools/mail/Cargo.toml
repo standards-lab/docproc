@@ -1,6 +1,6 @@
 [package]
 name = "docproc-mail"
-version = "0.3.1"
+version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 description = "docproc's mail tool: Outlook .pst stores, .msg messages, .eml messages and mbox files to a JSON model"

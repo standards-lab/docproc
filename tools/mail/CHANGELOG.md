@@ -1,176 +1,94 @@
 # Changelog
 
-All notable changes to `spike-ai-pipeline-mail` are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html). The JSON Lines of schema `"1"`, the
-`schema` version included, the arguments, the exit codes, the warning format, and the attachment
-file names are the CLI's output contract: a change to any of them is a change here.
+All notable changes to `docproc-mail` are documented here. The format follows [Keep a
+Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to [Semantic
+Versioning](https://semver.org/spec/v2.0.0.html). Each release's section is headed by the version
+its `tools/mail/vX.Y.Z` tag carries, and is the release's notes. Its JSON Lines, their `schema`
+version included, the arguments, the exit codes, the warning format, and the media names are its
+output contract: a change to them is a change here. This changelog covers docproc-mail only.
 
 ## [Unreleased]
 
-## [v0.3.1] - 2026-11-06
+## [v0.1.0] - 2026-11-13
 
-The output contract is unchanged: every input gives the same lines, byte for byte, as in v0.3.0.
-
-### Added
-
-- Fixtures: the generated `pst/conversations.pst`, whose Conversation History folder holds Skype
-  for Business text chats (`IPM.Note.Microsoft.Conversation`, one-to-one and multi-party), a
-  missed IM (`IPM.Note.Microsoft.Missed`), and an `IPM.Note` beside them, built from item sources,
-  `tests/fixtures/generated/items/`, written field by field through PST Builder's MessageItem,
-  with their hand truth: each item's class, sender, recipients, times, HTML transcript, and
-  Markdown. The CLI is unchanged.
-
-## [v0.3.0] - 2026-11-05
-
-The output contract only grows: without `--after`, every input gives the same lines, byte for
-byte, as in v0.2.0.
+The first release. docproc-mail was copied, in one commit, from spike-ai-pipeline-mail v0.3.1
+(9cbbdd3), its schema `"1"` CLI, renamed, and reworked into docproc's system tool; Changed says
+how it differs from the spike. The spike's findings, its scorer, and its scale fixtures stay in
+the spike.
 
 ### Added
 
-- `--after <id>`, which resumes a read of a `.pst` or an mbox after the message whose `id` is
-  given: in a `.pst` its node id, in an mbox its 1-based ordinal, empty entries counted. The
-  resumed read is the tail of the whole read, byte for byte: the store line, every folder line,
-  and every `skipped` line of a folder or of a folder's table, all as the whole read writes them,
-  since a consumer places messages by their folders; and of the message-level lines (a message
-  line and the `skipped` lines of a message and of its attachments) only those after the given
-  message's, in the whole read's order.
-- The messages up to and including the given one are passed over unread, with no warnings and no
-  attachment files: a `.pst`'s by their node ids in their folders' contents tables, never opened,
-  after one depth-first walk of the folders, before any output, that finds the id; an mbox's by
-  scanning its separator lines from the start of the file, never parsed. An mbox entry that can't
-  be read before the given ordinal is refused; one at it ends the read, as a whole read ends
-  there.
-- Refusals: `--after` with a `.msg` or an `.eml`, a single message, is a usage error, exit 2,
-  given after sniffing, so a missing input is still refused, exit 3; so is an id that isn't
-  decimal digits naming a whole number from 1 to 4,294,967,295 (`0`, a sign, a non-digit, or an
-  empty value), leading zeros read. An id that names no message is refused, exit 3, before any
-  output: in a `.pst`, one no folder's contents table holds, a folder's node id among them; in an
-  mbox, an ordinal past its last.
-- The finding's "Resuming a read" section (`docs/findings/mail-cli.md`), from recorded run
-  v0.3.0: the time, peak memory, and stdout of the scale store, as a .pst and as an mboxrd,
-  resumed after its middle and its last message, beside its whole read.
+- `docproc-mail [--media <dir>] [--after <id>] <input>` and `--version`, the arguments parsed by
+  hand: a static musl binary on Rust 1.100.0 for linux-x64 and linux-arm64, overflow checks on in
+  release, its crate graph locked. `--version` prints the version, then `schema 2`.
+- Schema `"2"` JSON Lines: a `store` line, then a `.pst`'s `folder` lines, and a `message` line
+  per message, with a `skipped` line wherever a record can't be read. Output is byte-identical
+  for the same input, pinned by a `.jsonl` and a `.stderr` golden for every committed input, the
+  MIME group's `.eml` files, its mboxrd and mbox, and the generated `.eml` files among them, all
+  run against the release binary.
+- `smtp_address` on an Exchange (`EX`) address: a recipient's from `PidTagSmtpAddress`
+  (0x39FE), the sender's from `PidTagSenderSmtpAddress` (0x5D01), left out when absent.
+- A message's optional `media`: each `data:` image its Markdown links, written as media with no
+  attachment record.
+- Markdown for a message whose only body is plain RTF or `\fromtext` RTF, read from the RTF's own
+  text.
+- The content rule: when the Markdown is made from HTML, the sentences of the text body, or of
+  the RTF body's text, that the Markdown lacks are appended in order, as one escaped paragraph.
+  It is the shared crate's, `tools/envelope`, on ICU4X 2.4.0 (Unicode 18.0.0) and pulldown-cmark
+  0.13.6, with its own linear-space Myers alignment, falling back to sentence membership past
+  10,000 edits.
+- Warnings for an HTML body nested past 512 open elements, a TNEF part, an opaque S/MIME part,
+  an image source that names nothing, and a `.pst` folder a hierarchy table names twice.
+- Refusals: an mbox none of whose entries is a message, with nothing on stdout.
+- The common envelope, through the shared crate: stderr lines `docproc-mail: warning: <where>:
+  <what>` and `docproc-mail: error: <reason>`, escaped, a reason never leading with the input
+  path; exit codes 0 read, 1 stdout or media not written, 2 usage, 3 refused before any output, 4
+  a fault of its own.
+- Releases: `docproc-mail-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each holding the
+  binary, LICENSE, and THIRD-PARTY-NOTICES.txt, with `SHA256SUMS`; a release is refused unless the
+  binary's `--version` is the tag's and it requires no glibc symbol.
 
-## [v0.2.0] - 2026-11-04
+### Changed
 
-The output contract only grows: a `.pst` or a `.msg` gives the same lines, byte for byte, as in
-v0.1.0.
-
-### Added
-
-- `.eml` messages and mbox files as inputs, read through mail-parser 1.0.1 (Stalwart's RFC 5322
-  and MIME parser, Apache-2.0 OR MIT, with its `full_encoding` feature), sniffed by content after
-  the binary formats: an mbox by a first line starting `From `, an `.eml` by a header block whose
-  first line is a header field and which has a `From` or `Date` field.
-- Schema `"1"`, additively: the `store` line's `format` may be `"eml"` or `"mbox"`, with no
-  encoding, password flag, or display name. An `.eml` gives a `store` line and one `message`
-  line, with no id and no folder; an mbox gives a `store` line and each message in file order,
-  its `id` its 1-based ordinal in the file, which a separator line with nothing after it keeps
-  though it writes no line, with no folder and no `folder` lines.
-- The MIME field mapping: the sender from From's first mailbox, the To, Cc, and Bcc mailboxes,
-  groups flattened, each with address type `SMTP`; the Date header as the submit time and the
-  first Received header's date as the delivery time, in UTC; the raw header block as the
-  transport headers; Message-ID, In-Reply-To, and References as stored, unfolded; Thread-Topic as
-  the conversation topic and Thread-Index, base64-decoded, as the conversation index in hex;
-  Importance, else X-Priority's bands (1 to 2 high, 3 normal, 4 to 5 low), as the importance; and
-  Sensitivity's Personal, Private, and Company-Confidential as personal, private, and
-  confidential. A MIME message has no class and no creation or modification time. A value that
-  doesn't read or map is left out, with a warning.
-- MIME bodies and attachments: the text and HTML bodies are the text and HTML parts of RFC 8621's
-  body lists, decoded and joined in order, with the Markdown body derived from them; the
-  attachments are the parts that aren't body text, `by_value`, `inline` by their
-  Content-Disposition, and message/rfc822 and message/global parts are `embedded_message`,
-  nested under their record up to 16 deep. Text or content in which mail-parser reports a
-  decoding problem is decoded lossily, with a warning.
-- Refusals, exit 3: an input of none of the four formats, `neither a .pst, a .msg, an .eml nor an
-  mbox` (it was `neither a .pst nor a .msg`); an `.eml` of 4 GiB or more; and an `.eml`
-  mail-parser can't parse.
-- Warnings name an `.eml`'s records from `message`, and an mbox's from `message <n>`, each
-  followed by `, attachment <n>` and `, message` down to the record. An mbox message that can't be
-  read is a `skipped` line of kind `"message"`, its `id` its ordinal, and the run goes on; an
-  attachment's `skipped` line in an mbox names its message's ordinal.
-- Fixtures: the MIME group, `tests/fixtures/mime/`, with `09-threading.eml` and its hand truth;
-  `nine.mboxrd`, an mboxrd of the eight generated `.eml` and that one; and Apache James mime4j's
-  `mbox.rlug` and its five splits, with their license, notice, sources, and SHA-256. The generator's
-  scale mode also writes the scale store's messages as `scale.mboxrd`.
-- `scripts/mboxrd.sh`, `mise run mboxrd`, which writes `nine.mboxrd` from its sources; the check
-  rebuilds it and compares it byte for byte.
-- The finding's ".eml and mbox" section (`docs/findings/mail-cli.md`), from recorded run v0.2.0:
-  the fields recovered against the MIME fixtures' truth and the time and peak memory on the scale
-  messages as a 2.7 GB mboxrd.
+- `--attachments <dir>` is now `--media <dir>`; the media directory is created once the input is
+  read. `--after <id>` resumes as before.
+- A message's Markdown is its `markdown` field; `body`, with its `text`, `html`, `rtf`, and
+  `derived` bodies, is gone. A folder's `display_name`, its `path`'s last name, is gone.
+- `inline` means the Markdown links the attachment, in every format, no longer `ATT_MHTML_REF`
+  in MAPI or an inline Content-Disposition in MIME. Image sources are rewritten to media names: a
+  percent-decoded `cid:` matched to `content_id`, any other source to the Content-Location.
+  Attachments, a nested message's included, are read before the Markdown.
+- The Markdown comes from the first of stored HTML, HTML recovered from the RTF, the text body,
+  then the RTF's own text. A text body is escaped by the shared literal-text escape, no longer
+  through html5ever and htmd.
+- A `.pst` warning's `<where>` names folders by node id (`folder 32802, message 2097188,
+  attachment 5`), no longer by display-name path; a colon followed by a space in `<where>` is
+  escaped.
+- A usage error is an `error:` line followed by the usage, and `--version` with a stdout that
+  can't be written exits 1.
+- Faults stay within one record: the guard wraps the read, the mapping, and the Markdown, so a
+  fault there is that record's `skipped` line, and stdout is flushed after each message. A `.pst`
+  folder cycle is a `skipped` folder, `already read`, in the walk and the `--after` pre-walk. A
+  compressed RTF whose stated size is more than nine times what its data can yield is not
+  decompressed, with a warning.
+- A leading UTF-8 byte-order mark is skipped. A `.pst` attachment is hashed and written from the
+  reader's buffer, with no copy.
+- PT_STRING8 is decoded in its code page through codepage and encoding_rs, with no byte-order
+  mark sniffing; a code page they don't know is decoded lossily as windows-1252, with a warning.
+  codepage-strings and the `.msg` named-property reader are gone.
 
 ### Known limits
 
-- mboxcl's and mboxcl2's Content-Length is ignored: an mbox message runs to the next line starting
-  `From `.
-- In an mboxo, a body line that was `>From ` to begin with loses its `>`: every mbox is read as
-  an mboxrd.
-- The five bytes windows-1252 leaves undefined, 0x81, 0x8D, 0x8F, 0x90, and 0x9D, decode as
-  U+FFFD; mail-parser decodes US-ASCII and ISO-8859-1 as windows-1252. In a body or attachment
-  part they give a lossy-decoding warning; in a header's encoded words they give none.
+- In a `.pst`, an embedded message has no content: outlook-pst 1.2.0 can't open one.
+- No class-specific fields.
+- TNEF and opaque S/MIME parts are not read.
+- ANSI stores are read but untested: no ANSI `.pst` is among the fixtures.
+- An embedded message in a `.msg`, an `.eml`, or an mbox is read to 16 levels of nesting.
+- Peak memory is a small multiple of the largest single attachment, or of the file for an
+  `.eml`.
+- The static musl binary takes 1.7 to 2.3 times a glibc build's time, as measured in the spike's
+  finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
+- Linux alone, x64 and arm64.
 
-## [v0.1.0] - 2026-11-03
-
-### Added
-
-- `spike-ai-pipeline-mail [--attachments <dir>] <input>`, which reads an Outlook `.pst` store,
-  through outlook-pst 1.2.0, or a `.msg` message, through the CLI's own MS-OXMSG reader over cfb
-  0.16.0, sniffed by content, never by name, and writes JSON Lines of schema `"1"` to stdout,
-  which carries them and nothing else. Exit codes: 0 read, even with records skipped; 1 stdout or
-  an attachment's content not written; 2 usage (usage on stderr); 3 refused (one reason line on
-  stderr, nothing on stdout); and 4 a fault of the CLI's own. `--version` prints the bare
-  version.
-- The initial output contract, schema `"1"`: a `store` line first (format, and a `.pst`'s
-  encoding, password flag, and display name); for a `.pst`, a `folder` line per folder,
-  depth-first, before its messages (id, parent, path, display name, container class); a
-  `message` line per item, whatever its class, in its folder's contents order; and a `skipped`
-  line wherever a folder, message, attachment, or a folder's contents or hierarchy table can't be
-  read, its `kind` `"folder"`, `"message"`, `"attachment"`, `"contents"`, or `"hierarchy"`. A
-  property with no value is left out, never written as `null`, and the same input always gives
-  byte-identical output.
-- Messages: class, subject, sender and To, Cc, and Bcc recipients (name, address, address type),
-  the submit, delivery, creation, and modification times in ISO 8601 UTC, importance,
-  sensitivity, the raw transport headers, and the threading fields as stored (Message-ID,
-  In-Reply-To, References, conversation topic, conversation index in hex). Strings are decoded by
-  their code page, an undecodable one lossily with a warning: a `.pst` message's 8-bit strings by
-  its code page, else the store's; a `.msg`'s by its code page, else its locale's ANSI code page,
-  else its internet code page unless it is a Unicode encoding, else its parent message's, else
-  Windows-1252.
-- Bodies: the stored plain text, HTML (by its internet code page, else its `<meta>` charset, else
-  as UTF-8 when valid, else by the message's code page), and RTF (decompressed); under `derived`,
-  the HTML recovered from RTF that encapsulates it (`\fromhtml1`) and a Markdown body for every
-  message, made from the HTML, else the HTML from RTF, else the plain text, escaped to read
-  literally.
-- Attachments: each record's file name is the lowercase hex SHA-256 of its content plus its short
-  alphanumeric stored extension, with its filename, MIME type, content-id, inline flag, attach
-  method, and size. `--attachments <dir>` writes each distinct content once, as stored. In a
-  `.msg`, embedded messages are nested under their attachment records, recursively, up to 16
-  deep.
-- Skips: a record whose reader errs or panics is a `skipped` line and one warning,
-  `spike-ai-pipeline-mail: warning: <where>: <what>`, and the run still exits 0.
-- Refusals: a missing or unreadable input, anything not a `.pst` or `.msg`, an `.ost` (export it
-  from Outlook as a `.pst`), a PST version outlook-pst doesn't read, and a store or message whose
-  header, root, IPM subtree, or top-level properties can't be read.
-- Releases: `spike-ai-pipeline-mail-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each a
-  static musl binary and LICENSE, and `SHA256SUMS`.
-
-### Known limits
-
-- In a `.pst`, embedded messages are listed with their metadata and no content, with a warning:
-  outlook-pst 1.2.0 can't read them, and its fix is unmerged upstream.
-- ANSI stores are read but untested.
-- `.ost` files are refused.
-- By-reference attachments have no file.
-- Class-specific fields are absent.
-- A string in a code page that can't be decoded is decoded lossily.
-- An Exchange address is written as stored; its SMTP address isn't written.
-- An item outlook-pst 1.2.0 can't open, such as a contact without a sub-node tree, is skipped.
-- A folder's table that can't be read is skipped only when the folder's count says it has items
-  or subfolders, and its reason can't name the fault: outlook-pst 1.2.0 gives such a table as no
-  table. A folder that claims no items or subfolders while it has some loses them silently.
-
-[Unreleased]: https://github.com/JaimeStill/spike-ai-pipeline-mail/compare/v0.3.1...HEAD
-[v0.3.1]: https://github.com/JaimeStill/spike-ai-pipeline-mail/releases/tag/v0.3.1
-[v0.3.0]: https://github.com/JaimeStill/spike-ai-pipeline-mail/releases/tag/v0.3.0
-[v0.2.0]: https://github.com/JaimeStill/spike-ai-pipeline-mail/releases/tag/v0.2.0
-[v0.1.0]: https://github.com/JaimeStill/spike-ai-pipeline-mail/releases/tag/v0.1.0
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0
