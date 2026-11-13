@@ -30,10 +30,6 @@ internal static class Cli
     /// stderr.</summary>
     public const int Failed = 4;
 
-    /// <summary>The schema of the lines docproc-ooxml writes, which <c>--version</c> states on its
-    /// second line.</summary>
-    public const string Schema = "2";
-
     /// <summary>The CLI's version, from its assembly.</summary>
     internal static string Version =>
         typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
@@ -81,7 +77,7 @@ internal static class Cli
             return parsed.Command switch
             {
                 Command.Help => Write(stdout, Usage, errors),
-                Command.Version => Write(stdout, $"{Version}\nschema {Schema}\n", errors),
+                Command.Version => Write(stdout, $"{Version}\nschema {LineWriter.Schema}\n", errors),
                 _ => Convert(parsed.Input!, parsed.Media, stdout, errors),
             };
         }
@@ -118,7 +114,8 @@ internal static class Cli
     private sealed record Arguments(Command Command, string? Input, string? Media);
 
     // The command line is parsed by hand: one input, --media taking a value, given as the next
-    // argument or after `=`, at most once, and --version and --help, each alone. `--` ends the options, so an input may begin with `-`; `-` alone is an input.
+    // argument or after `=`, at most once, and --version and --help, each alone. `--` ends the
+    // options, so an input may begin with `-`; `-` alone is an input.
     private static bool Parse(string[] args, out Arguments parsed, out string error)
     {
         parsed = new Arguments(Command.Convert, null, null);

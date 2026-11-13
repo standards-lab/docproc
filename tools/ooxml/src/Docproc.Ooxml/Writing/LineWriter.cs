@@ -16,8 +16,9 @@ namespace Docproc.Ooxml.Writing;
 /// bound of one <c>rows</c> line.</remarks>
 internal sealed class LineWriter(Stream output)
 {
-    /// <summary>The schema version this build writes, on the <c>document</c> line. It changes only
-    /// when a field is cut or reshaped; the lines grow by addition within it.</summary>
+    /// <summary>The schema version this build writes, on the <c>document</c> line and on
+    /// <c>--version</c>'s second line. It changes only when a field is cut or reshaped; the lines
+    /// grow by addition within it.</summary>
     public const string Schema = "2";
 
     /// <summary>The bytes a <c>rows</c> line holds at most, its newline included, unless one row
