@@ -23,14 +23,14 @@ icu_properties = { version = "=2.4.0", default-features = false, features = ["co
 # UAX #29 word and sentence boundaries, the word segmenter's dictionary-free, rule-based form: no
 # LSTM model (the `auto` and `lstm` features) and no dictionaries are linked.
 icu_segmenter = { version = "=2.4.0", default-features = false, features = ["compiled_data"] }
-# A CommonMark reader (src/content/markdown.rs), for a tool that compares a source text with its
-# Markdown; behind the `markdown` feature, so a tool comparing two plain texts links none.
 # The data the three carry, linked through them already, named here for the Unicode version each
 # states, which a unit test asserts. Not dev-dependencies: the crate is tested from each tool's
 # graph, where it is no workspace member, and cargo tests no such crate with dev-dependencies.
 icu_normalizer_data = "=2.4.0"
 icu_properties_data = "=2.4.0"
 icu_segmenter_data = "=2.4.0"
+# A CommonMark reader (src/content/markdown.rs), for a tool that compares a source text with its
+# Markdown; behind the `markdown` feature, so a tool comparing two plain texts links none.
 pulldown-cmark = { version = "=0.13.6", default-features = false, optional = true }
 
 [features]
