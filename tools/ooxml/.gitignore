@@ -1,7 +1,3 @@
-# marathon working files.
-.claude/plans/
-.claude/briefs/
-
 # Build output.
 bin/
 obj/

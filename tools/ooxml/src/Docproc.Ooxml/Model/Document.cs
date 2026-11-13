@@ -1,8 +1,8 @@
 using System.Text.Json.Serialization;
 
-namespace SpikeAiPipeline.Office.Model;
+namespace Docproc.Ooxml.Model;
 
-// The document model: one tree for docx, xlsx, and pptx, and office's versioned output contract.
+// The document model: one tree for docx, xlsx, and pptx, and docproc-ooxml's versioned output contract.
 // A document is an ordered list of blocks; a block's "type" names its kind in the JSON. Every
 // block but a media block is the document's text, complete without inference.
 //
@@ -14,7 +14,7 @@ namespace SpikeAiPipeline.Office.Model;
 // presentation order, each holding its own blocks and its notes' blocks beside them. The model
 // grows by adding kinds and optional properties, never by reshaping these.
 
-/// <summary>The formats office reads; the JSON names them by their file extension.</summary>
+/// <summary>The formats docproc-ooxml reads; the JSON names them by their file extension.</summary>
 [JsonConverter(typeof(JsonStringEnumConverter<SourceFormat>))]
 public enum SourceFormat
 {
@@ -210,7 +210,7 @@ public sealed record Media : Block
     /// <summary>The part the picture is stored in, or null for a linked picture.</summary>
     public string? Source { get; init; }
 
-    /// <summary>A linked picture's target, which office never fetches.</summary>
+    /// <summary>A linked picture's target, which docproc-ooxml never fetches.</summary>
     public string? Target { get; init; }
 
     /// <summary>The index of the docx section the picture is shown in: the section whose body,

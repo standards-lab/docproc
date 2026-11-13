@@ -2,7 +2,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace SpikeAiPipeline.Office.Model;
+namespace Docproc.Ooxml.Model;
 
 /// <summary>The model's JSON, written through source-generated serializers, so it needs no
 /// reflection under NativeAOT.</summary>
@@ -43,7 +43,7 @@ internal sealed partial class DocumentJsonContext : JsonSerializerContext;
 internal sealed class CellValueJsonConverter : JsonConverter<CellValue>
 {
     public override CellValue Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        throw new NotSupportedException("office writes the model and never reads it");
+        throw new NotSupportedException("docproc-ooxml writes the model and never reads it");
 
     public override void Write(Utf8JsonWriter writer, CellValue value, JsonSerializerOptions options)
     {

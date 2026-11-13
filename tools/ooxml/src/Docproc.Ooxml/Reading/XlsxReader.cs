@@ -2,12 +2,12 @@ using System.Globalization;
 using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads an xlsx package into the model: its sheets in workbook order, each a table of
 /// the cells that have a value or a formula, with their stored values typed and nothing
@@ -53,7 +53,7 @@ internal static class XlsxReader
     }
 
     // A worksheet's cells, then its drawing; a chartsheet's drawing alone; any other kind of
-    // sheet (a dialog or macro sheet) holds nothing office reads.
+    // sheet (a dialog or macro sheet) holds nothing docproc-ooxml reads.
     private static List<Block> ReadSheet(XlsxContext context, OpenXmlPart part, int index)
     {
         var blocks = new List<Block>();
@@ -445,7 +445,7 @@ internal static class XlsxReader
         }
 
         // The built-in date and time formats: 14 to 17 dates, 18 to 21 and 45 to 47 times, 22
-        // both. The others office leaves raw, the locale-dependent ones among them.
+        // both. The others docproc-ooxml leaves raw, the locale-dependent ones among them.
         private static (bool Date, bool Time) BuiltIn(uint id) => id switch
         {
             >= 14 and <= 17 => (true, false),

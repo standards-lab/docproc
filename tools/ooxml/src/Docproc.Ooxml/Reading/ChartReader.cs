@@ -2,10 +2,10 @@ using System.Globalization;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 using A = DocumentFormat.OpenXml.Drawing;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads a chart part's data: the values its series cache, never its rendering, and
 /// never an embedded workbook. A part is a DrawingML chart, Transitional or ISO 29500 Strict, or

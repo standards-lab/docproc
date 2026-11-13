@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="xunit.v3" Version="4.0.2" />
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
   </ItemGroup>
 
   <ItemGroup>
@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SpikeAiPipeline.Office\SpikeAiPipeline.Office.csproj" />
+    <ProjectReference Include="..\..\src\Docproc.Ooxml\Docproc.Ooxml.csproj" />
   </ItemGroup>
 
 </Project>

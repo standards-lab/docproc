@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Docproc.Ooxml/Docproc.Ooxml.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Docproc.Ooxml.Tests/Docproc.Ooxml.Tests.csproj" />
+  </Folder>
+</Solution>

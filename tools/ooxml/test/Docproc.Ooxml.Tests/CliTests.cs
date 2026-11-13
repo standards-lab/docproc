@@ -2,19 +2,19 @@ using System.Diagnostics;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
-using SpikeAiPipeline.Office.Model;
-using SpikeAiPipeline.Office.Reading;
-using SpikeAiPipeline.Office.Rendering;
+using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Reading;
+using Docproc.Ooxml.Rendering;
 
-namespace SpikeAiPipeline.Office.Tests;
+namespace Docproc.Ooxml.Tests;
 
 // The CLI's process contract, on the NativeAOT binary the check publishes into .state/aot/ before
 // it runs the tests: arguments, stdout, stderr, exit code, and the media directory.
 public sealed class CliTests : IDisposable
 {
-    private static readonly string Binary = Path.Combine(Fixtures.Root, ".state", "aot", "spike-ai-pipeline-office");
+    private static readonly string Binary = Path.Combine(Fixtures.Root, ".state", "aot", "docproc-ooxml");
 
-    private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("office-cli-tests-");
+    private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("docproc-ooxml-cli-tests-");
 
     public void Dispose() => scratch.Delete(recursive: true);
 
@@ -208,15 +208,49 @@ public sealed class CliTests : IDisposable
 
         Assert.Equal(Cli.MediaNotWritten, result.ExitCode);
         Assert.Empty(result.Stdout);
-        Assert.StartsWith("spike-ai-pipeline-office: media not written: ", result.Stderr, StringComparison.Ordinal);
+        Assert.StartsWith("docproc-ooxml: media not written: ", result.Stderr, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void HelpPrintsUsageToStdout()
+    {
+        var result = Run("--help");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(Cli.Usage, result.Stdout);
+        Assert.Empty(result.Stderr);
+    }
+
+    // An option's value may follow `=`, and `--` ends the options, so an input may begin with `-`.
+    [Fact]
+    public void OptionValuesFollowEqualsAndDoubleDashEndsTheOptions()
+    {
+        var media = Path.Combine(scratch.FullName, "media");
+        var input = Path.Combine(scratch.FullName, "-tables.docx");
+        File.Copy(Fixtures.DocumentPath("tables", "libreoffice"), input);
+
+        var result = Run("--format=markdown", $"--media={media}", "--", input);
+
+        Assert.Equal(Cli.Converted, result.ExitCode);
+        Assert.Equal(Fixtures.Expected("tables", "libreoffice", "md"), result.Stdout);
+        Assert.Empty(result.Stderr);
+        Assert.True(Directory.Exists(media));
     }
 
     [Theory]
     [InlineData]
     [InlineData("--format", "xml", "in.docx")]
+    [InlineData("--format=xml", "in.docx")]
     [InlineData("--bogus", "in.docx")]
+    [InlineData("-x", "in.docx")]
     [InlineData("one.docx", "two.docx")]
     [InlineData("in.docx", "--media")]
+    [InlineData("--media", "a", "--media", "b", "in.docx")]
+    [InlineData("--format", "json", "--format=json", "in.docx")]
+    [InlineData("--version", "in.docx")]
+    [InlineData("--help", "--version")]
+    [InlineData("--help=yes")]
+    [InlineData("--")]
     public void UsageErrorsPrintUsageToStderrAndExitTwo(params string[] args)
     {
         var result = Run(args);
@@ -324,7 +358,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Cli.Converted, result.ExitCode);
         Assert.Equal("kept\n", result.Stdout);
         Assert.Equal(
-            $"spike-ai-pipeline-office: warning: {path}: a header reference of type \"odd\" in section 1 was skipped: no header has that type\n",
+            $"docproc-ooxml: warning: {path}: a header reference of type \"odd\" in section 1 was skipped: no header has that type\n",
             result.Stderr);
     }
 
@@ -361,7 +395,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Cli.Converted, result.ExitCode);
         Assert.Equal("# Data\n\n|  | A |\n| --- | --- |\n| 1 | 42 |\n", result.Stdout);
         Assert.Equal(
-            $"spike-ai-pipeline-office: warning: {path}: sheet \"Module\" was skipped: its relationship id \"\" names no part\n",
+            $"docproc-ooxml: warning: {path}: sheet \"Module\" was skipped: its relationship id \"\" names no part\n",
             result.Stderr);
     }
 
@@ -415,7 +449,7 @@ public sealed class CliTests : IDisposable
         Assert.Contains("item 8", result.Stdout, StringComparison.Ordinal);
     }
 
-    // An exception office doesn't expect, here from a stdout that can't be written, is exit code
+    // An exception docproc-ooxml doesn't expect, here from a stdout that can't be written, is exit code
     // 4 and never 1, which says the media were not written.
     [Fact]
     public void AnUnexpectedErrorFailsWithItsOwnExitCode()
@@ -426,7 +460,7 @@ public sealed class CliTests : IDisposable
 
         Assert.Equal(Cli.Failed, code);
         Assert.StartsWith(
-            "spike-ai-pipeline-office: failed: " + Fixtures.DocumentPath("headings", "python-docx") + ": an unexpected System.InvalidOperationException: ",
+            "docproc-ooxml: failed: " + Fixtures.DocumentPath("headings", "python-docx") + ": an unexpected System.InvalidOperationException: ",
             stderr.ToString(),
             StringComparison.Ordinal);
     }
@@ -496,7 +530,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Cli.Refused, result.ExitCode);
         Assert.Empty(result.Stdout);
         Assert.False(Directory.Exists(media));
-        Assert.StartsWith("spike-ai-pipeline-office: refused: ", result.Stderr, StringComparison.Ordinal);
+        Assert.StartsWith("docproc-ooxml: refused: ", result.Stderr, StringComparison.Ordinal);
         Assert.Contains(reason, result.Stderr, StringComparison.Ordinal);
     }
 

@@ -1,6 +1,6 @@
-namespace SpikeAiPipeline.Office.Tests;
+namespace Docproc.Ooxml.Tests;
 
-/// <summary>The committed fixtures and the files the tests compare office's output with.</summary>
+/// <summary>The committed fixtures and the files the tests compare docproc-ooxml's output with.</summary>
 internal static class Fixtures
 {
     /// <summary>The repository root, found from the test assembly's directory.</summary>
@@ -127,11 +127,11 @@ internal static class Fixtures
         return File.Exists(own) ? own : Path.Combine(directory, $"{name}.truth.json");
     }
 
-    /// <summary>Office's exact output for a fixture variant: the variant's own file where the
+    /// <summary>docproc-ooxml's exact output for a fixture variant: the variant's own file where the
     /// variants' outputs differ (part names, ids), or else one file for both.</summary>
     public static string Expected(string name, string variant, string extension)
     {
-        var directory = Path.Combine(Root, "test", "SpikeAiPipeline.Office.Tests", "Expected");
+        var directory = Path.Combine(Root, "test", "Docproc.Ooxml.Tests", "Expected");
         var own = Path.Combine(directory, $"{name}.{variant}.{extension}");
         return File.ReadAllText(File.Exists(own) ? own : Path.Combine(directory, $"{name}.{extension}"));
     }
@@ -140,11 +140,11 @@ internal static class Fixtures
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "SpikeAiPipeline.Office.slnx")))
+            if (File.Exists(Path.Combine(dir.FullName, "DocprocOoxml.slnx")))
             {
                 return dir.FullName;
             }
         }
-        throw new InvalidOperationException("the repository root, holding SpikeAiPipeline.Office.slnx, is not above the test assembly");
+        throw new InvalidOperationException("the tool's root, holding DocprocOoxml.slnx, is not above the test assembly");
     }
 }

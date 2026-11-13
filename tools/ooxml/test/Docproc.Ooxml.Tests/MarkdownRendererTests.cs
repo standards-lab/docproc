@@ -1,10 +1,10 @@
-using SpikeAiPipeline.Office.Model;
-using SpikeAiPipeline.Office.Rendering;
+using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Rendering;
 
-namespace SpikeAiPipeline.Office.Tests;
+namespace Docproc.Ooxml.Tests;
 
 // The Markdown renderer's seam, independent of the reader: hand-built models against Markdown
-// written by hand from GFM's rules, never a snapshot of office's own output.
+// written by hand from GFM's rules, never a snapshot of docproc-ooxml's own output.
 public sealed class MarkdownRendererTests
 {
     [Fact]

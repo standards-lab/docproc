@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The CLI publishes as one NativeAOT binary per runtime identifier, with no .NET runtime
+       needed on the host. The binary is docproc-ooxml; the project and its namespaces keep
+       .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT
+       packages of both, and a publish for either restores nothing the lock doesn't pin. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>docproc-ooxml</AssemblyName>
+    <RootNamespace>Docproc.Ooxml</RootNamespace>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- The Open XML SDK is the CLI's only package; the command line is parsed by hand. -->
+  <ItemGroup>
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.5.1" />
+  </ItemGroup>
+
+</Project>

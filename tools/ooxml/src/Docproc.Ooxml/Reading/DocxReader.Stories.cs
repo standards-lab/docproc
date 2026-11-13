@@ -1,10 +1,10 @@
 using System.Text;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 using W15 = DocumentFormat.OpenXml.Office2013.Word;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
 // The state one docx conversion shares across its story parts: the styles and numbering, the
 // media found so far, the section the body is in, the notes the text has referenced, and the

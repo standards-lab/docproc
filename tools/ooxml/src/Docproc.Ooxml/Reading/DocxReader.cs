@@ -1,14 +1,14 @@
 using System.Text;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using V = DocumentFormat.OpenXml.Vml;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads a docx package into the model, its tracked changes accepted: the body, each
 /// section's headers and footers, the notes the text references, and the comments.</summary>

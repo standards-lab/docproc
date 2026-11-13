@@ -2,11 +2,11 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using SpikeAiPipeline.Office.Model;
-using SpikeAiPipeline.Office.Reading;
-using SpikeAiPipeline.Office.Rendering;
+using Docproc.Ooxml.Model;
+using Docproc.Ooxml.Reading;
+using Docproc.Ooxml.Rendering;
 
-namespace SpikeAiPipeline.Office.Tests;
+namespace Docproc.Ooxml.Tests;
 
 // The converter's seam, a document in and the model out, and the Markdown renderer over the
 // model, against the generated fixtures and the real-world files: the model element by element
@@ -14,7 +14,7 @@ namespace SpikeAiPipeline.Office.Tests;
 // the generated fixtures, the JSON and the Markdown exactly.
 public sealed class ConverterTests : IDisposable
 {
-    private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("office-converter-tests-");
+    private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("docproc-ooxml-converter-tests-");
 
     public void Dispose() => scratch.Delete(recursive: true);
 

@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace SpikeAiPipeline.Office.Model;
+namespace Docproc.Ooxml.Model;
 
 /// <summary>The plain text of inlines.</summary>
 public static class InlineText

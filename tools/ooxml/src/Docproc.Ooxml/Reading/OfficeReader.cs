@@ -2,15 +2,15 @@ using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
-/// <summary>A document office won't convert, and why. It is raised before any output is
+/// <summary>A document docproc-ooxml won't convert, and why. It is raised before any output is
 /// written.</summary>
 public sealed class RefusalException(string message) : Exception(message);
 
-/// <summary>A document office reads but won't convert, as its readers find it: what in it goes
+/// <summary>A document docproc-ooxml reads but won't convert, as its readers find it: what in it goes
 /// past a limit, and where. The converter refuses the document with this reason.</summary>
 internal sealed class ContentRefusedException(string reason) : Exception(reason);
 
@@ -33,7 +33,7 @@ public static class OfficeReader
     /// <summary>Converts the document at path into the model.</summary>
     /// <exception cref="RefusalException">The file is missing or unreadable, isn't a docx, xlsx,
     /// or pptx package, is encrypted or a legacy binary format, is malformed, or goes past a limit
-    /// of office's (tables nested more than eight deep).</exception>
+    /// of docproc-ooxml's (tables nested more than eight deep).</exception>
     public static Document Read(string path) => Convert(path).Document;
 
     /// <summary>Converts the document at path into the model and the media it embeds, read whole

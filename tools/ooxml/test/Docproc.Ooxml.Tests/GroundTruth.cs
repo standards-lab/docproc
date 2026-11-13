@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 
-namespace SpikeAiPipeline.Office.Tests;
+namespace Docproc.Ooxml.Tests;
 
 /// <summary>A model in the ground truth's shape, element by element, so the two compare
 /// directly: headings, paragraphs, list items with their nesting level and whether each starts its

@@ -1,8 +1,8 @@
 using System.Globalization;
 using System.Text;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 
-namespace SpikeAiPipeline.Office.Rendering;
+namespace Docproc.Ooxml.Rendering;
 
 /// <summary>The model as GitHub-flavored Markdown: a rendering of the model, never a second
 /// reading of the document.</summary>

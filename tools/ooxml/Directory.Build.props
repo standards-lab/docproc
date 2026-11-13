@@ -1,12 +1,19 @@
 <Project>
   <!-- Every project builds with warnings as errors and the latest analyzers, so the check fails on
-       the first warning, including the NativeAOT and trim analyzers' warnings. -->
+       the first warning, including the NativeAOT and trim analyzers' warnings.
+
+       Every project restores from a committed packages.lock.json, which the check and the publish
+       restore in locked mode, so the package graph changes only in a reviewed commit. NuGet's
+       audit is off in every build: a newly published advisory must not fail a build whose code
+       didn't change. It runs in `mise run currency` instead. -->
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
 </Project>

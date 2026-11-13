@@ -1,8 +1,8 @@
 using System.Security.Cryptography;
 using DocumentFormat.OpenXml.Packaging;
-using SpikeAiPipeline.Office.Model;
+using Docproc.Ooxml.Model;
 
-namespace SpikeAiPipeline.Office.Reading;
+namespace Docproc.Ooxml.Reading;
 
 /// <summary>The embedded media a conversion found, by file name: the lowercase hex SHA-256 of
 /// the bytes and the part's stored extension, so each distinct content is one file however many
