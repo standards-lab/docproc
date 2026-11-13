@@ -20,9 +20,17 @@ const HEADER: usize = 16;
 /// COMPTYPE of uncompressed RTF, "MELA".
 const UNCOMPRESSED: u32 = 0x414C_454D;
 
+/// How many bytes of RTF one byte of compressed data can yield, at most, rounded up. A run of
+/// compressed data is a control byte and eight tokens, each a literal byte or a two-byte
+/// dictionary reference yielding at most 17 bytes (MS-OXRTFCP 2.1.3.1.4), so 17 bytes of data
+/// yield at most 136.
+const RATIO_MAX: u64 = 9;
+
 /// Decompresses PidTagRtfCompressed, or says why it can't. compressed-rtf 1.0.1 slices its
-/// input by the header's sizes unchecked, so those are checked first, and any other panic it
-/// raises is caught here and becomes the reason.
+/// input by the header's sizes unchecked, and allocates the header's raw size, up to 4 GiB, which
+/// a failed allocation aborts on, unseen by any guard: so those sizes are checked first, a raw
+/// size more than [`RATIO_MAX`] times the data after the header can yield refused, and any other
+/// panic it raises is caught here and becomes the reason.
 pub fn decompress(compressed: &[u8]) -> Result<String, String> {
     if compressed.len() < HEADER {
         return Err(format!(
@@ -42,6 +50,13 @@ pub fn decompress(compressed: &[u8]) -> Result<String, String> {
     if word(8) == UNCOMPRESSED && raw_size > compressed.len() - HEADER {
         return Err(format!(
             "says it holds {raw_size} bytes of uncompressed RTF, more than it has"
+        ));
+    }
+    let data = compressed.len() - HEADER;
+    if raw_size as u64 > RATIO_MAX * data as u64 {
+        return Err(format!(
+            "says it decompresses to {raw_size} bytes, more than its {data} bytes of data \
+             can yield; not decompressed"
         ));
     }
     match catch_unwind(AssertUnwindSafe(|| {
@@ -631,6 +646,37 @@ mod tests {
         assert_eq!(
             decompress(&mela),
             Err("says it holds 200 bytes of uncompressed RTF, more than it has".to_owned())
+        );
+    }
+
+    /// A raw size past nine times the data after the header is refused before the decompressor
+    /// allocates it; nine times is still decompressed.
+    #[test]
+    fn a_raw_size_past_what_the_data_can_yield_is_refused() {
+        let compressed = compressed_rtf::compress_rtf("{\\rtf1 Hi}").unwrap();
+        let data = compressed.len() - HEADER;
+        let with_raw_size = |raw_size: u32| {
+            let mut stated = compressed.clone();
+            stated[4..8].copy_from_slice(&raw_size.to_le_bytes());
+            decompress(&stated)
+        };
+        let at_most = u32::try_from(9 * data).unwrap();
+        // Passed to the decompressor, which may still find the size wrong.
+        assert!(
+            !matches!(with_raw_size(at_most), Err(reason) if reason.ends_with("not decompressed"))
+        );
+        assert_eq!(
+            with_raw_size(at_most + 1),
+            Err(format!(
+                "says it decompresses to {} bytes, more than its {data} bytes of data can \
+                 yield; not decompressed",
+                at_most + 1
+            ))
+        );
+        assert!(
+            with_raw_size(u32::MAX)
+                .unwrap_err()
+                .ends_with("not decompressed")
         );
     }
 }

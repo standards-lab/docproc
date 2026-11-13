@@ -19,7 +19,10 @@
 //! read, or panics in cfb, is left out with a warning, and an attachment of the top-level message
 //! also gets a skipped line after the message's. A panic may leave cfb's lock poisoned, so after
 //! one the file is reopened. The top-level message itself is the input's root: a compound file
-//! without one, or with one that can't be read, is refused.
+//! without one, or with one whose properties can't be read, is refused. The mapping, the
+//! Markdown's derivation included, runs inside the guard too: a panic in a message's is that
+//! message's skipped line, or for an embedded message, a warning on its attachment, and a panic
+//! in an attachment's is that attachment's.
 
 use std::convert::Infallible;
 use std::fs::File;
@@ -124,7 +127,23 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
 
     let place = "message";
     warn_all(place, notes);
-    let (message, skipped) = walk.message(root, &props, None, 0, place)?;
+    let mapped = guarded(|| Ok::<_, Infallible>(walk.message(root, &props, None, 0, place)));
+    let (message, skipped) = match mapped {
+        Ok(mapped) => mapped?,
+        Err(failure) => {
+            warn(place, &format!("skipped: {}", failure.reason));
+            return out
+                .write(&model::Skipped {
+                    line: "skipped",
+                    kind: "message",
+                    folder: None,
+                    message: None,
+                    id: None,
+                    reason: failure.reason,
+                })
+                .map_err(Fault::Output);
+        }
+    };
     out.write(&message).map_err(Fault::Output)?;
     for (id, reason) in skipped {
         out.write(&model::Skipped {
@@ -221,8 +240,17 @@ impl Walk<'_> {
                     ),
                 }
             }
-            let (mut record, extension, notes) =
-                mapping::attachment(&props, content.as_deref(), code_page);
+            let mapped = guarded(|| {
+                Ok::<_, Infallible>(mapping::attachment(&props, content.as_deref(), code_page))
+            });
+            let (mut record, extension, notes) = match mapped {
+                Ok(mapped) => mapped,
+                Err(failure) => {
+                    warn(&here, &format!("skipped: {}", failure.reason));
+                    skipped.push((number, failure.reason));
+                    continue;
+                }
+            };
             warn_all(&here, notes);
             if let Some(content) = &content {
                 record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
@@ -263,9 +291,24 @@ impl Walk<'_> {
                 return Ok(None);
             }
         };
-        let place = format!("{place}, message");
-        warn_all(&place, notes);
-        let (mut message, _) = self.message(object, &props, Some(parent), depth, &place)?;
+        let inner = format!("{place}, message");
+        warn_all(&inner, notes);
+        let mapped = guarded(|| {
+            Ok::<_, Infallible>(self.message(object, &props, Some(parent), depth, &inner))
+        });
+        let (mut message, _) = match mapped {
+            Ok(mapped) => mapped?,
+            Err(failure) => {
+                warn(
+                    place,
+                    &format!(
+                        "the embedded message can't be read ({}); listed without it",
+                        failure.reason
+                    ),
+                );
+                return Ok(None);
+            }
+        };
         message.line = "";
         Ok(Some(message))
     }

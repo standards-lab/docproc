@@ -362,6 +362,81 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     assert_eq!(messages, 1);
 }
 
+/// A copy of libyal's store whose folder Recovered_Group2 (33410) lists the root (32802) as its
+/// subfolder, in place of its Inbox (33442): a folder cycle. The hierarchy table's row matrix is
+/// in the data block at 42624, 158 bytes, its trailer at 42800, whose CRC (MS-PST 5.3) outlook-pst
+/// checks; the row's dwRowID is at 42730. The store's data blocks are encoded by MS-PST 5.1's
+/// permutation, which takes 0x82A2 (33442) to EE 27 and 0x8022 (32802) to 84 E2, and 0 to 0x41.
+fn cyclic() -> std::path::PathBuf {
+    let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
+    assert_eq!(bytes[42730..42734], [0xEE, 0x27, 0x41, 0x41], "Inbox's row");
+    bytes[42730..42734].copy_from_slice(&[0x84, 0xE2, 0x41, 0x41]);
+    let crc = crc(&bytes[42624..42624 + 158]);
+    bytes[42804..42808].copy_from_slice(&crc.to_le_bytes());
+    built("cyclic.pst", &bytes)
+}
+
+/// MS-PST 5.3's CRC: CRC-32's polynomial, reflected, from 0 and with no final complement.
+fn crc(data: &[u8]) -> u32 {
+    let mut crc = 0u32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 != 0 {
+                (crc >> 1) ^ 0xEDB8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    crc
+}
+
+/// A hierarchy row naming a folder already entered, here the root under one of its own
+/// subfolders, is a skipped folder, "already read", with a warning, never a walk without end;
+/// every other folder and message is read as from the whole store. The `--after` pre-walk passes
+/// it over, so a cursor in the store is found and one outside it refused.
+#[test]
+fn a_folder_cycle_is_read_once() {
+    let store = cyclic();
+    let whole = run(&[fixture("pst/libyal/outlook.pst")]).lines();
+    let out = run(&[&store]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: warning: folder 33410, folder 32802: skipped: already read\n"
+    );
+    let skipped = serde_json::json!({
+        "line": "skipped",
+        "kind": "folder",
+        "folder": 33410,
+        "id": 32802,
+        "reason": "already read",
+    });
+    // The whole store's lines, Recovered_Group2's Inbox replaced by the skipped line.
+    let expected: Vec<Value> = whole
+        .into_iter()
+        .map(|line| {
+            if line["line"] == "folder" && line["id"] == 33442 {
+                skipped.clone()
+            } else {
+                line
+            }
+        })
+        .collect();
+    assert_eq!(out.lines(), expected);
+
+    let resumed = run(&["--after".as_ref(), "2097188".as_ref(), store.as_os_str()]);
+    assert_eq!(resumed.code, Some(0), "{}", resumed.stderr);
+    assert!(resumed.lines().contains(&skipped));
+    let missing = run(&["--after".as_ref(), "4".as_ref(), store.as_os_str()]);
+    assert_eq!(missing.code, Some(3), "{}", missing.stderr);
+    assert_eq!(
+        missing.stderr,
+        "docproc-mail: error: --after 4: no message in the store has that node id\n"
+    );
+}
+
 /// A copy of libyal's store with the byte at `offset` set to 0xAA.
 fn flipped(name: &str, offset: usize) -> std::path::PathBuf {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();

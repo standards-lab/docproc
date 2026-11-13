@@ -1,15 +1,19 @@
 //! The .eml reader: one RFC 5322 message, parsed whole by mail-parser and mapped by
 //! [`crate::mime`], then a skipped line for each of its attachments that can't be read. The
-//! input has passed the header-shape check before it gets here; one that mail-parser still can't
-//! parse, or one of 4 GiB or more, which it never parses, is refused.
+//! input has passed the header-shape check before it gets here, a leading byte-order mark
+//! skipped, as it is here; one that mail-parser still can't parse, or one of 4 GiB or more,
+//! which it never parses, is refused. The parse and the mapping run inside the record guard, so
+//! a panic in either, the Markdown's derivation included, is the message's skipped line, after
+//! the store line, with a warning.
 
+use std::convert::Infallible;
 use std::io::Write;
 use std::path::Path;
 
-use docproc_envelope::{Fault, Lines, Media};
+use docproc_envelope::{Fault, Lines, Media, guarded};
 
 use crate::model::{self, Skipped, Store};
-use crate::{mime, unreadable, warn_below};
+use crate::{mime, sniff, unreadable, warn, warn_below};
 
 /// The size mail-parser parses up to: its offsets are 32-bit.
 const SIZE_MAX: u64 = 1 << 32;
@@ -24,8 +28,12 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
         ));
     }
     let raw = std::fs::read(path).map_err(unreadable)?;
-    let Some(parsed) = mime::parser().parse(&raw) else {
-        return Err(Fault::Refused("the message can't be parsed".to_owned()));
+    let raw = sniff::without_bom(&raw);
+    let parser = mime::parser();
+    let parsed = match guarded(|| Ok::<_, Infallible>(parser.parse(raw))) {
+        Ok(Some(parsed)) => Ok(parsed),
+        Ok(None) => return Err(Fault::Refused("the message can't be parsed".to_owned())),
+        Err(failure) => Err(failure.reason),
     };
     files.create()?;
     out.write(&Store {
@@ -37,7 +45,26 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
         display_name: None,
     })
     .map_err(Fault::Output)?;
-    let read = mime::message(&parsed.root(), files)?;
+    let read = match parsed {
+        Ok(parsed) => mime::guarded_message(&parsed.root(), files)?,
+        Err(reason) => Err(reason),
+    };
+    let read = match read {
+        Ok(read) => read,
+        Err(reason) => {
+            warn("message", &format!("skipped: {reason}"));
+            return out
+                .write(&Skipped {
+                    line: "skipped",
+                    kind: "message",
+                    folder: None,
+                    message: None,
+                    id: None,
+                    reason,
+                })
+                .map_err(Fault::Output);
+        }
+    };
     warn_below("message", read.notes);
     out.write(&read.message).map_err(Fault::Output)?;
     for (id, reason) in read.skipped {

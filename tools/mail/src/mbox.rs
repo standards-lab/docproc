@@ -10,17 +10,28 @@
 //! A message runs to the next line starting "From ", and mboxcl's Content-Length is not read, so
 //! in an mboxcl or mboxcl2 an unquoted body line starting "From " starts a new message.
 //!
+//! An mbox is only an mbox once one of its entries is a message: the store line is held until
+//! the first message parses, and the skipped lines of the entries before it with it, so a text
+//! file that merely starts "From " and holds no message is refused, as any other input that is
+//! no mail is, with nothing on stdout. A leading byte-order mark is skipped, before the file's
+//! first separator line and before each entry's header check. The parse and the mapping run
+//! inside the record guard, so a panic in either, the Markdown's derivation included, is that
+//! message's skipped line, and stdout is flushed after each message's lines, so a run that ends
+//! early has written every message before it.
+//!
 //! With `--after <n>` the read resumes after message n: the iterator scans the separators of
 //! messages 1 to n from the start of the file, parsing none of them, so none of their lines,
 //! warnings or attachments are written, and the store line and the lines of the messages after n
 //! follow, as a whole read writes them. An n past the file's last ordinal, empty entries counted,
-//! is refused before any output.
+//! is refused before any output. The messages before n were an mbox's, so a resumed read writes
+//! its store line whether or not a message after n parses.
 
+use std::convert::Infallible;
 use std::fs::File;
-use std::io::{self, BufReader, Write};
+use std::io::{self, BufRead, BufReader, Write};
 use std::path::Path;
 
-use docproc_envelope::{Fault, Lines, Media};
+use docproc_envelope::{Fault, Lines, Media, guarded};
 use mail_parser::MessageBuffers;
 use mail_parser::mailbox::mbox::{Message, MessageIterator};
 
@@ -35,43 +46,38 @@ pub fn read(
     out: &mut Lines<impl Write>,
     files: &mut Media,
 ) -> Result<(), Fault> {
-    let file = File::open(path).map_err(unreadable)?;
-    let mut entries = (1u32..).zip(MessageIterator::new(BufReader::new(file)));
+    let mut file = BufReader::new(File::open(path).map_err(unreadable)?);
+    if file.fill_buf().map_err(unreadable)?.starts_with(sniff::BOM) {
+        file.consume(sniff::BOM.len());
+    }
+    let mut entries = (1u32..).zip(MessageIterator::new(file));
     let ended = match after {
         Some(after) => skip_to(&mut entries, after)
             .map_err(|reason| Fault::Refused(format!("--after {after}: {reason}")))?,
         None => false,
     };
-    files.create()?;
-    out.write(&Store {
-        line: "store",
-        schema: model::SCHEMA,
-        format: "mbox",
-        encoding: None,
-        password: None,
-        display_name: None,
-    })
-    .map_err(Fault::Output)?;
+    let mut held = Held {
+        out,
+        store: true,
+        skipped: Vec::new(),
+    };
+    if after.is_some() {
+        held.release(files)?;
+    }
     if ended {
         return Ok(());
     }
     let parser = mime::parser();
     let mut buffers = MessageBuffers::new();
     for (ordinal, entry) in entries {
-        let place = format!("message {ordinal}");
         let entry = match entry {
             Ok(entry) => entry,
             Err(err) => {
-                skip(
-                    out,
-                    &place,
-                    ordinal,
-                    format!("the mbox can't be read: {err}"),
-                )?;
+                held.skip(ordinal, format!("the mbox can't be read: {err}"))?;
                 break;
             }
         };
-        let contents = unseparated(entry.contents());
+        let contents = sniff::without_bom(unseparated(entry.contents()));
         // A separator line with nothing after it is no message: it writes no line and no
         // warning, but keeps its ordinal, so the messages after it keep theirs.
         if contents.is_empty() {
@@ -79,14 +85,31 @@ pub fn read(
         }
         if !sniff::header_shape(contents).unwrap_or(false) {
             let reason = "it has no header block with a From or Date field".to_owned();
-            skip(out, &place, ordinal, reason)?;
+            held.skip(ordinal, reason)?;
             continue;
         }
-        let Some(parsed) = parser.parse_with(contents, &mut buffers) else {
-            skip(out, &place, ordinal, "it can't be parsed".to_owned())?;
-            continue;
+        let parsed =
+            match guarded(|| Ok::<_, Infallible>(parser.parse_with(contents, &mut buffers))) {
+                Ok(Some(parsed)) => parsed,
+                Ok(None) => {
+                    held.skip(ordinal, "it can't be parsed".to_owned())?;
+                    continue;
+                }
+                Err(failure) => {
+                    held.skip(ordinal, failure.reason)?;
+                    continue;
+                }
+            };
+        held.release(files)?;
+        let out = &mut *held.out;
+        let place = format!("message {ordinal}");
+        let mut read = match mime::guarded_message(&parsed.root(), files)? {
+            Ok(read) => read,
+            Err(reason) => {
+                skip(out, ordinal, reason)?;
+                continue;
+            }
         };
-        let mut read = mime::message(&parsed.root(), files)?;
         read.message.id = Some(ordinal);
         warn_below(&place, read.notes);
         out.write(&read.message).map_err(Fault::Output)?;
@@ -101,9 +124,67 @@ pub fn read(
             })
             .map_err(Fault::Output)?;
         }
+        out.flush().map_err(Fault::Output)?;
         buffers = parsed.into_buffers();
     }
+    if held.store {
+        if held.skipped.is_empty() {
+            // No entry at all, or empty ones alone: nothing failed, and the mbox is empty.
+            held.release(files)?;
+        } else {
+            let (ordinal, reason) = held.skipped.swap_remove(0);
+            return Err(Fault::Refused(format!(
+                "neither a .pst, a .msg, an .eml nor an mbox: no entry of it is a message \
+                 (message {ordinal}: {reason})"
+            )));
+        }
+    }
     Ok(())
+}
+
+/// The lines a whole read holds until its first message parses: the store line, and the skipped
+/// lines of the entries before that message, with their warnings.
+struct Held<'a, W: Write> {
+    out: &'a mut Lines<W>,
+    /// Whether the store line is still held.
+    store: bool,
+    /// The held skipped messages, by ordinal and reason.
+    skipped: Vec<(u32, String)>,
+}
+
+impl<W: Write> Held<'_, W> {
+    /// Writes a message's skipped line, and its warning, or holds them behind the store line.
+    fn skip(&mut self, ordinal: u32, reason: String) -> Result<(), Fault> {
+        if self.store {
+            self.skipped.push((ordinal, reason));
+            Ok(())
+        } else {
+            skip(self.out, ordinal, reason)
+        }
+    }
+
+    /// Writes the store line, once, and then the skipped lines held behind it: the input is an
+    /// mbox.
+    fn release(&mut self, files: &Media) -> Result<(), Fault> {
+        if !std::mem::take(&mut self.store) {
+            return Ok(());
+        }
+        files.create()?;
+        self.out
+            .write(&Store {
+                line: "store",
+                schema: model::SCHEMA,
+                format: "mbox",
+                encoding: None,
+                password: None,
+                display_name: None,
+            })
+            .map_err(Fault::Output)?;
+        for (ordinal, reason) in std::mem::take(&mut self.skipped) {
+            skip(self.out, ordinal, reason)?;
+        }
+        Ok(())
+    }
 }
 
 /// Scans past messages 1 to `after`, separators only, so that the next entry is message
@@ -150,14 +231,9 @@ fn unseparated(contents: &[u8]) -> &[u8] {
     }
 }
 
-/// Writes a message's skipped line, and its warning.
-fn skip(
-    out: &mut Lines<impl Write>,
-    place: &str,
-    ordinal: u32,
-    reason: String,
-) -> Result<(), Fault> {
-    warn(place, &format!("skipped: {reason}"));
+/// Writes a message's skipped line, and its warning, and flushes it.
+fn skip(out: &mut Lines<impl Write>, ordinal: u32, reason: String) -> Result<(), Fault> {
+    warn(&format!("message {ordinal}"), &format!("skipped: {reason}"));
     out.write(&Skipped {
         line: "skipped",
         kind: "message",
@@ -166,7 +242,8 @@ fn skip(
         id: Some(ordinal),
         reason,
     })
-    .map_err(Fault::Output)
+    .map_err(Fault::Output)?;
+    out.flush().map_err(Fault::Output)
 }
 
 #[cfg(test)]

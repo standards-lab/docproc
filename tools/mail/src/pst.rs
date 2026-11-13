@@ -17,6 +17,17 @@
 //!   fails with "Failed to lock PST file". After a panic the walk reopens the store, so the
 //!   records after it are still read.
 //!
+//! The mapping of a message or an attachment, the Markdown's derivation included, runs inside the
+//! guard too, so a panic there is that record's skipped line, and stdout is flushed after each
+//! message's lines, so a run that ends early has written every message before it. An
+//! attachment's content is hashed and written from the reader's own buffer, never copied.
+//!
+//! A hierarchy table names a folder by its node id, and a corrupt one can name a folder already
+//! read, an ancestor among them, which would repeat the walk without end. The walk keeps the node
+//! ids of the folders it has entered, and a hierarchy row naming one is a skipped line of kind
+//! `folder`, "already read", with a warning; the `--after` pre-walk keeps its own, and passes such
+//! a row over.
+//!
 //! With `--after <id>` the walk resumes after the message whose node id is `id`: every folder
 //! line, and every skipped line of a folder or a folder's table, is still written, since a
 //! consumer places messages by their folders, but a message's line, and the skipped lines of
@@ -27,6 +38,8 @@
 //! output, the folders are walked once for the cursor's node id in their contents tables, and an
 //! id no folder holds is refused.
 
+use std::collections::HashSet;
+use std::convert::Infallible;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -78,11 +91,12 @@ pub fn read(
         reopened: 0,
         code_page,
         after,
+        entered: HashSet::new(),
         out,
         files,
     };
     if let Some(after) = after
-        && !walk.holds(&root, after)
+        && !walk.holds(&root, after, &mut HashSet::new())
     {
         return Err(Fault::Refused(format!(
             "--after {after}: no message in the store has that node id"
@@ -267,13 +281,24 @@ fn recipients(message: &dyn PstMessage) -> io::Result<Vec<Bag>> {
         .collect()
 }
 
-/// An attachment read whole: its properties, its content when it has some, and whether it was
-/// opened or only listed from its attachment table row, with the reader's notes.
+/// An attachment read whole: its properties, the attachment itself when it was opened rather
+/// than only listed from its attachment table row, and the reader's notes.
 struct AttachmentRead {
     props: Bag,
-    content: Option<Vec<u8>>,
-    opened: bool,
+    opened: Option<Rc<dyn Attachment>>,
     notes: Vec<String>,
+}
+
+impl AttachmentRead {
+    /// The content, as stored, in outlook-pst's own buffer: PidTagAttachDataBinary for
+    /// afByValue, the storage's bytes for afStorage; outlook-pst gives none for the by-reference
+    /// methods.
+    fn content(&self) -> Option<&[u8]> {
+        match self.opened.as_ref()?.data() {
+            Some(AttachmentData::Binary(data)) => Some(data.buffer()),
+            _ => None,
+        }
+    }
 }
 
 /// Reads attachment `id` of `message`. Its attachment table row gives the attach method; an
@@ -305,14 +330,12 @@ fn read_attachment(message: &OpenMessage, id: u32) -> io::Result<AttachmentRead>
     if integer(&props, tag::ATTACH_METHOD).is_none_or(|method| method == AF_EMBEDDED_MESSAGE) {
         return Ok(AttachmentRead {
             props,
-            content: None,
-            opened: false,
+            opened: None,
             notes,
         });
     }
     // Opened, the attachment's own properties stand in for its row's, notes and all. Its
-    // content is kept apart from them, as stored: PidTagAttachDataBinary for afByValue, the
-    // storage's bytes for afStorage; outlook-pst gives none for the by-reference methods.
+    // content is kept apart from them, in the attachment ([`AttachmentRead::content`]).
     let attachment = message.attachment(id)?;
     let props = attachment
         .properties()
@@ -320,14 +343,9 @@ fn read_attachment(message: &OpenMessage, id: u32) -> io::Result<AttachmentRead>
         .filter(|(id, _)| **id != tag::ATTACH_DATA)
         .map(|(id, value)| (*id, convert(value)))
         .collect();
-    let content = match attachment.data() {
-        Some(AttachmentData::Binary(data)) => Some(data.buffer().to_vec()),
-        _ => None,
-    };
     Ok(AttachmentRead {
         props,
-        content,
-        opened: true,
+        opened: Some(attachment),
         notes: Vec::new(),
     })
 }
@@ -343,6 +361,8 @@ struct Walk<'a, W: Write> {
     /// The node id of the message the walk resumes after, until the walk passes it; None once
     /// it has, or for a whole read.
     after: Option<u32>,
+    /// The node ids of the folders the walk has entered.
+    entered: HashSet<u32>,
     out: &'a mut Lines<W>,
     files: &'a mut Media,
 }
@@ -354,6 +374,7 @@ impl<W: Write> Walk<'_, W> {
         parent: Option<u32>,
         mut path: Vec<String>,
     ) -> Result<(), Fault> {
+        self.entered.insert(data.id);
         let (display_name, container_class, notes) = mapping::folder(&data.props, self.code_page);
         path.push(display_name.unwrap_or_default());
         // A place names the folder by its node id, never by its path: a display name can hold
@@ -388,6 +409,11 @@ impl<W: Write> Walk<'_, W> {
             self.skipped("hierarchy", data.id, None, None, reason)?;
         }
         for id in data.subfolders {
+            if self.entered.contains(&id) {
+                warn(&format!("{place}, folder {id}"), "skipped: already read");
+                self.skipped("folder", data.id, None, Some(id), "already read".to_owned())?;
+                continue;
+            }
             match self.subfolder(id) {
                 Ok(sub) => self.folder(sub, Some(data.id), path.clone())?,
                 Err(reason) => {
@@ -404,15 +430,19 @@ impl<W: Write> Walk<'_, W> {
 
     /// Whether `data`'s folder or a folder below it holds message `id` in its contents table,
     /// read the way [`Walk::folder`] reads them, depth-first, stopping at the first that does.
-    /// A subfolder that can't be read is passed over here and skipped, with its warning, by
-    /// the walk itself.
-    fn holds(&mut self, data: &FolderData, id: u32) -> bool {
+    /// A subfolder that can't be read, or that `entered` names, is passed over here and skipped,
+    /// with its warning, by the walk itself.
+    fn holds(&mut self, data: &FolderData, id: u32, entered: &mut HashSet<u32>) -> bool {
+        entered.insert(data.id);
         if data.messages.contains(&id) {
             return true;
         }
-        data.subfolders
-            .iter()
-            .any(|&sub| self.subfolder(sub).is_ok_and(|sub| self.holds(&sub, id)))
+        data.subfolders.iter().any(|&sub| {
+            !entered.contains(&sub)
+                && self
+                    .subfolder(sub)
+                    .is_ok_and(|sub| self.holds(&sub, id, entered))
+        })
     }
 
     /// Reads the subfolder whose node id is `id`.
@@ -438,11 +468,22 @@ impl<W: Write> Walk<'_, W> {
             Ok(data) => data,
             Err(reason) => {
                 warn(&place, &format!("skipped: {reason}"));
-                return self.skipped("message", folder, None, Some(id), reason);
+                self.skipped("message", folder, None, Some(id), reason)?;
+                return self.out.flush().map_err(Fault::Output);
             }
         };
         let code_page = message_code_page(&data.props, self.code_page);
-        let (mut message, notes) = mapping::message(&data.props, &data.recipients, code_page);
+        let mapped = guarded(|| {
+            Ok::<_, Infallible>(mapping::message(&data.props, &data.recipients, code_page))
+        });
+        let (mut message, notes) = match mapped {
+            Ok(mapped) => mapped,
+            Err(failure) => {
+                warn(&place, &format!("skipped: {}", failure.reason));
+                self.skipped("message", folder, None, Some(id), failure.reason)?;
+                return self.out.flush().map_err(Fault::Output);
+            }
+        };
         message.id = Some(id);
         message.folder = Some(folder);
         warn_all(&place, notes);
@@ -460,7 +501,7 @@ impl<W: Write> Walk<'_, W> {
                 }
                 read_attachment(&open, attachment)
             });
-            let read = match read {
+            let mut read = match read {
                 Ok(read) => read,
                 Err(reason) => {
                     warn(&here, &format!("skipped: {reason}"));
@@ -468,15 +509,24 @@ impl<W: Write> Walk<'_, W> {
                     continue;
                 }
             };
-            warn_all(&here, read.notes);
-            if !read.opened {
+            warn_all(&here, std::mem::take(&mut read.notes));
+            if read.opened.is_none() {
                 warn(&here, not_opened(&read.props));
             }
-            let (mut record, extension, notes) =
-                mapping::attachment(&read.props, read.content.as_deref(), code_page);
+            let mapped = guarded(|| {
+                Ok::<_, Infallible>(mapping::attachment(&read.props, read.content(), code_page))
+            });
+            let (mut record, extension, notes) = match mapped {
+                Ok(mapped) => mapped,
+                Err(failure) => {
+                    warn(&here, &format!("skipped: {}", failure.reason));
+                    skipped.push((attachment, failure.reason));
+                    continue;
+                }
+            };
             warn_all(&here, notes);
-            if let Some(content) = &read.content {
-                record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
+            if let Some(content) = read.content() {
+                record.file = Some(self.files.store(content, extension.as_deref())?);
             }
             message.attachments.push(record);
         }
@@ -484,7 +534,7 @@ impl<W: Write> Walk<'_, W> {
         for (attachment, reason) in skipped {
             self.skipped("attachment", folder, Some(id), Some(attachment), reason)?;
         }
-        Ok(())
+        self.out.flush().map_err(Fault::Output)
     }
 
     /// Runs one read against the store inside [`guarded`]. A panic may have poisoned the

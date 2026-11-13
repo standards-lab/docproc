@@ -22,6 +22,11 @@
 //! attachments, and the images, audio and video the bodies show. A message/rfc822 or
 //! message/global part is an embedded message, nested under its record to [`DEPTH_MAX`] messages.
 //!
+//! Two kinds of part hold content no reader here opens: a TNEF part (`winmail.dat`, Outlook's own
+//! serialization of a message's rich text and attachments) and an opaque S/MIME part (an
+//! encrypted or opaquely signed `application/pkcs7-mime`). Each gives its message a note, so the
+//! message's Markdown, empty or partial, is never read as all there is.
+//!
 //! mail-parser decodes US-ASCII and ISO-8859-1 as windows-1252, as WHATWG labels them, and the
 //! five bytes windows-1252 leaves undefined as U+FFFD. Whatever it reports as a decoding problem
 //! (a malformed or unknown transfer encoding, an unknown charset, bytes not valid in the charset)
@@ -63,6 +68,19 @@ pub fn parser() -> MessageParser {
         .header(HeaderName::ThreadTopic, HeaderForm::Text)
 }
 
+/// [`message`] inside the record guard: a panic in the mapping, the Markdown's derivation
+/// included, is the message's reason to be skipped, and the run goes on. A media fault still ends
+/// the run.
+pub fn guarded_message(
+    parsed: &MessageRef<'_>,
+    files: &mut Media,
+) -> Result<Result<Read, String>, Fault> {
+    match guarded(|| Ok::<_, Infallible>(message(parsed, files))) {
+        Ok(read) => read.map(Ok),
+        Err(failure) => Ok(Err(failure.reason)),
+    }
+}
+
 /// Maps one parsed message to a message line, its attachments' contents stored through
 /// `files`, which names them.
 pub fn message(parsed: &MessageRef<'_>, files: &mut Media) -> Result<Read, Fault> {
@@ -87,6 +105,7 @@ fn read(
     let mut own = Vec::new();
     let mut message = headers(parsed, &mut own);
     message.markdown = markdown(parsed, &mut own);
+    own.extend(parsed.parts().filter_map(|part| unread(&part)));
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     let mut skipped = Vec::new();
     let parts = parsed
@@ -127,6 +146,31 @@ fn read(
         message.attachments.push(record);
     }
     Ok((message, skipped))
+}
+
+/// The note for a part whose content no reader here opens: a TNEF part, by its content type or
+/// its file name, `winmail.dat`, and an opaque S/MIME part. A detached signature
+/// (`application/pkcs7-signature`) is no such part: the content it signs is read.
+fn unread(part: &MessagePart<'_>) -> Option<String> {
+    let tnef = part.is_content_type("application", "ms-tnef")
+        || part.is_content_type("application", "vnd.ms-tnef")
+        || part
+            .attachment_name()
+            .is_some_and(|name| name.eq_ignore_ascii_case("winmail.dat"));
+    if tnef {
+        return Some(
+            "it holds a TNEF part (winmail.dat), Outlook's own form of a message's text and \
+             attachments, whose content is not read"
+                .to_owned(),
+        );
+    }
+    let smime = part.is_content_type("application", "pkcs7-mime")
+        || part.is_content_type("application", "x-pkcs7-mime");
+    smime.then(|| {
+        "it holds an S/MIME part (application/pkcs7-mime), encrypted or opaquely signed, \
+         whose content is not read"
+            .to_owned()
+    })
 }
 
 /// The header fields of a message line.
@@ -463,4 +507,85 @@ fn lossy(raw: &[u8], what: &str, notes: &mut Vec<String>) -> String {
         notes.push(format!("the {what} is not valid UTF-8; decoded lossily"));
     }
     text.into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The notes of the message `raw`, mapped with no media directory.
+    fn notes(raw: &str) -> Vec<(String, String)> {
+        let parsed = parser().parse(raw.as_bytes()).unwrap();
+        message(&parsed.root(), &mut Media::new(None))
+            .unwrap()
+            .notes
+    }
+
+    /// A multipart/mixed message of a text part and `part`, its headers and its body, whose
+    /// boundary is `b`.
+    fn with_part(part: &str) -> String {
+        with_part_in("b", part)
+    }
+
+    fn with_part_in(b: &str, part: &str) -> String {
+        format!(
+            "From: ann@example.com\r\nContent-Type: multipart/mixed; boundary={b}\r\n\r\n\
+             --{b}\r\nContent-Type: text/plain\r\n\r\nSee the attachment.\r\n\
+             --{b}\r\n{part}\r\n--{b}--\r\n"
+        )
+    }
+
+    const TNEF: &str = "it holds a TNEF part (winmail.dat), Outlook's own form of a message's \
+                        text and attachments, whose content is not read";
+    const SMIME: &str = "it holds an S/MIME part (application/pkcs7-mime), encrypted or \
+                         opaquely signed, whose content is not read";
+
+    /// A TNEF part is told by its content type, either of its names, or by its file name.
+    #[test]
+    fn a_tnef_part_gives_its_message_a_note() {
+        for part in [
+            "Content-Type: application/ms-tnef\r\n\r\nx",
+            "Content-Type: Application/VND.MS-TNEF; name=x.dat\r\n\r\nx",
+            "Content-Type: application/octet-stream\r\n\
+             Content-Disposition: attachment; filename=\"WINMAIL.DAT\"\r\n\r\nx",
+        ] {
+            assert_eq!(
+                notes(&with_part(part)),
+                [(String::new(), TNEF.to_owned())],
+                "{part}"
+            );
+        }
+    }
+
+    /// An opaque S/MIME part is noted, the whole message's or one part's; a detached signature
+    /// is not, since the content it signs is read.
+    #[test]
+    fn an_opaque_smime_part_gives_its_message_a_note() {
+        let encrypted = "From: ann@example.com\r\n\
+                         Content-Type: application/pkcs7-mime; smime-type=enveloped-data; \
+                         name=smime.p7m\r\nContent-Transfer-Encoding: base64\r\n\r\nMIAGCSqG\r\n";
+        assert_eq!(notes(encrypted), [(String::new(), SMIME.to_owned())]);
+        let part = "Content-Type: application/x-pkcs7-mime; smime-type=signed-data\r\n\r\nx";
+        assert_eq!(notes(&with_part(part)), [(String::new(), SMIME.to_owned())]);
+        let signed = "From: ann@example.com\r\n\
+                      Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; \
+                      boundary=s\r\n\r\n--s\r\nContent-Type: text/plain\r\n\r\nSigned.\r\n\
+                      --s\r\nContent-Type: application/pkcs7-signature; name=smime.p7s\r\n\r\n\
+                      x\r\n--s--\r\n";
+        assert_eq!(notes(signed), []);
+    }
+
+    /// A nested message's TNEF part is its own message's note, placed below the attachment.
+    #[test]
+    fn a_nested_messages_tnef_part_is_its_note() {
+        let nested = with_part("Content-Type: application/ms-tnef\r\n\r\nx");
+        let outer = with_part_in(
+            "outer",
+            &format!("Content-Type: message/rfc822\r\n\r\n{nested}"),
+        );
+        assert_eq!(
+            notes(&outer),
+            [(", attachment 1, message".to_owned(), TNEF.to_owned())]
+        );
+    }
 }

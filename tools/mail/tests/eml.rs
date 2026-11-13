@@ -506,6 +506,19 @@ fn an_eml_is_sniffed_not_named() {
     assert_eq!(message["submit_time"], "2026-01-12T22:00:00Z");
 }
 
+/// A leading UTF-8 byte-order mark, which an editor may write, is skipped before the header
+/// check and the parse, so the first field is read as the first field.
+#[test]
+fn a_leading_byte_order_mark_is_skipped() {
+    let (message, stderr) = read(
+        "bom.eml",
+        b"\xEF\xBB\xBFSubject: hi\r\nFrom: ann@example.com\r\n\r\nbody\r\n",
+    );
+    assert_eq!(message["subject"], "hi");
+    assert_eq!(message["sender"]["address"], "ann@example.com");
+    assert_eq!(stderr, "");
+}
+
 /// An .eml of 4 GiB or more is refused before it is read: here a sparse file.
 #[test]
 fn an_eml_of_4_gib_is_refused() {

@@ -179,6 +179,141 @@ fn an_mbox_with_no_messages_gives_its_store_line_alone() {
     assert_eq!(lines[0]["format"], "mbox");
 }
 
+/// A message whose HTML nests 20,000 elements, which htmd would overflow its stack on, ending
+/// the run by signal, is capped before htmd, between two good messages: its Markdown is its HTML's
+/// text, with a warning, and the messages either side of it arrive.
+#[test]
+fn a_deeply_nested_message_costs_only_its_markdown() {
+    let good = |n: u32| {
+        format!(
+            "From ann@example.com Mon Jan 12 17:0{n}:00 2026\n\
+             From: ann@example.com\nSubject: good {n}\n\nbody {n}\n\n"
+        )
+    };
+    let deep = format!(
+        "From bob@example.com Mon Jan 12 17:01:00 2026\n\
+         From: bob@example.com\nSubject: deep\nContent-Type: text/html\n\n\
+         {}deep text\n\n",
+        "<div>".repeat(20_000)
+    );
+    let mbox = built(
+        "deep.mbox",
+        format!("{}{deep}{}", good(1), good(3)).as_bytes(),
+    );
+    let out = run(&[&mbox]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let summary: Vec<_> = out
+        .lines()
+        .iter()
+        .map(|line| json!([line["line"], line.get("id"), line.get("markdown")]))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            json!(["store", null, null]),
+            json!(["message", 1, "body 1"]),
+            json!(["message", 2, "deep text"]),
+            json!(["message", 3, "body 3"]),
+        ]
+    );
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: warning: message 2: the HTML body nests more than 512 open elements; \
+         the Markdown is made from the HTML's text, its tags stripped\n"
+    );
+}
+
+/// A text file that starts "From " but none of whose entries is a message is no mbox: refused,
+/// with nothing on stdout and no warning for its entries.
+#[test]
+fn an_mbox_whose_every_entry_fails_is_refused() {
+    let mbox = built(
+        "no-messages.mbox",
+        b"From here on, the notes are mine.\n\
+          Nothing in this file is mail.\n\
+          From now on, neither is this.\n",
+    );
+    let out = run(&[&mbox]);
+    assert_eq!(out.code, Some(3), "{}", out.stderr);
+    assert_eq!(out.stdout, "");
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: error: neither a .pst, a .msg, an .eml nor an mbox: no entry of it is a \
+         message (message 1: it has no header block with a From or Date field)\n"
+    );
+}
+
+/// The store line is held until the first message parses, and the entries that failed before
+/// it follow it, with their warnings, in their places.
+#[test]
+fn entries_before_the_first_message_follow_the_store_line() {
+    let mbox = built(
+        "late-message.mbox",
+        b"From ann@example.com Mon Jan 12 17:00:00 2026\n\
+          no header here\n\
+          From bob@example.com Mon Jan 12 17:01:00 2026\n\
+          From: bob@example.com\n\
+          Subject: second\n\
+          \n\
+          body\n",
+    );
+    let out = run(&[&mbox]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    let summary: Vec<_> = out
+        .lines()
+        .iter()
+        .map(|line| json!([line["line"], line.get("id")]))
+        .collect();
+    assert_eq!(
+        summary,
+        [
+            json!(["store", null]),
+            json!(["skipped", 1]),
+            json!(["message", 2]),
+        ]
+    );
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: warning: message 1: \
+         skipped: it has no header block with a From or Date field\n"
+    );
+}
+
+/// A leading byte-order mark is skipped before the first separator line and before an entry's
+/// header block.
+#[test]
+fn a_leading_byte_order_mark_is_skipped() {
+    let mbox = built(
+        "bom.mbox",
+        b"\xEF\xBB\xBFFrom ann@example.com Mon Jan 12 17:00:00 2026\n\
+          From: ann@example.com\n\
+          Subject: first\n\
+          \n\
+          body\n\
+          From bob@example.com Mon Jan 12 17:01:00 2026\n\
+          \xEF\xBB\xBFFrom: bob@example.com\n\
+          Subject: second\n\
+          \n\
+          body\n",
+    );
+    let out = run(&[&mbox]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.stderr, "");
+    let subjects: Vec<_> = out
+        .lines()
+        .iter()
+        .map(|line| json!([line["line"], line.get("id"), line.get("subject")]))
+        .collect();
+    assert_eq!(
+        subjects,
+        [
+            json!(["store", null, null]),
+            json!(["message", 1, "first"]),
+            json!(["message", 2, "second"]),
+        ]
+    );
+}
+
 /// An empty entry, a separator line with nothing after it, keeps its ordinal but writes no
 /// line, so the message after it keeps its own ordinal.
 #[test]

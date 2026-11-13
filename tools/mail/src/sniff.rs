@@ -1,6 +1,7 @@
 //! The input's format, from its content and never from its name. The binary formats are told
 //! first, by their magic: a .pst, an .ost and a .msg's compound file. Then the text formats: an
-//! mbox by its first line, and an .eml by the shape of its header block ([`header_shape`]).
+//! mbox by its first line, and an .eml by the shape of its header block ([`header_shape`]). A
+//! text format's leading UTF-8 byte-order mark is skipped ([`BOM`]); the readers skip it too.
 
 use std::io::{self, BufRead, Read};
 
@@ -48,6 +49,8 @@ const OST_CLIENT: &[u8] = b"SO";
 const CFB_MAGIC: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
 /// The start of an mbox's separator line.
 const MBOX_SEPARATOR: &[u8] = b"From ";
+/// The UTF-8 byte-order mark, which an editor may write before an .eml's or an mbox's first line.
+pub const BOM: &[u8] = b"\xEF\xBB\xBF";
 
 pub fn sniff(prefix: &[u8]) -> Format {
     if prefix.starts_with(CFB_MAGIC) {
@@ -56,7 +59,7 @@ pub fn sniff(prefix: &[u8]) -> Format {
     if prefix.starts_with(PST_MAGIC) {
         return pst(prefix);
     }
-    if prefix.starts_with(MBOX_SEPARATOR) {
+    if without_bom(prefix).starts_with(MBOX_SEPARATOR) {
         return Format::Mbox;
     }
     Format::Other
@@ -87,8 +90,13 @@ fn pst(prefix: &[u8]) -> Format {
 /// caps a line at 998 characters, which real mail sometimes passes, though not by this much.
 const LINE_MAX: u64 = 64 * 1024;
 
-/// Whether `input` has the shape of an RFC 5322 message: its first line a header field, and a
-/// From or Date field in its header block. The block runs to its blank line, to the end of the
+/// `text` without its leading UTF-8 byte-order mark, when it has one.
+pub fn without_bom(text: &[u8]) -> &[u8] {
+    text.strip_prefix(BOM).unwrap_or(text)
+}
+
+/// Whether `input` has the shape of an RFC 5322 message: its first line a header field, after a
+/// byte-order mark when it starts with one, and a From or Date field in its header block. The block runs to its blank line, to the end of the
 /// input, or to the first line that is neither a field nor a field's folded continuation. Lines
 /// are read one at a time, so a large input that is no mail is told without being held.
 pub fn header_shape(mut input: impl BufRead) -> io::Result<bool> {
@@ -99,6 +107,7 @@ pub fn header_shape(mut input: impl BufRead) -> io::Result<bool> {
         (&mut input).take(LINE_MAX).read_until(b'\n', &mut line)?;
         let content = line.strip_suffix(b"\n").unwrap_or(&line);
         let content = content.strip_suffix(b"\r").unwrap_or(content);
+        let content = if first { without_bom(content) } else { content };
         if content.is_empty() {
             return Ok(false);
         }
@@ -170,5 +179,20 @@ mod tests {
     fn an_mbox_is_told_by_its_separator_line_not_a_from_field() {
         assert_eq!(sniff(b"From ann@example.com"), Format::Mbox);
         assert_eq!(sniff(b"From: ann@example.com"), Format::Other);
+    }
+
+    /// A leading byte-order mark is skipped before the separator line and the header check, and
+    /// only there: a second one, or one on a later line, is text.
+    #[test]
+    fn a_leading_byte_order_mark_is_skipped() {
+        assert_eq!(sniff(b"\xEF\xBB\xBFFrom ann@ex"), Format::Mbox);
+        assert_eq!(sniff(b"\xEF\xBB\xBFFrom: ann@ex"), Format::Other);
+        assert!(header_shape(&b"\xEF\xBB\xBFFrom: ann@example.com\r\n\r\nbody"[..]).unwrap());
+        assert!(header_shape(&b"\xEF\xBB\xBFSubject: a\r\nDate: x\r\n"[..]).unwrap());
+        assert!(!header_shape(&b"\xEF\xBB\xBF\xEF\xBB\xBFFrom: ann@example.com\r\n"[..]).unwrap());
+        assert!(
+            !header_shape(&b"Subject: a\r\n\xEF\xBB\xBFFrom: ann@example.com\r\n"[..]).unwrap()
+        );
+        assert!(!header_shape(&b"\xEF\xBB\xBF\r\nFrom: ann@example.com\r\n"[..]).unwrap());
     }
 }
