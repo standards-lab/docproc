@@ -1879,7 +1879,17 @@ From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
   created once the input is read), the literal-text escape, and the content rule. mail keeps its
   flags, readers, and model; its text body is escaped by the shared escape, not through html5ever
   and htmd. Its usage error writes `error:`, `--version` on a failed stdout exits 1, and its media
-  directory follows the crate's rule, where the spike's drifted from the envelope.
+  directory follows the crate's rule, where the spike's drifted from the envelope. The crate,
+  written here once for both tools ("docproc-onenote" adopts it), also holds: the content rule's
+  entry point over plain token sequences, with the Markdown-to-plain reader behind a Cargo
+  feature only docproc-mail enables; its Unicode crates required exactly (`=`), so both tools'
+  locks resolve to the version this section states; the media store streaming each medium,
+  hashed while copied through a fixed buffer into a temporary file renamed to its hash name, or
+  hashed only without `--media`; one Markdown destination writer, writing a destination holding
+  a space, a control character, `<`, or `>` as `<…>` with `<` and `>` escaped, else bare with
+  its parentheses escaped; and the warning writer, which writes a colon followed by a space in
+  `<where>` with the space escaped and escapes control characters in `<where>` and `<what>`, with
+  unit tests for each. docproc's CI runs both Rust tools' checks when the crate changes.
 - **Notices.** Release packing writes a third-party notices file from the locked graph into the
   archive, and the check fails on a license outside the permissive set.
 - **Faults.** An HTML body nested past 512 open elements, counted by a pass over its tags before
@@ -1963,14 +1973,11 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
   `[[example]]`, the `findings` task, and `docs/findings/`, at v0.1.0; a per-tool timing, if one
   is wanted, is one harness for all three tools, in the acceptance task.
 - **Shared crate.** onenote adopts the untagged path crate under `tools/` that docproc-mail's
-  task writes, the Rust tools' envelope and the content rule, in place of its own `jsonl.rs`,
-  `guard.rs`, fault and warning code, media name rule, and `escape`; its media directory is
-  created once the input is read, where the spike's is created at its first file. The content
-  rule's entry point takes plain token sequences, and the Markdown-to-plain reader sits behind a
-  Cargo feature only docproc-mail enables, so onenote, comparing an image's `ocr_text` with its
-  `alt_text`, links no CommonMark parser. The crate requires its Unicode crates exactly (`=`), so
-  both tools' locks resolve to the version "docproc-mail" states. docproc's CI runs both Rust
-  tools' checks when the crate changes.
+  task writes ("docproc-mail [mail]", Shared crate), in place of its own `jsonl.rs`, `guard.rs`,
+  fault and warning code, media name rule, and `escape`. Its media directory is created once the
+  input is read, where the spike's is created at its first file; it takes the content rule over
+  plain tokens without the CommonMark feature, comparing an image's `ocr_text` with its
+  `alt_text`.
 - **Check.** The release profile sets `overflow-checks = true`, and the check runs
   `cargo test --release --locked --target <musl>`, so the goldens run against the release artifact
   and the debug build leaves the check. The media test writes under `CARGO_TARGET_TMPDIR`, not the
@@ -1979,23 +1986,19 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
   archive, and the check fails on a license outside the permissive set. The Rust tools' license
   check allows MPL-2.0 by name for docproc-onenote alone, for onenote_parser, and the notices
   state where onenote_parser's source is.
-- **Memory.** The shared media store streams each medium, hashed while copied through a fixed
-  buffer into a temporary file in the media directory and renamed to its hash name, or hashed
-  only without `--media`, where the spike reads each whole and writes the final name directly, so
-  a killed run left a truncated file under the full content's name.
+- **Memory.** Media go through the shared crate's streaming store, where the spike reads each
+  whole and writes the final name directly, so a killed run left a truncated file under the full
+  content's name.
 - **Depth.** The read runs on a thread with a large fixed stack, which holds outline, group,
   table, and equation nesting far past any real page's at no cost in resident memory, where the
   spike's main thread overflows its stack and dies by signal.
-- **Destinations.** One destination writer, in the shared crate, which docproc-mail's Markdown
-  also takes: a destination holding a space, a control character, `<`, or `>` is written `<…>`
-  with `<` and `>` escaped, else bare with its parentheses escaped, where the spike escapes
-  parentheses only. In a table cell, `|` is written `\|` in code spans and LaTeX. Unit tests
-  over built pages show a spaced link, a hyperlinked image with a spaced target, and a cell
+- **Destinations.** Links go through the shared crate's destination writer, where the spike
+  escapes parentheses only. In a table cell, `|` is written `\|` in code spans and LaTeX. Unit
+  tests over built pages show a spaced link, a hyperlinked image with a spaced target, and a cell
   holding each.
-- **Places.** The shared warning writer writes a colon followed by a space in `<where>` with the
-  space escaped, and escapes control characters in `<where>` and `<what>`, where the spike
-  escapes a name's control characters only. A unit test shows a name holding `": "` and a message
-  holding a line break.
+- **Places.** Warnings go through the shared crate's warning writer, where the spike escapes a
+  name's control characters only; a unit test shows a name holding `": "` and a message holding a
+  line break.
 - **Tables of contents.** `--file-only`, which docproc always passes, refuses a `.onetoc2`, exit 3,
   with "docproc-onenote"'s fixed reason, before any section is read; the notebook read warns at
   `/` when it read no entry.
