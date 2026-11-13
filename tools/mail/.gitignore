@@ -1,0 +1,13 @@
+# marathon working files.
+.claude/plans/
+.claude/briefs/
+
+# Build output.
+target/
+
+# The fixtures generator's build output.
+generator/bin/
+generator/obj/
+
+# Untracked state: the scale store, and the findings run's downloads, builds and outputs.
+.state/

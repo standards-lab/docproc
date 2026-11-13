@@ -1,0 +1,216 @@
+{
+  "note": "Hand truth for the .eml sources under eml/, one entry per source, read from the source as a mail reader would: headers decoded from their encoded words and charsets, times in UTC, each body part decoded from its transfer encoding and charset. Line breaks are written as \\n: the source's CRLF is MIME's canonical line break, and the CRLF before a boundary belongs to the boundary. A field the source doesn't have is left out. charset is the text parts' charset where it isn't ASCII. date is the Date header; received the date of the first Received header. A recipient with no display name has only an address. Attachments are in the source's order: the decoded content's size and lowercase hex SHA-256, its filename, content type, Content-ID without angle brackets, and whether its disposition is inline. embedded holds each attached message/rfc822, in this same shape. What each generated format carries of this is the tests' to state: tests/generated.rs.",
+  "messages": {
+    "01-plain.eml": {
+      "subject": "Notes on the engine",
+      "sender": { "name": "Ada Lovelace", "address": "ada@example.org" },
+      "to": [
+        { "name": "Charles Babbage", "address": "charles@example.org" },
+        { "address": "analytical-engine@example.org" }
+      ],
+      "cc": [{ "name": "Mary Somerville", "address": "mary@example.org" }],
+      "date": "2026-01-12T14:15:00Z",
+      "received": "2026-01-12T14:16:30Z",
+      "importance": "high",
+      "message_id": "<notes-1@example.org>",
+      "body": {
+        "text": "Charles,\n\nI have finished the notes on the engine. Note G has the table for the\nBernoulli numbers.\n\nAda\n"
+      }
+    },
+    "02-reply-latin1.eml": {
+      "subject": "Re: Notes on the engine à la française",
+      "sender": { "name": "Charles Babbage", "address": "charles@example.org" },
+      "to": [{ "name": "Ada Lovelace", "address": "ada@example.org" }],
+      "date": "2026-01-12T18:02:00Z",
+      "received": "2026-01-12T18:02:41Z",
+      "message_id": "<reply-1@example.org>",
+      "in_reply_to": "<notes-1@example.org>",
+      "references": "<notes-1@example.org>",
+      "charset": "iso-8859-1",
+      "body": {
+        "text": "Ada,\n\nSplendid. The café in Zürich serves crème brûlée; we shall\ndiscuss Note G there.\n\n> I have finished the notes on the engine.\n\nCharles\n"
+      }
+    },
+    "03-html-inline-image.eml": {
+      "subject": "The first bug, with a picture",
+      "sender": { "name": "Grace Hopper", "address": "grace@example.net" },
+      "to": [{ "name": "Ada Lovelace", "address": "ada@example.org" }],
+      "date": "2026-02-03T09:00:00Z",
+      "received": "2026-02-03T09:00:05Z",
+      "message_id": "<bug-1945@example.net>",
+      "body": {
+        "text": "We found a moth in relay 70, panel F.\nIt is taped into the log book.",
+        "html": "<html><body><p>We found a <b>moth</b> in relay 70, panel F.</p><p><img src=\"cid:moth@example.net\" alt=\"moth\"></p></body></html>"
+      },
+      "attachments": [
+        {
+          "filename": "moth.png",
+          "mime_type": "image/png",
+          "content_id": "moth@example.net",
+          "inline": true,
+          "size": 70,
+          "sha256": "83b67b7e132c07726a0309f13395c7a19884e27ca084eff8e8fe6e320d6d7795"
+        }
+      ]
+    },
+    "04-attachment-cyrillic.eml": {
+      "subject": "Периодическая таблица: отчёт",
+      "sender": { "name": "Дмитрий Менделеев", "address": "dmitri@example.ru" },
+      "to": [{ "name": "Ada Lovelace", "address": "ada@example.org" }],
+      "cc": [{ "name": "Grace Hopper", "address": "grace@example.net" }],
+      "date": "2026-03-18T09:30:00Z",
+      "received": "2026-03-18T09:31:00Z",
+      "message_id": "<table-1869@example.ru>",
+      "charset": "windows-1251",
+      "body": {
+        "text": "Добрый день!\n\nВо вложении таблица элементов.\n\nД. М."
+      },
+      "attachments": [
+        {
+          "filename": "отчёт.csv",
+          "mime_type": "text/csv",
+          "inline": false,
+          "size": 36,
+          "sha256": "3cd92247aaf1de8fd37aca2f4f5e81268f17b0044db3fb757c5eb7168cba4a3e"
+        }
+      ]
+    },
+    "05-japanese.eml": {
+      "subject": "吾輩は猫である",
+      "sender": { "name": "夏目漱石", "address": "soseki@example.jp" },
+      "to": [{ "name": "Ada Lovelace", "address": "ada@example.org" }],
+      "date": "2026-04-09T23:00:00Z",
+      "received": "2026-04-09T23:00:12Z",
+      "message_id": "<neko@example.jp>",
+      "charset": "iso-2022-jp",
+      "body": {
+        "text": "吾輩は猫である。名前はまだ無い。\nどこで生れたかとんと見当がつかぬ。\n"
+      }
+    },
+    "06-chinese.eml": {
+      "subject": "静夜思",
+      "sender": { "name": "李白", "address": "libai@example.cn" },
+      "to": [{ "name": "Ada Lovelace", "address": "ada@example.org" }],
+      "date": "2026-04-26T13:00:00Z",
+      "received": "2026-04-26T13:00:09Z",
+      "message_id": "<jingyesi@example.cn>",
+      "charset": "gb2312",
+      "body": {
+        "text": "床前明月光，\n疑是地上霜。\n举头望明月，\n低头思故乡。\n",
+        "html": "<html><body><p>床前明月光，<br>疑是地上霜。<br>举头望明月，<br>低头思故乡。</p></body></html>\n"
+      }
+    },
+    "07-html-only-bcc.eml": {
+      "subject": "Café at noon ☕",
+      "sender": { "name": "Ada Lovelace", "address": "ada@example.org" },
+      "to": [{ "name": "Grace Hopper", "address": "grace@example.net" }],
+      "bcc": [{ "name": "Charles Babbage", "address": "charles@example.org" }],
+      "date": "2026-05-04T11:45:00Z",
+      "message_id": "<noon@example.org>",
+      "charset": "utf-8",
+      "body": {
+        "html": "<html><body><p>Shall we meet at the café at noon? ☕</p><ul><li>Bring Note G</li><li>Bring the moth</li></ul></body></html>\n"
+      }
+    },
+    "08-forward-attached-message.eml": {
+      "subject": "Fwd: Notes on the engine (draft)",
+      "sender": { "name": "Ada Lovelace", "address": "ada@example.org" },
+      "to": [{ "name": "Mary Somerville", "address": "mary@example.org" }],
+      "date": "2026-05-05T23:20:00Z",
+      "message_id": "<fwd-1@example.org>",
+      "references": "<notes-0@example.org>",
+      "body": {
+        "text": "Mary,\n\nThe draft, as I first sent it to Charles, is attached, with Note G.\n\nAda"
+      },
+      "attachments": [
+        {
+          "filename": "note-g.txt",
+          "mime_type": "text/plain",
+          "inline": false,
+          "size": 31,
+          "sha256": "264f58644f377d192d61fe4a25985a6d3e4c4807d4366c3e54a9edcaf1c5763a"
+        }
+      ],
+      "embedded": [
+        {
+          "subject": "Notes on the engine (draft)",
+          "sender": { "name": "Ada Lovelace", "address": "ada@example.org" },
+          "to": [{ "name": "Charles Babbage", "address": "charles@example.org" }],
+          "date": "2026-01-10T20:00:00Z",
+          "message_id": "<notes-0@example.org>",
+          "body": {
+            "text": "Charles,\n\nA first draft of the notes.\n\nAda"
+          }
+        }
+      ]
+    }
+  },
+  "items_note": "Hand truth for the item sources under items/, one entry per source, as the store holds each item: written field by field, not mapped from MIME. class is the message class. The sender and each recipient are a display name and an address. The times are in UTC: for a conversation, submit_time is its start and delivery_time its end, when the history was saved; the creation and modification times are the delivery time. html is the stored HTML body, the item's only body, a Skype for Business IM transcript for a conversation, one line per message with its speaker, time and text; markdown is the Markdown the CLI makes from it. The people and their chats are invented. What the store carries beyond this is the tests' to state: tests/generated.rs.",
+  "items": {
+    "01-chat-one-to-one.json": {
+      "class": "IPM.Note.Microsoft.Conversation",
+      "subject": "Q1 inventory counts",
+      "sender": { "name": "Priya Raman", "address": "priya.raman@example.com" },
+      "to": [{ "name": "Tomás Ferreira", "address": "tomas.ferreira@example.com" }],
+      "submit_time": "2026-03-10T14:02:11Z",
+      "delivery_time": "2026-03-10T14:07:48Z",
+      "creation_time": "2026-03-10T14:07:48Z",
+      "modification_time": "2026-03-10T14:07:48Z",
+      "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div style=\"font-family:Segoe UI;font-size:10pt\"><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(2:02 PM)</span>: <span>Hi Tomás, do you have the Q1 inventory counts for the Leeds warehouse?</span></div><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(2:03 PM)</span>: <span>Nearly. Shelving &amp; racking are done; cold storage is still being counted.</span></div><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(2:05 PM)</span>: <span>No rush. Can you send them by Thursday?</span></div><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(2:07 PM)</span>: <span>Will do 👍</span></div></div></body></html>",
+      "markdown": "Priya Raman (2:02 PM): Hi Tomás, do you have the Q1 inventory counts for the Leeds warehouse?\n\nTomás Ferreira (2:03 PM): Nearly. Shelving & racking are done; cold storage is still being counted.\n\nPriya Raman (2:05 PM): No rush. Can you send them by Thursday?\n\nTomás Ferreira (2:07 PM): Will do 👍"
+    },
+    "02-chat-multi-party.json": {
+      "class": "IPM.Note.Microsoft.Conversation",
+      "subject": "Release checklist for build 4.2",
+      "sender": { "name": "Wen Okafor", "address": "wen.okafor@example.com" },
+      "to": [
+        { "name": "Priya Raman", "address": "priya.raman@example.com" },
+        { "name": "Tomás Ferreira", "address": "tomas.ferreira@example.com" },
+        { "name": "Dana Kowalski", "address": "dana.kowalski@example.com" }
+      ],
+      "submit_time": "2026-03-11T09:30:04Z",
+      "delivery_time": "2026-03-11T09:41:52Z",
+      "creation_time": "2026-03-11T09:41:52Z",
+      "modification_time": "2026-03-11T09:41:52Z",
+      "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div style=\"font-family:Segoe UI;font-size:10pt\"><div><span style=\"color:#5f5f5f\">Wen Okafor</span> <span style=\"color:#8a8a8a\">(9:30 AM)</span>: <span>Morning all. Release checklist for build 4.2: who has what?</span></div><div><span style=\"color:#5f5f5f\">Dana Kowalski</span> <span style=\"color:#8a8a8a\">(9:31 AM)</span>: <span>I have the installer sign-off.</span></div><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(9:33 AM)</span>: <span>Migration scripts are mine; tested against a copy of staging.</span></div><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(9:36 AM)</span>: <span>Release notes are drafted. I’ll circulate them after lunch.</span></div><div><span style=\"color:#5f5f5f\">Wen Okafor</span> <span style=\"color:#8a8a8a\">(9:41 AM)</span>: <span>Thanks. Go/no-go at 4 PM.</span></div></div></body></html>",
+      "markdown": "Wen Okafor (9:30 AM): Morning all. Release checklist for build 4.2: who has what?\n\nDana Kowalski (9:31 AM): I have the installer sign-off.\n\nTomás Ferreira (9:33 AM): Migration scripts are mine; tested against a copy of staging.\n\nPriya Raman (9:36 AM): Release notes are drafted. I’ll circulate them after lunch.\n\nWen Okafor (9:41 AM): Thanks. Go/no-go at 4 PM."
+    },
+    "03-chat-incoming.json": {
+      "class": "IPM.Note.Microsoft.Conversation",
+      "subject": "Installer sign-off",
+      "sender": { "name": "Dana Kowalski", "address": "dana.kowalski@example.com" },
+      "to": [{ "name": "Priya Raman", "address": "priya.raman@example.com" }],
+      "submit_time": "2026-03-11T15:12:40Z",
+      "delivery_time": "2026-03-11T15:14:05Z",
+      "creation_time": "2026-03-11T15:14:05Z",
+      "modification_time": "2026-03-11T15:14:05Z",
+      "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div style=\"font-family:Segoe UI;font-size:10pt\"><div><span style=\"color:#5f5f5f\">Dana Kowalski</span> <span style=\"color:#8a8a8a\">(3:12 PM)</span>: <span>The signed installer is up: <a href=\"https://builds.example.com/4.2/setup.msi\">setup.msi</a></span></div><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(3:13 PM)</span>: <span>Got it, thanks. The checksums match.</span></div><div><span style=\"color:#5f5f5f\">Dana Kowalski</span> <span style=\"color:#8a8a8a\">(3:14 PM)</span>: <span>Great, I’ll mark it signed off.</span></div></div></body></html>",
+      "markdown": "Dana Kowalski (3:12 PM): The signed installer is up: [setup.msi](https://builds.example.com/4.2/setup.msi)\n\nPriya Raman (3:13 PM): Got it, thanks. The checksums match.\n\nDana Kowalski (3:14 PM): Great, I’ll mark it signed off."
+    },
+    "04-missed.json": {
+      "class": "IPM.Note.Microsoft.Missed",
+      "subject": "Missed conversation with Tomás Ferreira",
+      "sender": { "name": "Tomás Ferreira", "address": "tomas.ferreira@example.com" },
+      "to": [{ "name": "Priya Raman", "address": "priya.raman@example.com" }],
+      "submit_time": "2026-03-12T17:48:20Z",
+      "delivery_time": "2026-03-12T17:53:20Z",
+      "creation_time": "2026-03-12T17:53:20Z",
+      "modification_time": "2026-03-12T17:53:20Z",
+      "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div style=\"font-family:Segoe UI;font-size:10pt\"><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(5:48 PM)</span>: <span>Are the cold storage counts needed before the go/no-go?</span></div></div></body></html>",
+      "markdown": "Tomás Ferreira (5:48 PM): Are the cold storage counts needed before the go/no-go?"
+    },
+    "05-note.json": {
+      "class": "IPM.Note",
+      "subject": "Q1 inventory counts, Leeds",
+      "sender": { "name": "Tomás Ferreira", "address": "tomas.ferreira@example.com" },
+      "to": [{ "name": "Priya Raman", "address": "priya.raman@example.com" }],
+      "cc": [{ "name": "Wen Okafor", "address": "wen.okafor@example.com" }],
+      "submit_time": "2026-03-13T08:15:00Z",
+      "delivery_time": "2026-03-13T08:15:02Z",
+      "creation_time": "2026-03-13T08:15:02Z",
+      "modification_time": "2026-03-13T08:15:02Z",
+      "html": "<html><body><p>Priya,</p><p>The Q1 counts for Leeds are in the shared sheet. Cold storage came in at <b>1,284</b> pallets.</p><p>Tomás</p></body></html>",
+      "markdown": "Priya,\n\nThe Q1 counts for Leeds are in the shared sheet. Cold storage came in at **1,284** pallets.\n\nTomás"
+    }
+  }
+}
