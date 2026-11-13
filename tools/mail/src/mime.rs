@@ -28,17 +28,17 @@
 //! gives a note: the text is decoded lossily. It reports none for a header's encoded words.
 
 use std::borrow::Cow;
+use std::convert::Infallible;
 
+use docproc_envelope::{Fault, Media, extension_of, guarded};
 use mail_parser::{
     AddressList, DateTime, DecodeProblems, Encoding, Header, HeaderForm, HeaderName, Headers,
     MessageParser, MessagePart, MessageRef, PartKind, PartRole,
 };
 
-use crate::files::Files;
-use crate::guard::guarded;
 use crate::model::{Address, Attachment, Body, Derived, Message};
 use crate::msg::DEPTH_MAX;
-use crate::{Fault, mapping, markdown};
+use crate::{mapping, markdown};
 
 /// The address type of every address a MIME message carries.
 const SMTP: &str = "SMTP";
@@ -63,9 +63,9 @@ pub fn parser() -> MessageParser {
         .header(HeaderName::ThreadTopic, HeaderForm::Text)
 }
 
-/// Maps one parsed message to a message line, its attachments' contents written through
-/// `files`.
-pub fn message(parsed: &MessageRef<'_>, files: &mut Files) -> Result<Read, Fault> {
+/// Maps one parsed message to a message line, its attachments' contents stored through
+/// `files`, which names them.
+pub fn message(parsed: &MessageRef<'_>, files: &mut Media) -> Result<Read, Fault> {
     let mut notes = Vec::new();
     let (message, skipped) = read(parsed, 0, "", files, &mut notes)?;
     Ok(Read {
@@ -81,7 +81,7 @@ fn read(
     parsed: &MessageRef<'_>,
     depth: usize,
     at: &str,
-    files: &mut Files,
+    files: &mut Media,
     notes: &mut Vec<(String, String)>,
 ) -> Result<(Message, Vec<(u32, String)>), Fault> {
     let mut own = Vec::new();
@@ -99,7 +99,7 @@ fn read(
             content,
             nested,
             notes: own,
-        } = match guarded(|| Ok(attachment(&part, depth + 1 > DEPTH_MAX))) {
+        } = match guarded(|| Ok::<_, Infallible>(attachment(&part, depth + 1 > DEPTH_MAX))) {
             Ok(read) => read,
             Err(failure) => {
                 notes.push((here, format!("skipped: {}", failure.reason)));
@@ -108,8 +108,9 @@ fn read(
             }
         };
         notes.extend(own.into_iter().map(|note| (here.clone(), note)));
-        if let (Some(file), Some(content)) = (&record.file, &content) {
-            files.write(file, content)?;
+        if let Some(content) = &content {
+            let extension = record.filename.as_deref().and_then(extension_of);
+            record.file = Some(files.store(content.as_ref(), extension)?);
         }
         match nested {
             Some(_) if depth + 1 > DEPTH_MAX => notes.push((here, too_deep())),
@@ -294,8 +295,8 @@ fn joined<'m>(
     (!texts.is_empty()).then(|| texts.join("\n"))
 }
 
-/// One attachment part read: its record, its decoded content when it is a file, and its nested
-/// message when it is a message/rfc822 part, with its notes.
+/// One attachment part read: its record, its decoded content when it is a file, which the caller
+/// stores and names, and its nested message when it is a message/rfc822 part, with its notes.
 struct Part<'m> {
     record: Attachment,
     content: Option<Cow<'m, [u8]>>,
@@ -357,12 +358,6 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
     }
     let (content, problems) = part.decoded_checked();
     lossy_note(problems, "attachment's content", &mut notes);
-    let extension = record
-        .filename
-        .as_deref()
-        .and_then(|name| name.rsplit_once('.'))
-        .map(|(_, extension)| extension);
-    record.file = Some(mapping::file_name(&content, extension));
     record.method = Some("by_value");
     record.size = Some(content.len() as u64);
     Part {

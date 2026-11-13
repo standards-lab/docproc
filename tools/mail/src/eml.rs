@@ -6,17 +6,17 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::files::Files;
-use crate::jsonl::Lines;
+use docproc_envelope::{Fault, Lines, Media};
+
 use crate::model::{self, Skipped, Store};
-use crate::{Fault, mime, warn_below};
+use crate::{mime, warn_below};
 
 /// The size mail-parser parses up to: its offsets are 32-bit.
 const SIZE_MAX: u64 = 1 << 32;
 
 /// Reads the .eml at `path` and writes its store line, its message line and its skipped
 /// attachments' lines to `out`.
-pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Files) -> Result<(), Fault> {
+pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Result<(), Fault> {
     let input = path.display();
     let refused = |err: std::io::Error| Fault::Refused(format!("{input}: {err}"));
     let size = std::fs::metadata(path).map_err(refused)?.len();

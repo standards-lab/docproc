@@ -448,7 +448,7 @@ fn content_that_cant_be_written_exits_1() {
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr
-            .starts_with("docproc-mail: error: the attachments directory ")
+            .starts_with("docproc-mail: error: the media directory ")
             && out.stderr.contains("can't be created"),
         "{}",
         out.stderr
@@ -461,7 +461,7 @@ fn content_that_cant_be_written_exits_1() {
     assert_eq!(out.code, Some(1));
     assert!(
         out.stderr.starts_with(&format!(
-            "docproc-mail: error: the attachment {}",
+            "docproc-mail: error: the media file {}",
             dir.join(&first).display()
         )) && out.stderr.contains("can't be written"),
         "{}",

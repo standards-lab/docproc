@@ -37,15 +37,19 @@ jobs:
       # One filter per tool, named as its directory under tools/, so the filters that match are
       # the matrix's tools. Each begins with the wiring every tool shares, anchored on the first:
       # this workflow, the root mise.toml its check loads, and tools/'s scripts and envelope table.
+      # A Rust tool's adds the shared envelope crate's directory, anchored on the first Rust tool:
+      # each Rust tool's check tests the crate against its own lock, so a change to the crate runs
+      # every Rust tool, and no .NET one.
       - id: tools
         uses: dorny/paths-filter@v4.0.3
         with:
           filters: |
             ooxml:
-              - &shared ['.github/workflows/ci.yml', 'mise.toml', 'tools/*.sh', 'tools/envelope/**']
+              - &shared ['.github/workflows/ci.yml', 'mise.toml', 'tools/*.sh', 'tools/envelope/cases.json']
               - 'tools/ooxml/**'
             mail:
               - *shared
+              - &envelope 'tools/envelope/**'
               - 'tools/mail/**'
 
       - id: lint

@@ -10,8 +10,9 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
+use docproc_envelope::panic_text;
+
 use crate::codepage::{self, FALLBACK};
-use crate::panic_text;
 
 /// The header of compressed RTF (MS-OXRTFCP 2.1.3.1.1): COMPSIZE, RAWSIZE, COMPTYPE and CRC.
 const HEADER: usize = 16;

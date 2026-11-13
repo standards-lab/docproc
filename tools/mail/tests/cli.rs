@@ -16,7 +16,26 @@ fn version_prints_the_bare_crate_version() {
     assert_eq!(out.stderr, "");
 }
 
-/// Each usage error exits 2 with its reason and the usage on stderr, and nothing on stdout.
+/// A stdout that can't take the version is an output fault, exit 1, with its error line.
+#[test]
+fn version_to_a_full_stdout_exits_1() {
+    let full = std::fs::File::options()
+        .write(true)
+        .open("/dev/full")
+        .unwrap();
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_docproc-mail"))
+        .arg("--version")
+        .stdout(full)
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(out.stderr).unwrap(),
+        "docproc-mail: error: stdout can't be written: No space left on device (os error 28)\n"
+    );
+}
+
+/// Each usage error exits 2 with its error line and the usage on stderr, and nothing on stdout.
 #[test]
 fn usage_errors_exit_2_with_usage() {
     let store = fixture("pst/libyal/outlook.pst");
@@ -54,7 +73,7 @@ fn usage_errors_exit_2_with_usage() {
         assert_eq!(out.stdout, "", "{args:?}");
         assert_eq!(
             out.stderr,
-            format!("docproc-mail: {reason}\n{USAGE}"),
+            format!("docproc-mail: error: {reason}\n{USAGE}"),
             "{args:?}"
         );
     }
@@ -84,7 +103,7 @@ fn a_malformed_after_id_is_a_usage_error() {
         assert_eq!(
             out.stderr,
             format!(
-                "docproc-mail: --after {id} is not a message id, a whole number from 1 to 4,294,967,295\n{USAGE}"
+                "docproc-mail: error: --after {id} is not a message id, a whole number from 1 to 4,294,967,295\n{USAGE}"
             ),
             "{id:?}"
         );
@@ -107,7 +126,7 @@ fn after_with_a_single_message_is_a_usage_error() {
         assert_eq!(
             out.stderr,
             format!(
-                "docproc-mail: --after resumes a .pst or an mbox; \
+                "docproc-mail: error: --after resumes a .pst or an mbox; \
                  {path} is {kind}, a single message\n{USAGE}"
             ),
             "{input}"
@@ -119,7 +138,7 @@ fn after_with_a_single_message_is_a_usage_error() {
 }
 
 /// --attachments is accepted before or after the input, and a directory that doesn't exist yet
-/// is accepted: it is created when attachments are written.
+/// is accepted: it is created once the input is read.
 #[test]
 fn attachments_is_accepted_with_the_input() {
     let store = fixture("pst/libyal/outlook.pst");
@@ -132,7 +151,36 @@ fn attachments_is_accepted_with_the_input() {
         let out = run(&args);
         assert_eq!(out.code, Some(0), "{}", out.stderr);
         assert_eq!(out.stdout, without.stdout);
+        assert!(dir.is_dir());
     }
+}
+
+/// The attachments directory follows the envelope's rule: created once the input is read, with
+/// no attachment to write in it, and never for an input that is refused.
+#[test]
+fn the_attachments_directory_is_created_once_the_input_is_read() {
+    let tmp = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let made = tmp.join("attachments-plain");
+    let refused = tmp.join("attachments-refused");
+    for dir in [&made, &refused] {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+    let plain = fixture("generated/eml/01-plain.eml");
+    let out = run(&[
+        plain.as_os_str(),
+        "--attachments".as_ref(),
+        made.as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(std::fs::read_dir(&made).unwrap().count(), 0);
+    let foreign = built("attachments-refused.txt", b"neither mail nor a store\n");
+    let out = run(&[
+        foreign.as_os_str(),
+        "--attachments".as_ref(),
+        refused.as_os_str(),
+    ]);
+    assert_eq!(out.code, Some(3), "{}", out.stderr);
+    assert!(!refused.exists());
 }
 
 /// A PST header with the given client magic and version, padded to the header's size, with

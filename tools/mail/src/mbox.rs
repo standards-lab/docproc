@@ -20,13 +20,12 @@ use std::fs::File;
 use std::io::{self, BufReader, Write};
 use std::path::Path;
 
+use docproc_envelope::{Fault, Lines, Media};
 use mail_parser::MessageBuffers;
 use mail_parser::mailbox::mbox::{Message, MessageIterator};
 
-use crate::files::Files;
-use crate::jsonl::Lines;
 use crate::model::{self, Skipped, Store};
-use crate::{Fault, mime, sniff, warn, warn_below};
+use crate::{mime, sniff, warn, warn_below};
 
 /// Reads the mbox at `path` and writes its store line and the lines of its messages, those after
 /// ordinal `after` when it is given, to `out`.
@@ -34,7 +33,7 @@ pub fn read(
     path: &Path,
     after: Option<u32>,
     out: &mut Lines<impl Write>,
-    files: &mut Files,
+    files: &mut Media,
 ) -> Result<(), Fault> {
     let input = path.display();
     let file = File::open(path).map_err(|err| Fault::Refused(format!("{input}: {err}")))?;

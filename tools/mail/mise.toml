@@ -26,8 +26,12 @@ MimeKit 4.18.2: MsgKit 3.0.6 and PstBuilder.Eml 1.3.0 are built on MimeKit 4
 
 # The binary is static, linked against musl, so it needs no glibc and sets no GLIBC_FLOOR. Every
 # test runs the release musl binary, overflow checks on (Cargo.toml), so no debug build is made.
+# The shared envelope crate, tools/envelope, has no lock or toolchain of its own: each Rust tool's
+# check formats, lints, and tests it with the tool's, against the tool's Cargo.lock, so it is
+# tested in every graph that links it, and docproc's root check reaches it through TOOLS. Its
+# manifest is formatted by path, which reads no lock and writes none.
 [tasks.check]
-description = "Shellcheck the scripts, format-check, lint, and test against the static musl release binary, then print its version; writes only target/"
+description = "Shellcheck the scripts, format-check, lint, and test docproc-mail and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -35,8 +39,9 @@ export PATH="$CARGO_HOME/bin:$PATH"
 target="$(uname -m)-unknown-linux-musl"
 git ls-files -z '*.sh' | xargs -0 -r shellcheck
 cargo fmt --check
-cargo clippy --all-targets --locked --target "$target" -- -D warnings
-cargo test --release --locked --target "$target"
+cargo fmt --check --manifest-path ../envelope/Cargo.toml
+cargo clippy --all-targets --locked --target "$target" -p docproc-mail -p docproc-envelope -- -D warnings
+cargo test --release --locked --target "$target" -p docproc-mail -p docproc-envelope
 "target/$target/release/docproc-mail" --version
 '''
 
@@ -64,7 +69,7 @@ run = '''
 set -eu
 export PATH="$CARGO_HOME/bin:$PATH"
 target="$(uname -m)-unknown-linux-musl"
-UPDATE_GOLDEN=1 cargo test --release --locked --target "$target"
+UPDATE_GOLDEN=1 cargo test --release --locked --target "$target" -p docproc-mail
 '''
 
 [tasks.mboxrd]

@@ -131,6 +131,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "docproc-envelope"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "docproc-mail"
 version = "0.3.1"
 dependencies = [
@@ -138,13 +147,13 @@ dependencies = [
  "codepage",
  "codepage-strings",
  "compressed-rtf",
+ "docproc-envelope",
  "encoding_rs",
  "htmd",
  "mail-parser",
  "outlook-pst",
  "serde",
  "serde_json",
- "sha2",
 ]
 
 [[package]]

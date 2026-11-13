@@ -2,7 +2,7 @@
 //! readers. It reads only what a reader has put in the bags, and returns its notes (lossy
 //! decodings, values it couldn't use) for the caller to warn about with the record's place.
 
-use sha2::{Digest, Sha256};
+use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
 use crate::model::{Address, Attachment, Body, Derived, Message};
@@ -139,29 +139,28 @@ fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {
 /// attachment by its content-id or location, which is how an inline disposition is stored.
 const ATT_MHTML_REF: i64 = 0x4;
 
-/// The longest stored extension a file name keeps.
-const EXTENSION_MAX: usize = 8;
-
-/// Maps an attachment's properties, and its content when it was read, to an attachment record.
-/// Strings in PT_STRING8 are decoded in `code_page`, the message's.
+/// Maps an attachment's properties, and its content when it was read, to an attachment record,
+/// and gives the extension it was stored under. The record has no `file` yet: the caller stores
+/// the content in the media store, which names it by the content and that extension. Strings in
+/// PT_STRING8 are decoded in `code_page`, the message's.
 pub fn attachment(
     props: &Bag,
     content: Option<&[u8]>,
     code_page: u16,
-) -> (Attachment, Vec<String>) {
+) -> (Attachment, Option<String>, Vec<String>) {
     let mut strings = Strings::new(code_page);
     let mut notes = Vec::new();
     let filename = strings
         .text(props, tag::ATTACH_LONG_FILENAME)
         .or_else(|| strings.text(props, tag::ATTACH_FILENAME));
-    // The stored extension is PidTagAttachExtension, else the filename's.
-    let extension = strings.text(props, tag::ATTACH_EXTENSION).or_else(|| {
-        let name = filename.as_deref()?;
-        name.rsplit_once('.')
-            .map(|(_, extension)| extension.to_owned())
-    });
+    // The stored extension is PidTagAttachExtension, stored with or without its dot, else the
+    // filename's.
+    let extension = strings
+        .text(props, tag::ATTACH_EXTENSION)
+        .map(|extension| extension.strip_prefix('.').unwrap_or(&extension).to_owned())
+        .or_else(|| extension_of(filename.as_deref()?).map(str::to_owned));
     let attachment = Attachment {
-        file: content.map(|content| file_name(content, extension.as_deref())),
+        file: None,
         filename,
         mime_type: strings.text(props, tag::ATTACH_MIME_TAG),
         content_id: strings.text(props, tag::ATTACH_CONTENT_ID),
@@ -172,24 +171,7 @@ pub fn attachment(
     };
     let mut all = strings.into_notes();
     all.append(&mut notes);
-    (attachment, all)
-}
-
-/// A content's file name: the lowercase hex SHA-256 of its bytes, plus `extension`, with or
-/// without its leading dot, when it is 1 to [`EXTENSION_MAX`] ASCII letters and digits. Any
-/// other extension is left off, so a stored name never puts a path or an odd character in the
-/// file name. The extension keeps its stored case, as office's media names do.
-pub fn file_name(content: &[u8], extension: Option<&str>) -> String {
-    let mut name = hex(&Sha256::digest(content));
-    let extension = extension.map(|extension| extension.strip_prefix('.').unwrap_or(extension));
-    if let Some(extension) = extension
-        && (1..=EXTENSION_MAX).contains(&extension.len())
-        && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
-    {
-        name.push('.');
-        name.push_str(extension);
-    }
-    name
+    (attachment, extension, all)
 }
 
 /// PidTagAttachMethod (MS-OXCMSG 2.2.2.9) by name.
@@ -347,34 +329,25 @@ mod tests {
     }
 
     #[test]
-    fn a_file_name_keeps_only_a_short_alphanumeric_extension() {
-        let sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-        assert_eq!(file_name(b"", Some(".png")), format!("{sha}.png"));
-        assert_eq!(file_name(b"", Some("JPG")), format!("{sha}.JPG"));
-        assert_eq!(file_name(b"", None), sha);
-        for odd in ["", ".", "tar.gz", "../x", "ext ension", "cöt", "toolongext"] {
-            assert_eq!(file_name(b"", Some(odd)), sha, "{odd:?}");
-        }
-    }
-
-    #[test]
     fn the_extension_is_the_stored_one_else_the_filenames() {
         let unicode =
             |text: &str| Value::Unicode(text.encode_utf16().flat_map(u16::to_le_bytes).collect());
         let mut props = Bag::from([(tag::ATTACH_LONG_FILENAME, unicode("report.csv"))]);
-        let (record, _) = attachment(&props, Some(b""), 1252);
-        assert!(record.file.unwrap().ends_with(".csv"));
+        let (_, extension, _) = attachment(&props, Some(b""), 1252);
+        assert_eq!(extension.as_deref(), Some("csv"));
         props.insert(tag::ATTACH_EXTENSION, unicode(".txt"));
-        let (record, _) = attachment(&props, Some(b""), 1252);
-        assert!(record.file.unwrap().ends_with(".txt"));
-        let (record, _) = attachment(&props, None, 1252);
+        let (_, extension, _) = attachment(&props, Some(b""), 1252);
+        assert_eq!(extension.as_deref(), Some("txt"));
+        props.insert(tag::ATTACH_EXTENSION, unicode("JPG"));
+        let (record, extension, _) = attachment(&props, None, 1252);
+        assert_eq!(extension.as_deref(), Some("JPG"));
         assert_eq!((record.file, record.size), (None, None));
     }
 
     #[test]
     fn an_unknown_attach_method_is_left_out_with_a_note() {
         let props = Bag::from([(tag::ATTACH_METHOD, Value::Integer(3))]);
-        let (record, notes) = attachment(&props, None, 1252);
+        let (record, _, notes) = attachment(&props, None, 1252);
         assert_eq!(record.method, None);
         assert_eq!(notes, ["property 0x3705 has unknown value 3; left out"]);
     }

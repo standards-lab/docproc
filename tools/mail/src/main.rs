@@ -5,13 +5,11 @@
 //! nothing else goes there. Warnings and errors are single lines on stderr. Exit codes:
 //! 0 read, even with records skipped; 1 output that can't be written, to stdout or to the
 //! attachments directory; 2 a usage error;
-//! 3 an input refused; 4 a fault of the CLI's own.
+//! 3 an input refused; 4 a fault of the CLI's own. The envelope, those lines and codes, the
+//! guard, and the attachments directory's store, is docproc-envelope's.
 
 mod codepage;
 mod eml;
-mod files;
-mod guard;
-mod jsonl;
 mod mapping;
 mod markdown;
 mod mbox;
@@ -23,16 +21,13 @@ mod pst;
 mod rtf;
 mod sniff;
 
-use std::any::Any;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read};
-use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use files::Files;
-use jsonl::Lines;
+use docproc_envelope::{Fault, Lines, Media, stderr};
 use sniff::Format;
 
 /// The binary's name, which Cargo.toml's package gives, leading every stderr line.
@@ -45,20 +40,6 @@ const USAGE: &str = concat!(
     env!("CARGO_BIN_NAME"),
     " --version"
 );
-
-/// Why a run stopped short of exit 0.
-pub enum Fault {
-    /// The arguments: exit 2, with usage.
-    Usage(String),
-    /// The input: exit 3, with one reason line and nothing on stdout.
-    Refused(String),
-    /// stdout couldn't be written: exit 1.
-    Output(io::Error),
-    /// An attachment's content couldn't be written to the attachments directory: exit 1.
-    Attachments(String),
-    /// A fault of the CLI's own: exit 4.
-    Internal(String),
-}
 
 /// The parsed command line.
 enum Command {
@@ -74,37 +55,15 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    // Panics are reported once, as a warning or an error line, never by the default hook.
-    panic::set_hook(Box::new(|_| {}));
     // args_os: a path needn't be UTF-8, and std::env::args panics on one that isn't.
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
-    let outcome = panic::catch_unwind(AssertUnwindSafe(|| run(&args)))
-        .unwrap_or_else(|payload| Err(Fault::Internal(panic_text(&*payload))));
-    match outcome {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(Fault::Output(err)) => fail(1, &format!("stdout can't be written: {err}")),
-        Err(Fault::Attachments(reason)) => fail(1, &reason),
-        Err(Fault::Usage(reason)) => {
-            eprintln!("{NAME}: {reason}\n{USAGE}");
-            ExitCode::from(2)
-        }
-        Err(Fault::Refused(reason)) => fail(3, &reason),
-        Err(Fault::Internal(reason)) => fail(4, &format!("internal fault: {reason}")),
-    }
-}
-
-fn fail(code: u8, reason: &str) -> ExitCode {
-    eprintln!("{NAME}: error: {reason}");
-    ExitCode::from(code)
+    docproc_envelope::run(NAME, USAGE, || run(&args))
 }
 
 fn run(args: &[OsString]) -> Result<(), Fault> {
     let args = match parse(args)? {
-        Command::Version => {
-            // The bare version, which the release compares with its tag's.
-            println!("{}", env!("CARGO_PKG_VERSION"));
-            return Ok(());
-        }
+        // The bare version, which the release compares with its tag's.
+        Command::Version => return docproc_envelope::version(env!("CARGO_PKG_VERSION")),
         Command::Read(args) => args,
     };
     let path = &args.input;
@@ -114,7 +73,7 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
         .and_then(|file| file.take(sniff::PREFIX as u64).read_to_end(&mut prefix))
         .map_err(|err| Fault::Refused(format!("{input}: {err}")))?;
     let mut out = Lines::new(BufWriter::new(io::stdout().lock()));
-    let mut files = Files::new(args.attachments);
+    let mut files = Media::new(args.attachments);
     match sniff::sniff(&prefix) {
         Format::Pst(encoding) => pst::read(path, encoding, args.after, &mut out, &mut files)?,
         Format::Ost => {
@@ -240,9 +199,9 @@ fn message_id(arg: &OsString) -> Option<u32> {
     digits.parse().ok().filter(|id| *id != 0)
 }
 
-/// Writes one warning line: "spike-ai-pipeline-mail: warning: <where>: <what>".
+/// Writes one warning line: "docproc-mail: warning: <where>: <what>", escaped.
 pub fn warn(place: &str, what: &str) {
-    eprintln!("{NAME}: warning: {place}: {what}");
+    stderr::warning(NAME, place, what);
 }
 
 /// Writes one warning line for each of a record's notes.
@@ -258,13 +217,4 @@ pub fn warn_below(place: &str, notes: Vec<(String, String)>) {
     for (below, note) in notes {
         warn(&format!("{place}{below}"), &note);
     }
-}
-
-/// The message a panic was raised with.
-pub fn panic_text(payload: &(dyn Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|text| (*text).to_owned())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "a panic without a message".to_owned())
 }

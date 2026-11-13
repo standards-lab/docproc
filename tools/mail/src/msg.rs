@@ -22,19 +22,18 @@
 //! without one, or with one that can't be read, is refused.
 
 use std::collections::BTreeMap;
+use std::convert::Infallible;
 use std::fs::File;
 use std::io::{self, Cursor, Read, Write};
 use std::path::{Path, PathBuf};
 
 use cfb::CompoundFile;
+use docproc_envelope::{Fault, Lines, Media, guarded};
 
 use crate::codepage::msg_code_page;
-use crate::files::Files;
-use crate::guard::guarded;
-use crate::jsonl::Lines;
 use crate::model::{self, Message};
 use crate::props::{Bag, Value, integer, tag};
-use crate::{Fault, mapping, warn, warn_all};
+use crate::{mapping, warn, warn_all};
 
 /// The stream of a message's, a recipient's or an attachment's properties.
 const PROPERTIES: &str = "__properties_version1.0";
@@ -95,7 +94,7 @@ impl Header {
 
 /// Reads the .msg at `path`, writes its store line and its message line to `out`, and its
 /// attachments' contents, nested messages' included, through `files`.
-pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Files) -> Result<(), Fault> {
+pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Result<(), Fault> {
     let input = path.display();
     let file = guarded(|| cfb::open(path)).map_err(|failure| {
         Fault::Refused(format!(
@@ -104,7 +103,7 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Files) -> Resu
         ))
     })?;
     let root = Path::new("/");
-    let message = guarded(|| Ok(file.is_stream(root.join(PROPERTIES))));
+    let message = guarded(|| Ok::<_, Infallible>(file.is_stream(root.join(PROPERTIES))));
     if !message.is_ok_and(|message| message) {
         return Err(Fault::Refused(format!(
             "{input}: a compound file, but not an Outlook message: it has no {PROPERTIES} stream"
@@ -154,7 +153,7 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Files) -> Resu
 struct Walk<'a> {
     path: PathBuf,
     file: CompoundFile<File>,
-    files: &'a mut Files,
+    files: &'a mut Media,
     /// The named properties' mapping, by property id.
     #[allow(
         dead_code,
@@ -239,10 +238,11 @@ impl Walk<'_> {
                     ),
                 }
             }
-            let (mut record, notes) = mapping::attachment(&props, content.as_deref(), code_page);
+            let (mut record, extension, notes) =
+                mapping::attachment(&props, content.as_deref(), code_page);
             warn_all(&here, notes);
-            if let (Some(file), Some(content)) = (&record.file, &content) {
-                self.files.write(file, content)?;
+            if let Some(content) = &content {
+                record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
             }
             record.message = nested.map(Box::new);
             message.attachments.push(record);

@@ -32,6 +32,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
+use docproc_envelope::{Failure, Fault, Lines, Media, guarded};
 use outlook_pst::ltp::prop_context::PropertyValue;
 use outlook_pst::ltp::table_context::{TableContext, TableRowId};
 use outlook_pst::messaging::attachment::{
@@ -43,12 +44,9 @@ use outlook_pst::ndb::node_id::NodeId;
 use outlook_pst::{AnsiPstFile, UnicodePstFile};
 
 use crate::codepage::{message_code_page, store_code_page};
-use crate::files::Files;
-use crate::guard::{Failure, guarded};
-use crate::jsonl::Lines;
 use crate::props::{Bag, Value, integer, tag};
 use crate::sniff::Encoding;
-use crate::{Fault, mapping, model, warn, warn_all};
+use crate::{mapping, model, warn, warn_all};
 
 /// PidTagAttachMethod's afEmbeddedMessage (MS-OXCMSG 2.2.2.9).
 const AF_EMBEDDED_MESSAGE: i64 = 5;
@@ -61,7 +59,7 @@ pub fn read(
     encoding: Encoding,
     after: Option<u32>,
     out: &mut Lines<impl Write>,
-    files: &mut Files,
+    files: &mut Media,
 ) -> Result<(), Fault> {
     let pst = Pst::open(path, encoding).map_err(Fault::Refused)?;
     let root = guarded(|| {
@@ -347,7 +345,7 @@ struct Walk<'a, W: Write> {
     /// it has, or for a whole read.
     after: Option<u32>,
     out: &'a mut Lines<W>,
-    files: &'a mut Files,
+    files: &'a mut Media,
 }
 
 impl<W: Write> Walk<'_, W> {
@@ -474,11 +472,11 @@ impl<W: Write> Walk<'_, W> {
             if !read.opened {
                 warn(&here, not_opened(&read.props));
             }
-            let (record, notes) =
+            let (mut record, extension, notes) =
                 mapping::attachment(&read.props, read.content.as_deref(), code_page);
             warn_all(&here, notes);
-            if let (Some(file), Some(content)) = (&record.file, &read.content) {
-                self.files.write(file, content)?;
+            if let Some(content) = &read.content {
+                record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
             }
             message.attachments.push(record);
         }
