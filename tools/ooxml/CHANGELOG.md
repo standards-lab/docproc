@@ -1,14 +1,19 @@
 # Changelog
 
-All notable changes to `docproc-ooxml` are documented here, a section per release, headed by the
-version its `tools/ooxml/vX.Y.Z` tag carries; the release's notes are its section. The CLI
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Its JSON Lines, their
-`schema` version included, are its output contract: a change to them is a change here.
+All notable changes to `docproc-ooxml` are documented here. The format follows [Keep a
+Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to [Semantic
+Versioning](https://semver.org/spec/v2.0.0.html). Each release's section is headed by the version
+its `tools/ooxml/vX.Y.Z` tag carries, and is the release's notes. Its JSON Lines, their `schema`
+version included, are its output contract: a change to them is a change here. This changelog
+covers docproc-ooxml only.
 
-## v0.1.0
+## [Unreleased]
+
+## [v0.1.0] - 2026-11-13
 
 The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeline-office v0.1.0
-(b9bb1a2), its schema `"1"` CLI, renamed, and reworked into docproc's system tool.
+(b9bb1a2), its schema `"1"` CLI, renamed, and reworked into docproc's system tool; Changed
+says how it differs from the spike.
 
 ### Added
 
@@ -43,7 +48,7 @@ The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeli
   binary, LICENSE, and THIRD-PARTY-NOTICES.txt, with `SHA256SUMS`; a release is refused unless
   the binary's `--version` is the tag's and it requires glibc 2.34 at most.
 
-### Changed from the spike
+### Changed
 
 - One run writes the model and its Markdown together; `--format` is gone.
 - The model's fields are snake_case, and the text each holds exists once, in the Markdown.
@@ -59,3 +64,6 @@ The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeli
 - Tracked changes are read accepted only.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
+
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

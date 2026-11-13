@@ -147,7 +147,7 @@ from this directory, `mise run <task>`, or from the repository root, `mise -C to
   fixtures are described in [`fixtures/README.md`](fixtures/README.md).
 
 The version the project records, in `src/Docproc.Ooxml/Docproc.Ooxml.csproj`, must be the
-release tag's and [`CHANGELOG.md`](CHANGELOG.md)'s top section's. A release binary prints it
-alone; other builds append `+` and the commit.
+release tag's and that of [`CHANGELOG.md`](CHANGELOG.md)'s newest release section. A release
+binary prints it alone; other builds append `+` and the commit.
 
 Apache-2.0.
