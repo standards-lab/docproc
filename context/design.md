@@ -446,4 +446,298 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   needs. Every workaround is owned, tested code in docproc-onenote, the tool fills a gap itself
   where it needs to, and nothing is filed upstream.
 
-The remaining two artifacts' reviews follow in their own sections.
+## processing
+
+From spike-ai-pipeline-processing v0.9.0, read at its tag with a clean tree, its one caller in
+spike-ai-pipeline at `6a631f1`, and mail v0.3.1. Four group evaluations (inspection and routing,
+PI; tool runners and readers, PT; stages and media, PS; dispatch, content, and index, PD) were
+synthesised into sixteen cross-package findings (PX) and twenty decisions; the groups ran their
+probes on scratch copies and an entry says where a finding was run, the rest found by reading.
+Round 4 accepted every finding as proposed, merged and with conflicts resolved as the synthesis
+set out, and every decision as recommended; Q1 settled the findings, Q2 to Q16 decisions 1 to
+15, Q17 decision 19, Q18 decision 17, Q19 decision 18, Q20 decision 20, and Q1 took decision 16
+with PX-5. The changes are in `layers.md`, "docproc's packages [library]", unless an entry names
+another task; the signatures and sentences the decisions changed are in `layers.md`'s "docproc's
+API" sections. An entry merged into a PX finding is settled there and only points to it.
+
+### Decisions
+
+- **1 · Which failures are recorded (Q2).** Settled → library; acceptance counts recorded
+  failures by class. PX-1's table, classified once in `stages` from `ExitError.Signal` and
+  `TimedOut`: a tool's own exit, its own fatal signal, its own time bound, and output that
+  doesn't parse are the content's, recorded; the context ending, a SIGKILL or SIGTERM docproc
+  didn't send, a failed start, exit 1 or 2, and docproc's side of the pipe are the run's,
+  retried. It is the one rule under which ON-16's signal is recorded failed. Rejected: PD-11's
+  narrow rule, only a tool's exit 3.
+- **2 · A replay miss (Q3).** Settled → library; the docinfer goal for `job`'s counting. The
+  nearest ancestor with a file drops its entry and prepares again, resolving its children one
+  level down before its first event; events are at-least-once, and "drops the entries along its
+  replay path" goes. Refines the goal's "prepares the replaying part in place". Rejected: found
+  parts' bytes kept in `Content`, which doubles blob storage for every store and archive;
+  `ErrStale` for redelivery.
+- **3 · A lost claim (Q4).** Settled → library. One renewer goroutine per dispatch renews every
+  claim in flight from `Claim` to `Record` or `Release`; a refused renewal ends the dispatch with
+  `ErrClaimLost`, transient. Rejected: unwinding the part in place, which needs a context tree
+  and repeats events anyway.
+- **4 · The resume cursor (Q5).** Settled → library; the docinfer goal for the checkpoint's
+  wording. The replay skips through the item whose `After` equals `Input.After`, `After` opaque
+  and compared by equality alone; no such item ends the dispatch with an error. Supersedes the
+  goal's "at most `Input.After`". Rejected: numeric comparison, since mail matches `id == after`
+  (mail: src/pst.rs:433) and a `.pst`'s node ids don't ascend in read order.
+- **5 · `Event.Keep` (Q6).** Settled → library; docproc for `run`. Dropped: an event's files are
+  the caller's to read, link, or move until its body returns; an output is appended, and a
+  part's entry recorded, before its event is yielded. Rejected: keeping it, six callers, all
+  tests.
+- **6 · Flags (Q7).** Settled → library. Content flags in the part's `Entry`, name flags from
+  `inspect.Name` at every occurrence, the verdict over both under the current options; `Item.Flag`
+  replaces `QuarantineError`; `inspect.Options` gains `Validate`, `Bomb`, and `Verdict`. Answers
+  `layers.md`'s open question on a changed policy. Rejected: `Index.Flags` and `RecordFlags`,
+  the policy frozen at preparation.
+- **7 · The module's shape (Q8).** Settled → library; `layers.md`'s package table, done here.
+  The adapters move into `stages`; the envelope reader stays in `internal/cli`; `Warning` stays
+  `dispatch`'s; `Read` and `Convert` return the sequence. Rejected: adapters in `dispatch` and a
+  public envelope package.
+- **8 · `stages.Build`'s options (Q9).** Settled → library. `Build(ctx, lookup, opts Options)`,
+  one struct, each bound's owner and outcome stated once in `layers.md`. Rejected: the three
+  settled arguments, under which Cerebro can set none of the groups' bounds.
+- **9 · Default bounds (Q10).** Settled → library; docproc (`cmd/docproc`'s starting values);
+  acceptance. No `Limits` or run bound has a library default; `cmd/docproc` ships starting
+  values, and acceptance dispatches PI-1's bombs through it; the bomb rule sums across an
+  archive's entries. Rejected: `dispatch.New` refusing a zero `Limits.Bytes`.
+- **10 · Envelope additions (Q11).** Settled → ooxml, mail, onenote; library reads them. Three
+  additions under schema "2", before the tool tasks start: `--version`'s second line
+  `schema <n>`; the warning escape's form stated, and an error reason never leading with the
+  input path; a `message` line's optional `media` for `data:` images (`layers.md`, "Common
+  envelope", "docproc-mail"). Rejected: the reader parsing Markdown for PT-7; a schema found
+  only at the first read.
+- **11 · Archive entries that harm no stage (Q12).** Settled → library. Links, devices, and
+  traversing and absolute names become active, the entry an unread child, the rest read; bombs
+  and unreadable directories stay unsafe. Rejected: unsafe, the archive quarantined whole and
+  `inspect`'s definition reworded.
+- **12 · Check names before Version "1" (Q13).** Settled → library. Seven rule names for 24
+  per-format ones. Rejected: per-format names, with no evidence of a policy that differs by
+  format.
+- **13 · Silence detectors (Q14).** Settled → library; acceptance. The tracker alone: one decode,
+  audio in an MP4 and an M4A windowed alike, about 250 lines less, at 0.009 to 0.021 worse word
+  error rate on three corpora; acceptance measures word error rate on ~/docs' audio before the
+  tag, and silencedetect stays in the spike at v0.9.0. Rejected: both detectors, three decodes.
+- **14 · Live sources (Q15).** Settled → library. `media`'s reader, URL, and pacing surface stays
+  in the spike, by the rule applied to every callerless surface, until `protocol` names an owner.
+  Rejected: promoting it with a doc saying no stage uses it.
+- **15 · The unread child (Q16).** Settled → library. `Found` may carry an outcome and no file;
+  `Meta["warnings"]`, the entry records, and the medium records go. Rejected: records with
+  string Meta.
+- **16 · A store's warning order (Q1, with PX-5).** Settled → library. Where read, best effort
+  (PT-2). Rejected: after the last record (PD-19), which disagrees with decision 4 on a resume.
+- **17 · Constructors and names (Q18).** Settled → library; docproc's STANDARDS.md. A constructor
+  panics by name on a missing required dependency, and PX-16's five other lines apply; settles
+  the goal's deferred "constructors returning errors vs panicking". Rejected: an error for a nil
+  tool, as the spike.
+- **18 · Test tiers (Q19).** Settled → library; acceptance. The findings and bake-off tiers,
+  `corpustest`, and the model harnesses stay in the spike; the readers replay the tools' goldens
+  in place; `dispatch/dispatchtest` is public; `internal/tooltest` holds the stand-in. Rejected:
+  `layers.md`'s helpers row as written.
+- **19 · `FileIndex` (Q17).** Settled → library. Single-process, its claims in memory. Rejected:
+  cross-process claim files with `Renew`.
+- **20 · The time bound's reach (Q20).** Settled → library. A recorded timeout's bound is out of
+  the stage's identity, stated in `dispatch`'s doc: a host that raises it drops what the old
+  bound failed. Rejected: the bound in the identity, preparing everything again when raised.
+
+### Inspection and routing
+
+- **PI-1 · The bomb rule passed an archive that expands without bound.** Accepted → library;
+  acceptance; decided in decision 9. Ran: a 185,802-byte ZIP of 2,000 entries declaring 2 TiB
+  yielded no flag, and one entry at 999:1 declaring 100 GiB proceeded, Deflate topping out near
+  1,032:1. The rule also weighs the sum of the entries' declared sizes, a ZIP whose declared
+  compressed sizes pass its file is a bomb, and the stage holds what it writes to the same total.
+- **PI-2 · An XML encoding declaration hid an SVG's script and a package's external
+  relationship.** Accepted → library. Ran: `ISO-8859-1`, `us-ascii`, and `windows-1252` SVGs
+  yielded none of their three flags, and an `ISO-8859-1` or UTF-16 `.rels` no
+  `external-relationship`. Both scans take a `CharsetReader`, a UTF-16 mark is decoded first, and
+  a scan ended early raises its own active flag.
+- **PI-3 · A solid 7z cost one decode of its block per entry.** Accepted → library. Ran on a
+  2,000-file, four-block archive: an item mid-block took 1.2 s and the whole archive 5.4 s in one
+  run, about 20 minutes as the stage looped. One `7zz e -so` run split by the listing's sizes,
+  each item held to its size and CRC-32, the one-item run kept for the rest; the library task
+  checks the order on a multi-block and a mixed-method archive first.
+- **PI-4 · A report depended on the name, and the index recorded it by content.** Merged into
+  PX-6; decision 6.
+- **PI-5 · The 7zz floor admitted CVE-2024-11477's zstd decoder.** Accepted → library;
+  tool-packaging pins the same release.
+- **PI-6 · Evidence could be megabytes, invalid UTF-8, and hold a NUL.** Merged into PX-7.
+- **PI-7 · An archive was quarantined whole for entries no stage could be harmed by.** Decided in
+  decision 11.
+- **PI-8 · The inspection options were validated per call and held three times.** Merged into
+  PX-6; decision 6.
+- **PI-9 · The unit tier ran real programs and read ~/docs.** Merged into PX-9; decision 18.
+- **PI-10 · Routing refused content its stage would read.** Accepted → library.
+- **PI-11 · Two- and three-byte signatures outranked a text extension.** Accepted → library.
+- **PI-12 · The encrypted-package check and the extension tables existed twice.** Merged into
+  PX-10.
+- **PI-13 · The PDF name scan flagged random bytes and saw no object stream.** Accepted →
+  library; its flags from qpdf ride PX-6's `Item.Flag`.
+- **PI-14 · Exported identifiers nothing outside the tests used.** Accepted → library, its names
+  merged into PX-16 and its root package into PX-2; `route.PNGSignature` stays, `media` its second
+  caller (PS-13).
+- **PI-15 · Inspect's memory and time were unbounded for a ZIP.** Accepted → library; its entry
+  bound comes in through PX-3, and PD-13 relies on it.
+- **PI-16 · Tests restated the table they checked.** Merged into PX-9.
+- **PI-17 · Each contract was stated three times.** Merged into PX-16.
+- **PI-18 · ClamAV doesn't fit Inspect's contract.** Backlog: the roadmap's comment is reworded.
+- **PI-19 · Formats the spike left unrouted weren't in the backlog.** Backlog.
+- **HTML is unrouted by design.** Backlog: no task carries saved web pages or HTML `.xls`.
+
+### Tool runners and readers
+
+- **PT-1 · The readers' unit tier needed a released binary.** Merged into PX-9; decision 18.
+  `TestReal*` ran the tool from its GitHub release, and 7.9 MB of fixtures were copied under
+  manifests; the tools' committed goldens become the readers' fixtures, read in place.
+- **PT-2 · stderr was kept as its first 1 MiB and read only after success.** Accepted → library;
+  decision 16. A run that warned 1 MiB and then failed had an empty `Message`, and a failed or
+  resumed read dropped every warning. stderr is a pipe parsed as it arrives, warnings delivered
+  before the read's final error, the message the last `error:` line.
+- **PT-3 · The run's memory bound had no mechanism.** Accepted → library; acceptance measures it
+  over ~/docs on all three tools first. Ran: a tool killed by a signal reported `exit code -1`.
+  `Spec.MemoryLimit`: the container runner's `--memory`, the exec runner's `oom_score_adj` 1000
+  and `RLIMIT_AS` by `prlimit64`, or docproc-ooxml's collector limit through `Spec.Env` if it
+  can't start under it; its outcome is PX-1's, its way in PX-3's.
+- **PT-4 · Three copies of the line reader.** Accepted → library, relocated by PX-2: the envelope
+  reader in `internal/cli`, `Warning` `dispatch`'s; its stand-in is PX-9's.
+- **PT-5 · Death by signal was lost below `internal/cli`.** Merged into PX-1.
+- **PT-6 · The typed warning needed a parse.** Accepted → library (the parse, the folder join);
+  mail, onenote, ooxml (the envelope's two rules, decision 10).
+- **PT-7 · A `data:` image was media no line named.** Decided in decision 10 → mail (the
+  field); library (the reader, through PX-14).
+- **PT-8 · The exec runner handed every tool the host's environment.** Accepted → library; the
+  tools' user is tool-packaging's. Ran: a parent's variable reached the tool.
+- **PT-9 · The office stream left five things of `Result` unplaced.** Accepted → library; its
+  soffice runner is PX-13's, its media PX-14's.
+- **PT-10 · The readers routed media the dispatcher routes again.** Merged into PX-2; its reason
+  text into PX-4, its media into PX-14.
+- **PT-11 · A tool of another schema passed the startup check.** Accepted → ooxml, mail, onenote
+  (`--version`, decision 10); library; `Tool.AtLeast` merged into PX-16.
+- **PT-12 · The Threader held six times the backlog's figure.** Accepted → library; the roadmap
+  comment states 362 bytes a message. Ran on 200,000 messages: 362 bytes a message, 435 under
+  `Threads`.
+- **PT-13 · A tool's children outlived a normal exit and the host's death.** Accepted → library.
+  Ran: a background child outlived an exit 0.
+- **PT-14 · The mail and onenote readers worked through the exec runner only, unsaid.** Merged
+  into PX-2.
+- **PT-15 · `NewScript` had no caller.** Accepted → library; the architecture page's wording.
+- **PT-16 · The reader swapped a message line for a `Conversation`.** Accepted → library.
+- **PT-17 · A missing required tool was an error.** Merged into PX-16; decision 17.
+- **PT-18 · Decoded times were returned as parsed.** Merged into PX-16.
+- **PT-19 · The findings tier is the spike's evidence.** Merged into PX-9.
+- **PT-20 · The container lockdown had no process or privilege bound.** Accepted → library.
+
+### Stages and media
+
+- **PS-1 · A signed PDF failed its whole document part in the form reader.** Accepted → library;
+  the roadmap's summary is corrected. Ran: `qpdf --json=2 --json-key=acroform` over
+  `cfr-2024-title32-vol1.pdf` exits 3, success with warnings, and writes a `/Sig` field whose
+  value is `"3033 0 R"`; processing's own form reader refuses that reference value, not qpdf, so
+  every signed PDF failed. A field's value never fails the form, and a signature field gains
+  `Signed`.
+- **PS-2 · One failed read failed the part, unrecorded.** Merged into PX-1 (the outcome) and PX-4
+  (the unit's warning). One page gs refused of 1,823 cost the whole part on every rerun.
+- **PS-3 · The audio stage decoded the source once per window.** Accepted → library; decision 13.
+  645 windows of the 4.4 h audiobook decoded about 322 times its length. One decode cut into
+  windows by `audio`'s stream cutter, byte for byte v0.9.0's windows.
+- **PS-4 · A PDF's pages were rendered ahead of the consumer without bound.** Accepted → library;
+  `MaxPixels` comes in through PX-3.
+- **PS-5 · No run had a time or resource bound, and no stage capped its outputs.** Merged into
+  PX-1 (the timeout's outcome) and PX-3 (the bounds; an output cap is the request's, recorded
+  with a warning, never `limited`).
+- **PS-6 · The audio plan trusted ffprobe's duration.** Accepted → library.
+- **PS-7 · Corrections, regions, and the text-skip are experiment surface.** Accepted → library:
+  they stay in the spike.
+- **PS-8 · The vision harness and the bake-off tiers couldn't move as `layers.md` said.** Merged
+  into PX-9; decision 18.
+- **PS-9 · `Images` spooled the PDF a second time.** Merged into PX-10.
+- **PS-10 · A model's limits were library constants.** Merged into PX-8; `Limit`, `Density`, and
+  `DefaultDPI` accepted with it.
+- **PS-11 · The audio identity left out four fields it obeys.** Merged into PX-8; decision 13
+  leaves one detector.
+- **PS-12 · media's live sources had no way in.** Decided in decision 14.
+- **PS-13 · The same helpers were written two to five times.** Accepted → library; `atLeast`
+  merged into PX-16, the soffice runner PX-13's.
+- **PS-14 · Every package rebuilt the stand-in.** Merged into PX-9: `internal/tooltest`, not
+  `tool/tooltest`.
+- **PS-15 · picture read each file three times.** Merged into PX-10.
+- **PS-16 · Constructors disagreed with the construction rule.** Merged into PX-16; decision 17.
+- **PS-17 · A PDF cost two gs processes a page, serially.** Accepted → library (the concurrency,
+  through PX-3); acceptance times the 1,823-page PDF per page and by ranges.
+
+### Dispatch, content, and index
+
+- **PD-1 · A replay miss couldn't be prepared in place.** Decided in decision 2. A replayed child
+  has no file and nothing stores a found part's bytes, and dropping the replay path made the next
+  dispatch read a whole `.pst` for one missing attachment.
+- **PD-2 · "At most `Input.After`" skipped messages in a `.pst`.** Decided in decision 4. The
+  skipped prefix keeps the store's and folders' outputs, so a resumed replay and preparation yield
+  the same events.
+- **PD-3 · Puts before events made the walk a pipeline.** Accepted → library; its failure class
+  merged into PX-1, its reused hash into PX-10. The queue, its drain before a found part and the
+  part's own event, and `ErrTooLarge` mapped from go-storage's are stated in `layers.md`.
+- **PD-4 · A lease had to outlast the loop body.** Decided in decision 3. A claim lasts from
+  `Claim` through every yield of the part's subtree, so a timer on the walk's goroutine never
+  fires while the body blocks it.
+- **PD-5 · `Event.Keep` had no caller.** Decided in decision 5.
+- **PD-6 · Flags can leave the `Index`.** Merged into PX-6; decision 6.
+- **PD-7 · `FileIndex`'s cross-process claims can't meet the lease contract.** Decided in
+  decision 19; its directories shard by the name's first two hex digits.
+- **PD-8 · A recorded entry no longer fresh couldn't be claimed.** Accepted → library; its
+  one-name rule merged into PX-8.
+- **PD-9 · An append needs no durability before `Record`.** Accepted → library.
+- **PD-10 · Any failure on content flagged encrypted was recorded Encrypted.** Accepted →
+  library, less its Ghostscript mapping, which PX-12 supersedes; the class is PX-1's.
+- **PD-11 · A refusal the content decides was never recorded.** Merged into PX-1; decision 1.
+- **PD-12 · `Where` came from untrusted names.** Merged into PX-7.
+- **PD-13 · Three per-dispatch maps grew with a store.** Accepted → library; the sibling set is
+  bounded by PI-15's entry bound.
+- **PD-14 · Release and Record ran unbounded under `WithoutCancel`.** Accepted → library; the
+  release timeout is a per-process bound through PX-3.
+- **PD-15 · A replay couldn't tell a truncated log.** Accepted → library.
+- **PD-16 · The adapters were a second package inside `dispatch`.** Merged into PX-2; decision 7.
+- **PD-17 · The providers need the index contract as a suite.** Merged into PX-9.
+- **PD-18 · The test tiers didn't divide where `layers.md` did.** Merged into PX-9.
+- **PD-19 · A stage's own and a store's warnings had no place.** Merged into PX-4; its order is
+  superseded by PX-5.
+- **PD-20 · The archive stage took its own copy of the options.** Merged into PX-6, its `Check`
+  dropped.
+- **PD-21 · `FileOptions.Now` was a clock, and a claim's time local.** Merged into PX-16.
+- **PD-22 · dispatch's shapes had no committed output.** Merged into PX-9.
+
+### Across the module
+
+- **PX-1 · A failed run was classified in five places.** Accepted → library; acceptance;
+  decisions 1 and 20. `tool` reports the facts (`ExitError.Signal`, `TimedOut`, the run's own
+  time bound), `dispatch` declares the classes, and one function in `stages` classifies.
+- **PX-2 · The module's shape follows from one fact: only `stages` calls the format packages.**
+  Accepted → library; decision 7. The build tag stays on the exec runner alone.
+- **PX-3 · Every group added a value the host must supply.** Accepted → library; docproc;
+  decisions 8 and 9. Each bound is stated once with its owner and outcome (`layers.md`,
+  "Dispatch"); a unit run takes a deadline, a stream run an idle bound.
+- **PX-4 · "The part held something not read" had seven spellings.** Accepted → library; decision
+  15. A flag, a warning, or a child, so counts by outcome become true and a package's encrypted
+  section gets its outcome.
+- **PX-5 · Two groups ordered a store's warnings differently.** Accepted → library; decision 16.
+- **PX-6 · Flags got four partial designs.** Accepted → library; decision 6.
+- **PX-7 · Untrusted text reached the wire by six fields.** Accepted → library. One guard at the
+  dispatcher's exit for every wire string, `encoding/json` the wire's package; one hostile-bytes
+  test.
+- **PX-8 · A stage's identity was assembled by hand.** Accepted → library. The resolved request,
+  the tools' whole version lines, and the adapter's version, hashed whole.
+- **PX-9 · The groups' test findings are one design.** Accepted → library; acceptance; decision
+  18.
+- **PX-10 · Format packages worked out again what the part carries.** Accepted → library.
+- **PX-11 · `Output.Meta` was an undeclared wire vocabulary.** Accepted → library; the docinfer
+  goal reads the constants.
+- **PX-12 · Every adapter supported tool sets no wiring builds.** Accepted → library.
+- **PX-13 · The LibreOffice runner was written twice.** Accepted → library.
+- **PX-14 · Three readers turned media into parts by three rules.** Accepted → library.
+- **PX-15 · The archive vocabulary was spelled three times.** Accepted → library; decision 12.
+- **PX-16 · Conventions the groups each asked for once per package.** Accepted → library, the six
+  lines into docproc's STANDARDS.md with it; decision 17.
+
+The remaining artifact's review, cmd/docproc's, follows in its own section.
