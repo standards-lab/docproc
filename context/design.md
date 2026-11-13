@@ -41,7 +41,7 @@ edits in the goal record, applied to the roadmap at SHIP.
 - **The docinfer goal** counts a job's outputs by part ID, owns `outdir`'s atomic write, gains
   the `join` package from docproc's `audio` and the one metadata-text function, reads `dispatch`'s
   Meta keys, and states that its "1" includes `dispatch`'s "1" (SH-1, SH-2, SH-8, SH-9).
-- **The architecture task** takes the architecture-page edits: the `tools/` module zip, a nested
+- **The goal's sync** takes the architecture-page edits: the `tools/` module zip, a nested
   command's layout, the rule for external repositories, and CI's gate job.
 
 ## docproc-ooxml
@@ -442,7 +442,7 @@ parser's MPL-2.0 license, and the rule that nothing is asked of the parser upstr
   keeps the subtree out of the library's zip, both landed by ooxml; the tool's currency reports
   its crates and mise tools only, action pins being the root's; the nested `.gitattributes` keeps
   its fixture rules. The module-zip exception on the architecture page is a pending edit for the
-  `architecture` task.
+  goal's sync.
 - **ON-13 · The findings harness is spike evidence.** Accepted → onenote. `bench/findings.rs`
   (976 lines), `bench/rusage.c`, and `scripts/findings.sh` score the binary over the fields schema
   "2" cuts, and the check compiled the scorer on every run and never ran it. They stay in the
@@ -856,7 +856,7 @@ form. An entry is carried by docproc unless it names another task; the command's
   `cmd/docproc/v0.1.0`. `main.go` sits at the module's root, installed by
   `go install github.com/standards-lab/docproc/cmd/docproc@…`, with `app`, `apptest`, `run`, and
   `report` under `internal/`. Rejected: slab's layout. The architecture page's nested-command
-  layout is a pending edit for the `architecture` task.
+  layout is a pending edit for the goal's sync.
 - **DP-11 · `rundir`'s contract was tested only from the command.** Accepted → docproc.
   `rundir/testdata` holds one committed schema "2" run directory that `rundir`'s tests read
   through the reader's API and write again through the writer's.

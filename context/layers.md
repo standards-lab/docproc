@@ -494,7 +494,7 @@ and its providers, and `postgres` the index in PostgreSQL ("Index"). `postgres` 
 migrations and sqlate's `postgres` for the dialect; the pool behind the session is the host's,
 which Cerebro opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
 go-database. A provider over a tier pins only its own level, above that tier
-(`repository-topology.md`, "Adjacent libraries"):
+(`repository-topology.md`, "A repository's place follows its base module"):
 `storage` sits above go-storage's, `postgres` depends on no tier, and the base module stays
 tier-free.
 
