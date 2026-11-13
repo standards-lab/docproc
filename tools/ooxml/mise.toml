@@ -1,20 +1,28 @@
-# mise: docproc-ooxml's toolchain and its check, currency, and fixtures tasks. The toolchain is
-# pinned here alone; docproc's root check and currency run this file's tasks through its TOOLS
-# list (`mise -C tools/ooxml run check`). Each task runs in this directory.
+# mise: docproc-ooxml's toolchain and its check, publish, currency, and fixtures tasks. The
+# toolchain is pinned here alone; docproc's root check and currency run this file's tasks through
+# its TOOLS list (`mise -C tools/ooxml run check`), and tools/pack.sh runs `publish`. Each task
+# runs in this directory.
 [tools]
 dotnet = "11.0.100"
 jq = "1.8.2"
 uv = "0.13.8"
 
+# A task's shell keeps the caller's PATH order, so where a host `dotnet` without the pinned SDK
+# (/usr/bin/dotnet) comes before mise's installs, a bare `dotnet` would run it. Each task that runs
+# dotnet first puts the pinned SDK's directory, mise's DOTNET_ROOT, ahead of the rest of PATH.
 [env]
 DOTNET_CLI_TELEMETRY_OPTOUT = "1"
 DOTNET_NOLOGO = "1"
+# The newest glibc symbol version the published binary may require: NativeAOT links libc and libm
+# dynamically. tools/pack.sh refuses to pack a binary that requires a newer one.
+GLIBC_FLOOR = "2.34"
 
 [tasks.check]
 description = "Restore the locked package graph, format, build, publish the CLI with NativeAOT, and test, the CLI tests on the published binary, all warnings as errors; writes only bin/, obj/, and .state/"
 dir = "{{config_root}}"
 run = '''
 set -eu
+export PATH="$DOTNET_ROOT:$PATH"
 case "$(uname -m)" in
   x86_64) rid=linux-x64 ;;
   aarch64) rid=linux-arm64 ;;
@@ -31,6 +39,27 @@ dotnet test --solution DocprocOoxml.slnx --no-build
 .state/aot/docproc-ooxml --version
 '''
 
+# tools/pack.sh runs it to build the release binary it packs; the release workflow runs that on each
+# runner, natively.
+[tasks.publish]
+description = "Publish the release binary for this machine's runtime identifier from the locked package graph, its version the csproj's alone; writes only bin/, obj/, and .state/publish/"
+dir = "{{config_root}}"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "publish: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
+dotnet restore DocprocOoxml.slnx --locked-mode
+# Without the commit suffix the check's builds carry (0.1.0+<sha>), --version prints exactly the
+# version the csproj records, which pack.sh compares with the tag's.
+rm -rf .state/publish
+dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror \
+  -p:IncludeSourceRevisionInInformationalVersion=false -o .state/publish
+'''
+
 # Read-only and development-time: it reads the network, so CI never runs it. NuGet's audit runs
 # here, never in a build, so a newly published advisory is reported without failing the check.
 [tasks.currency]
@@ -38,6 +67,7 @@ description = "Report every NuGet package behind its latest or with a known vuln
 dir = "{{config_root}}"
 run = '''
 set -euo pipefail
+export PATH="$DOTNET_ROOT:$PATH"
 stale=0
 report() {
   echo "tools/ooxml: $1"

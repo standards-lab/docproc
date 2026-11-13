@@ -1,7 +1,9 @@
 [tools]
+actionlint = "1.7.12"
 go = "1.27.4"
 golangci-lint = "2.15.0"
 jq = "1.8.2"
+shellcheck = "0.11.0"
 
 # Space-separated list of Go module directories. Empty until the library task lands the base
 # module.
@@ -13,9 +15,10 @@ TOOLS = "ooxml"
 
 # The one check: read-only and deterministic, stopping at the first failure.
 [tasks.check]
-description = "Build, vet, format, tidy, test, and lint every module, then run each tool's check; writes nothing outside the tools' build output"
+description = "Lint the scripts and workflows; build, vet, format, tidy, test, and lint every module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
 run = '''
 set -eu
+mise -C "$MISE_PROJECT_ROOT" run lint
 export GOWORK=off
 for mod in $GO_MODULES; do
   echo "check: $mod"
@@ -28,11 +31,30 @@ for mod in $GO_MODULES; do
   go test -race ./...
   golangci-lint run ./...
 done
+case "$(uname -m)" in
+  x86_64) rid=linux-x64 ;;
+  aarch64) rid=linux-arm64 ;;
+  *) echo "check: no runtime identifier for $(uname -m)"; exit 1 ;;
+esac
 for tool in $TOOLS; do
   echo "check: tools/$tool"
   mise -C "$MISE_PROJECT_ROOT/tools/$tool" run check
+  # The notices a release would pack for this machine, so a package the script can't give a notice
+  # for fails here, not at the tag.
+  "$MISE_PROJECT_ROOT/tools/notices.sh" "$tool" "$rid" >/dev/null
 done
 echo "check: ok"
+'''
+
+# actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. CI's
+# lint job runs this task; the check runs it first.
+[tasks.lint]
+description = "Shellcheck every committed shell script and lint the GitHub Actions workflows with actionlint; reads no network, writes nothing"
+dir = "{{config_root}}"
+run = '''
+set -eu
+git ls-files -z '*.sh' | xargs -0 -r shellcheck
+actionlint
 '''
 
 # Read-only and development-time: it reads the network, so CI never runs it.

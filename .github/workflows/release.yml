@@ -1,0 +1,122 @@
+# Release runs on a pushed system tool tag, tools/<format>/vX.Y.Z, which the release procedure
+# pushes only once main's CI has passed; nothing here tags. The tag names the tool's directory,
+# tools/<format>, its changelog, tools/<format>/CHANGELOG.md, and its version. Each runner builds
+# the tool's release binary natively, linux-x64 and linux-arm64, and tools/pack.sh refuses to pack
+# it unless its --version is the tag's version and, for a binary that links glibc, as
+# docproc-ooxml's NativeAOT binary does, unless the newest glibc symbol version it requires is
+# within the floor the tool's mise.toml declares (GLIBC_FLOOR, 2.34 for docproc-ooxml). Each
+# archive, docproc-<format>-vX.Y.Z-<rid>.tar.gz, holds the binary, LICENSE, and the tool's
+# THIRD-PARTY-NOTICES.txt. The last job creates the GitHub release as a draft from the tag's
+# section of the tool's changelog, attaches both archives and their SHA256SUMS, and only then
+# publishes it, so a release appears only whole: a failed upload leaves a draft, never a published
+# release without its assets. Actions are pinned by their exact release tag, which
+# `mise run currency` compares with each action's latest release. Runs for one tag are serialized
+# and never cancelled.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'tools/*/v*'
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    outputs:
+      format: ${{ steps.tag.outputs.format }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Derive the tool and version from the tag
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          format=${TAG#tools/}
+          format=${format%%/*}
+          version=${TAG##*/v}
+          if [[ ! "$format" =~ ^[a-z0-9]+$ || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ||
+            "$TAG" != "tools/$format/v$version" ]]; then
+            echo "release: $TAG is not a tools/<format>/vX.Y.Z tag"
+            exit 1
+          fi
+          echo "format=$format" >>"$GITHUB_OUTPUT"
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: tag
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    env:
+      FORMAT: ${{ needs.tag.outputs.format }}
+      VERSION: ${{ needs.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # NativeAOT links with clang against zlib.
+      - name: Install the NativeAOT prerequisites
+        if: hashFiles(format('tools/{0}/*.slnx', needs.tag.outputs.format)) != ''
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+
+      # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
+      # one installed.
+      - uses: jdx/mise-action@v5.2.8
+        with:
+          working_directory: tools/${{ needs.tag.outputs.format }}
+
+      - name: Build, check the version against the tag and the glibc floor, and pack
+        run: tools/pack.sh "$FORMAT" "$VERSION"
+
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: ${{ matrix.rid }}
+          path: tools/${{ needs.tag.outputs.format }}/.state/pack/docproc-${{ needs.tag.outputs.format }}-v${{ needs.tag.outputs.version }}-${{ matrix.rid }}.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [tag, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: SHA256SUMS
+        working-directory: dist
+        run: sha256sum -- *.tar.gz >SHA256SUMS
+
+      # The prefix is the tag's part before its vX.Y.Z, so the action finds the version's section
+      # in the tool's own changelog.
+      - name: Create GitHub Release
+        uses: taiki-e/create-gh-release-action@v1.12.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          changelog: tools/${{ needs.tag.outputs.format }}/CHANGELOG.md
+          prefix: tools/${{ needs.tag.outputs.format }}/
+          draft: true
+
+      - name: Attach the archives and SHA256SUMS
+        run: gh release upload "$TAG" dist/*.tar.gz dist/SHA256SUMS
+
+      - name: Publish the release
+        run: gh release edit "$TAG" --draft=false
