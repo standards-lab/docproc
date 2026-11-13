@@ -5,7 +5,7 @@
 mod common;
 
 use common::msg::{Attachment, Child, Message, Object, Prop, build};
-use common::{fixture, names, run, scratch, sha256};
+use common::{assert_no_nulls, fixture, names, run, scratch, sha256};
 use serde_json::{Value, json};
 
 /// The committed public messages, by path under tests/fixtures/msg.
@@ -76,10 +76,12 @@ fn a_msg_is_a_store_line_and_a_message_line() {
             "{path}"
         );
         assert_eq!(lines[1]["line"], "message", "{path}");
+        assert_no_nulls(&lines[1], path);
         assert_nested(&lines[1], path);
     }
 }
 
+/// Asserts that no message nested in `message`, at any depth, has a "line".
 fn assert_nested(message: &Value, path: &str) {
     for attachment in message["attachments"].as_array().into_iter().flatten() {
         if let Some(nested) = attachment.get("message") {
@@ -87,7 +89,6 @@ fn assert_nested(message: &Value, path: &str) {
             assert_nested(nested, path);
         }
     }
-    assert!(!message.to_string().contains("null"), "{path}: a null");
 }
 
 /// Tika's testMSG_att_msg.msg carries a message and a PDF. The message is nested under its
@@ -212,10 +213,9 @@ fn every_message_has_a_matching_sources_entry() {
 }
 
 /// What Tika's OutlookParserTest asserts of its .msg files, as tika-truth.json writes it, is in
-/// the CLI's message lines: every field but one. testMSG_chinese.msg's To recipient is an
-/// Exchange recipient, and the CLI writes its address as stored (PidTagEmailAddress), where Tika
-/// reports its SMTP address (PidTagSmtpAddress), which the CLI doesn't write. The findings run
-/// scores the same file (docs/findings/mail-cli.md).
+/// the CLI's message lines, every field. testMSG_chinese.msg's To recipient is an Exchange
+/// recipient, whose address Tika reports as its SMTP address (PidTagSmtpAddress): the CLI writes
+/// that as its `smtp_address`, beside its address as stored (PidTagEmailAddress).
 #[test]
 fn fields_match_the_tika_truth() {
     let truth: Value =
@@ -229,19 +229,20 @@ fn fields_match_the_tika_truth() {
     for (path, entry) in truth["messages"].as_object().unwrap() {
         let got = message(path);
         for (pointer, want) in entry["fields"].as_object().unwrap() {
-            if (path.as_str(), pointer.as_str()) == ("tika/testMSG_chinese.msg", "/to/0/address") {
+            let mut pointer = pointer.as_str();
+            if (path.as_str(), pointer) == ("tika/testMSG_chinese.msg", "/to/0/address") {
                 assert_eq!(got["to"][0]["address_type"], "EX");
                 assert_eq!(
-                    got.pointer(pointer),
-                    Some(&json!("/O=FT GROUP/OU=FT/CN=RECIPIENTS/CTestsiaChang"))
+                    got["to"][0]["address"],
+                    "/O=FT GROUP/OU=FT/CN=RECIPIENTS/CTestsiaChang"
                 );
-                continue;
+                pointer = "/to/0/smtp_address";
             }
             assert_eq!(got.pointer(pointer), Some(want), "{path}: {pointer}");
             checked += 1;
         }
     }
-    assert_eq!(checked, 21);
+    assert_eq!(checked, 22);
 }
 
 /// What Apache POI's HSMF tests assert of its .msg files, as poi-truth.json writes it, is in the

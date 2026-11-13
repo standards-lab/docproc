@@ -150,6 +150,10 @@ fn media_is_accepted_with_the_input() {
         [store.as_os_str(), "--media".as_ref(), dir.as_os_str()],
         ["--media".as_ref(), dir.as_os_str(), store.as_os_str()],
     ] {
+        // Removed before each run, so each creates it, whatever a run before it left.
+        if dir.exists() {
+            std::fs::remove_dir_all(&dir).unwrap();
+        }
         let out = run(&args);
         assert_eq!(out.code, Some(0), "{}", out.stderr);
         assert_eq!(out.stdout, without.stdout);

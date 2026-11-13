@@ -3,7 +3,7 @@
 
 mod common;
 
-use common::{built, fixture, names, run, scratch, sha256};
+use common::{assert_no_nulls, built, fixture, names, run, scratch, sha256};
 use serde_json::Value;
 
 /// The committed public stores, by path under tests/fixtures/pst.
@@ -77,17 +77,6 @@ fn lines_follow_schema_2() {
                 other => panic!("{store}: unknown line {other}"),
             }
         }
-    }
-}
-
-fn assert_no_nulls(value: &Value, store: &str) {
-    match value {
-        Value::Null => panic!("{store}: a null was written"),
-        Value::Array(items) => items.iter().for_each(|item| assert_no_nulls(item, store)),
-        Value::Object(fields) => fields
-            .values()
-            .for_each(|item| assert_no_nulls(item, store)),
-        _ => {}
     }
 }
 
@@ -275,8 +264,8 @@ fn each_distinct_content_is_written_once() {
 
 /// A panic inside outlook-pst while it holds its file's mutex poisons the mutex; the store is
 /// reopened, so the records after the panic are still read. The byte flipped here makes
-/// outlook-pst multiply past u32 while reading Inbox's message; the tests run the debug binary,
-/// whose overflow checks make that a panic (a release build reads a different error there).
+/// outlook-pst multiply past u32 while reading Inbox's message; the release binary's overflow
+/// checks (Cargo.toml) make that a panic.
 #[test]
 fn records_after_a_reader_panic_are_still_read() {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
@@ -504,7 +493,7 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
 /// A panic reading an attachment poisons the mutex too. The store is reopened, and the open
 /// message, which holds the poisoned store, is opened again from it, so the message's other
 /// attachments are still read. The byte flipped here makes outlook-pst overflow on the first of
-/// Inbox's message's eleven pictures, in the debug binary as above.
+/// Inbox's message's eleven pictures, a panic by the overflow checks as above.
 #[test]
 fn attachments_after_a_reader_panic_are_still_read() {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();

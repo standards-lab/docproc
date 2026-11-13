@@ -8,12 +8,13 @@ mod common;
 use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha256};
 use serde_json::{Value, json};
 
-/// The MIME group's hand-written sources, under tests/fixtures/mime/eml.
 /// The media name of 03-html-inline-image.eml's moth picture: its SHA-256 and its extension.
 const MOTH: &str = "83b67b7e132c07726a0309f13395c7a19884e27ca084eff8e8fe6e320d6d7795.png";
 
+/// The MIME group's hand-written sources, under tests/fixtures/mime/eml.
 const MIME_SOURCES: &[&str] = &["09-threading.eml"];
 
+/// The generated sources, under tests/fixtures/generated/eml.
 const SOURCES: &[&str] = &[
     "01-plain.eml",
     "02-reply-latin1.eml",

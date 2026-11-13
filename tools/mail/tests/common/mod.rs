@@ -48,6 +48,21 @@ fn finish(command: &mut Command) -> Run {
     }
 }
 
+/// Asserts that no value in `value`, at any depth, is null: a property with no value is left
+/// out of a line, never written as null.
+pub fn assert_no_nulls(value: &serde_json::Value, what: &str) {
+    match value {
+        serde_json::Value::Null => panic!("{what}: a null was written"),
+        serde_json::Value::Array(items) => {
+            items.iter().for_each(|item| assert_no_nulls(item, what))
+        }
+        serde_json::Value::Object(fields) => {
+            fields.values().for_each(|item| assert_no_nulls(item, what));
+        }
+        _ => {}
+    }
+}
+
 /// A committed fixture, by its path under tests/fixtures.
 pub fn fixture(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
