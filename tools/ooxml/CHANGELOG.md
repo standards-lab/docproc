@@ -1,73 +1,61 @@
 # Changelog
 
-All notable changes to `spike-ai-pipeline-office` are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html). The JSON document model, its `schema`
-version included, is office's output contract: a change to it is a change here.
+All notable changes to `docproc-ooxml` are documented here, a section per release, headed by the
+version its `tools/ooxml/vX.Y.Z` tag carries; the release's notes are its section. The CLI
+adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html). Its JSON Lines, their
+`schema` version included, are its output contract: a change to them is a change here.
 
-## [Unreleased]
+## v0.1.0
 
-## [v0.1.0] - 2026-10-31
+The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeline-office v0.1.0
+(b9bb1a2), its schema `"1"` CLI, renamed, and reworked into docproc's system tool.
 
 ### Added
 
-- `spike-ai-pipeline-office <input> [--format json|markdown] [--media <dir>]`, which turns a docx,
-  xlsx, or pptx file into a JSON document model, or into that model's Markdown rendering, on
-  stdout, which carries the rendering and nothing else. Exit codes: 0 converted, 1 media not
-  written, 2 usage (usage on stderr), 3 refused (the reason on stderr, before any output), and 4
-  failed, a fault of office's own. A single invalid reference, such as a header reference of a
-  type no header has or a sheet whose relationship names no part, is skipped with one stderr
-  line, `spike-ai-pipeline-office: warning: <path>: <what was skipped>`, and the rest converts.
-  `--version` prints the version.
-- The initial output contract, schema `"1"`: one tree for all three formats, a document's
-  `schema`, `format`, and `blocks`, each block a `heading`, `paragraph`, `list`, `table`,
-  `chart`, `media`, `sheet`, or `slide`. An optional property with no value is left out, never
-  written as `null`, so an absent property means null or none: a formula cell with no cached
-  value has no `value` and no `valueType`. Only an array keeps a `null` in place, for a chart
-  point the cache lacks. A docx document also holds its `sections`, each with the headers and
-  footers its pages show (`default`, `first`, `even`), its `footnotes` and `endnotes`, and its
-  `comments`, each with its author, anchor text, resolved state, and replies, referred to from
-  the text by `footnote`, `endnote`, and `comment` inlines. Its tracked changes are read
-  accepted.
-- Sheets: in workbook order, hidden ones marked, each a sparse table of the cells that have a
-  value or a formula, by row number and reference, then its charts and pictures. A cell's
-  `value` is typed by its `valueType` (`number`, `text`, `boolean`, `error`, `date`), a number in
-  a date or time format as ISO 8601; a formula's cell has its `formula` text and its cached
-  value, nothing evaluated, and a shared formula's other cells name its anchor in `sharedFrom`.
-- Slides: in presentation order, hidden ones marked, each with its `number`, its shapes' text,
-  lists, tables, charts, and pictures in shape-tree order, and its `notes`.
-- Charts as their cached data, never an image: type, title, and series of names, categories, and
-  values, from a Transitional or a Strict document, and Office 2016 chartEx charts by their
-  layout; a chartEx chart that caches no data is its fallback picture instead, never both.
-- Media: each embedded picture written once to `--media`, as stored, named by the lowercase hex
-  SHA-256 of its bytes and its stored extension, only after the whole conversion has succeeded;
-  a linked picture is its `target`, never fetched.
-- The Markdown rendering of the model: headings, nested lists counting from their start, GFM
-  tables with a merged cell's text in its top-left position, charts as their title and a table
-  of their series, media as image links, sheets and slides under headings of their own, slide
-  notes after a bold `**Notes**` label, headers before the body and footers after it, notes as
-  `[^n]` and comments as `[^cN]` footnotes.
-- Macro-enabled files, templates, and slide shows read as their base format, by their main
-  part's content type; macros are ignored, never run.
-- Refusals: legacy doc, xls, and ppt files and encrypted packages, anything that isn't a docx,
-  xlsx, or pptx package, a malformed package, and tables nested more than eight deep.
-- Releases: `spike-ai-pipeline-office-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each a
-  NativeAOT binary and LICENSE, and `SHA256SUMS`.
+- `docproc-ooxml <input> [--media <dir>]`, `--version`, and `--help`, the arguments parsed by
+  hand: a NativeAOT binary on .NET 11 for linux-x64 and linux-arm64, the Open XML SDK its only
+  package, its package graph locked. `--version` prints the version, then `schema 2`.
+- Schema `"2"` JSON Lines in one run: a `document` line with the format, `properties`, the
+  Markdown rendering, and `media`, then, per xlsx sheet in workbook order, a `sheet` line and its
+  `rows` lines, in snake_case. Joined in order, the lines' Markdown fragments are the whole
+  rendering. Output is byte-identical for the same input, pinned by a `.jsonl` and a `.stderr`
+  golden per fixture.
+- xlsx is streamed in two forward-only passes: a refusal still comes before any output, and a
+  `rows` line stays within 256 KiB or one row.
+- `properties`: the package's core, extended, and custom properties, each value typed as stored.
+- `embedded` and `ole` media, as stored, with their `prog_id` and placement, linked in the
+  Markdown after their preview pictures; a chart's embedded workbook is never media. Every
+  media entry's placement is its docx section (from 0), its xlsx sheet's `sheet` line (from 1),
+  or its pptx slide (from 0).
+- External hyperlinks as `[text](target)`, and a picture's title, where it differs from its
+  image text, as its Markdown title.
+- One warning for each kind of content present that isn't read: text boxes, equations,
+  SmartArt, a pptx's comments, and an xlsx's cell notes.
+- The common envelope: stderr lines `docproc-ooxml: warning: <where>: <what>` and
+  `docproc-ooxml: error: <reason>`, `<where>` a place by ordinal and escaped, a reason never
+  leading with the input path; exit codes 0 read, 1 stdout or media not written (a broken pipe
+  included), 2 usage, 3 refused before any output, 4 a fault of its own; UTF-8 under any locale.
+- Refusals: not a file; not a docx, xlsx, or pptx package (an xlsb among them); an encrypted
+  package, its reason beginning `encrypted`, found by docproc-ooxml's own OLE compound-file
+  directory reader; any other OLE compound file, such as a legacy doc, xls, or ppt; a malformed
+  package; tables nested more than eight deep.
+- Releases: `docproc-ooxml-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each holding the
+  binary, LICENSE, and THIRD-PARTY-NOTICES.txt, with `SHA256SUMS`; a release is refused unless
+  the binary's `--version` is the tag's and it requires glibc 2.34 at most.
+
+### Changed from the spike
+
+- One run writes the model and its Markdown together; `--format` is gone.
+- The model's fields are snake_case, and the text each holds exists once, in the Markdown.
+- A refusal is an `error:` line, no longer `refused: <path>: …`.
+- Embedded OLE objects and packages are extracted, no longer only their preview pictures.
 
 ### Known limits
 
-- No formula is evaluated: a formula's value is the one the file caches, or none.
-- No number format is applied but the dates': a number is written as stored.
-- Tracked changes are read accepted only, never as stored.
-- No page images are rendered.
-- Legacy doc, xls, and ppt files are refused, never read, as are tables nested more than eight
-  deep.
-- Not extracted: equations; a docx's or an xlsx's text boxes and WordArt; SmartArt; embedded OLE
-  objects, of which only the picture a docx shows in their place comes out, as media; a pptx's
-  comments; an xlsx's cell notes and comments; and a docx comment range that starts or ends
-  between a table's rows or cells.
-- Media are written as stored, never converted: an EMF, WMF, or TIFF stays one.
-- office runs no inference: it calls no model.
-
-[Unreleased]: https://github.com/JaimeStill/spike-ai-pipeline-office/compare/v0.1.0...HEAD
-[v0.1.0]: https://github.com/JaimeStill/spike-ai-pipeline-office/releases/tag/v0.1.0
+- Pictures are listed with no layout, so a covered, off-slide, or cropped-away picture is still
+  a media block.
+- Text boxes, equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read.
+- No formula is evaluated, and no number format is applied but the dates'.
+- Tracked changes are read accepted only.
+- Media are written as stored, never converted.
+- Linux alone, x64 and arm64, on glibc 2.34 or newer.

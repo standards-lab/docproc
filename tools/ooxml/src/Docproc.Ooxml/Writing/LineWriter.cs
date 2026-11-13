@@ -165,7 +165,7 @@ internal sealed class LineWriter(Stream output)
         return line.WrittenSpan.ToArray();
     }
 
-    // A row and its cells: office's TableCell less its docx-only fields.
+    // A row and its cells: the model's TableCell less its docx-only fields.
     private static byte[] RowJson(TableRow row)
     {
         var bytes = new ArrayBufferWriter<byte>();

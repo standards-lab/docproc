@@ -1,6 +1,6 @@
 # Fixtures
 
-The documents office's tests read, committed and never generated in the check. The pool is two
+The documents docproc-ooxml's tests read, committed and never generated in the check. The pool is two
 sets, and nothing else: the generated set in `generated/`, its refused documents among them, and
 the real-world set in `realworld/`. The hermetic check, `mise run check`, runs both, wherever it runs, locally or in
 CI; no test reads a document from anywhere else, and none is fetched.
@@ -27,11 +27,11 @@ in `realworld/licenses/`.
 
 Each file is `realworld/<format>/<name>.<format>`, with its ground truth beside it in the
 generated set's format, `<name>.truth.json`. The truth is written by hand from the file's XML
-rather than from office's output, or for the larger files drafted from the XML by a throwaway
-script that knows nothing of office and checked by hand. Every truth is whole. The tests compare
-the model against it as they do a generated fixture's, and run each file through the published
-binary; they keep no exact JSON or Markdown of these files, whose truth is the check. Nothing
-regenerates the set: a file is added by hand, with its row in `SOURCES.md` and its truth.
+rather than from docproc-ooxml's output, or for the larger files drafted from the XML by a
+throwaway script that knows nothing of docproc-ooxml and checked by hand. Every truth is whole.
+The tests compare the model against it as they do a generated fixture's, and run each file
+through the published binary against its goldens. Nothing regenerates the set: a file is added
+by hand, with its row in `SOURCES.md`, its truth, and its goldens (`mise run golden`).
 
 ## Generated set
 
@@ -48,9 +48,9 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   diagram with its four diagram parts.
 - `<name>.libreoffice.docx`: that file opened and saved again by LibreOffice, so the set also
   carries a real application's XML. Both are kept: the first is the XML the script means to
-  write, the second what an editor makes of it, and office must read both the same way.
+  write, the second what an editor makes of it, and docproc-ooxml must read both the same way.
 - `<name>.truth.json`: the ground truth both files share, written by the script from the same
-  definitions. Its shape is its own, not office's model, so the tests compare the model against
+  definitions. Its shape is its own, not docproc-ooxml's model, so the tests compare the model against
   it element by element. It holds:
   - `elements`: the accepted-state text of each element in document order:
     - `heading`, with its level.
@@ -70,7 +70,7 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
     - `chart`, with its type, title, and series.
   - `marks` on a paragraph or list item: each note or comment reference's offset in the text,
     its kind, and its note's or comment's place, from 1, in the truth's list of them.
-  - `absent`: the strings that must appear nowhere in office's output (deleted text).
+  - `absent`: the strings that must appear nowhere in docproc-ooxml's output (deleted text).
   - `once`: the strings that must appear exactly once (moved text).
   - `sections`: each section's headers and footers as its pages show them, kind and elements.
   - `footnotes` and `endnotes`: the notes, in the order the text first references them.
@@ -221,7 +221,7 @@ stores, so a rerun changes both files' bytes, never what docproc-ooxml makes of 
 
 ## Regenerating
 
-From the repository root, with LibreOffice's `soffice` on the path and no LibreOffice window open
+From `tools/ooxml`, with LibreOffice's `soffice` on the path and no LibreOffice window open
 on the same profile (the script uses a throwaway one):
 
 ```sh

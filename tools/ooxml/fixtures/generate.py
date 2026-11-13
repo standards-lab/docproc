@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = ["openpyxl==3.1.5", "python-docx==1.2.0", "python-pptx==1.0.2"]
 # ///
-"""Generate the office fixtures and their ground truth.
+"""Generate the docproc-ooxml fixtures and their ground truth.
 
 Each fixture is written twice: by a library from the definitions below
 (<name>.python-docx.docx, <name>.openpyxl.xlsx, or <name>.python-pptx.pptx), and
@@ -13,7 +13,7 @@ one ground truth, <name>.truth.json, which this script writes from the same
 definitions, unless LibreOffice changes what the document holds, when the
 re-save has its own, <name>.libreoffice.truth.json. The ground truth is the
 document's text in its accepted state, element by element, in a shape of its
-own, so it never depends on the office model it checks.
+own, so it never depends on the docproc-ooxml model it checks.
 
 python-docx writes no tracked changes, so the w:ins, w:del, w:moveFrom, and
 w:moveTo elements and the deleted paragraph marks are written as raw XML;
