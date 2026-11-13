@@ -64,7 +64,8 @@ the tools part to the system tools under `tools/`.
   at its module's root and its packages, `app`, `apptest`, `run`, and `report`, under `internal/`,
   where `cli-applications.md` has `cmd/<name>/main.go` and `topology-and-naming.md` domain
   packages at the root level, since the module's one public surface is the command.
-- A mature system tool is run through an adapter, never reimplemented in Go.
+- `architecture/standards/go-elemental/principles/system-tools.md`: a mature system tool is run
+  through an adapter, never reimplemented in Go.
 - An adapter declares `Spec()` and `Minimum`, unprefixed with one tool and named for the tool with
   several, and checks its tools' versions through `Tool.AtLeast` alone, when it is built, so a
   missing, outdated, or other-schema tool fails at startup.
