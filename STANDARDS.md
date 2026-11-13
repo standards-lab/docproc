@@ -29,8 +29,9 @@ the tools part to the system tools under `tools/`.
   module pins no tier; `storage` sits above go-storage's, and `postgres`, over sqlate, above none.
 - `architecture/principles/independent-releases.md`: the base module, `storage`, `postgres`,
   `cmd/docproc`, and each tool release on their own tags, with no umbrella version.
-- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and
-  `context/layers.md` are the homes, each contract stated once, on its symbol.
+- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and, while in
+  flight, `context/layers.md` and `context/design.md` are the homes, each contract stated once, on
+  its symbol.
 - `architecture/standards/go-elemental/principles/dependencies.md`: the bottom-up line and no
   provider in a base, across the base, `storage`, `postgres`, and `cmd/docproc` `go.mod` files.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: the library ships no
@@ -46,10 +47,10 @@ the tools part to the system tools under `tools/`.
   alone.
 - `architecture/standards/go-elemental/principles/utc-times.md`: every time the library and
   `rundir/schema` return or write is UTC, each package's `TestMain` setting a non-UTC zone.
-- `architecture/standards/go-elemental/principles/tests-and-docs.md`: the four tiers (unit, over
-  `internal/tooltest`'s stand-in and the tools' committed goldens read in place; integration;
-  conformance, through `dispatch/dispatchtest`; golden), ~/docs read by the acceptance task alone,
-  and the doc.go inventory of every package.
+- `architecture/standards/go-elemental/principles/tests-and-docs.md`: the unit tier over
+  `internal/tooltest`'s stand-in and the tools' committed goldens read in place, the real tools
+  behind `-tags integration`, `dispatch/dispatchtest`'s conformance suites run by every store,
+  ~/docs read by the acceptance task alone, and the doc.go inventory of every package.
 - `architecture/standards/go-elemental/principles/release-and-ci.md`: the check, currency, the
   root `go.work`, a changelog per module, and `tools/go.mod`, which keeps the tools out of the
   library's module zip.
@@ -76,8 +77,7 @@ the tools part to the system tools under `tools/`.
 ## Tools
 
 - `architecture/principles/minimal-footprint.md`: a dependency joins a tool only when it is
-  actively maintained and freely licensed, never an unmaintained or paid project; the license
-  check allows MPL-2.0 by name for docproc-onenote alone.
+  actively maintained and freely licensed, never an unmaintained or paid project.
 - `architecture/principles/validation-first.md`: a tool refuses its input, exit 3, before any
   output, and a usage error reads nothing.
 - `architecture/principles/rolling-currency.md`: each tool's toolchain and dependencies are pinned

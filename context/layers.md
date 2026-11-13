@@ -485,7 +485,7 @@ and its providers, and `postgres` the index in PostgreSQL ("Index"). `postgres` 
 migrations and sqlate's `postgres` for the dialect; the pool behind the session is the host's,
 which Cerebro opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
 go-database. A provider over a tier pins only its own level, above that tier
-(`repository-topology.md`, "Adjacent libraries", as v1.ai.processing's pending edit amends it):
+(`repository-topology.md`, "Adjacent libraries"):
 `storage` sits above go-storage's, `postgres` depends on no tier, and the base module stays
 tier-free.
 
@@ -1106,9 +1106,9 @@ docinfer (`github.com/standards-lab/docinfer`) infers over what docproc extracts
 images, transcribes audio, chunks and embeds text, extracts by a caller's prompt and JSON schema,
 holds results in a cache, and runs one job's dispatch and inference together. It is an adjacent
 library that depends on docproc and on go-ai, an infrastructure library. Whatever may not depend on
-go-ai's tier may not depend on docinfer either (`repository-topology.md`, "Adjacent libraries", as
-v1.ai.processing's pending edit amends it): an application SDK may not reach go-ai through it, and
-only the layers above go-ai's tier, such as Cerebro and go-web-service, may use it. It calls go-ai
+go-ai's tier may not depend on docinfer either (`repository-topology.md`, "Adjacent libraries"):
+an application SDK may not reach go-ai through it, and only the layers above go-ai's tier, such as
+Cerebro and go-web-service, may use it. It calls go-ai
 directly, with no adapter module between them ("docinfer's go-ai use"). It is built from the spike's
 docinfer, less its command's run directories.
 
@@ -2072,9 +2072,8 @@ From spike-ai-pipeline-mail 0.3.1, settled in `design.md`, "docproc-mail".
   code page `codepage` doesn't know decoded lossily as 1252 with the existing note, and the exact
   pin and its US-ASCII workaround go; a DOS code page the review of ~/docs finds becomes a table
   in the tool.
-- **Unicode version.** The content rule's version is the one its pinned crates carry, 18.0 today,
-  asserted by a unit test, as "docproc-mail" states; the payload measurement's content-rule
-  figures are rerun on that version.
+- **Unicode version.** The content rule's, as "docproc-mail" states; the payload measurement's
+  content-rule figures are rerun on it.
 - **Fixture generator.** MimeKit holds at the latest 4.x, a recorded hold until MsgKit 3.0.6
   (MimeKit >= 4.18.1) or PstBuilder.Eml 1.3.0 (>= 4.17.0) releases on MimeKit 5. The generator
   moves from `net10.0` and SDK 10.0.402 to .NET 11, beside docproc-ooxml, and regenerates its
@@ -2287,22 +2286,16 @@ modules ("docproc's API"). It holds no inference: the pipeline, `chunk`, `job`, 
 `cmd/docinfer` are docinfer's.
 
 ```text
-every package       changed, once across the module (STANDARDS.md's lines): a constructor takes a
-                    Config struct, panics by name on a nil required field (document:
-                    Config.Ghostscript is nil), and returns an error only for the environment's
-                    fault, a tool too old; an adapter declares Spec() and Minimum, unprefixed with
-                    one tool and named for the tool with several, and checks versions through
-                    Tool.AtLeast alone; a refused request matches the package's one ErrRequest;
-                    every time returned or written is UTC, each TestMain setting a non-UTC zone;
-                    a contract stated once, on its symbol, doc.go an inventory; the module builds
-                    on every platform, the Linux tag on the exec runner alone; no root package.
-                    Four test tiers: unit, each package over its own testdata and
+every package       changed, once across the module, to STANDARDS.md's Go lines (document's
+                    constructor panicking "document: Config.Ghostscript is nil", for one). The
+                    tests: the unit tier, each package over its own testdata and
                     internal/tooltest's stand-in, the readers also replaying tools/<format>/'s
-                    committed goldens in place; integration (-tags integration), the real tools
-                    and one whole-fixture test in stages of every fixture's route and outcome;
-                    conformance, dispatch/dispatchtest; golden, dispatch's shapes as JSON Lines
-                    and the tools' own. ~/docs is read by the acceptance task alone, named by a
-                    variable; depguard drops spike-ai-pipeline-client
+                    committed goldens in place, and the goldens of dispatch's shapes as JSON
+                    Lines; the integration tier (-tags integration), the real tools and one
+                    whole-fixture test in stages of every fixture's route and outcome; and
+                    dispatch/dispatchtest's conformance suites, which every store runs. ~/docs
+                    is read by the acceptance task alone, named by a variable; depguard drops
+                    spike-ai-pipeline-client
 route               changed: owns Ext, one table of OOXML extensions, and the encrypted-package
                     detector inspect calls; File and Identify over the dispatcher's open file and
                     head, File's signature kept as a wrapper; a ZIP holding [Content_Types].xml
@@ -2472,9 +2465,8 @@ dispatch/           new, public: the Index and Content conformance suites and th
   dispatchtest      run by MemoryIndex, FileIndex, MemoryContent, FileContent, and both providers;
                     docinfer's job tests use the fixture stage
 stages              moved from the root's internal/docproc/stages, less WriteTable, and grown:
-                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; Tool and Row tagged
-                    with the run manifest's JSON names, Tool's failure as Error beside an
-                    untagged Err, so rundir/schema aliases both; the stage adapters,
+                    Build(ctx, lookup, Options) (Set, error), Set.Inspect; Tool and Row with
+                    no JSON names, the run manifest declaring its own; the stage adapters,
                     unexported, each taking its tools as required fields, their partial modes and
                     the qpdf identity field gone; one function classifying a run's error, for a
                     unit and a part alike; a unit's failure of the content's class a warning, its
@@ -2499,24 +2491,25 @@ stages              moved from the root's internal/docproc/stages, less WriteTab
                     "markdown": "follows", outcome, check, class, evidence, and warnings leaving
                     Meta, a window's typed facts in its plan record alone
 rundir,             moved from the root's internal/docproc/{rundir,schema} [docproc]: public
-  rundir/schema     packages of this module, the API "The nested modules" states, the base
-                    module tagged v0.2.0 when they land; one Dir from Open, which reads and
-                    creates nothing, or Create, which makes the directory, rundir.json, the
+  rundir/schema     packages of this module, the API "The nested modules" states, the base module
+                    tagged when they land (design.md, "Releases"); one Dir from Open, which reads
+                    and creates nothing, or Create, which makes the directory, rundir.json, the
                     index, and the content store, both refusing another schema or runs/ with no
-                    rundir.json; Manifest, Record, and every other method taking an id refusing
-                    one that isn't a run of the directory, ValidID unexported, Runs listing runs
-                    alone; Latest the latest ended run; Record an iter.Seq2, an unended run's last
-                    line without a newline dropped; ContentPath; Begin removing leftover .work-*
-                    directories; each record line flushed as written, no fsync; Quarantine
-                    keeping quarantine/<sha256>, flags.json gone; Store, its counter, stageDir,
-                    the extension table, Load, WriteRunFile, WriteFile, Run.Record, and the
-                    manifest's record go; the doc stating one writer per run directory.
-                    rundir/schema shapes alone: the event line with its kind and error, the
-                    manifest gaining docproc and collected, Tool and StageState aliasing
-                    stages', Version, Time, and TimeOf, which converts to UTC, the writer's one
-                    way to make a Time; a TestMain under Europe/London; rundir/testdata one
-                    committed schema "2" run directory, read through the reader's API and
-                    written again through the writer's, compared as text
+                    rundir.json; Manifest, Record, and every other method taking an id refusing one
+                    that isn't a run of the directory, ValidID unexported, Runs listing runs alone;
+                    Latest the latest ended run; Record an iter.Seq2, an unended run's last line
+                    without a newline dropped; ContentPath; Begin removing leftover .work-*
+                    directories; each record line flushed as written, no fsync; Quarantine keeping
+                    quarantine/<sha256>, flags.json gone; Store, its counter, stageDir, the
+                    extension table, Load, WriteRunFile, WriteFile, Run.Record, and the manifest's
+                    record go; the doc stating one writer per run directory. rundir/schema shapes
+                    alone: the event line with its kind and error, the manifest gaining docproc and
+                    collected, its Tool and StageState its own, filled by cmd/docproc's run from
+                    stages.Set, so schema imports no stages; Version, Time, and TimeOf, which
+                    converts to UTC, the writer's one way to make a Time; a TestMain under
+                    Europe/London; rundir/testdata one committed schema "2" run directory, read
+                    through the reader's API and written again through the writer's, compared as
+                    text
 internal/goldentest, kept: test helpers that call no model, goldentest for PNG bytes
   mediatest
 internal/corpustest, left in the spike at v0.9.0 with the findings and bake-off tiers, the vision
@@ -2661,10 +2654,8 @@ the install path `cmd/docproc/cmd/docproc` and `run.Commands` API under its tags
 `rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
 of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory
 through them, and Go's internal rule is by import path, so docproc's `cmd/internal` would bar
-it. They version with the library, which both commands require: `library` tags the base module
-v0.1.0 without them, the `docproc` task tags v0.2.0 when they land, and `reports` tags it again
-only if it changes them, before `cmd/docproc/v0.1.0`. A committed `go.work` over the base module
-and `cmd/docproc` carries a change between tags.
+it. They version with the library, which both commands require, on the base module's tags
+(`design.md`, "Releases").
 
 ```go
 package rundir
@@ -2696,14 +2687,18 @@ and a reader of a run whose manifest has no `end` drops a last line with no newl
 names only a run that ended, and a reader given an unended run by id says so. `Record` yields the
 lines in order and ends on the first that doesn't decode.
 
-The run directory moves to schema "2", which includes `dispatch`'s shapes at `dispatch.Version`
-"1", so a break there is a break here. `schema` aliases the moved shapes (`dispatch.Part`,
-`ContentType`, `Identity` as its `Stage`, `Output`, and `Warning`, `inspect.Flag`, and
-`stages.Tool` and `stages.Row` as its `Tool` and `StageState`), so no shape is defined twice, and a
-part's `parent` becomes its parent's ID, a change of meaning "1" can't take. An output's content
-is in the run directory's `FileContent`, found by its `sha256` in place of "1"'s `ref` path under
-`outputs/`; the content store's directory and a content's path in it (`ContentPath`) are part of
-"2", since the report links a content's file and a reader that isn't Go follows it.
+The run directory moves to schema "2", which includes `dispatch`'s shapes at `dispatch.Version` "1",
+so a break there is a break here. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
+`Identity` as its `Stage`, `Output`, and `Warning`, and `inspect.Flag`), so no shape is defined
+twice, and a part's `parent` becomes its parent's ID, a change of meaning "1" can't take. The
+manifest's `Tool` and `StageState` stay `schema`'s, filled by `cmd/docproc`'s `run` from
+`stages.Set`: `stages` carries no version of its shapes, so an alias would change "2" with any
+change to it, and `schema` imports no docproc package but `dispatch` and `inspect`, so a reader of
+the run directory, `cmd/docinfer` among them, never compiles `stages` and the format packages
+beneath it. An output's content is in the run directory's `FileContent`, found by its `sha256` in
+place of "1"'s `ref` path under `outputs/`; the content store's directory and a content's path in it
+(`ContentPath`) are part of "2", since the report links a content's file and a reader that isn't Go
+follows it.
 
 The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
 input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch

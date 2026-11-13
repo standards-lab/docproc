@@ -1,7 +1,7 @@
 # design
 
 The design review: Fable 5.2 evaluated each of the five artifacts v1.ai.processing promotes, and
-the architect settled every finding in one review round per artifact, 2026-11-12. `layers.md`
+the architect settled every finding in one review round per artifact. `layers.md`
 holds the boundaries and the change lists; this note holds each finding's settled design and its
 disposition, with the evidence that justified it, since the evaluations themselves are not kept.
 An entry names the task that carries it, and the `layers.md` section that states it where one
@@ -179,11 +179,10 @@ and an entry that binds docproc-onenote too names onenote.
 - **ML-3 · The content rule's Unicode 16.0 couldn't be both schema "2" and current.** Settled →
   mail. 16.0 was the measuring tool's (uniseg 0.10.1, a Go library); current Rust crates carry
   18.0 (finl_unicode 1.5.1, unicode-ident 1.0.27), and the spike holds none of the crates the
-  rule needs, so "the Rust crates stay" understated the task. Schema "2"'s rule uses the Unicode
-  version its pinned crates carry, 18.0 today, asserted by a unit test, so a currency bump that
-  moves it fails the check and becomes a reviewed change: the goldens re-recorded, the CHANGELOG
-  naming the version. The payload measurement is rerun on that version, and the change list's
-  Toolchain names each crate the rule adds (`layers.md`, "docproc-mail"). onenote's OCR text
+  rule needs, so "the Rust crates stay" understated the task. Schema "2"'s rule takes the
+  Unicode version its pinned crates carry, so a currency bump that moves it is a reviewed change
+  (`layers.md`, "docproc-mail"); the payload measurement is rerun on that version, and the change
+  list's Toolchain names each crate the rule adds. onenote's OCR text
   follows the rule through the shared crate, so the version binds it too. Rejected: the shared
   crate owning tables generated from UCD 16.0.
 - **ML-4 · A folder cycle in a .pst recursed without bound.** Accepted → mail. By reading: the
@@ -530,8 +529,8 @@ API" sections. An entry merged into a PX finding is settled there and only point
   The adapters move into `stages`; the envelope reader stays in `internal/cli`; `Warning` stays
   `dispatch`'s; `Read` and `Convert` return the sequence. Rejected: adapters in `dispatch` and a
   public envelope package.
-- **8 · `stages.Build`'s options (Q9).** Settled → library. `Build(ctx, lookup, opts Options)`,
-  one struct, each bound's owner and outcome stated once in `layers.md`. Rejected: the three
+- **8 · `stages.Build`'s options (Q9).** Settled → library. One `Options` struct, each bound's
+  owner and outcome stated once in `layers.md`, "Dispatch". Rejected: the three
   settled arguments, under which Cerebro can set none of the groups' bounds.
 - **9 · Default bounds (Q10).** Settled → library; docproc (`cmd/docproc`'s starting values);
   acceptance. No `Limits` or run bound has a library default; `cmd/docproc` ships starting
@@ -791,10 +790,10 @@ nested modules".
   embedding `dispatch.Event` declares a second field of that name, which doesn't compile; "1"'s
   `warning`, the command's note that no record held a seen part's children (run/replay.go:240),
   has no successor once the library replays children, while dispatch's `Warning` is a line kind
-  "1" never had; and a zero count is now left out. The line is the kind as `event`, `input`,
-  `dispatch.Event` inline, `file`, `quarantine`, `time`, and `error`, set on an error line
-  alone; `Event.Part` gains `omitzero`; the kinds are `part`, `output`, `warning`, and `error`.
-  Corrects `layers.md`'s event-line paragraph, whose "in place of a string" goes.
+  "1" never had; and a zero count is now left out. The line embeds `dispatch.Event` inline
+  beside its own kind, an error line's text, and the record's fields, `Event.Part` gaining
+  `omitzero`, and its kinds are `part`, `output`, `warning`, and `error` (`layers.md`, "The
+  nested modules").
 - **DP-2 · The record was the one file not written whole, and a killed run's was unreadable.**
   Accepted → docproc. `Run.Write` encoded into a 4,096-byte `bufio.Writer` flushed only in `End`;
   run 1 over ~/docs wrote 12,008 lines in 9.5 MB, about 800 bytes a line, so the file on disk
@@ -875,7 +874,11 @@ nested modules".
 - **DP-15 · The manifest's `record` repeated the layout and was trusted as a path.** Accepted →
   docproc. `record` and `Run.Record` go; `run` stays.
 - **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
-  library (the JSON names) and docproc (the aliases).
+  docproc: the manifest's shapes stay `rundir/schema`'s,
+  filled by `run` from `stages.Set`, and `stages`' carry no JSON names (`layers.md`, "The nested
+  modules"). Rejected: `schema` aliasing them, which ties schema "2" to an unversioned package
+  and has every reader of the run directory, `cmd/docinfer` among them, compile `stages` and the
+  format packages for its shapes.
 - **DP-17 · Every tool was probed before the inputs were checked.** Accepted → docproc.
 - **DP-18 · `flags.json` repeated the record.** Accepted → docproc. The kept file is
   `quarantine/<sha256>`, named on the line whenever it exists.
@@ -893,9 +896,9 @@ nested modules".
 
 ## Releases
 
-Every new artifact starts at v0.1.0, whatever its spike's version, and its CHANGELOG's first
-entry links the spike release, or commit, it is promoted from. The tools release first, since the library's
-readers take their first schema "2" tags as their minimums.
+Every new artifact starts at v0.1.0, whatever its spike's version, and its CHANGELOG's first entry
+links the spike release, or commit, it is promoted from. The tools release first, since the
+library's readers take their first schema "2" tags as their minimums.
 
 ```text
 tools/ooxml/v0.1.0     docproc-ooxml     ooxml      from spike-ai-pipeline-office v0.1.0
