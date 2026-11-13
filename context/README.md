@@ -25,8 +25,10 @@ each artifact's first tag and the task that releases it.
 - **System tools**: docproc-ooxml (docx, xlsx, pptx), docproc-mail (.pst, .msg, .eml, mbox), and
   docproc-onenote (sections, .onepkg, notebooks), each writing JSON Lines under schema "2" with
   Markdown inside as the text layer (`layers.md`, "The tool contract"). docproc-ooxml is
-  [`tools/ooxml/`](../tools/ooxml/README.md), and the envelope's cases every tool reads are
-  [`tools/envelope/cases.json`](../tools/envelope/cases.json).
+  [`tools/ooxml/`](../tools/ooxml/README.md) and docproc-mail
+  [`tools/mail/`](../tools/mail/README.md). The Rust tools share the docproc-envelope crate,
+  [`tools/envelope/`](../tools/envelope/src/lib.rs), and every tool reads the envelope's cases
+  from [`tools/envelope/cases.json`](../tools/envelope/cases.json).
 - **Media**: audio windows and pictures prepared for transcription and vision.
 - **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
   parts yielded as events (`layers.md`, "Dispatch", "Event shapes").

@@ -160,12 +160,13 @@ is more than nine times what its data can yield (not decompressed), an image sou
 nothing, a TNEF or opaque S/MIME part, and a `.pst` embedded message listed without its content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
-an input that can't be read; one of none of the four formats, an mbox none of whose entries is a
-message among them; an `.ost`, the offline cache of a server mailbox, to be exported from Outlook
-as a `.pst`; a PST version outlook-pst doesn't read (it reads 14 and 15, ANSI, and 23, Unicode); a
-store whose IPM subtree can't be read; a compound file that isn't an MS-OXMSG message, or whose
-top-level properties can't be read; an `.eml` of 4 GiB or more, or one mail-parser can't parse;
-and an `--after` id that names no message.
+an input that can't be read; an input in none of the four formats, an mbox among them none of
+whose entries is a message (an empty mbox is read, giving its store line); an `.ost`, the
+offline cache of a server mailbox, to be exported from Outlook as a `.pst`; a PST version
+outlook-pst doesn't read (it reads 14 and 15, ANSI, and 23, Unicode); a store whose IPM subtree
+can't be read; a compound file that isn't an MS-OXMSG message, or whose top-level properties
+can't be read; an `.eml` of 4 GiB or more, or one mail-parser can't parse; and an `--after` id
+that names no message.
 
 The envelope these follow, its cases stated once for every tool, is
 [`tools/envelope/cases.json`](../envelope/cases.json), and the code that writes it is the shared
@@ -189,11 +190,11 @@ crate, [`tools/envelope`](../envelope).
 - The static musl binary is slower than a glibc build would be, which points at musl's allocator.
   In the spike's finding
   ([`docs/findings/mail-cli.md`](https://github.com/JaimeStill/spike-ai-pipeline-mail/blob/v0.3.1/docs/findings/mail-cli.md),
-  "The release binary against a glibc build" and ".eml and mbox"), it took 2.0 to 2.3 times a
-  glibc build's time on large stores (13.27 s against 6.51 s on the 2.1 GB scale store at the
-  spike's v0.1.0; 14.82 s against 6.88 s at its v0.2.0), and 1.7 times on the same messages as a
-  2.7 GB mboxrd (6.86 s against 4.09 s), with less peak memory. It is released static all the
-  same, so it runs on any Linux host.
+  "The release binary against a glibc build" and ".eml and mbox"), it took 2.0 times a glibc
+  build's time on the 2.1 GB scale store (13.27 s against 6.51 s), 2.3 times on plaso's smaller
+  store (1.59 s against 0.71 s), and 1.7 times on the scale store's messages as a 2.7 GB mboxrd
+  (6.86 s against 4.09 s), with less peak memory. It is released static all the same, so it runs
+  on any Linux host.
 - `.ost` files are refused, and an attachment by reference has no file.
 - mail-parser decodes US-ASCII and ISO-8859-1 as windows-1252, and the five bytes windows-1252
   leaves undefined as U+FFFD, with a lossy-decoding warning in a body or an attachment but none
