@@ -6,6 +6,7 @@ use common::{built, fixture, run};
 
 const USAGE: &str = "usage: docproc-mail [--media <dir>] [--after <id>] <input>
        docproc-mail --version
+       docproc-mail --help
 ";
 
 /// The bare crate version on the first line, which a release compares with its tag's, and the
@@ -21,23 +22,36 @@ fn version_prints_the_bare_crate_version_then_the_schema() {
     assert_eq!(out.stderr, "");
 }
 
-/// A stdout that can't take the version is an output fault, exit 1, with its error line.
+/// `--help` prints the usage to stdout, nothing to stderr, and exits 0.
 #[test]
-fn version_to_a_full_stdout_exits_1() {
-    let full = std::fs::File::options()
-        .write(true)
-        .open("/dev/full")
-        .unwrap();
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_docproc-mail"))
-        .arg("--version")
-        .stdout(full)
-        .output()
-        .unwrap();
-    assert_eq!(out.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(out.stderr).unwrap(),
-        "docproc-mail: error: stdout can't be written: No space left on device (os error 28)\n"
-    );
+fn help_prints_the_usage_to_stdout() {
+    let out = run(&["--help"]);
+    assert_eq!(out.code, Some(0));
+    assert_eq!(out.stdout, USAGE);
+    assert_eq!(out.stderr, "");
+}
+
+/// A stdout that can't take the version, or the usage, is an output fault, exit 1, with its
+/// error line.
+#[test]
+fn version_and_help_to_a_full_stdout_exit_1() {
+    for flag in ["--version", "--help"] {
+        let full = std::fs::File::options()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_docproc-mail"))
+            .arg(flag)
+            .stdout(full)
+            .output()
+            .unwrap();
+        assert_eq!(out.status.code(), Some(1), "{flag}");
+        assert_eq!(
+            String::from_utf8(out.stderr).unwrap(),
+            "docproc-mail: error: stdout can't be written: No space left on device (os error 28)\n",
+            "{flag}"
+        );
+    }
 }
 
 /// Each usage error exits 2 with its error line and the usage on stderr, and nothing on stdout.
@@ -52,6 +66,8 @@ fn usage_errors_exit_2_with_usage() {
         (&[store, store], "more than one input"),
         (&["--frobnicate", store], "unknown option --frobnicate"),
         (&["--version", store], "--version takes no other arguments"),
+        (&[store, "--help"], "--help takes no other arguments"),
+        (&["--help", "--version"], "--help takes no other arguments"),
         (&[store, "--media"], "--media needs a directory"),
         (&["--media", "", store], "--media needs a directory"),
         (

@@ -18,9 +18,10 @@ the spike.
 
 ### Added
 
-- `docproc-mail [--media <dir>] [--after <id>] <input>` and `--version`, the arguments parsed by
-  hand: a static musl binary on Rust 1.100.0 for linux-x64 and linux-arm64, overflow checks on in
-  release, its crate graph locked. `--version` prints the version, then `schema 2`.
+- `docproc-mail [--media <dir>] [--after <id>] <input>`, `--version`, and `--help`, the arguments
+  parsed by hand: a static musl binary on Rust 1.100.0 for linux-x64 and linux-arm64, overflow
+  checks on in release, its crate graph locked. `--version` prints the version, then `schema 2`;
+  `--help` prints the usage to stdout and exits 0.
 - Schema `"2"` JSON Lines: a `store` line, then a `.pst`'s `folder` lines, and a `message` line
   per message, with a `skipped` line wherever a record can't be read. Output is byte-identical
   for the same input, pinned by a `.jsonl` and a `.stderr` golden for every committed input, the
@@ -64,8 +65,8 @@ the spike.
 - A `.pst` warning's `<where>` names folders by node id (`folder 32802, message 2097188,
   attachment 5`), no longer by display-name path; a colon followed by a space in `<where>` is
   escaped.
-- A usage error is an `error:` line followed by the usage, and `--version` with a stdout that
-  can't be written exits 1.
+- A usage error is an `error:` line followed by the usage, and `--version` or `--help` with a
+  stdout that can't be written exits 1.
 - Faults stay within one record: the guard wraps the read, the mapping, and the Markdown, so a
   fault there is that record's `skipped` line, and stdout is flushed after each message. A `.pst`
   folder cycle is a `skipped` folder, `already read`, in the walk and the `--after` pre-walk. A

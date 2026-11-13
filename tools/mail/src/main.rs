@@ -23,7 +23,7 @@ mod sniff;
 
 use std::ffi::OsString;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read};
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::PathBuf;
 use std::process::ExitCode;
 
@@ -33,12 +33,15 @@ use sniff::Format;
 /// The binary's name, which Cargo.toml's package gives, leading every stderr line.
 const NAME: &str = env!("CARGO_BIN_NAME");
 
+/// The usage: on stdout for `--help`, and on stderr after a usage error's line.
 const USAGE: &str = concat!(
     "usage: ",
     env!("CARGO_BIN_NAME"),
     " [--media <dir>] [--after <id>] <input>\n       ",
     env!("CARGO_BIN_NAME"),
-    " --version"
+    " --version\n       ",
+    env!("CARGO_BIN_NAME"),
+    " --help"
 );
 
 /// The reason an input of none of the four formats is refused, alone or leading the reason why.
@@ -47,6 +50,7 @@ pub const NO_MAIL: &str = "neither a .pst, a .msg, an .eml nor an mbox";
 /// The parsed command line.
 enum Command {
     Version,
+    Help,
     Read(Args),
 }
 
@@ -69,6 +73,14 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
         // The bare version, which the release compares with its tag's.
         Command::Version => {
             return docproc_envelope::version(env!("CARGO_PKG_VERSION"), model::SCHEMA);
+        }
+        // The usage, asked for, so on stdout and exit 0; a stdout that can't take it is an
+        // output fault, exit 1, as for --version.
+        Command::Help => {
+            let mut out = io::stdout().lock();
+            return writeln!(out, "{USAGE}")
+                .and_then(|()| out.flush())
+                .map_err(Fault::Output);
         }
         Command::Read(args) => args,
     };
@@ -131,13 +143,16 @@ fn single(after: Option<u32>, kind: &str) -> Result<(), Fault> {
     }
 }
 
-/// Parses the arguments by hand: `--version` alone, or one input and an optional
+/// Parses the arguments by hand: `--version` or `--help` alone, or one input and an optional
 /// `--media <dir>` and `--after <id>`, in any order.
 fn parse(args: &[OsString]) -> Result<Command, Fault> {
-    if let [flag] = args
-        && flag == "--version"
-    {
-        return Ok(Command::Version);
+    if let [flag] = args {
+        if flag == "--version" {
+            return Ok(Command::Version);
+        }
+        if flag == "--help" {
+            return Ok(Command::Help);
+        }
     }
     let usage = |reason: &str| Err(Fault::Usage(reason.to_owned()));
     let mut input = None;
@@ -168,7 +183,9 @@ fn parse(args: &[OsString]) -> Result<Command, Fault> {
                     return usage("--after is given more than once");
                 }
             }
-            Some("--version") => return usage("--version takes no other arguments"),
+            Some(flag @ ("--version" | "--help")) => {
+                return usage(&format!("{flag} takes no other arguments"));
+            }
             Some(option) if option.starts_with('-') && option != "-" => {
                 return usage(&format!("unknown option {option}"));
             }

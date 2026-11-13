@@ -43,6 +43,7 @@ that costs).
 ```sh
 docproc-mail [--media <dir>] [--after <id>] <input>
 docproc-mail --version
+docproc-mail --help
 ```
 
 It reads the one `<input>` and writes its lines to stdout, and nothing else there. The arguments
@@ -76,6 +77,10 @@ usage error. An id that names no message is refused.
 0.1.0
 schema 2
 ```
+
+`--help` prints the usage, the three lines that open this section, to stdout and exits 0.
+`--version` and `--help` each come alone; with any other argument either is a usage error. A
+stdout that can't take their output exits 1.
 
 ## Output
 
