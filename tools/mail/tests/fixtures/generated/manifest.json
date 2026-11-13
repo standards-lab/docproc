@@ -1,8 +1,8 @@
 {
   "note": "Written by the generator (MISE_ENV=fixtures mise run fixtures); edit layout.json, the .eml sources or the item sources, never this file. Each output was built twice in the run, and byte_stable is whether the two builds were identical. Neither format is: PST Builder 1.3.0 writes a random store UID and a random search key per message (Guid.NewGuid), and MsgKit 3.0.6 random record keys and entry IDs and the time of conversion as the creation and modification times. So each output's sha256 records the committed file only; a rerun shows drift in an output's size, and the tests show drift in its content.",
   "tools": {
-    "dotnet-sdk": "10.0.402",
-    "dotnet-runtime": "10.0.13",
+    "dotnet-sdk": "11.0.100",
+    "dotnet-runtime": "11.0.0",
     "PstBuilder": "1.3.0",
     "PstBuilder.Eml": "1.3.0",
     "MsgKit": "3.0.6",
@@ -66,7 +66,7 @@
   "outputs": [
     {
       "file": "pst/mailbox.pst",
-      "sha256": "771e8d0c603c1f4f20785778e5be99b0fc7811d6b80c9fde2609ea87cc5c7fa6",
+      "sha256": "51eb9cdb7f67396082ecccc0dccf47465b78a1c1e8a0b40c8484dfdb53f82082",
       "size": 271360,
       "byte_stable": false,
       "sources": [
@@ -82,7 +82,7 @@
     },
     {
       "file": "pst/conversations.pst",
-      "sha256": "fa5cd60ec65375abd6a497e2e2b65e5889f72822dd0df22d270207b306e9479a",
+      "sha256": "28094523fe367a1746640a6d8e1acef6621ebc7a82728c8bbe7e1d127c2c1069",
       "size": 271360,
       "byte_stable": false,
       "sources": [
@@ -95,7 +95,7 @@
     },
     {
       "file": "msg/01-plain.msg",
-      "sha256": "bc2fab033800d2dcde568a646a941be006ba018e7bdbd6d18546e1f57dedf47e",
+      "sha256": "6134caf24da0ebfa165888f0091f5fc72c4d433aaac5319c8c61ac4ebcdcd906",
       "size": 13824,
       "byte_stable": false,
       "sources": [
@@ -104,7 +104,7 @@
     },
     {
       "file": "msg/02-reply-latin1.msg",
-      "sha256": "2174528013a0c6e813485624fcf9fd4f07c390a528781e685c50564cf0e5d1f4",
+      "sha256": "18ded9838363785574d453d54f68b1833f7fec7a2135db4c1930a2682cd417e6",
       "size": 11264,
       "byte_stable": false,
       "sources": [
@@ -113,7 +113,7 @@
     },
     {
       "file": "msg/03-html-inline-image.msg",
-      "sha256": "79ef3a474d52fdbf69b2f93aa9adfee579a0dd6f0924906b72239954b2057ca8",
+      "sha256": "b56f338335d072181cb7dcdc2ef70749872a6bbbab7d65425caeff495d0c6406",
       "size": 12800,
       "byte_stable": false,
       "sources": [
@@ -122,7 +122,7 @@
     },
     {
       "file": "msg/04-attachment-cyrillic.msg",
-      "sha256": "bf2f6d69fb57090da2586a4f347417947c4ade501f6794372319306358f80dd2",
+      "sha256": "8417395630c4b591225b2b953f6dfefee691c22f9eb98bdd118128e76173e5a8",
       "size": 13824,
       "byte_stable": false,
       "sources": [
@@ -131,7 +131,7 @@
     },
     {
       "file": "msg/05-japanese.msg",
-      "sha256": "9738db032a72cd0ff26e0628073cc59fde39fb5614c763916aeab996c09b556d",
+      "sha256": "e4bb02aeef95e955dc3b19f7b6f2e4e7ba722b56429f661cf1117b7ce1143ff1",
       "size": 10240,
       "byte_stable": false,
       "sources": [
@@ -140,7 +140,7 @@
     },
     {
       "file": "msg/06-chinese.msg",
-      "sha256": "ed4d916f718b1c185b86943b6d399cce5dfab17624cc46818892319462d45100",
+      "sha256": "9656047970cd7a6fdb15b8c635f8b0b5ed65b785d9087f260e52f94037ff4798",
       "size": 10240,
       "byte_stable": false,
       "sources": [
@@ -149,7 +149,7 @@
     },
     {
       "file": "msg/07-html-only-bcc.msg",
-      "sha256": "ceedbf6ac52fe4d47144149089024efb9bd7a3920d2366bd222a345842978ab4",
+      "sha256": "1d7cd997a06422e0994e83b708d8c58523575f109af9bf8ec1381268a29ad249",
       "size": 11776,
       "byte_stable": false,
       "sources": [
@@ -158,7 +158,7 @@
     },
     {
       "file": "msg/08-forward-attached-message.msg",
-      "sha256": "a7c1b4ede2080d0a64e894e2c7d2454b82c56578944bba907347024c94da0464",
+      "sha256": "4e341319f969b2286bd64b2e300a0cce05235d408e23e8c4322911ca5baa6c83",
       "size": 14848,
       "byte_stable": false,
       "sources": [
