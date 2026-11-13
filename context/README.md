@@ -13,7 +13,10 @@ Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml
 v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc,
 and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) states the
 boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) as signatures and
-schemas, and what each promotion changes from its spike.
+schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
+review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
+disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
+each artifact's first tag and the task that releases it.
 
 ## Capability map
 
@@ -31,4 +34,6 @@ schemas, and what each promotion changes from its spike.
 - **Run directory**: `cmd/docproc`'s, read and written by `rundir` and `rundir/schema`
   (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested
-  modules").
+  modules"; `design.md`, "cmd/docproc").
+- **Releases**: each artifact's first tag and the task that tags it, the tools on linux-x64 and
+  linux-arm64 (`design.md`, "Releases").
