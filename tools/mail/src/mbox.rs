@@ -35,7 +35,7 @@ use docproc_envelope::{Fault, Lines, Media, guarded};
 use mail_parser::MessageBuffers;
 use mail_parser::mailbox::mbox::{Message, MessageIterator};
 
-use crate::model::{self, Skipped, Store};
+use crate::model::{Skipped, Store};
 use crate::{mime, sniff, unreadable, warn, warn_below};
 
 /// Reads the mbox at `path` and writes its store line and the lines of its messages, those after
@@ -115,12 +115,9 @@ pub fn read(
         out.write(&read.message).map_err(Fault::Output)?;
         for (id, reason) in read.skipped {
             out.write(&Skipped {
-                line: "skipped",
-                kind: "attachment",
-                folder: None,
                 message: Some(ordinal),
                 id: Some(id),
-                reason,
+                ..Skipped::new("attachment", reason)
             })
             .map_err(Fault::Output)?;
         }
@@ -170,16 +167,7 @@ impl<W: Write> Held<'_, W> {
             return Ok(());
         }
         files.create()?;
-        self.out
-            .write(&Store {
-                line: "store",
-                schema: model::SCHEMA,
-                format: "mbox",
-                encoding: None,
-                password: None,
-                display_name: None,
-            })
-            .map_err(Fault::Output)?;
+        self.out.write(&Store::new("mbox")).map_err(Fault::Output)?;
         for (ordinal, reason) in std::mem::take(&mut self.skipped) {
             skip(self.out, ordinal, reason)?;
         }
@@ -235,12 +223,8 @@ fn unseparated(contents: &[u8]) -> &[u8] {
 fn skip(out: &mut Lines<impl Write>, ordinal: u32, reason: String) -> Result<(), Fault> {
     warn(&format!("message {ordinal}"), &format!("skipped: {reason}"));
     out.write(&Skipped {
-        line: "skipped",
-        kind: "message",
-        folder: None,
-        message: None,
         id: Some(ordinal),
-        reason,
+        ..Skipped::new("message", reason)
     })
     .map_err(Fault::Output)?;
     out.flush().map_err(Fault::Output)

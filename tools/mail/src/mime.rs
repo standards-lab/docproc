@@ -47,7 +47,7 @@ use mail_parser::{
 use crate::mapping;
 use crate::markdown::{self, Bodies};
 use crate::model::{Address, Attachment, Message};
-use crate::msg::DEPTH_MAX;
+use crate::msg::{DEPTH_MAX, too_deep};
 
 /// The address type of every address a MIME message carries.
 const SMTP: &str = "SMTP";
@@ -352,11 +352,6 @@ struct Part<'m> {
     content: Option<Cow<'m, [u8]>>,
     nested: Option<MessageRef<'m>>,
     notes: Vec<String>,
-}
-
-/// The note for an embedded message below the depth limit, listed without its message.
-fn too_deep() -> String {
-    format!("an embedded message nested deeper than {DEPTH_MAX} messages; listed without it")
 }
 
 /// Reads one attachment part; `too_deep_here` says the part is below [`DEPTH_MAX`] messages,

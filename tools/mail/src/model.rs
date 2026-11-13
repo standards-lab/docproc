@@ -24,6 +24,21 @@ pub struct Store {
     pub display_name: Option<String>,
 }
 
+impl Store {
+    /// The store line of an input in `format`, with none of a .pst's facts, which its reader
+    /// sets.
+    pub fn new(format: &'static str) -> Self {
+        Self {
+            line: "store",
+            schema: SCHEMA,
+            format,
+            encoding: None,
+            password: None,
+            display_name: None,
+        }
+    }
+}
+
 /// One folder of a .pst, written before its messages and its subfolders.
 #[derive(Serialize)]
 pub struct Folder {
@@ -200,4 +215,19 @@ pub struct Skipped {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<u32>,
     pub reason: String,
+}
+
+impl Skipped {
+    /// The skipped line of a record of `kind`, naming no folder, message or id; its reader sets
+    /// those its input has.
+    pub fn new(kind: &'static str, reason: String) -> Self {
+        Self {
+            line: "skipped",
+            kind,
+            folder: None,
+            message: None,
+            id: None,
+            reason,
+        }
+    }
 }

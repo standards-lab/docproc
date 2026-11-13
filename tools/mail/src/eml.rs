@@ -12,7 +12,7 @@ use std::path::Path;
 
 use docproc_envelope::{Fault, Lines, Media, guarded};
 
-use crate::model::{self, Skipped, Store};
+use crate::model::{Skipped, Store};
 use crate::{mime, sniff, unreadable, warn, warn_below};
 
 /// The size mail-parser parses up to: its offsets are 32-bit.
@@ -36,15 +36,7 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
         Err(failure) => Err(failure.reason),
     };
     files.create()?;
-    out.write(&Store {
-        line: "store",
-        schema: model::SCHEMA,
-        format: "eml",
-        encoding: None,
-        password: None,
-        display_name: None,
-    })
-    .map_err(Fault::Output)?;
+    out.write(&Store::new("eml")).map_err(Fault::Output)?;
     let read = match parsed {
         Ok(parsed) => mime::guarded_message(&parsed.root(), files)?,
         Err(reason) => Err(reason),
@@ -54,14 +46,7 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
         Err(reason) => {
             warn("message", &format!("skipped: {reason}"));
             return out
-                .write(&Skipped {
-                    line: "skipped",
-                    kind: "message",
-                    folder: None,
-                    message: None,
-                    id: None,
-                    reason,
-                })
+                .write(&Skipped::new("message", reason))
                 .map_err(Fault::Output);
         }
     };
@@ -69,12 +54,8 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
     out.write(&read.message).map_err(Fault::Output)?;
     for (id, reason) in read.skipped {
         out.write(&Skipped {
-            line: "skipped",
-            kind: "attachment",
-            folder: None,
-            message: None,
             id: Some(id),
-            reason,
+            ..Skipped::new("attachment", reason)
         })
         .map_err(Fault::Output)?;
     }

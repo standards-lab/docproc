@@ -53,6 +53,10 @@ pub mod tag {
     pub const PST_PASSWORD: u16 = 0x67FF;
 }
 
+/// PidTagAttachMethod's afEmbeddedMessage and afStorage (MS-OXCMSG 2.2.2.9).
+pub const AF_EMBEDDED_MESSAGE: i64 = 5;
+pub const AF_STORAGE: i64 = 6;
+
 /// One property's value. Strings keep their stored bytes: decoding them needs the code page,
 /// which only the mapping knows.
 #[derive(Clone, Debug, PartialEq)]

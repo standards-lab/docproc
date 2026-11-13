@@ -369,8 +369,6 @@ mod tests {
 
     #[test]
     fn the_extension_is_the_stored_one_else_the_filenames() {
-        let unicode =
-            |text: &str| Value::Unicode(text.encode_utf16().flat_map(u16::to_le_bytes).collect());
         let mut props = Bag::from([(tag::ATTACH_LONG_FILENAME, unicode("report.csv"))]);
         let mapped = attachment(&props, Some(b""), 1252);
         assert_eq!(mapped.extension.as_deref(), Some("csv"));

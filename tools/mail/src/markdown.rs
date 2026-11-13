@@ -102,9 +102,8 @@ pub fn make(
 /// The images' sources resolved while the HTML is rewritten: what each attachment can be named
 /// by, which ones a source named, the `data:` payloads, and the notes.
 struct Images {
-    /// Each attachment's content_id, without angle brackets, its Content-Location, and its media
-    /// name; an attachment with no media name is named by no source.
-    targets: Vec<(Option<String>, Option<String>, Option<String>)>,
+    /// What each attachment can be named by, in the attachments' order.
+    targets: Vec<Target>,
     /// Whether a source named each attachment.
     linked: Vec<bool>,
     /// The `data:` payloads, each once, in the HTML's order.
@@ -112,6 +111,16 @@ struct Images {
     /// The sources already noted as naming nothing, each noted once.
     unmatched: HashSet<String>,
     notes: Vec<String>,
+}
+
+/// What an image's source can name an attachment by.
+struct Target {
+    /// Its content_id, without angle brackets.
+    content_id: Option<String>,
+    /// Its Content-Location.
+    location: Option<String>,
+    /// Its media name; an attachment with none is named by no source.
+    file: Option<String>,
 }
 
 /// A `data:` image's payload, decoded, its name hashed but not yet written.
@@ -136,8 +145,11 @@ impl Images {
                         .unwrap_or(id)
                         .to_owned()
                 });
-                let location = locations.get(at).cloned().flatten();
-                (content_id, location, attachment.file.clone())
+                Target {
+                    content_id,
+                    location: locations.get(at).cloned().flatten(),
+                    file: attachment.file.clone(),
+                }
             })
             .collect::<Vec<_>>();
         Self {
@@ -160,11 +172,11 @@ impl Images {
         let found = if let Some(id) = scheme(src, "cid:") {
             let id = percent_decoded(id.as_bytes());
             let id = String::from_utf8_lossy(&id);
-            self.target(|(content_id, _, _)| content_id.as_deref() == Some(&*id))
+            self.target(|target| target.content_id.as_deref() == Some(&*id))
         } else if let Some(data) = scheme(src, "data:") {
             return self.data(data);
         } else {
-            self.target(|(_, location, _)| location.as_deref() == Some(src))
+            self.target(|target| target.location.as_deref() == Some(src))
         };
         if found.is_none() && self.unmatched.insert(src.to_owned()) {
             self.notes.push(format!(
@@ -175,16 +187,13 @@ impl Images {
     }
 
     /// The media name of the first attachment with one that `names` matches, which is now linked.
-    fn target(
-        &mut self,
-        names: impl Fn(&(Option<String>, Option<String>, Option<String>)) -> bool,
-    ) -> Option<String> {
+    fn target(&mut self, names: impl Fn(&Target) -> bool) -> Option<String> {
         let at = self
             .targets
             .iter()
-            .position(|target| target.2.is_some() && names(target))?;
+            .position(|target| target.file.is_some() && names(target))?;
         self.linked[at] = true;
-        self.targets[at].2.clone()
+        self.targets[at].file.clone()
     }
 
     /// A `data:` URL's payload's media name (RFC 2397: `data:[<mediatype>][;base64],<data>`),
@@ -415,7 +424,8 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
     }
 }
 
-/// Markdown from an HTML body. Images keep their sources as written. The head, styles and scripts are no part of the text: htmd would write a style's rules as text.
+/// Markdown from an HTML body. Images keep their sources as written. The head, styles and
+/// scripts are no part of the text: htmd would write a style's rules as text.
 pub fn from_html(html: &str) -> Result<String, String> {
     htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
@@ -625,9 +635,9 @@ fn references(text: &str) -> String {
 }
 
 /// A piece of HTML as its tag pass reads it: a run of text, or a start or end tag by its name in
-/// ASCII lowercase, a start tag with whether it ends `/>` and where the whole tag is in the HTML. Comments, doctypes, and processing
-/// instructions are passed over, and a raw-text element's content is text, or nothing for the
-/// elements no part of the text.
+/// ASCII lowercase, a start tag with whether it ends `/>` and where the whole tag is in the HTML.
+/// Comments, doctypes, and processing instructions are passed over, and a raw-text element's
+/// content is text, or nothing for the elements no part of the text.
 enum Piece<'a> {
     Text(&'a str),
     Start(String, bool, Range<usize>),

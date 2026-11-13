@@ -58,12 +58,9 @@ use outlook_pst::ndb::node_id::NodeId;
 use outlook_pst::{AnsiPstFile, UnicodePstFile};
 
 use crate::codepage::{message_code_page, store_code_page};
-use crate::props::{Bag, Value, integer, tag};
+use crate::props::{AF_EMBEDDED_MESSAGE, Bag, Value, integer, tag};
 use crate::sniff::Encoding;
 use crate::{mapping, markdown, model, warn, warn_all};
-
-/// PidTagAttachMethod's afEmbeddedMessage (MS-OXCMSG 2.2.2.9).
-const AF_EMBEDDED_MESSAGE: i64 = 5;
 
 /// Reads the store at `path`, whose header names `encoding`, writes its lines to `out`, those of
 /// its messages after the message with node id `after` when it is given, and its attachments'
@@ -109,12 +106,10 @@ pub fn read(
     warn_all("store", notes);
     walk.out
         .write(&model::Store {
-            line: "store",
-            schema: model::SCHEMA,
-            format: "pst",
             encoding: Some(encoding.name()),
             password: Some(integer(&props, tag::PST_PASSWORD).is_some_and(|crc| crc != 0)),
             display_name,
+            ..model::Store::new("pst")
         })
         .map_err(Fault::Output)?;
     walk.folder(root, None, Vec::new())
@@ -599,12 +594,10 @@ impl<W: Write> Walk<'_, W> {
     ) -> Result<(), Fault> {
         self.out
             .write(&model::Skipped {
-                line: "skipped",
-                kind,
                 folder: Some(folder),
                 message,
                 id,
-                reason,
+                ..model::Skipped::new(kind, reason)
             })
             .map_err(Fault::Output)
     }

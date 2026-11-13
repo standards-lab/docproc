@@ -12,8 +12,8 @@
 //!
 //! The named properties' mapping, `__nameid_version1.0`, is not read, since no field reads a
 //! named property, and a multi-valued property is kept as [`Value::Other`], unread, since no
-//! field reads one either. Properties fill the same bags the .pst reader fills and go through the one mapping, so a .msg
-//! message line is what a .pst gives for the same properties.
+//! field reads one either. Properties fill the same bags the .pst reader fills and go through
+//! the one mapping, so a .msg message line is what a .pst gives for the same properties.
 //!
 //! Every read runs inside [`guarded`]: a recipient, attachment or embedded message that can't be
 //! read, or panics in cfb, is left out with a warning, and an attachment of the top-level message
@@ -34,8 +34,8 @@ use cfb::CompoundFile;
 use docproc_envelope::{Fault, Lines, Media, guarded};
 
 use crate::codepage::msg_code_page;
-use crate::model::{self, Message};
-use crate::props::{Bag, Value, integer, tag};
+use crate::model::{Message, Skipped, Store};
+use crate::props::{AF_EMBEDDED_MESSAGE, AF_STORAGE, Bag, Value, integer, tag};
 use crate::{mapping, markdown, warn, warn_all};
 
 /// The stream of a message's, a recipient's or an attachment's properties.
@@ -52,9 +52,10 @@ const ATTACH_OBJECT: &str = "__substg1.0_3701000D";
 /// chain in real mail is far shallower.
 pub const DEPTH_MAX: usize = 16;
 
-/// PidTagAttachMethod's afEmbeddedMessage and afStorage (MS-OXCMSG 2.2.2.9).
-const AF_EMBEDDED_MESSAGE: i64 = 5;
-const AF_STORAGE: i64 = 6;
+/// The note for an embedded message below [`DEPTH_MAX`], listed without its message.
+pub fn too_deep() -> String {
+    format!("an embedded message nested deeper than {DEPTH_MAX} messages; listed without it")
+}
 
 /// Property types (MS-OXCDATA 2.11.1) the reader reads; any other, a multi-valued one among them,
 /// is kept as [`Value::Other`].
@@ -116,15 +117,7 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
             Fault::Refused(format!("the message's properties can't be read: {reason}"))
         })?;
     walk.files.create()?;
-    out.write(&model::Store {
-        line: "store",
-        schema: model::SCHEMA,
-        format: "msg",
-        encoding: None,
-        password: None,
-        display_name: None,
-    })
-    .map_err(Fault::Output)?;
+    out.write(&Store::new("msg")).map_err(Fault::Output)?;
 
     let place = "message";
     warn_all(place, notes);
@@ -134,26 +127,15 @@ pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Resu
         Err(failure) => {
             warn(place, &format!("skipped: {}", failure.reason));
             return out
-                .write(&model::Skipped {
-                    line: "skipped",
-                    kind: "message",
-                    folder: None,
-                    message: None,
-                    id: None,
-                    reason: failure.reason,
-                })
+                .write(&Skipped::new("message", failure.reason))
                 .map_err(Fault::Output);
         }
     };
     out.write(&message).map_err(Fault::Output)?;
     for (id, reason) in skipped {
-        out.write(&model::Skipped {
-            line: "skipped",
-            kind: "attachment",
-            folder: None,
-            message: None,
+        out.write(&Skipped {
             id: Some(id),
-            reason,
+            ..Skipped::new("attachment", reason)
         })
         .map_err(Fault::Output)?;
     }
@@ -283,13 +265,7 @@ impl Walk<'_> {
         place: &str,
     ) -> Result<Option<Message>, Fault> {
         if depth > DEPTH_MAX {
-            warn(
-                place,
-                &format!(
-                    "an embedded message nested deeper than {DEPTH_MAX} messages; \
-                     listed without it"
-                ),
-            );
+            warn(place, &too_deep());
             return Ok(None);
         }
         let (props, notes) = match self.read(|file| properties_at(file, object, Header::Embedded)) {

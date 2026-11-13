@@ -96,9 +96,10 @@ pub fn without_bom(text: &[u8]) -> &[u8] {
 }
 
 /// Whether `input` has the shape of an RFC 5322 message: its first line a header field, after a
-/// byte-order mark when it starts with one, and a From or Date field in its header block. The block runs to its blank line, to the end of the
-/// input, or to the first line that is neither a field nor a field's folded continuation. Lines
-/// are read one at a time, so a large input that is no mail is told without being held.
+/// byte-order mark when it starts with one, and a From or Date field in its header block. The
+/// block runs to its blank line, to the end of the input, or to the first line that is neither a
+/// field nor a field's folded continuation. Lines are read one at a time, so a large input that
+/// is no mail is told without being held.
 pub fn header_shape(mut input: impl BufRead) -> io::Result<bool> {
     let mut line = Vec::new();
     let mut first = true;
