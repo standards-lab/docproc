@@ -1294,28 +1294,39 @@ mod tests {
         );
     }
 
-    /// The sentinel is the first private-use character the body holds nowhere: neither as written
-    /// nor, through a character reference, in its text or an attribute's value. One already in the
-    /// text reads back as itself.
+    /// A private-use character the body holds reads back as itself, beside a text `&` the
+    /// Markdown escapes, wherever the body holds it: in its text, as written or through a character
+    /// reference, and in a link's or an image's destination and title, which are attribute values.
+    /// A body holding every private-use character has none left to stand for its `&`s, and makes no
+    /// Markdown.
     #[test]
-    fn the_sentinel_is_a_private_use_character_the_body_lacks() {
-        let sentinel_of = |html: &str| {
-            let tree = htmd::HtmlToMarkdown::new().html_to_tree(html).unwrap();
-            sentinel(html, &tree)
-        };
-        assert_eq!(sentinel_of("<p>a &amp; b</p>"), Some('\u{E000}'));
-        assert_eq!(sentinel_of("<p>\u{E000}</p>"), Some('\u{E001}'));
-        assert_eq!(
-            sentinel_of("<p title=\"&#xE001;\">\u{E000}&#57346;</p>"),
-            Some('\u{E003}')
-        );
-        let html = "<p>\u{E000} &amp;amp; <code>\u{E000}&amp;</code> &#xE001;&amp;#59;</p>";
+    fn private_use_characters_read_back_as_written() {
+        let html = "<p>\u{E000} &amp;amp; <code>\u{E000}&amp;</code> &#xE001;&amp;#59; \
+                    <a href=\"&#xE002;\" title=\"&#xE003;\">link</a> \
+                    <img src=\"\u{E004}\" title=\"&#57349;\"></p>";
         let markdown = from_html(html).unwrap();
         assert_eq!(
             blocks(&markdown),
-            ["\u{E000} &amp; \u{E000}& \u{E001}&#59;"],
+            ["\u{E000} &amp; \u{E000}& \u{E001}&#59; link "],
             "{markdown}"
         );
+        assert_eq!(
+            destinations(&markdown),
+            ["\u{E002}", "\u{E004}"],
+            "{markdown}"
+        );
+        assert_eq!(
+            titles_and_alts(&markdown).0,
+            ["\u{E003}", "\u{E005}"],
+            "{markdown}"
+        );
+
+        let every: String = ('\u{E000}'..='\u{F8FF}')
+            .chain('\u{F0000}'..='\u{FFFFD}')
+            .chain('\u{100000}'..='\u{10FFFD}')
+            .collect();
+        let refused = from_html(&format!("<p>&amp;amp; {every}</p>")).unwrap_err();
+        assert!(refused.contains("every private-use character"), "{refused}");
     }
 
     /// The `src` of a start tag, quoted either way or bare, past other attributes, a name that
