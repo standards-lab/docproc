@@ -1,7 +1,7 @@
-//! A page's content: its title and its containers, mapped from onenote_parser's model into
-//! schema "1"'s, with outline items nested as stored, paragraphs split into runs, equations read
-//! as LaTeX, and images', embedded files' and ink drawings' contents named, and written, by the
-//! media directory.
+//! A page's content: its title and its containers, mapped from onenote_parser's model into the
+//! crate's own (src/page.rs), with outline items nested as stored, paragraphs split into runs,
+//! equations read as LaTeX, and images', embedded files' and ink drawings' contents named, and
+//! written, by the media directory, each recorded in the page's media as it is stored.
 
 use std::io::Read;
 use std::ops::Range;
@@ -12,19 +12,22 @@ use onenote_parser::contents::{
     OutlineItem, ParagraphStyling, RichText, Table,
 };
 use onenote_parser::page::{Page, PageContent};
-use onenote_parser::property::common::ColorRef;
 use onenote_parser::property::embedded_file::FileType;
 
 use crate::ink::{self, Stroke};
 use crate::math::{self, Object};
-use crate::model::{self, Block, Container, Item, Offsets};
-use crate::section::{iso8601, text};
+use crate::model::{InkAlternatives, Medium};
+use crate::page::{self, Block, Container, Item, Offsets};
+use crate::section::text;
 use crate::warn;
 
-/// A page's content and its own ink.
+/// A page's read: its content, the Markdown's input, and what its line carries beside the
+/// Markdown.
 pub struct PageRead {
-    pub content: Vec<Container>,
-    pub ink: Option<model::Ink>,
+    pub page: page::Page,
+    /// Its images, embedded files and ink drawings, in the order they were read.
+    pub media: Vec<Medium>,
+    pub ink_alternatives: Vec<InkAlternatives>,
 }
 
 /// The page's title, when it has one, then its containers in stored order. A container of a
@@ -36,6 +39,7 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
     let mut reader = Reader {
         media,
         place,
+        read: Vec::new(),
         images: 0,
         files: 0,
         equations: 0,
@@ -47,13 +51,7 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
         for outline in title.contents() {
             items.extend(reader.items(outline.items())?);
         }
-        containers.push(Container::Title {
-            offsets: Offsets {
-                offset_horizontal: Some(title.offset_horizontal()),
-                offset_vertical: Some(title.offset_vertical()),
-            },
-            items,
-        });
+        containers.push(Container::Title { items });
     }
     for content in page.contents() {
         containers.push(match content {
@@ -83,7 +81,6 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
                         offset_horizontal: ink.offset_horizontal(),
                         offset_vertical: ink.offset_vertical(),
                     },
-                    strokes: strokes.len(),
                     bounds: ink::extent(&strokes),
                 };
                 page_strokes.extend(strokes);
@@ -93,10 +90,40 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
         });
     }
     let ink = reader.drawing(&page_strokes)?;
+    let (words, ink_alternatives) = recognition(page);
     Ok(PageRead {
-        content: containers,
-        ink,
+        page: page::Page {
+            content: containers,
+            ink,
+            words,
+        },
+        media: reader.read,
+        ink_alternatives,
     })
+}
+
+/// A page's recognised ink words, each its best guess, over its recognition's lines in order,
+/// and the other guesses of those that have them, each by its index among the words. A word
+/// with no guess is left out.
+fn recognition(page: &Page) -> (Vec<String>, Vec<InkAlternatives>) {
+    let mut words = Vec::new();
+    let mut alternatives = Vec::new();
+    let Some(recognition) = page.ink_recognition() else {
+        return (words, alternatives);
+    };
+    for word in recognition.lines().iter().flat_map(|line| line.words()) {
+        let Some((best, rest)) = word.alternatives().split_first() else {
+            continue;
+        };
+        if !rest.is_empty() {
+            alternatives.push(InkAlternatives {
+                word: words.len(),
+                alternatives: rest.to_vec(),
+            });
+        }
+        words.push(best.clone());
+    }
+    (words, alternatives)
 }
 
 fn outline_offsets(outline: &Outline) -> Offsets {
@@ -106,11 +133,13 @@ fn outline_offsets(outline: &Outline) -> Offsets {
     }
 }
 
-/// One page's read: the media its images and embedded files go to, and the counts that name
-/// each image, embedded file and equation in a warning, in the order they are read.
+/// One page's read: the media its images, embedded files and drawings go to, the record of each
+/// in the order it is read, and the counts that name each image, embedded file and equation in
+/// a warning, in the order they are read.
 struct Reader<'a> {
     media: &'a mut Media,
     place: &'a str,
+    read: Vec<Medium>,
     images: usize,
     files: usize,
     equations: usize,
@@ -165,8 +194,8 @@ impl Reader<'_> {
         })
     }
 
-    fn paragraph(&mut self, text: &RichText, list: Option<model::List>) -> model::Paragraph {
-        model::Paragraph {
+    fn paragraph(&mut self, text: &RichText, list: Option<page::List>) -> page::Paragraph {
+        page::Paragraph {
             style: text
                 .paragraph_style()
                 .style_id()
@@ -182,7 +211,7 @@ impl Reader<'_> {
     /// A paragraph's visible runs. Each stored formatting covers the text up to its run index,
     /// counted in UTF-16 code units, and the last covers the rest. Hidden runs are left out,
     /// an equation is one run, and neighbours left with the same formatting are joined.
-    fn runs(&mut self, text: &RichText) -> Vec<model::Run> {
+    fn runs(&mut self, text: &RichText) -> Vec<page::Run> {
         let units: Vec<u16> = text.text().encode_utf16().collect();
         let styles = text.text_run_formatting();
         let default = ParagraphStyling::default();
@@ -202,16 +231,11 @@ impl Reader<'_> {
                     Stored::Skipped
                 } else {
                     Stored::Text(
-                        model::Run {
+                        page::Run {
                             bold: style.bold(),
                             italic: style.italic(),
-                            underline: style.underline(),
                             strikethrough: style.strikethrough(),
-                            superscript: style.superscript(),
-                            subscript: style.subscript(),
-                            highlight: style.highlight().and_then(color),
-                            font_color: style.font_color().and_then(color),
-                            ..model::Run::default()
+                            ..page::Run::default()
                         },
                         style.hyperlink(),
                     )
@@ -259,12 +283,12 @@ impl Reader<'_> {
         })
     }
 
-    fn table(&mut self, table: &Table) -> Result<model::Table, Fault> {
+    fn table(&mut self, table: &Table) -> Result<page::Table, Fault> {
         let mut rows = Vec::new();
         for row in table.contents() {
             let mut cells = Vec::new();
             for cell in row.contents() {
-                cells.push(model::Cell {
+                cells.push(page::Cell {
                     items: cell
                         .contents()
                         .iter()
@@ -274,14 +298,15 @@ impl Reader<'_> {
             }
             rows.push(cells);
         }
-        Ok(model::Table {
+        Ok(page::Table {
             tags: tags(table.note_tags()),
             rows,
         })
     }
 
-    /// An image. Its file is named by its own stored extension, else its filename's.
-    fn image(&mut self, image: &Image) -> Result<model::Image, Fault> {
+    /// An image, the first of the reader's three store sites. Its file is named by its own
+    /// stored extension, else its filename's.
+    fn image(&mut self, image: &Image) -> Result<page::Image, Fault> {
         self.images += 1;
         let place = format!("{}, image {}", self.place, self.images);
         let extension = image
@@ -296,52 +321,67 @@ impl Reader<'_> {
             extension.or_else(|| filename.as_deref().and_then(extension_of)),
             &place,
         )?;
-        Ok(model::Image {
-            file,
+        self.read.push(Medium {
+            kind: "image",
+            file: file.clone(),
+            filename: filename.clone(),
             size: image.size().filter(|_| available),
             extension: extension.map(str::to_owned),
+            file_type: None,
+        });
+        Ok(page::Image {
+            file,
             filename,
             alt_text: text(image.alt_text()),
-            ocr_text: text(image.text()),
-            hyperlink: text(image.hyperlink_url()),
-            printout_page: image.displayed_page_number(),
         })
     }
 
-    /// An embedded file. Its file is named by its filename's extension.
-    fn embedded_file(&mut self, file: &EmbeddedFile) -> Result<model::EmbeddedFile, Fault> {
+    /// An embedded file, the second store site. Its file is named by its filename's extension.
+    fn embedded_file(&mut self, file: &EmbeddedFile) -> Result<page::EmbeddedFile, Fault> {
         self.files += 1;
         let place = format!("{}, embedded file {}", self.place, self.files);
         let filename = text(Some(file.filename()));
         let available = file.data_status() == FileDataStatus::Available;
-        Ok(model::EmbeddedFile {
-            file: self.file(
-                file.data_status(),
-                Some(file.read()),
-                filename.as_deref().and_then(extension_of),
-                &place,
-            )?,
-            filename,
+        let stored = self.file(
+            file.data_status(),
+            Some(file.read()),
+            filename.as_deref().and_then(extension_of),
+            &place,
+        )?;
+        self.read.push(Medium {
+            kind: "embedded_file",
+            file: stored.clone(),
+            filename: filename.clone(),
+            size: available.then(|| file.size()),
+            extension: None,
             file_type: match file.file_type() {
                 FileType::Audio => Some("audio"),
                 FileType::Video => Some("video"),
                 FileType::Unknown => None,
             },
-            size: available.then(|| file.size()),
+        });
+        Ok(page::EmbeddedFile {
+            file: stored,
+            filename,
         })
     }
 
-    /// A drawing of `strokes`: its SVG stored in the media, and its record. Strokes with no
-    /// points draw nothing and have none.
-    fn drawing(&mut self, strokes: &[Stroke]) -> Result<Option<model::Ink>, Fault> {
-        let Some((svg, bounds)) = ink::svg(strokes) else {
+    /// A drawing of `strokes`, the third store site: its SVG stored in the media, and its
+    /// record. Strokes with no points draw nothing and have none.
+    fn drawing(&mut self, strokes: &[Stroke]) -> Result<Option<page::Ink>, Fault> {
+        let Some(svg) = ink::svg(strokes) else {
             return Ok(None);
         };
-        Ok(Some(model::Ink {
-            file: self.media.store(svg.as_slice(), Some("svg"))?,
-            strokes: strokes.len(),
-            bounds,
-        }))
+        let file = self.media.store(svg.as_slice(), Some("svg"))?;
+        self.read.push(Medium {
+            kind: "ink",
+            file: Some(file.clone()),
+            filename: None,
+            size: None,
+            extension: None,
+            file_type: None,
+        });
+        Ok(Some(page::Ink { file }))
     }
 
     /// A record's file: its content streamed into the media and named. Data that is missing or
@@ -369,7 +409,7 @@ impl Reader<'_> {
 /// A stored run, by what it becomes.
 enum Stored {
     /// Visible text: its formatting, and whether it is styled as a link.
-    Text(model::Run, bool),
+    Text(page::Run, bool),
     /// A math-formatted run: a part of an equation.
     Math,
     /// A hidden run, which holds a link's target among others, or an empty one: left out.
@@ -380,7 +420,7 @@ enum Stored {
 /// and, for an equation, its stored runs, each with its math object.
 struct Piece {
     range: Range<usize>,
-    run: model::Run,
+    run: page::Run,
     hyperlink: bool,
     equation: Option<Vec<(String, Object)>>,
 }
@@ -409,7 +449,7 @@ fn pieces(units: &[u16], stored: Vec<(Range<usize>, Stored)>, objects: &[Object]
                     }
                     _ => pieces.push(Piece {
                         range,
-                        run: model::Run::default(),
+                        run: page::Run::default(),
                         hyperlink: false,
                         equation: Some(vec![part]),
                     }),
@@ -419,7 +459,7 @@ fn pieces(units: &[u16], stored: Vec<(Range<usize>, Stored)>, objects: &[Object]
             Stored::Text(run, hyperlink) => {
                 pieces.push(Piece {
                     range,
-                    run: model::Run { text, ..run },
+                    run: page::Run { text, ..run },
                     hyperlink,
                     equation: None,
                 });
@@ -433,7 +473,7 @@ fn pieces(units: &[u16], stored: Vec<(Range<usize>, Stored)>, objects: &[Object]
 
 /// The display mode of a paragraph's runs' equations: "display" for an equation that is its
 /// paragraph's only run, "inline" for any other.
-fn math_modes(runs: &mut [model::Run]) {
+fn math_modes(runs: &mut [page::Run]) {
     let display = runs.len() == 1;
     for run in runs.iter_mut().filter(|run| run.math.is_some()) {
         run.math = Some(if display { "display" } else { "inline" });
@@ -501,8 +541,8 @@ fn link(pieces: &mut [Piece], links: &[(Range<usize>, String)]) {
 
 /// The runs, with neighbours of the same formatting and link joined; an equation is never
 /// joined.
-fn join(pieces: Vec<Piece>) -> Vec<model::Run> {
-    let mut runs: Vec<model::Run> = Vec::with_capacity(pieces.len());
+fn join(pieces: Vec<Piece>) -> Vec<page::Run> {
+    let mut runs: Vec<page::Run> = Vec::with_capacity(pieces.len());
     for piece in pieces {
         match runs.last_mut() {
             Some(last)
@@ -518,11 +558,11 @@ fn join(pieces: Vec<Piece>) -> Vec<model::Run> {
     runs
 }
 
-fn same_format(a: &model::Run, b: &model::Run) -> bool {
-    model::Run {
+fn same_format(a: &page::Run, b: &page::Run) -> bool {
+    page::Run {
         text: String::new(),
         ..a.clone()
-    } == model::Run {
+    } == page::Run {
         text: String::new(),
         ..b.clone()
     }
@@ -530,81 +570,42 @@ fn same_format(a: &model::Run, b: &model::Run) -> bool {
 
 /// A list marker. onenote_parser gives the stored format string less its length: a bullet
 /// is its character; a number is U+FFFD followed by its MSONFC format code, with the text
-/// written before and after the number around them.
-fn marker(list: &List) -> Option<model::List> {
-    let format = list.list_format();
-    let restart = list.list_restart();
-    match format.iter().position(|&c| c == '\u{fffd}') {
-        Some(at) if at + 1 < format.len() => {
-            let text =
-                |chars: &[char]| Some(chars.iter().collect::<String>()).filter(|t| !t.is_empty());
-            Some(model::List {
-                bullet: None,
-                number: Some(number_format(format[at + 1] as u32)),
-                prefix: text(&format[..at]),
-                suffix: text(&format[at + 2..]),
-                restart,
-            })
-        }
-        _ => {
-            let bullet: String = format.iter().collect();
-            (!bullet.is_empty()).then_some(model::List {
-                bullet: Some(bullet),
-                number: None,
-                prefix: None,
-                suffix: None,
-                restart,
-            })
-        }
-    }
+/// written before and after the number around them. Only whether it is numbered, and where it
+/// restarts, are read.
+fn marker(list: &List) -> Option<page::List> {
+    list_of(list.list_format(), list.list_restart())
 }
 
-/// An MSONFC numbering format code by name, as [MS-DOC] 2.9.157 lists them; a code without a
-/// name here is written as "nfc-" and its number.
-fn number_format(code: u32) -> String {
-    let name = match code {
-        0 => "decimal",
-        1 => "upper-roman",
-        2 => "lower-roman",
-        3 => "upper-letter",
-        4 => "lower-letter",
-        5 => "ordinal",
-        6 => "cardinal-text",
-        7 => "ordinal-text",
-        8 => "hex",
-        22 => "decimal-zero",
-        _ => return format!("nfc-{code}"),
-    };
-    name.to_owned()
+/// The list marker of a stored format string and restart; none for an empty format.
+fn list_of(format: &[char], restart: Option<i32>) -> Option<page::List> {
+    let numbered = format
+        .iter()
+        .position(|&c| c == '\u{fffd}')
+        .is_some_and(|at| at + 1 < format.len());
+    (!format.is_empty()).then_some(page::List { numbered, restart })
 }
 
-fn tags(tags: &[NoteTag]) -> Vec<model::Tag> {
+/// Note tags: each its label, whether it is a To Do, and whether it is completed.
+fn tags(tags: &[NoteTag]) -> Vec<page::Tag> {
     tags.iter()
         .map(|tag| {
             let definition = tag.definition();
-            let completed = tag.item_status().completed();
-            model::Tag {
+            page::Tag {
                 label: definition
                     .map(|d| d.label())
                     .filter(|label| !label.is_empty())
                     .map(str::to_owned),
-                shape: definition.map(|d| format!("{:?}", d.shape())),
-                status: if completed { "completed" } else { "open" },
-                completed_time: tag
-                    .completed_at()
-                    .filter(|_| completed)
-                    .map(|time| iso8601(time.into())),
+                task: definition.is_some_and(|d| is_task(&format!("{:?}", d.shape()))),
+                completed: tag.item_status().completed(),
             }
         })
         .collect()
 }
 
-/// A COLORREF as "#rrggbb"; an automatic colour has none.
-fn color(color: ColorRef) -> Option<String> {
-    match color {
-        ColorRef::Auto => None,
-        ColorRef::Manual { r, g, b } => Some(format!("#{r:02x}{g:02x}{b:02x}")),
-    }
+/// Whether a tag's icon, by its name in onenote_parser's NoteTagShape, which the parser doesn't
+/// export, is a check box: a To Do, a task.
+fn is_task(shape: &str) -> bool {
+    shape.contains("CheckBox")
 }
 
 #[cfg(test)]
@@ -614,9 +615,9 @@ mod tests {
     fn piece(range: Range<usize>, text: &str, hyperlink: bool) -> Piece {
         Piece {
             range,
-            run: model::Run {
+            run: page::Run {
                 text: text.to_owned(),
-                ..model::Run::default()
+                ..page::Run::default()
             },
             hyperlink,
             equation: None,
@@ -702,13 +703,13 @@ mod tests {
         let units: Vec<u16> = text.encode_utf16().collect();
         // "x: ", then the superscript's three runs, "+𝑏", a hidden empty run, " or ", "𝑐".
         let stored = vec![
-            (0..3, Stored::Text(model::Run::default(), false)),
+            (0..3, Stored::Text(page::Run::default(), false)),
             (3..4, Stored::Math),
             (4..7, Stored::Math),
             (7..9, Stored::Math),
             (9..12, Stored::Math),
             (12..12, Stored::Skipped),
-            (12..16, Stored::Text(model::Run::default(), false)),
+            (12..16, Stored::Text(page::Run::default(), false)),
             (16..18, Stored::Math),
         ];
         let objects = [
@@ -749,10 +750,10 @@ mod tests {
     fn equation(latex: &str) -> Piece {
         Piece {
             range: 0..0,
-            run: model::Run {
+            run: page::Run {
                 math: Some("inline"),
                 latex: Some(latex.to_owned()),
-                ..model::Run::default()
+                ..page::Run::default()
             },
             hyperlink: false,
             equation: None,
@@ -778,19 +779,6 @@ mod tests {
         assert_eq!(beside[0].math, None);
     }
 
-    #[test]
-    fn colours_are_hex_and_auto_has_none() {
-        assert_eq!(
-            color(ColorRef::Manual {
-                r: 255,
-                g: 192,
-                b: 0
-            }),
-            Some("#ffc000".to_owned())
-        );
-        assert_eq!(color(ColorRef::Auto), None);
-    }
-
     /// Data that is missing or invalid gives no file, and nothing goes to the media, which a
     /// directory that can't be written would refuse; no committed fixture holds such a record.
     #[test]
@@ -799,6 +787,7 @@ mod tests {
         let mut reader = Reader {
             media: &mut media,
             place: "/Section, page 1",
+            read: Vec::new(),
             images: 0,
             files: 0,
             equations: 0,
@@ -810,12 +799,39 @@ mod tests {
         }
         let file = reader.file(FileDataStatus::Available, None, None, "/Section, image 2");
         assert!(matches!(file, Ok(None)));
+        assert!(reader.read.is_empty());
     }
 
-    /// The named formats are read from the fixtures in tests/content.rs; none holds a code
-    /// without a name.
+    /// A list's format is a bullet's character, or U+FFFD and a number's format code between
+    /// the text around the number: a number's when a code follows the U+FFFD. An empty format
+    /// is no marker.
     #[test]
-    fn a_number_format_without_a_name_is_its_code() {
-        assert_eq!(number_format(60), "nfc-60");
+    fn a_list_marker_is_a_bullet_or_a_number() {
+        let chars = |text: &str| text.chars().collect::<Vec<_>>();
+        let read = |format: &str, restart| {
+            list_of(&chars(format), restart).map(|list| (list.numbered, list.restart))
+        };
+        assert_eq!(read("•", None), Some((false, None)));
+        assert_eq!(read("\u{fffd}\0.", None), Some((true, None)));
+        assert_eq!(read("(\u{fffd}\u{4})", Some(3)), Some((true, Some(3))));
+        // A U+FFFD with no code after it is a bullet's character.
+        assert_eq!(read("\u{fffd}", None), Some((false, None)));
+        assert_eq!(read("", Some(1)), None);
+    }
+
+    /// A tag is a task when its icon is one of the parser's check boxes, of any colour or mark.
+    #[test]
+    fn a_check_box_tag_is_a_task() {
+        for shape in [
+            "BlueCheckBox",
+            "GreenStarCheckBox",
+            "YellowCheckBox3",
+            "RedFlagCheckBox",
+        ] {
+            assert!(is_task(shape), "{shape}");
+        }
+        for shape in ["YellowStar", "QuestionMark", "NoIcon"] {
+            assert!(!is_task(shape), "{shape}");
+        }
     }
 }

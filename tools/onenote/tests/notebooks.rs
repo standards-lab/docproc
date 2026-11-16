@@ -1,7 +1,7 @@
 //! Notebooks: each committed .onetoc2 against its hand-written structural expectations in
 //! tests/fixtures/notebooks.json, each notebook directory read through its .onetoc2, a notebook
 //! with a section group, and each package, built here through cab's MSZIP writer, read as its
-//! directory is.
+//! directory's golden is.
 
 mod common;
 
@@ -11,7 +11,9 @@ use std::sync::OnceLock;
 
 use serde_json::{Value, json};
 
-use common::{NAME, Run, assert_line_rules, files_under, fixture, run, scratch};
+use common::{
+    NAME, Run, assert_line_rules, files_under, fixture, goldens, read_golden, run, scratch,
+};
 
 fn expectations() -> Vec<Value> {
     let bytes = std::fs::read(fixture("notebooks.json")).unwrap();
@@ -113,25 +115,41 @@ fn a_section_group_holds_its_sections() {
     assert!(!out.stdout.contains("OneNote_DeletedPages"));
 }
 
-/// Each package, built from a notebook directory's OneNote files, reads as the directory does
-/// in every line but the notebook line's input kind, its warnings included.
+/// Each package, built from a committed notebook directory's OneNote files, reads as the
+/// directory's golden, its .onetoc2's, in every line but the first, and its stderr; the first is
+/// the golden's but for its input kind. The composed notebook, which has no golden, reads as its
+/// directory does.
 #[test]
-fn a_package_reads_as_its_directory() {
+fn a_package_reads_as_its_directorys_golden() {
     let packages = scratch("packages");
-    let mut dirs: Vec<PathBuf> = DIRECTORIES.iter().map(|dir| fixture(dir)).collect();
-    dirs.push(composed());
-    for dir in dirs {
-        let package = package(&dir, &packages);
-        let by_dir = run(&[&dir]);
-        let by_package = run(&[&package]);
-        let name = dir.display();
-        assert_eq!(by_package.code, Some(0), "{name}: {}", by_package.stderr);
-        assert_eq!(by_package.stderr, by_dir.stderr, "{name}");
-        let (mut lines, want) = (by_package.lines(), by_dir.lines());
-        assert_eq!(lines[0]["input"], "package", "{name}");
-        lines[0]["input"] = json!("notebook");
-        assert_eq!(lines, want, "{name}");
+    for dir in DIRECTORIES {
+        let input = format!("{dir}/Open Notebook.onetoc2");
+        let (stdout, stderr) = goldens(&input);
+        let by_package = run(&[package(&fixture(dir), &packages)]);
+        assert_eq!(by_package.code, Some(0), "{dir}: {}", by_package.stderr);
+        assert_eq!(by_package.stderr, read_golden(&stderr, &input), "{dir}");
+        let golden = read_golden(&stdout, &input);
+        let (first, rest) = by_package.stdout.split_once('\n').unwrap();
+        let (golden_first, golden_rest) = golden.split_once('\n').unwrap();
+        assert_eq!(rest, golden_rest, "{dir}");
+        let mut first: Value = serde_json::from_str(first).unwrap();
+        assert_eq!(first["input"], "package", "{dir}");
+        first["input"] = json!("notebook");
+        assert_eq!(
+            first,
+            serde_json::from_str::<Value>(golden_first).unwrap(),
+            "{dir}"
+        );
     }
+    let composed = composed();
+    let by_dir = run(&[&composed]);
+    let by_package = run(&[package(&composed, &packages)]);
+    assert_eq!(by_package.code, Some(0), "{}", by_package.stderr);
+    assert_eq!(by_package.stderr, by_dir.stderr);
+    let (mut lines, want) = (by_package.lines(), by_dir.lines());
+    assert_eq!(lines[0]["input"], "package");
+    lines[0]["input"] = json!("notebook");
+    assert_eq!(lines, want);
     let recycled = run(&[packages.join("onenote-rs.onepkg")]);
     assert!(
         recycled
@@ -176,19 +194,14 @@ fn check(out: &Run, expected: &Value, input: &str, file: &str) {
         .collect();
     assert_eq!(out.stderr, warnings, "{file}");
 
-    let mut notebook = json!({"line": "notebook", "schema": "1", "input": input});
+    let mut notebook = json!({"line": "notebook", "schema": "2", "input": input});
     for (field, value) in expected["notebook"].as_object().unwrap() {
         notebook[field] = value.clone();
     }
     let mut want = vec![notebook];
     for entry in expected["entries"].as_array().unwrap() {
         let mut line = entry.clone();
-        let fields = line.as_object_mut().unwrap();
-        let pages = fields.remove("pages");
-        if entry["line"] != "skipped" {
-            let name = entry["path"].as_array().unwrap().last().unwrap().clone();
-            fields.insert("display_name".to_owned(), name);
-        }
+        let pages = line.as_object_mut().unwrap().remove("pages");
         want.push(line);
         for page in pages
             .as_ref()

@@ -1,6 +1,8 @@
 //! A page line's markdown, read from the public fixtures. The test page of "New Section 1.one"
-//! is written out in full, by hand from its model and the rendering rules, not from the CLI's
-//! output; the other pages are checked for their Markdown's shape.
+//! is written out in full, by hand from what onenote_parser's API gives for it and the rendering
+//! rules, not from the CLI's output: it is the hand truth of the page's text, its headings, runs,
+//! links, note tags, lists, tables, equation and image. The other pages are checked for their
+//! Markdown's shape.
 
 mod common;
 
@@ -28,11 +30,16 @@ fn markdown(page: &Value) -> &str {
 
 /// The test page's Markdown, but for its ink line, whose file is `ink`'s. The title area's
 /// date and time are left out; the blank paragraphs are; the paragraphs indented under blank
-/// ones, which Markdown can't indent, sit at the outline's level; the fourth numbered item
-/// restarts at 1, so a comment parts it from the list before; underline, subscript,
-/// superscript, highlight and colour are plain text. The page's containers go title, main
-/// outline (vertical 2.4), ink (its strokes at 38643 ink units, 30.4 half inches) and a last,
-/// empty outline (32.1).
+/// ones, which Markdown can't indent, sit at the outline's level. Its note tags are two To Dos,
+/// one open and one completed, then a completed Important. Its formatted paragraph has one run
+/// each of bold, italic, underline, strikethrough, subscript, superscript, highlight and font
+/// colour, of which underline, subscript, superscript, highlight and colour are plain text, and
+/// "magna" links to its hidden HYPERLINK field's target; a URL typed as text links to itself.
+/// Its bullets nest three deep; its numbers nest three deep, then run on for two items, and the
+/// last restarts at 1, so a comment parts it from the list before. Its tables are A B C over
+/// 1 2 3, and A B alone. Its equation, 𝑎=𝑏 alone in its paragraph, is display math. The page's
+/// containers go title, main outline (vertical 2.4), ink (its strokes at 38643 ink units, 30.4
+/// half inches) and a last, empty outline (32.1).
 fn test_page(ink: &str) -> String {
     let lorem3 = [LOREM; 3];
     [
@@ -63,9 +70,15 @@ fn test_page(ink: &str) -> String {
     .join("\n\n")
 }
 
-/// The page's ink file, as its page line names it.
+/// The page's ink file, as its page line's media name it.
 fn ink_file(page: &Value) -> &str {
-    page["ink"]["file"].as_str().expect("the page has ink")
+    page["media"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|medium| medium["kind"] == "ink")
+        .and_then(|medium| medium["file"].as_str())
+        .expect("the page has ink")
 }
 
 #[test]
@@ -104,9 +117,7 @@ fn the_other_pages_render_their_titles_text_and_media() {
     );
 
     let with = &pages("interop/SUT/OneWithFileData.one")[0];
-    let docx = with["content"][1]["items"][0]["blocks"][0]["file"]
-        .as_str()
-        .unwrap();
+    let docx = with["media"][0]["file"].as_str().unwrap();
     assert_eq!(markdown(with), format!("[testing.docx]({docx})"));
 
     let wopi = &pages("interop/SUT/FileSyncWOPI_OneNoteWithODB.one")[0];

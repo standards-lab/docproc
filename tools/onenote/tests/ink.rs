@@ -1,10 +1,10 @@
-//! Ink: page drawings and recognised text, read from onenote.rs's samples. Three committed
-//! sections hold ink: handwriting_recognition.one, whose first page has 62 ink containers of
-//! one stroke each and OneNote's recognition of two lines, and "New Section 1.one" and
-//! "non-legacy/New Section 1 2.one", whose test page has one. None holds ink in a paragraph
-//! or an outline; src/ink.rs's unit tests cover those drawings. The expectations are written
-//! by hand from what onenote_parser's API gives (each stroke's absolute_path(), its
-//! container's offsets, and Page::ink_recognition), not from the CLI's output.
+//! Ink: page drawings and recognised words' alternatives, read from onenote.rs's samples. Three
+//! committed sections hold ink: handwriting_recognition.one, whose first page has 62 ink
+//! containers of one stroke each and OneNote's recognition of two lines, and "New Section 1.one"
+//! and "non-legacy/New Section 1 2.one", whose test page has one. None holds ink in a paragraph
+//! or an outline; src/ink.rs's unit tests cover those drawings. The expectations are written by
+//! hand from what onenote_parser's API gives (each stroke's absolute_path() and width(), and
+//! Page::ink_recognition), not from the CLI's output.
 
 mod common;
 
@@ -19,12 +19,6 @@ const ONE_STROKE: [&str; 2] = [
     "onenote-rs/New Section 1.one",
     "onenote-rs/non-legacy/New Section 1 2.one",
 ];
-
-/// The box the test page's first stroke spans, in ink units: its absolute path runs from
-/// (1363, 38643) to (17926, 40660), at offsets of zero.
-fn first_stroke() -> Value {
-    json!({"x": 1363.0, "y": 38643.0, "width": 16563.0, "height": 2017.0})
-}
 
 fn pages(file: &str) -> Vec<Value> {
     let out = run(&[fixture(file)]);
@@ -49,85 +43,80 @@ fn pages_into(file: &str, dir: &Path) -> Vec<Value> {
         .collect()
 }
 
-fn ink_containers(page: &Value) -> Vec<&Value> {
-    page["content"]
+/// A page's ink drawings' files, in its media's order.
+fn drawings(page: &Value) -> Vec<&str> {
+    page["media"]
         .as_array()
-        .unwrap()
-        .iter()
-        .filter(|container| container["kind"] == "ink")
+        .into_iter()
+        .flatten()
+        .filter(|medium| medium["kind"] == "ink")
+        .map(|medium| medium["file"].as_str().unwrap())
         .collect()
 }
 
-/// The handwriting page's 62 ink containers are one drawing of 62 strokes. Its bounds span
-/// every stroke's points: x from 1363 to 17926, y from 38643 to 54392. Each container keeps
-/// its one stroke and the box it spans; the page's second page has no ink.
+/// A drawing's SVG document, read from the media directory `dir`.
+fn svg(dir: &Path, file: &str) -> String {
+    std::fs::read_to_string(dir.join(file)).unwrap()
+}
+
+/// The page's ink, every ink container's strokes, is one drawing, its page's last medium: the
+/// handwriting page's 62 containers of one stroke each are one SVG of 62 paths, and the test
+/// page's one container is one SVG of one path. Its view box spans every stroke's points, x
+/// from 1363 to 17926 and y from 38643 to 54392, widened by half the widest pen, 100 ink units,
+/// on every side. A page with no ink has no drawing.
 #[test]
 fn a_pages_ink_is_one_drawing() {
-    let pages = pages(HANDWRITING);
-    assert_eq!(pages.len(), 2);
-    let ink = &pages[0]["ink"];
-    assert_eq!(ink["strokes"], 62);
-    assert_eq!(
-        ink["bounds"],
-        json!({"x": 1363.0, "y": 38643.0, "width": 16563.0, "height": 15749.0})
-    );
-    let containers = ink_containers(&pages[0]);
-    assert_eq!(containers.len(), 62);
-    assert!(
-        containers.iter().all(|c| c["strokes"] == 1),
-        "{containers:?}"
-    );
-    assert_eq!(containers[0]["bounds"], first_stroke());
-    // A stroke of a recognised "Hello", from (8794, 50272) to (8890, 51690).
-    assert!(containers.iter().any(
-        |c| c["bounds"] == json!({"x": 8794.0, "y": 50272.0, "width": 96.0, "height": 1418.0})
-    ));
-    assert_eq!(pages[1].get("ink"), None);
-    assert!(ink_containers(&pages[1]).is_empty());
-}
-
-/// The test page's one ink container is its drawing, of one stroke.
-#[test]
-fn one_container_of_one_stroke() {
-    for file in ONE_STROKE {
-        let pages = pages(file);
-        let ink = &pages[0]["ink"];
-        assert_eq!(ink["strokes"], 1, "{file}");
-        assert_eq!(ink["bounds"], first_stroke(), "{file}");
-        let containers = ink_containers(&pages[0]);
-        assert_eq!(containers.len(), 1, "{file}");
-        assert_eq!(containers[0]["bounds"], first_stroke(), "{file}");
+    for (file, strokes) in [(HANDWRITING, 62), (ONE_STROKE[0], 1), (ONE_STROKE[1], 1)] {
+        let dir = scratch("ink-one");
+        let pages = pages_into(file, &dir);
+        let files = drawings(&pages[0]);
+        assert_eq!(files.len(), 1, "{file}");
+        let media = pages[0]["media"].as_array().unwrap();
+        assert_eq!(media.last().unwrap()["file"], files[0], "{file}");
+        let text = svg(&dir, files[0]);
+        let document = roxmltree::Document::parse(&text).unwrap();
+        let paths = document
+            .root_element()
+            .children()
+            .filter(|n| n.is_element());
+        assert_eq!(paths.count(), strokes, "{file}");
         for page in &pages[1..] {
-            assert_eq!(page.get("ink"), None, "{file}");
+            assert!(drawings(page).is_empty(), "{file}");
         }
     }
+    let dir = scratch("ink-box");
+    let pages = pages_into(HANDWRITING, &dir);
+    let text = svg(&dir, drawings(&pages[0])[0]);
+    let document = roxmltree::Document::parse(&text).unwrap();
+    assert_eq!(
+        document.root_element().attribute("viewBox"),
+        Some("1313 38593 16663 15849")
+    );
 }
 
-/// OneNote recognised two lines of "Hello World", each word with five guesses in German
-/// (LCID 1031): the best is the word's text, the other four its alternatives.
+/// OneNote recognised two lines of "Hello World", each word with five guesses in German: the
+/// best is the word, written in the Markdown, and the other four its alternatives, each by the
+/// word's index over both lines. The pages without recognition have none.
 #[test]
-fn recognised_words_come_in_lines() {
+fn each_recognised_word_has_its_alternatives() {
     let handwriting = pages(HANDWRITING);
-    let word = |text: &str, alternatives: [&str; 4]| json!({"text": text, "alternatives": alternatives, "language": 1031});
+    let word =
+        |word: usize, alternatives: [&str; 4]| json!({"word": word, "alternatives": alternatives});
     assert_eq!(
-        handwriting[0]["ink_text"],
+        handwriting[0]["ink_alternatives"],
         json!([
-            [
-                word("Hello", ["Hallo", "Hell", "HellO", "Hella"]),
-                word("World", ["world", "Worlds", "Word", "World."]),
-            ],
-            [
-                word("Hello", ["Hallo", "Hell", "HellO", "Helle"]),
-                word("World", ["world", "Worlds", "Word", "Would"]),
-            ],
+            word(0, ["Hallo", "Hell", "HellO", "Hella"]),
+            word(1, ["world", "Worlds", "Word", "World."]),
+            word(2, ["Hallo", "Hell", "HellO", "Helle"]),
+            word(3, ["world", "Worlds", "Word", "Would"]),
         ])
     );
-    assert_eq!(handwriting[1].get("ink_text"), None);
+    assert_eq!(handwriting[1].get("ink_alternatives"), None);
     for file in ONE_STROKE {
         assert!(
             pages(file)
                 .iter()
-                .all(|page| page.get("ink_text").is_none())
+                .all(|page| page.get("ink_alternatives").is_none())
         );
     }
 }
@@ -140,12 +129,10 @@ fn each_drawing_is_an_svg_named_by_its_sha256() {
     for file in [HANDWRITING, ONE_STROKE[0], ONE_STROKE[1]] {
         let dir = scratch("ink-svg");
         let pages = pages_into(file, &dir);
-        let ink = &pages[0]["ink"];
-        let name = ink["file"].as_str().unwrap();
+        let name = drawings(&pages[0])[0];
         let stem = name.strip_suffix(".svg").expect("an ink file ends .svg");
-        let path = dir.join(name);
-        assert_eq!(sha256(&path), stem, "{file}");
-        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(sha256(&dir.join(name)), stem, "{file}");
+        let text = svg(&dir, name);
         let document = roxmltree::Document::parse(&text)
             .unwrap_or_else(|err| panic!("{file}: not well-formed XML: {err}"));
         let root = document.root_element();
@@ -154,9 +141,7 @@ fn each_drawing_is_an_svg_named_by_its_sha256() {
             root.tag_name().namespace(),
             Some("http://www.w3.org/2000/svg")
         );
-        let paths: Vec<_> = root.children().filter(|node| node.is_element()).collect();
-        assert_eq!(json!(paths.len()), ink["strokes"], "{file}");
-        for path in paths {
+        for path in root.children().filter(|node| node.is_element()) {
             assert_eq!(path.tag_name().name(), "path", "{file}");
             assert!(path.attribute("d").unwrap().starts_with("M "), "{file}");
             // No fixture's stroke has a colour, so each is drawn in the default black.
@@ -172,8 +157,7 @@ fn each_drawing_is_an_svg_named_by_its_sha256() {
 fn each_stroke_keeps_its_width() {
     let dir = scratch("ink-width");
     let pages = pages_into(HANDWRITING, &dir);
-    let text =
-        std::fs::read_to_string(dir.join(pages[0]["ink"]["file"].as_str().unwrap())).unwrap();
+    let text = svg(&dir, drawings(&pages[0])[0]);
     let document = roxmltree::Document::parse(&text).unwrap();
     let widths: Vec<&str> = document
         .descendants()
@@ -192,7 +176,7 @@ fn drawings_are_the_same_on_every_read() {
     let a = pages_into(HANDWRITING, &first);
     let b = pages_into(HANDWRITING, &second);
     assert_eq!(a, b);
-    let name = a[0]["ink"]["file"].as_str().unwrap();
+    let name = drawings(&a[0])[0];
     assert_eq!(
         std::fs::read(first.join(name)).unwrap(),
         std::fs::read(second.join(name)).unwrap()

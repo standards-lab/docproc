@@ -26,7 +26,7 @@ fn version_prints_the_bare_crate_version_then_the_schema() {
     assert_eq!(out.code, Some(0));
     assert_eq!(
         out.stdout,
-        format!("{}\nschema 1\n", env!("CARGO_PKG_VERSION"))
+        format!("{}\nschema 2\n", env!("CARGO_PKG_VERSION"))
     );
     assert_eq!(out.stderr, "");
 }
@@ -125,11 +125,12 @@ fn the_input_is_sniffed_by_content_not_name() {
     assert_eq!(out.code, Some(3));
     assert_eq!(
         out.stderr,
-        error(&text, "not a OneNote section, notebook, or package")
+        error("not a OneNote section, notebook, or package")
     );
 }
 
-/// Each refused input exits 3 with one error line and nothing on stdout.
+/// Each refused input exits 3 with one error line, which never leads with the input's path, and
+/// nothing on stdout.
 #[test]
 fn refused_inputs_exit_3_before_any_output() {
     let missing = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no-such-section.one");
@@ -165,18 +166,19 @@ fn refused_inputs_exit_3_before_any_output() {
         let out = run(&[input]);
         assert_eq!(out.code, Some(3), "{}", input.display());
         assert_eq!(out.stdout, "", "{}", input.display());
-        assert_eq!(out.stderr, error(input, reason));
+        assert_eq!(out.stderr, error(reason), "{}", input.display());
     }
 }
 
-/// A password-protected section is refused with the parser's bare reason, a known limit.
+/// A password-protected section is refused with the parser's bare reason, a known limit; the
+/// reason never leads with the input's path.
 #[test]
 fn a_password_protected_section_is_refused_with_the_parsers_reason() {
     let input = fixture("interop/SUT/Encryption.one");
     let out = run(&[&input]);
     assert_eq!(out.code, Some(3));
     assert_eq!(out.stdout, "");
-    assert_eq!(out.stderr, error(&input, "Unexpected end of file"));
+    assert_eq!(out.stderr, error("Unexpected end of file"));
 }
 
 /// A parser panic is caught by the shared guard and refused with exit 3, never 4. The byte set here makes
@@ -190,7 +192,7 @@ fn a_parser_panic_is_refused_with_exit_3() {
     assert_eq!(out.stdout, "");
     assert_eq!(
         out.stderr,
-        error(&input, "the reader panicked: attempt to add with overflow")
+        error("the reader panicked: attempt to add with overflow")
     );
 }
 
@@ -205,7 +207,6 @@ fn the_parsers_own_printing_never_reaches_stdout() {
     assert_eq!(
         out.stderr,
         error(
-            &input,
             "Malformed OneNote file data: The size specified for this structure is incorrect. \
              Was 7, expected 27. Id: 0xff"
         )
@@ -232,10 +233,7 @@ fn notebooks_and_packages_are_recognised() {
     assert_eq!(out.stdout, "");
     assert_eq!(
         out.stderr,
-        error(
-            &cabinet,
-            "Malformed OneNote package: failed to read cabinet: failed to fill whole buffer"
-        )
+        error("Malformed OneNote package: failed to read cabinet: failed to fill whole buffer")
     );
 }
 

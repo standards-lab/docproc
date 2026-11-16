@@ -11,10 +11,18 @@ use std::fmt::Write as _;
 
 use onenote_parser::contents::{EmbeddedObject, Ink, InkStroke};
 
-use crate::model::Bounds;
-
 /// Ink units, 0.01 mm each, in the half inch that offsets count in.
 pub const UNITS_PER_HALF_INCH: f32 = 1270.0;
+
+/// A box in ink units, 0.01 mm each. A page's ink is placed from the page's origin, so its
+/// bounds are in the page's coordinates; ink in a paragraph or an outline is in its own.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Bounds {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
 
 /// One stroke, its points absolute and in ink units.
 #[derive(Clone, Debug, PartialEq)]
@@ -165,10 +173,10 @@ pub fn extent(strokes: &[Stroke]) -> Option<Bounds> {
     })
 }
 
-/// A drawing's SVG, and the extent it draws; none for strokes with no points. The view box is
+/// A drawing's SVG; none for strokes with no points. The view box is
 /// the extent, widened by half the widest pen on every side so no stroke is cut, and the
 /// image's size is the view box's in millimetres.
-pub fn svg(strokes: &[Stroke]) -> Option<(Vec<u8>, Bounds)> {
+pub fn svg(strokes: &[Stroke]) -> Option<Vec<u8>> {
     let bounds = extent(strokes)?;
     let pad = strokes.iter().map(|s| s.width).fold(0.0, f32::max) / 2.0;
     let (x, y) = (bounds.x - pad, bounds.y - pad);
@@ -190,7 +198,7 @@ pub fn svg(strokes: &[Stroke]) -> Option<(Vec<u8>, Bounds)> {
         path(&mut svg, stroke);
     }
     svg.push_str("</svg>\n");
-    Some((svg.into_bytes(), bounds))
+    Some(svg.into_bytes())
 }
 
 /// One stroke's path. A stroke of one point is drawn as a dot, a line of no length, which its
@@ -256,7 +264,7 @@ mod tests {
     }
 
     fn text(strokes: &[Stroke]) -> String {
-        String::from_utf8(svg(strokes).unwrap().0).unwrap()
+        String::from_utf8(svg(strokes).unwrap()).unwrap()
     }
 
     #[test]

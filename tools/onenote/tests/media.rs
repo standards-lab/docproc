@@ -1,4 +1,5 @@
-//! Media: images and embedded files in the model, and their contents in the --media directory.
+//! Media: images, embedded files and ink drawings in a page line's media, and their contents in
+//! the --media directory.
 //! The expectations are written by hand from what onenote_parser's API gives for each record
 //! (its fields, its data's size, and the SHA-256 of the bytes its reader yields), not from the
 //! CLI's output.
@@ -27,28 +28,21 @@ const DUMMY: &str = "b7702e05282d4dfffe233281443536319d4739946f54ebce194230df880
 const MP3: &str = "d2318cc34b6254cdc2db84b931adad166a4b2b701b4241c27b338b959ac738b0";
 const SCREENSHOT: &str = "d6d4898c203cbff35fe92e844bbf404064293314a71d1e6b24e907334e5bdff9";
 
-/// Every image and embedded file in a read's page lines, containers and blocks alike, in order.
+/// Every image and embedded file in a read's page lines' media, in order.
 fn records(lines: &[Value]) -> Vec<Value> {
-    fn walk(value: &Value, found: &mut Vec<Value>) {
-        match value {
-            Value::Object(fields) => {
-                if matches!(
-                    fields.get("kind").and_then(Value::as_str),
-                    Some("image" | "embedded_file")
-                ) {
-                    found.push(value.clone());
-                }
-                fields.values().for_each(|field| walk(field, found));
-            }
-            Value::Array(items) => items.iter().for_each(|item| walk(item, found)),
-            _ => {}
-        }
-    }
-    let mut found = Vec::new();
-    for line in lines.iter().filter(|line| line["line"] == "page") {
-        walk(&line["content"], &mut found);
-    }
-    found
+    media(lines)
+        .into_iter()
+        .filter(|medium| medium["kind"] != "ink")
+        .collect()
+}
+
+/// Every medium of a read's page lines, in order.
+fn media(lines: &[Value]) -> Vec<Value> {
+    lines
+        .iter()
+        .filter(|line| line["line"] == "page")
+        .flat_map(|line| line["media"].as_array().cloned().unwrap_or_default())
+        .collect()
 }
 
 fn read(file: &str) -> Vec<Value> {
@@ -72,17 +66,11 @@ fn an_embedded_document() {
     );
 }
 
-/// An image with no extension of its own, named by its filename's, and OneNote's text from
-/// the picture: 39 lines of what it made of a photograph.
+/// An image with no extension of its own, named by its filename's.
 #[test]
-fn an_image_with_ocr_text() {
-    let mut records = read("interop/SUT/FileSyncWOPI_OneNoteWithODB.one");
+fn an_image_named_by_its_filenames_extension() {
+    let records = read("interop/SUT/FileSyncWOPI_OneNoteWithODB.one");
     assert_eq!(records.len(), 1);
-    let text = records[0]["ocr_text"].as_str().unwrap().to_owned();
-    assert!(text.starts_with("尹、气\n歹杯\n火了夕了\n"), "{text:?}");
-    assert!(text.ends_with("\n',\nlri"), "{text:?}");
-    assert_eq!(text.lines().count(), 39);
-    records[0].as_object_mut().unwrap().remove("ocr_text");
     assert_eq!(
         records[0],
         json!({
@@ -94,8 +82,8 @@ fn an_image_with_ocr_text() {
     );
 }
 
-/// A page-level image with its offsets, its own extension, stored as ".png", and its printout
-/// page number; then, on the next page, an embedded mp3 of type audio.
+/// A page-level image with its own extension, stored as ".png"; then, on the next page, an
+/// embedded mp3 of type audio.
 #[test]
 fn a_page_image_and_an_audio_file() {
     assert_eq!(
@@ -103,36 +91,31 @@ fn a_page_image_and_an_audio_file() {
         [
             json!({
                 "kind": "image",
-                "offset_horizontal": 0.9166665,
-                "offset_vertical": 2.0408335,
                 "file": format!("{DUMMY}.png"),
+                "filename": "dummy_1.png",
                 "size": 27146,
                 "extension": "png",
-                "filename": "dummy_1.png",
-                "printout_page": 1,
             }),
             json!({
                 "kind": "embedded_file",
                 "file": format!("{MP3}.mp3"),
                 "filename": "ff-16b-2c-44100hz.mp3",
-                "type": "audio",
                 "size": 77279,
+                "type": "audio",
             }),
         ]
     );
 }
 
-/// The test page's image, with its alt text, in both samples: "New Section 1.one" stores its
-/// extension, handwriting_recognition.one doesn't, and stores an empty text, which is left out.
-/// Both name the same file.
+/// The test page's image in both samples: "New Section 1.one" stores its extension,
+/// handwriting_recognition.one doesn't. Both name the same file.
 #[test]
 fn the_test_pages_image() {
     let image = json!({
         "kind": "image",
         "file": format!("{SCREENSHOT}.jpg"),
-        "size": 90999,
         "filename": "testimages_screenshot.jpg",
-        "alt_text": "example images from TESTIMAGES archive",
+        "size": 90999,
     });
     let mut with_extension = image.clone();
     with_extension["extension"] = json!("jpg");
@@ -140,10 +123,10 @@ fn the_test_pages_image() {
     assert_eq!(read("onenote-rs/New Section 1.one"), [with_extension]);
 }
 
-/// With --media, the directory is created, nested, and holds exactly the files the model
-/// names, each once, its SHA-256 its name and its size the record's. The lines are the same
-/// as without --media. The pages' ink drawings are among the files named; tests/ink.rs checks
-/// them.
+/// With --media, the directory is created, nested, and holds exactly the files the page lines'
+/// media name, each once, its SHA-256 its name and its size the record's. The lines are the
+/// same as without --media. The pages' ink drawings are among the files named; tests/ink.rs
+/// checks them.
 #[test]
 fn media_files_are_named_by_their_sha256() {
     for file in WITH_MEDIA {
@@ -157,10 +140,9 @@ fn media_files_are_named_by_their_sha256() {
         assert_eq!(out.code, Some(0), "{file}: {}", out.stderr);
         assert_eq!(out.stdout, without.stdout, "{file}");
         let records = records(&out.lines());
-        let mut names: Vec<String> = records
+        let mut names: Vec<String> = media(&out.lines())
             .iter()
             .map(|r| r["file"].as_str().unwrap().to_owned())
-            .chain(drawings(&out.lines()))
             .collect();
         names.sort_unstable();
         names.dedup();
@@ -178,10 +160,10 @@ fn media_files_are_named_by_their_sha256() {
 
 /// The files of the pages' ink drawings a read names.
 fn drawings(lines: &[Value]) -> Vec<String> {
-    lines
+    media(lines)
         .iter()
-        .filter_map(|line| line["ink"]["file"].as_str())
-        .map(str::to_owned)
+        .filter(|medium| medium["kind"] == "ink")
+        .map(|medium| medium["file"].as_str().unwrap().to_owned())
         .collect()
 }
 

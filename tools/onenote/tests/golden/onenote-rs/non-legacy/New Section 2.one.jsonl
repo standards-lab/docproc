@@ -1,0 +1,4 @@
+{"line":"notebook","schema":"2","input":"section","name":"New Section 2"}
+{"line":"section","id":"11b448eb-ebf3-4d0d-9347-6a15fdea7f08","path":["New Section 2"],"color":"#f6b078"}
+{"line":"page","id":"a4bda32f-941a-48ff-99cd-d61430e9694c","section":"11b448eb-ebf3-4d0d-9347-6a15fdea7f08","level":1,"creation_time":"2020-11-02T15:06:17Z","modification_time":"2020-11-02T15:06:17Z"}
+{"line":"page","id":"1c4dc559-7643-3d4f-95b2-36e41add244b","section":"11b448eb-ebf3-4d0d-9347-6a15fdea7f08","level":1,"creation_time":"2025-12-28T12:58:48Z","modification_time":"2025-12-28T12:58:48Z","author":"Theresa Siemens"}

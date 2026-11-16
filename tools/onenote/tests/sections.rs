@@ -1,5 +1,6 @@
-//! Single sections: each public .one fixture against its hand-written structural expectations
-//! in tests/fixtures/sections.json, and the line rules every read keeps.
+//! Single sections: each public .one fixture against its hand-written expectations in
+//! tests/fixtures/sections.json (its section's id, path and colour, and each page's id, level,
+//! title, times and author, or its refusal), and the line rules every read keeps.
 
 mod common;
 
@@ -49,8 +50,7 @@ fn every_public_section_has_an_expectation() {
 }
 
 /// Each section reads as its expectation says: its exit code, and either its refusal's reason,
-/// or a notebook line, its section line, and a page line per expected page, in order, each
-/// with its containers counted by kind.
+/// or a notebook line, its section line, and a page line per expected page, in order.
 #[test]
 fn every_public_section_reads_as_expected() {
     for expected in expectations() {
@@ -64,7 +64,7 @@ fn every_public_section_reads_as_expected() {
         );
         if let Some(reason) = expected["reason"].as_str() {
             assert_eq!(out.stdout, "", "{file}");
-            assert_eq!(out.stderr, error(&input, reason), "{file}");
+            assert_eq!(out.stderr, error(reason), "{file}");
             continue;
         }
         assert_eq!(out.stderr, "", "{file}");
@@ -78,7 +78,7 @@ fn every_public_section_reads_as_expected() {
         let stem = Path::new(file).file_stem().unwrap().to_str().unwrap();
         assert_eq!(
             lines[0],
-            json!({"line": "notebook", "schema": "1", "input": "section", "name": stem}),
+            json!({"line": "notebook", "schema": "2", "input": "section", "name": stem}),
             "{file}"
         );
         let section = &expected["section"];
@@ -87,8 +87,7 @@ fn every_public_section_reads_as_expected() {
             json!({
                 "line": "section",
                 "id": section["id"],
-                "path": [section["display_name"]],
-                "display_name": section["display_name"],
+                "path": section["path"],
                 "color": section["color"],
             }),
             "{file}"
@@ -98,7 +97,6 @@ fn every_public_section_reads_as_expected() {
             for field in PAGE_FIELDS {
                 assert_eq!(line.get(field), page.get(field), "{file}: {field}");
             }
-            assert_eq!(kind_counts(line), page["content"], "{file}: content");
         }
     }
 }
@@ -116,15 +114,4 @@ fn every_read_keeps_the_line_rules_and_repeats_byte_for_byte() {
             assert_line_rules(&line, file);
         }
     }
-}
-
-/// A page line's containers counted by kind, as {"outline": 2, ...}.
-fn kind_counts(page: &Value) -> Value {
-    let mut counts = serde_json::Map::new();
-    for container in page["content"].as_array().into_iter().flatten() {
-        let kind = container["kind"].as_str().unwrap().to_owned();
-        let count = counts.get(&kind).and_then(Value::as_u64).unwrap_or(0);
-        counts.insert(kind, json!(count + 1));
-    }
-    Value::Object(counts)
 }

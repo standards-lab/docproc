@@ -57,7 +57,8 @@ const ONESTORE_FORMATS: [[u8; 16]; 2] = [
 
 /// The input at `path`, or the refusal of it.
 pub fn sniff(path: &Path) -> Result<Input, Fault> {
-    let refuse = |reason: String| Fault::Refused(format!("{}: {reason}", path.display()));
+    // A reason never leads with the input's path, which docproc already knows.
+    let refuse = Fault::Refused;
     let metadata = fs::metadata(path).map_err(|err| refuse(err.to_string()))?;
     if metadata.is_dir() {
         return toc_in(path).map(Input::Directory).map_err(refuse);

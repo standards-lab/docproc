@@ -40,7 +40,7 @@ const FAILED_SECTION: &str = "failed to import section ";
 /// it is in.
 pub fn read(toc: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Result<(), Fault> {
     let notebook = guarded(|| Parser::new().parse_notebook(typed(toc)))
-        .map_err(|failure| refused(toc, &failure.reason))?;
+        .map_err(|failure| Fault::Refused(failure.reason))?;
     let toc_dir = toc.parent().unwrap_or(Path::new(""));
     let dir = if toc_dir.as_os_str().is_empty() {
         Path::new(".")
@@ -64,7 +64,7 @@ pub fn read_package(
     out: &mut Lines<impl Write>,
 ) -> Result<(), Fault> {
     let notebook = guarded(|| Parser::new().parse_package(typed(path)))
-        .map_err(|failure| refused(path, &failure.reason))?;
+        .map_err(|failure| Fault::Refused(failure.reason))?;
     // The parser read the cabinet, so a second reading of its entries fails only if the file
     // changed in between.
     let names = File::open(path)
@@ -76,7 +76,7 @@ pub fn read_package(
                 .map(|entry| entry.name().to_owned())
                 .collect::<Vec<_>>()
         })
-        .map_err(|err| refused(path, &format!("its cabinet can't be listed: {err}")))?;
+        .map_err(|err| Fault::Refused(format!("its cabinet can't be listed: {err}")))?;
     let entries: Vec<Vec<&str>> = names.iter().map(|name| components(name)).collect();
     let toc_dir = package_toc_dir(&entries).unwrap_or_default();
     let read = Read {
@@ -140,6 +140,7 @@ impl Read {
                         kind: "section",
                         name: name.to_owned(),
                         reason: reason.to_owned(),
+                        encrypted: false,
                     })
                     .map_err(Fault::Output)?;
                 }
@@ -171,7 +172,6 @@ fn entries(
                     id: id.clone(),
                     parent: parent.map(str::to_owned),
                     path: path.clone(),
-                    display_name: group.display_name().to_owned(),
                 })
                 .map_err(Fault::Output)?;
                 self::entries(group.entries(), Some(&id), &path, media, out)?;
@@ -247,11 +247,6 @@ fn holds_recycle_bin(entries: &[Vec<&str>], toc_dir: &[&str]) -> bool {
             && entry.starts_with(toc_dir)
             && entry[toc_dir.len()] == RECYCLE_BIN
     })
-}
-
-/// The refusal of a notebook or a package the parser couldn't read.
-fn refused(path: &Path, reason: &str) -> Fault {
-    Fault::Refused(format!("{}: {reason}", path.display()))
 }
 
 #[cfg(test)]

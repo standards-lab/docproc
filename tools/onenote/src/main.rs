@@ -1,6 +1,6 @@
-//! docproc-onenote: OneNote sections, packages, and notebooks to a JSON model.
+//! docproc-onenote: OneNote sections, packages, and notebooks to JSON Lines and Markdown.
 //!
-//! It reads one input, sniffed by content, and writes JSON Lines of schema "1" to stdout:
+//! It reads one input, sniffed by content, and writes JSON Lines of schema "2" to stdout:
 //! nothing else goes there. Warnings and errors are single lines on stderr. Exit codes:
 //! 0 read, even with records skipped; 1 output that can't be written, to stdout or to the
 //! media directory; 2 a usage error; 3 an input refused before any output; 4 a fault of the
@@ -13,6 +13,7 @@ mod markdown;
 mod math;
 mod model;
 mod notebook;
+mod page;
 mod section;
 mod sniff;
 mod stdout;

@@ -26,13 +26,7 @@ pub fn read(path: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Resu
         Err(failure) if !failure.panicked && is_toc(&failure.reason) => {
             return notebook::read(path, media, out);
         }
-        Err(failure) => {
-            return Err(Fault::Refused(format!(
-                "{}: {}",
-                path.display(),
-                failure.reason
-            )));
-        }
+        Err(failure) => return Err(Fault::Refused(failure.reason)),
     };
     media.create()?;
     let stem = path.file_stem().unwrap_or_default();
@@ -73,7 +67,6 @@ pub fn write(
         id: id.clone(),
         parent: parent.map(str::to_owned),
         path,
-        display_name: section.display_name().to_owned(),
         color: section.color().and_then(hex),
     })
     .map_err(Fault::Output)?;
@@ -96,49 +89,35 @@ fn page_line(
     media: &mut Media,
 ) -> Result<model::Page, Fault> {
     let id = guid(page.link_target_id());
-    let read = content::page(page, media, &format!("{place}, page {id}"))?;
-    let mut line = model::Page {
+    let place = format!("{place}, page {id}");
+    let read = content::page(page, media, &place)?;
+    Ok(model::Page {
         line: "page",
-        id,
         section: section.to_owned(),
         level: page.level(),
         title: text(page.title_text()),
-        creation_time: iso8601(page.created_time()),
+        creation_time: creation_time(page.created_time(), &place),
         modification_time: iso8601(page.updated_time()),
         author: text(page.author()),
-        content: read.content,
-        ink: read.ink,
-        ink_text: ink_text(page),
-        markdown: String::new(),
-    };
-    line.markdown = markdown::page(&line);
-    Ok(line)
+        markdown: markdown::page(&read.page),
+        media: read.media,
+        ink_alternatives: read.ink_alternatives,
+        id,
+    })
 }
 
-/// A page's recognised ink text: its recognition's lines of words, each word its best guess,
-/// its other guesses and its language. A word with no guess is left out.
-fn ink_text(page: &Page) -> Vec<Vec<model::Word>> {
-    let Some(recognition) = page.ink_recognition() else {
-        return Vec::new();
-    };
-    recognition
-        .lines()
-        .iter()
-        .map(|line| {
-            line.words()
-                .iter()
-                .filter_map(|word| {
-                    let (best, rest) = word.alternatives().split_first()?;
-                    Some(model::Word {
-                        text: best.clone(),
-                        alternatives: rest.to_vec(),
-                        language: word.language_id(),
-                    })
-                })
-                .collect::<Vec<_>>()
-        })
-        .filter(|words| !words.is_empty())
-        .collect()
+/// The parser's time for a creation time it couldn't read: the Unix epoch, which it gives with
+/// a warning of its own.
+const UNREAD_TIME: time::UtcDateTime = time::UtcDateTime::UNIX_EPOCH;
+
+/// A page's creation time; none when it is the parser's fallback for one it couldn't read, which
+/// the page's `place` is warned of.
+fn creation_time(time: time::UtcDateTime, place: &str) -> Option<String> {
+    if time == UNREAD_TIME {
+        warn(place, "its creation time can't be read; it is left out");
+        return None;
+    }
+    Some(iso8601(time))
 }
 
 /// A section's place in a warning: its path from the notebook's root, "/Group/Section". The
@@ -222,6 +201,17 @@ mod tests {
         let parts: Vec<&str> = line.trim_end().splitn(4, ": ").collect();
         assert_eq!(parts[2], "/Group/Notes:\\ 2024, page 1");
         assert_eq!(parts[3], "the first line\\nthe second");
+    }
+
+    /// The parser's 1970 fallback is no creation time; any other time is one, the epoch's
+    /// next second among them.
+    #[test]
+    fn the_parsers_fallback_is_no_creation_time() {
+        assert_eq!(creation_time(UNREAD_TIME, "/Section, page 1"), None);
+        assert_eq!(
+            creation_time(utc_datetime!(1970-01-01 0:00:01), "/Section, page 1"),
+            Some("1970-01-01T00:00:01Z".to_owned())
+        );
     }
 
     #[test]

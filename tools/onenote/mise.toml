@@ -60,17 +60,17 @@ cp "target/$target/release/docproc-onenote" .state/publish/
 '''
 
 # The goldens are the release binary's own output, so a change to it is reviewed as a diff of them;
-# the check compares against them and never writes them.
-# No test reads UPDATE_GOLDEN yet: the golden helper in the tests' common module, with the
-# committed goldens, comes with schema "2".
+# the check compares against them and never writes them. The golden helper in the tests' common
+# module writes them under UPDATE_GOLDEN, each committed OneStore input's two at its path under
+# tests/golden.
 [tasks.golden]
-description = "Re-record the goldens from the static musl release binary, through the tests' UPDATE_GOLDEN; the check never runs it; writes only target/ and the goldens"
+description = "Re-record the .jsonl and .stderr goldens from the static musl release binary, through the tests' UPDATE_GOLDEN; the check never runs it; writes only target/ and the goldens"
 dir = "{{config_root}}"
 run = '''
 set -eu
 export PATH="$CARGO_HOME/bin:$PATH"
 target="$(uname -m)-unknown-linux-musl"
-UPDATE_GOLDEN=1 cargo test --release --locked --target "$target"
+UPDATE_GOLDEN=1 cargo test --release --locked --target "$target" -p docproc-onenote
 '''
 
 # Read-only and development-time: it reads the network, so CI never runs it. tools/currency.sh

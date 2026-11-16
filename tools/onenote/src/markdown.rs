@@ -1,5 +1,5 @@
-//! A page's Markdown, rendered from its model alone, so the same page always gives the same
-//! text.
+//! A page's Markdown, rendered from the crate's reading of it alone (src/page.rs), so the same
+//! page always gives the same text.
 //!
 //! The title comes first, then the page's containers top to bottom, then left to right. A
 //! paragraph is a block: an hN heading one level below the title's `#`, capped at 6; a code
@@ -15,7 +15,7 @@
 use docproc_envelope::markdown::escape;
 
 use crate::ink::UNITS_PER_HALF_INCH;
-use crate::model::{
+use crate::page::{
     Block, Cell, Container, EmbeddedFile, Image, Ink, Item, List, Page, Paragraph, Run, Table, Tag,
 };
 
@@ -97,13 +97,7 @@ fn place(container: &Container) -> (u8, f32, f32) {
 
 /// The page's recognised ink text, its words in reading order on one line.
 fn recognised(page: &Page) -> String {
-    let words: Vec<&str> = page
-        .ink_text
-        .iter()
-        .flatten()
-        .map(|word| word.text.as_str())
-        .collect();
-    words.join(" ")
+    page.words.join(" ")
 }
 
 /// A rendered block, before the blocks around it are joined to it.
@@ -164,19 +158,12 @@ fn item_chunks(item: &Item, title: bool, out: &mut Vec<Chunk>) {
 
 /// A list marker's number, the number its list restarts at, if it is a numbered one.
 fn number(list: &List) -> Option<Option<i32>> {
-    list.number.as_ref().map(|_| list.restart)
-}
-
-/// Whether a tag is a To Do: its icon is a check box.
-fn is_task(tag: &Tag) -> bool {
-    tag.shape.as_deref().is_some_and(|s| s.contains("CheckBox"))
+    list.numbered.then_some(list.restart)
 }
 
 /// The first To Do tag's state: whether it is done.
 fn task(tags: &[Tag]) -> Option<bool> {
-    tags.iter()
-        .find(|tag| is_task(tag))
-        .map(|tag| tag.status == "completed")
+    tags.iter().find(|tag| tag.task).map(|tag| tag.completed)
 }
 
 /// A block's chunk. `marked` says its element is a list item that this block leads, so its
@@ -245,16 +232,12 @@ fn tag_prefix(tags: &[Tag], marked: bool) -> String {
     let mut prefix = String::new();
     let mut boxed = marked;
     for tag in tags {
-        if is_task(tag) {
+        if tag.task {
             if boxed {
                 boxed = false;
                 continue;
             }
-            prefix.push_str(if tag.status == "completed" {
-                "[x] "
-            } else {
-                "[ ] "
-            });
+            prefix.push_str(if tag.completed { "[x] " } else { "[ ] " });
         } else if let Some(label) = &tag.label {
             prefix.push('[');
             prefix.push_str(&escape(label, false));
@@ -749,7 +732,8 @@ fn fence(code: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Bounds, Offsets, Word};
+    use crate::ink::Bounds;
+    use crate::page::Offsets;
 
     fn text(text: &str) -> Run {
         Run {
@@ -793,18 +777,9 @@ mod tests {
 
     fn page_of(content: Vec<Container>) -> Page {
         Page {
-            line: "page",
-            id: String::new(),
-            section: String::new(),
-            level: 1,
-            title: None,
-            creation_time: String::new(),
-            modification_time: String::new(),
-            author: None,
             content,
             ink: None,
-            ink_text: Vec::new(),
-            markdown: String::new(),
+            words: Vec::new(),
         }
     }
 
@@ -821,30 +796,24 @@ mod tests {
 
     fn bullet() -> List {
         List {
-            bullet: Some("•".to_owned()),
-            number: None,
-            prefix: None,
-            suffix: None,
+            numbered: false,
             restart: None,
         }
     }
 
     fn numbered(restart: Option<i32>) -> List {
         List {
-            bullet: None,
-            number: Some("decimal".to_owned()),
-            prefix: None,
-            suffix: Some(".".to_owned()),
+            numbered: true,
             restart,
         }
     }
 
-    fn tag(label: &str, shape: &str, status: &'static str) -> Tag {
+    /// A tag labelled `label`, a To Do when `task`, completed when `completed`.
+    fn tag(label: &str, task: bool, completed: bool) -> Tag {
         Tag {
             label: Some(label.to_owned()),
-            shape: Some(shape.to_owned()),
-            status,
-            completed_time: None,
+            task,
+            completed,
         }
     }
 
@@ -857,26 +826,14 @@ mod tests {
     fn image(file: Option<&str>, alt: Option<&str>, filename: Option<&str>) -> Image {
         Image {
             file: file.map(str::to_owned),
-            size: None,
-            extension: None,
             filename: filename.map(str::to_owned),
             alt_text: alt.map(str::to_owned),
-            ocr_text: Some("RECOGNISED IN THE PICTURE".to_owned()),
-            hyperlink: None,
-            printout_page: None,
         }
     }
 
     fn ink(file: &str) -> Ink {
         Ink {
             file: file.to_owned(),
-            strokes: 1,
-            bounds: Bounds {
-                x: 0.0,
-                y: 0.0,
-                width: 1.0,
-                height: 1.0,
-            },
         }
     }
 
@@ -887,7 +844,6 @@ mod tests {
     #[test]
     fn containers_go_title_first_then_top_to_bottom_then_left_to_right() {
         let title = Container::Title {
-            offsets: at(9.0, 9.0),
             items: vec![element(
                 vec![Block::Paragraph(para("PageTitle", vec![text("Title")]))],
                 Vec::new(),
@@ -919,7 +875,6 @@ mod tests {
     fn page_ink_goes_once_where_its_strokes_are() {
         let ink_at = |y: f32| Container::Ink {
             offsets: at(0.0, 0.0),
-            strokes: 1,
             bounds: Some(Bounds {
                 x: 1270.0,
                 y,
@@ -932,24 +887,18 @@ mod tests {
             outline(2.0, 1.0, vec![line("above")]),
             Container::Ink {
                 offsets: at(0.0, 0.0),
-                strokes: 0,
                 bounds: None,
             },
             ink_at(4.0 * UNITS_PER_HALF_INCH),
             outline(20.0, 1.0, vec![line("below")]),
         ]);
         page.ink = Some(ink("page.svg"));
-        let word = |text: &str| Word {
-            text: text.to_owned(),
-            alternatives: vec!["other".to_owned()],
-            language: Some(1031),
-        };
-        page.ink_text = vec![vec![word("Hello"), word("World")], vec![word("a*b")]];
+        page.words = ["Hello", "World", "a*b"].map(str::to_owned).to_vec();
         assert_eq!(
             super::page(&page),
             "above\n\n![ink: Hello World a\\*b](page.svg)\n\nbelow"
         );
-        page.ink_text.clear();
+        page.words.clear();
         assert!(super::page(&page).contains("\n![ink](page.svg)\n"));
     }
 
@@ -958,7 +907,6 @@ mod tests {
     #[test]
     fn headings_sit_below_the_title() {
         let title = Container::Title {
-            offsets: at(0.0, 0.0),
             items: vec![
                 element(
                     vec![Block::Paragraph(para("PageTitle", vec![text("Notes")]))],
@@ -1045,39 +993,6 @@ mod tests {
             )]),
             "**Lorem** ipsum *dolor* ~~sit~~ ***amet* consetetur**, \
              [a \\[link\\]](https://example.com/a_\\(b\\)) and [**bold link**](https://example.com)"
-        );
-    }
-
-    #[test]
-    fn underline_highlight_colour_superscript_and_subscript_are_plain_text() {
-        let runs = vec![
-            Run {
-                underline: true,
-                ..text("under")
-            },
-            Run {
-                highlight: Some("#ffc000".to_owned()),
-                ..text(" lit")
-            },
-            Run {
-                font_color: Some("#7f7f7f".to_owned()),
-                ..text(" grey")
-            },
-            Run {
-                superscript: true,
-                ..text(" up")
-            },
-            Run {
-                subscript: true,
-                ..text(" down")
-            },
-        ];
-        assert_eq!(
-            md(vec![element(
-                vec![Block::Paragraph(para("p", runs))],
-                Vec::new()
-            )]),
-            "under lit grey up down"
         );
     }
 
@@ -1188,18 +1103,15 @@ mod tests {
     fn to_do_tags_are_task_items_and_others_prefixes() {
         let mut numbered_task = para("p", vec![text("numbered")]);
         numbered_task.list = Some(numbered(None));
-        numbered_task.tags = vec![tag("To Do", "BlueCheckBox", "open")];
+        numbered_task.tags = vec![tag("To Do", true, false)];
         let items = vec![
-            tagged(vec![tag("To Do", "BlueCheckBox", "open")], "open"),
+            tagged(vec![tag("To Do", true, false)], "open"),
             tagged(
-                vec![
-                    tag("To Do", "BlueCheckBox", "completed"),
-                    tag("Important", "YellowStar", "open"),
-                ],
+                vec![tag("To Do", true, true), tag("Important", false, false)],
                 "done",
             ),
-            tagged(vec![tag("Important", "YellowStar", "completed")], "starred"),
-            tagged(vec![tag("Question *", "QuestionMark", "open")], "asked"),
+            tagged(vec![tag("Important", false, true)], "starred"),
+            tagged(vec![tag("Question *", false, false)], "asked"),
             element(vec![Block::Paragraph(numbered_task)], Vec::new()),
         ];
         assert_eq!(
@@ -1214,7 +1126,7 @@ mod tests {
     #[test]
     fn tables_are_gfm() {
         let table = Table {
-            tags: vec![tag("Important", "YellowStar", "open")],
+            tags: vec![tag("Important", false, false)],
             rows: vec![
                 vec![
                     cell(vec![line("A")]),
@@ -1269,14 +1181,12 @@ mod tests {
     }
 
     /// Images, embedded files and ink name their files; without a file, its data missing,
-    /// each is text. An image's recognised text is never in the Markdown.
+    /// each is text.
     #[test]
     fn media_name_their_files() {
         let file = |file: Option<&str>, filename: Option<&str>| EmbeddedFile {
             file: file.map(str::to_owned),
             filename: filename.map(str::to_owned),
-            file_type: None,
-            size: None,
         };
         let mut inked = para("p", Vec::new());
         inked.ink = Some(ink("hand.svg"));
@@ -1296,14 +1206,12 @@ mod tests {
             Block::Ink { ink: None },
             Block::Paragraph(inked),
         ];
-        let out = md(vec![element(blocks, Vec::new())]);
         assert_eq!(
-            out,
+            md(vec![element(blocks, Vec::new())]),
             "![a \\[cat\\]](a.png)\n\n![](b.png)\n\n[image: lost]\n\n[image: lost.png]\n\n\
              [image]\n\n[report\\_1.pdf](c.pdf)\n\n[d](d)\n\n[file: gone.docx]\n\n[file]\n\n\
              ![ink](drawn.svg)\n\n![ink](hand.svg)"
         );
-        assert!(!out.contains("RECOGNISED"));
     }
 
     /// Literal text is escaped by the shared escape: the characters Markdown reads as markup

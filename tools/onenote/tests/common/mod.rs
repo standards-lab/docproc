@@ -1,5 +1,5 @@
-//! What the tests share: running the built binary, and the paths of fixtures and test-built
-//! inputs.
+//! What the tests share: running the built binary, comparing a run with its goldens, and the
+//! paths of fixtures, goldens and test-built inputs.
 
 #![allow(
     dead_code,
@@ -89,9 +89,58 @@ pub fn scratch(name: &str) -> PathBuf {
     path
 }
 
-/// The error line a refusal of `input` for `reason` writes.
-pub fn error(input: &Path, reason: &str) -> String {
-    format!("{NAME}: error: {}: {reason}\n", input.display())
+/// The error line a refusal for `reason` writes; it never names the input, which docproc
+/// already knows.
+pub fn error(reason: &str) -> String {
+    format!("{NAME}: error: {reason}\n")
+}
+
+/// The committed inputs' directory, tests/fixtures, where the goldens are run.
+pub fn fixtures() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
+}
+
+/// The goldens of the committed input `input`, by its path under tests/fixtures: that path under
+/// tests/golden, `.jsonl` and `.stderr` added to its name, since a section and a table of
+/// contents can share a stem.
+pub fn goldens(input: &str) -> (PathBuf, PathBuf) {
+    let base = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/golden")
+        .join(input);
+    let with = |extension: &str| {
+        let mut name = base.clone().into_os_string();
+        name.push(extension);
+        PathBuf::from(name)
+    };
+    (with(".jsonl"), with(".stderr"))
+}
+
+/// A golden, read whole; `input` names its input in a failure.
+pub fn read_golden(path: &Path, input: &str) -> String {
+    std::fs::read_to_string(path).unwrap_or_else(|err| panic!("{input}: {}: {err}", path.display()))
+}
+
+/// Runs the binary over the committed input `input`, by its relative path, with tests/fixtures
+/// as its working directory, so its stderr is the same on every machine; asserts that it exits
+/// `code`; and compares its stdout and stderr, byte for byte, with its goldens. With
+/// UPDATE_GOLDEN set (the `golden` task), it writes the goldens instead; their diff is reviewed
+/// before committing.
+pub fn golden(input: &str, code: i32) {
+    let out = run_in(&fixtures(), &[input]);
+    assert_eq!(out.code, Some(code), "{input}: {}", out.stderr);
+    let (stdout, stderr) = goldens(input);
+    if std::env::var_os("UPDATE_GOLDEN").is_some() {
+        std::fs::create_dir_all(stdout.parent().unwrap()).unwrap();
+        std::fs::write(&stdout, &out.stdout).unwrap();
+        std::fs::write(&stderr, &out.stderr).unwrap();
+        return;
+    }
+    assert!(
+        out.stdout == read_golden(&stdout, input),
+        "{input}: stdout differs from {}",
+        stdout.display()
+    );
+    assert_eq!(out.stderr, read_golden(&stderr, input), "{input}: stderr");
 }
 
 /// A file's lowercase hex SHA-256, by sha256sum, so the tests take no hashing crate.
@@ -126,9 +175,8 @@ pub fn files_under(dir: &Path) -> Vec<String> {
 }
 
 /// The rules every line keeps: a JSON object whose `line` field names its kind, with no null,
-/// empty string, empty list or empty object anywhere in it but an empty table cell, `{}`, which
-/// holds its place in its row; and every time ISO 8601 UTC to the second. `file` names the
-/// input in failures.
+/// empty string, empty list or empty object anywhere in it; and every time ISO 8601 UTC to the
+/// second. `file` names the input in failures.
 pub fn assert_line_rules(line: &Value, file: &str) {
     assert!(line["line"].is_string(), "{file}: {line}");
     assert_no_empty(line, file);
@@ -149,30 +197,11 @@ fn assert_no_empty(value: &Value, file: &str) {
         }
         Value::Object(fields) => {
             assert!(!fields.is_empty(), "{file}: an empty object");
-            for (name, field) in fields {
-                if value["kind"] == "table" && name == "rows" {
-                    assert_no_empty_rows(field, file);
-                } else {
-                    assert_no_empty(field, file);
-                }
-            }
+            fields
+                .values()
+                .for_each(|field| assert_no_empty(field, file));
         }
         Value::Bool(_) | Value::Number(_) => {}
-    }
-}
-
-/// A table's rows: no row is empty, and a cell may be the empty object, as an empty cell is.
-fn assert_no_empty_rows(rows: &Value, file: &str) {
-    let rows = rows.as_array().unwrap();
-    assert!(!rows.is_empty(), "{file}: a table without rows");
-    for row in rows {
-        let cells = row.as_array().unwrap();
-        assert!(!cells.is_empty(), "{file}: an empty row");
-        for cell in cells {
-            if cell.as_object().is_none_or(|fields| !fields.is_empty()) {
-                assert_no_empty(cell, file);
-            }
-        }
     }
 }
 
