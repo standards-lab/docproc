@@ -26,7 +26,7 @@ archive against `SHA256SUMS` before unpacking it:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-ooxml-v0.1.0-linux-x64.tar.gz
+tar -xzf docproc-ooxml-v0.1.1-linux-x64.tar.gz
 ./docproc-ooxml --version
 ```
 
@@ -50,7 +50,7 @@ by its target, never fetched.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.0
+0.1.1
 schema 2
 ```
 

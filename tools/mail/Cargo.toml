@@ -1,6 +1,6 @@
 [package]
 name = "docproc-mail"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 license = "Apache-2.0"
 description = "docproc's mail tool: Outlook .pst stores, .msg messages, .eml messages and mbox files to a JSON model"
@@ -33,6 +33,11 @@ cfb = "0.16.0"
 # mbox's messages (src/eml.rs, src/mbox.rs). It brings hashify and encodify; full_encoding
 # brings encoding_rs's multi-byte charsets, ISO-2022-JP and GB2312 among them.
 mail-parser = { version = "1.0.1", features = ["full_encoding"] }
+
+[dev-dependencies]
+# The CommonMark reader the envelope's `markdown` feature already links, required exactly as the
+# envelope requires it: the unit tests read each link's and image's destination back through it.
+pulldown-cmark = { version = "=0.13.6", default-features = false }
 
 # A release binary checks integer arithmetic as a debug one does: an overflow panics, a fault the
 # CLI reports, instead of wrapping silently into a wrong offset or length. The check runs every

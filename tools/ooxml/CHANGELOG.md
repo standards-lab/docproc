@@ -9,6 +9,8 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-11-16
+
 ### Fixed
 
 - A link's or an image's destination reads back as its target. A backslash in it is escaped, so
@@ -76,5 +78,6 @@ says how it differs from the spike.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...HEAD
+[v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...tools/ooxml/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

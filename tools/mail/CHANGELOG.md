@@ -9,6 +9,20 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-11-16
+
+### Fixed
+
+- A link's or an image's destination in a message's Markdown reads back as its target. htmd
+  escaped only its parentheses, so `\\server\Team Notes\plan.docx` read back with one leading
+  backslash, and a target holding `&amp;` as one holding `&`. Links and images are now written by
+  docproc-mail's own handlers, through the destination rule docproc's Rust tools share, stated by
+  tools/envelope/cases.json: each `\` is escaped, and so is a `&` that could begin a character
+  reference; a target holding whitespace, a control character, `<`, or `>` is written within angle
+  brackets, its `<` and `>` escaped; any other is written bare, its parentheses escaped. A line
+  ending or a NUL, which no destination can hold, is percent-encoded. Link text, titles, alt text,
+  media names, `inline`, and the unmatched-source warning are as before.
+
 ### Added
 
 - The release archive's `THIRD-PARTY-NOTICES.txt` gives the notices of the Rust standard library
@@ -98,5 +112,6 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...HEAD
+[v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0

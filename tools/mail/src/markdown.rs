@@ -26,8 +26,10 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::escape;
+use docproc_envelope::markdown::{destination, escape};
 use docproc_envelope::{Fault, Media};
+use htmd::Element;
+use htmd::element_handler::{HandlerResult, Handlers};
 use mail_parser::Encoding;
 
 use crate::model::{Medium, Message};
@@ -425,13 +427,85 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
 }
 
 /// Markdown from an HTML body. Images keep their sources as written. The head, styles and
-/// scripts are no part of the text: htmd would write a style's rules as text.
+/// scripts are no part of the text: htmd would write a style's rules as text. Links and images
+/// are written by [`anchor`] and [`image`], in place of htmd's own.
 pub fn from_html(html: &str) -> Result<String, String> {
     htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
+        .add_handler(vec!["a"], anchor)
+        .add_handler(vec!["img"], image)
         .build()
         .convert(html)
         .map_err(|err| format!("can't be made into Markdown ({err})"))
+}
+
+/// A link, as htmd 0.5.6 writes one inline, `[text](destination "title")`, but for its
+/// destination, which is the envelope's [`destination`]: htmd escapes only a target's `(` and
+/// `)`, so CommonMark would read a UNC path's `\\` back as `\` and an `&amp;` as `&`. An
+/// `<a>` with no `href` is its text alone. As htmd does, the text's leading whitespace is
+/// dropped and its trailing whitespace follows the link, and a title is [`attribute_text`].
+fn anchor(handlers: &dyn Handlers, element: Element) -> Option<HandlerResult> {
+    let mut target = None;
+    let mut title = None;
+    for attr in element.attrs {
+        match &*attr.name.local {
+            "href" => target = Some(&*attr.value),
+            "title" => title = Some(attribute_text(&attr.value)),
+            _ => {}
+        }
+    }
+    let Some(target) = target else {
+        return Some(handlers.walk_children(element.node));
+    };
+    let content = handlers.walk_children(element.node).content;
+    let text = content.trim_matches(DOCUMENT_WHITESPACE);
+    let trailing = &content[content.trim_end_matches(DOCUMENT_WHITESPACE).len()..];
+    let mut out = format!("[{text}]({}", destination(target));
+    if let Some(title) = title {
+        out.push_str(&format!(" \"{title}\""));
+    }
+    out.push(')');
+    out.push_str(trailing);
+    Some(out.into())
+}
+
+/// An image, as htmd 0.5.6 writes one, `![alt](destination "title")`, but for its destination,
+/// which is the envelope's [`destination`], as a link's is ([`anchor`]). Its target is its last
+/// `src` or `href`, as htmd reads it, and an `<img>` with neither is nothing; its alt text and
+/// title are [`attribute_text`].
+fn image(_: &dyn Handlers, element: Element) -> Option<HandlerResult> {
+    let mut target = None;
+    let mut alt = None;
+    let mut title = None;
+    for attr in element.attrs {
+        match &*attr.name.local {
+            "src" | "href" => target = Some(&*attr.value),
+            "alt" => alt = Some(attribute_text(&attr.value)),
+            "title" => title = Some(attribute_text(&attr.value)),
+            _ => {}
+        }
+    }
+    let target = target?;
+    let mut out = format!("![{}]({}", alt.unwrap_or_default(), destination(target));
+    if let Some(title) = title {
+        out.push_str(&format!(" \"{title}\""));
+    }
+    out.push(')');
+    Some(out.into())
+}
+
+/// The whitespace htmd trims from a link's text and an attribute's lines: HTML's ASCII
+/// whitespace but the form feed.
+const DOCUMENT_WHITESPACE: &[char] = &['\t', '\n', '\r', ' '];
+
+/// An alt text or a title as htmd 0.5.6 writes one: its lines trimmed, the blank ones dropped,
+/// joined by line feeds, and each `"` escaped.
+fn attribute_text(text: &str) -> String {
+    text.lines()
+        .map(|line| line.trim_matches(DOCUMENT_WHITESPACE).replace('"', "\\\""))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Markdown that reads as `text` does: its paragraphs, split at blank lines, each line escaped
@@ -909,6 +983,67 @@ mod tests {
             from_html(html).unwrap(),
             "A **moth**.\n\n![moth](cid:moth@example.net)"
         );
+    }
+
+    /// The destinations of the links and images in `markdown`, as CommonMark reads them back.
+    fn destinations(markdown: &str) -> Vec<String> {
+        use pulldown_cmark::{Event, Parser, Tag};
+        Parser::new(markdown)
+            .filter_map(|event| match event {
+                Event::Start(Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. }) => {
+                    Some(dest_url.into_string())
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// A link's `href` and an image's `src` read back as written, through CommonMark: a UNC
+    /// path's backslashes, an `&` that could begin a character reference, a space, and
+    /// parentheses, balanced or not.
+    #[test]
+    fn destinations_read_back_as_written() {
+        let targets = [
+            r"\\server\Team Notes\plan.docx",
+            r"\\server\share\plan.docx",
+            "https://example.net/?a&amp;b",
+            "https://example.net/a b",
+            "https://example.net/f(x)",
+            "https://example.net/open(",
+            r"C:\images\a&#59;b (1).png",
+        ];
+        for target in targets {
+            let html = target.replace('&', "&amp;");
+            let markdown = from_html(&format!(
+                "<p><a href=\"{html}\">link</a> <img src=\"{html}\" alt=\"i\"></p>"
+            ))
+            .unwrap();
+            assert_eq!(destinations(&markdown), [target, target], "{markdown}");
+        }
+    }
+
+    /// Where htmd's own destination already reads back, the owned link and image handlers write
+    /// what htmd's would: the text, its trailing whitespace after the link, a title's and an alt
+    /// text's lines, a link with no target, and an image with none.
+    #[test]
+    fn links_and_images_are_written_as_htmd_writes_them() {
+        let htmls = [
+            "<p>See <a href=\"https://example.net/x\" title=\" One &quot;q&quot;\n\n two \">\
+             <b>bold</b> text </a>after.</p>",
+            "<p><a>no target</a> and <a href=\"https://example.net/f(x)\">f</a></p>",
+            "<p><img src=\"a b.png\" alt=\" A\nb \" title=\"t\"><img alt=\"none\">\
+             <img href=\"h.png\" src=\"s.png\"></p>",
+        ];
+        let htmd = htmd::HtmlToMarkdown::builder()
+            .skip_tags(vec!["head", "style", "script"])
+            .build();
+        for html in htmls {
+            assert_eq!(
+                from_html(html).unwrap(),
+                htmd.convert(html).unwrap(),
+                "{html}"
+            );
+        }
     }
 
     /// The `src` of a start tag, quoted either way or bare, past other attributes, a name that
