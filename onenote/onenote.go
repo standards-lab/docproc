@@ -1,5 +1,3 @@
-//go:build linux
-
 package onenote
 
 import (
@@ -55,12 +53,8 @@ func NewReader(cfg Config) (*Reader, error) {
 	if cfg.OneNote == nil {
 		panic("onenote: Config.OneNote is nil")
 	}
-	m, err := tool.ParseVersion(OneNoteMinimum)
-	if err != nil {
+	if err := cfg.OneNote.AtLeast(OneNoteMinimum); err != nil {
 		return nil, err
-	}
-	if v := cfg.OneNote.Version(); v.Compare(m) < 0 {
-		return nil, &tool.VersionError{Program: cfg.OneNote.Name(), Found: v.String(), Minimum: OneNoteMinimum, Err: tool.ErrTooOld}
 	}
 	return &Reader{onenote: cfg.OneNote}, nil
 }

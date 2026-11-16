@@ -62,20 +62,21 @@ type Logged struct {
 // Main runs a package's tests, m, and exits with their code, or, in a process started through a
 // link Link made, runs the program the link names and exits with its code, never running m.
 //
-// Before the tests it makes Zone the local zone, and sets GORACE's atexit_sleep_ms to 0 for the
-// processes the tests start, so a stand-in built under -race doesn't sleep a second as it exits.
-// A stand-in's run is appended to the link's log before its program runs. A link whose program
+// Before the tests it makes Zone the local zone. A stand-in's run is appended to the link's log
+// before its program runs. Under -race, a stand-in first executes itself again with GORACE's
+// atexit_sleep_ms at 0, so it doesn't sleep a second as it exits, whatever environment the runner
+// gave it; its program then sees that environment as given, GORACE restored. A link whose program
 // isn't among programs, or whose settings or log can't be read or written, exits 2 with the
 // reason on stderr.
 func Main(m *testing.M, programs map[string]Program) {
 	if link, ok := standinLink(); ok {
+		if err := raceExec(); err != nil {
+			fmt.Fprintln(os.Stderr, "tooltest:", err)
+			os.Exit(2)
+		}
 		os.Exit(standin(link, programs))
 	}
 	time.Local = Zone
-	if err := os.Setenv("GORACE", "atexit_sleep_ms=0"); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(2)
-	}
 	os.Exit(m.Run())
 }
 

@@ -237,8 +237,8 @@ func TestContainerRunArgs(t *testing.T) {
 			names = append(names, name)
 			want := slices.Concat([]string{
 				"run", "--rm", "--init", "--network=none", "--user=" + user, "--cap-drop=ALL",
-				"--pull=never", "--entrypoint=standin", "--name=" + name,
-				"--volume=" + work + ":" + work, "--workdir=" + work,
+				"--security-opt=no-new-privileges", "--pids-limit=4096", "--pull=never",
+				"--entrypoint=standin", "--name=" + name, "--volume=" + work + ":" + work, "--workdir=" + work,
 			}, tt.interactive, []string{testRef, "echo", "a b", "--flag=1"})
 			if !slices.Equal(got, want) {
 				t.Errorf("run args =\n%q\nwant\n%q", got, want)
@@ -305,7 +305,8 @@ func TestContainerRelaxations(t *testing.T) {
 	user := strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid())
 	want := []string{
 		"run", "--rm", "--init", "--network=bridge", "--user=" + user, "--cap-drop=ALL",
-		"--cap-add=NET_RAW", "--cap-add=CHOWN", "--pull=never", "--entrypoint=standin",
+		"--cap-add=NET_RAW", "--cap-add=CHOWN", "--security-opt=no-new-privileges", "--pids-limit=4096",
+		"--pull=never", "--entrypoint=standin",
 	}
 	if len(got) < len(want) || !slices.Equal(got[:len(want)], want) {
 		t.Errorf("run args =\n%q\nwant them to begin\n%q", got, want)
@@ -343,7 +344,7 @@ func TestContainerExitError(t *testing.T) {
 	if !ok {
 		t.Fatalf("Run error = %v, want a *tool.ExitError", err)
 	}
-	if exitErr.Program != "standin" || exitErr.Code != 3 || exitErr.Stderr != "it broke" {
+	if exitErr.Program != "standin" || exitErr.Code != 3 || exitErr.Message != "it broke" {
 		t.Errorf("ExitError = %+v, want standin, code 3, stderr %q", exitErr, "it broke")
 	}
 }
@@ -361,7 +362,7 @@ func TestContainerCancel(t *testing.T) {
 	}{
 		"terminates":      {1500 * time.Millisecond, "sleep", "--time=2", 0},
 		"killed after it": {time.Second, "stubborn", "--time=1", time.Second},
-		"default":         {0, "sleep", "--time=10", 0},
+		"no grace":        {0, "stubborn", "--time=0", 0},
 	}
 	for label, tt := range tests {
 		t.Run(label, func(t *testing.T) {

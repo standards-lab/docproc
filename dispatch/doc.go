@@ -1,7 +1,7 @@
 // Package dispatch walks an input and every part found in it to the stages that prepare them, on
 // the standard library and this module's route and inspect packages and sevenzip's types,
-// golang.org/x/text for the text stage's decoding, and, for the format packages' adapters, which
-// build on Linux only, on document, office, picture, email, onenote, audio, media, and tool. It
+// golang.org/x/text for the text stage's decoding, and, for the format packages' adapters, on
+// document, office, picture, email, onenote, audio, media, and tool. It
 // never calls a model: it reports what each part is and what its stage prepared, for a layer above
 // to send on. The stages are the caller's, registered by route; the format packages' adapters are
 // stages.
@@ -389,7 +389,7 @@
 //     [ErrEncrypted], [ErrReadElsewhere], or [ErrRefused] to name its outcome; [ErrTooLarge] is a
 //     content store's. A stage whose found parts' names are untrusted implements
 //     [UntrustedWhere].
-//   - The adapters, on Linux: [DocumentStage], [OfficeStage], [PictureStage], [EmailStage],
+//   - The adapters: [DocumentStage], [OfficeStage], [PictureStage], [EmailStage],
 //     [OneNoteStage], [AudioStage], and [VideoStage], made by [NewDocumentStage], [NewOfficeStage],
 //     [NewPictureStage], [NewEmailStage], [NewOneNoteStage], [NewAudioStage], and [NewVideoStage]
 //     over a [DocumentConfig], [OfficeConfig], [PictureConfig], [EmailConfig], [OneNoteConfig],

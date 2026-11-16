@@ -1,5 +1,3 @@
-//go:build linux
-
 package document
 
 import (
@@ -55,7 +53,7 @@ func NewDetacher(cfg Config) (*Detacher, error) {
 	if cfg.PDFDetach == nil {
 		panic("document: Config.PDFDetach is nil")
 	}
-	if err := atLeast(cfg.PDFDetach, PDFDetachMinimum); err != nil {
+	if err := cfg.PDFDetach.AtLeast(PDFDetachMinimum); err != nil {
 		return nil, err
 	}
 	return &Detacher{pdfdetach: cfg.PDFDetach}, nil

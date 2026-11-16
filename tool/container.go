@@ -1,5 +1,3 @@
-//go:build linux
-
 package tool
 
 import (
@@ -46,8 +44,13 @@ func dockerSpec(program string) Spec {
 		VersionArgs:    []string{"version", "--format={{.Server.Version}}"},
 		VersionPattern: regexp.MustCompile(`^(\d+(?:\.\d+)*)`),
 		Minimum:        "20.10",
+		KillAfter:      cliKillAfter,
 	}
 }
+
+// pidsLimit is every run's --pids-limit, the processes and threads its container may hold: fixed,
+// and far above what a converter's thread pool takes on a many-core host.
+const pidsLimit = 4096
 
 // containerPrefix begins every run's container name; a random suffix follows it.
 const containerPrefix = "tool-"
@@ -70,19 +73,23 @@ const cliKillAfter = 2 * time.Second
 //
 // The Tool is named for spec's program, which is the image's, never looked up on the host. Each
 // run passes --rm, --init, --network=none, the caller's uid:gid as --user, --cap-drop=ALL,
-// --pull=never, a name of its own, and spec's program as --entrypoint; it mounts the invocation's
-// working directory at the same absolute path and works in it, so the same arguments name the
-// same files through either runner, and files the tool writes there belong to the caller. An
-// empty Dir is the process's working directory, and a relative one is made absolute. It passes
-// --interactive only when the invocation has stdin. The image's Network and CapAdd relax the
-// network and add capabilities; nothing else of the lockdown changes.
+// --security-opt=no-new-privileges, --pids-limit=4096, spec's MemoryLimit as --memory when it has
+// one, --pull=never, a name of its own, and spec's program as --entrypoint; it mounts the
+// invocation's working directory at the same absolute path and works in it, so the same arguments
+// name the same files through either runner, and files the tool writes there belong to the
+// caller. An empty Dir is the process's working directory, and a relative one is made absolute.
+// It passes --interactive only when the invocation has stdin. The image's Network and CapAdd relax
+// the network and add capabilities; nothing else of the lockdown changes. spec's Env isn't passed:
+// the image's environment is the container's.
 //
 // A cancelled run's container is stopped by docker stop on its name, under a context of its own,
 // given spec's KillAfter period rounded up to whole seconds; the CLI's own signal forwarding is
 // never relied on. Run then waits for the CLI, and returns an error matching ctx's, which names
 // the CLI's outcome once, as the exec runner's names the program's. A tool that exits nonzero
 // gives an *ExitError naming spec's program; docker's own failures exit 125, and an entrypoint it
-// can't run, 126 or 127.
+// can't run, 126 or 127. A container exit of 129 to 159 is a death by signal, as docker's init
+// reports one, its ExitError's Signal named from the code less 128; an exit of the tool's own in
+// that range reads the same.
 //
 // A run leaves an invocation's Usage zero: the docker CLI's rusage, the only one the runner can
 // read, isn't the container's, whose processes the daemon starts and reaps.
@@ -91,7 +98,7 @@ func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*
 	if spec.Program == "" {
 		return nil, errors.New("tool: container: no program")
 	}
-	minimum, err := spec.minimum(name)
+	minimum, err := spec.validate(name)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +107,7 @@ func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*
 	}
 	dspec := dockerSpec(docker)
 	dname := filepath.Base(dspec.Program)
-	dminimum, err := dspec.minimum(dname)
+	dminimum, err := dspec.validate(dname)
 	if err != nil {
 		return nil, err
 	}
@@ -108,14 +115,14 @@ func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*
 	if err != nil {
 		return nil, err
 	}
-	drun := execRun(dname, dpath, nil, dspec.killAfter())
+	drun := execRun(execConfig{name: dname, path: dpath, killAfter: dspec.KillAfter})
 	if _, err := checkVersion(ctx, dname, dspec, dminimum, drun); err != nil {
 		return nil, err
 	}
 	if err := ensureImage(ctx, name, image.Ref, drun); err != nil {
 		return nil, err
 	}
-	run := containerRun(name, dpath, drun, runArgs(spec.Program, image), image.Ref, spec.killAfter())
+	run := containerRun(name, dpath, drun, runArgs(spec, image), image.Ref, spec.KillAfter)
 	version, err := checkVersion(ctx, name, spec, minimum, run)
 	if err != nil {
 		return nil, err
@@ -142,7 +149,7 @@ func ensureImage(ctx context.Context, name, ref string, drun runFunc) error {
 // runArgs returns the arguments of docker run that every run of program in image shares, the
 // lockdown and its relaxations, each valued flag joined to its value with = so no value is ever
 // read as a flag.
-func runArgs(program string, image Image) []string {
+func runArgs(spec Spec, image Image) []string {
 	network := image.Network
 	if network == "" {
 		network = "none"
@@ -156,7 +163,11 @@ func runArgs(program string, image Image) []string {
 	for _, c := range image.CapAdd {
 		args = append(args, "--cap-add="+c)
 	}
-	return append(args, "--pull=never", "--entrypoint="+program)
+	args = append(args, "--security-opt=no-new-privileges", "--pids-limit="+strconv.Itoa(pidsLimit))
+	if spec.MemoryLimit > 0 {
+		args = append(args, "--memory="+strconv.FormatInt(spec.MemoryLimit, 10))
+	}
+	return append(args, "--pull=never", "--entrypoint="+spec.Program)
 }
 
 // containerRun returns the container runner's runFunc. Each run executes the docker CLI at dpath
@@ -171,7 +182,7 @@ func runArgs(program string, image Image) []string {
 // forward, and its cliKillAfter period bounds a CLI that doesn't exit on its own. Run waits for the
 // CLI either way, and returns an error matching ctx's.
 func containerRun(name, dpath string, drun runFunc, base []string, ref string, killAfter time.Duration) runFunc {
-	cli := execRun(name, dpath, nil, cliKillAfter)
+	cli := execRun(execConfig{name: name, path: dpath, killAfter: cliKillAfter})
 	return func(ctx context.Context, inv Invocation) error {
 		// The CLI's rusage isn't the container's, whose processes the daemon starts and reaps, so
 		// a run reports no usage, and the CLI's own Invocation asks for none.
@@ -217,16 +228,38 @@ func containerRun(name, dpath string, drun runFunc, base []string, ref string, k
 			if err != nil {
 				outcome = runOutcome(err)
 			}
-			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: outcome}
+			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: outcome, exit: containerExit(err)}
 		}
 		if err != nil && ctx.Err() != nil {
 			// ctx ended as the CLI exited on its own, and the select saw the exit first: no stop
 			// was needed, but ctx's error is still the cause, as the exec runner's is. A run that
 			// succeeded stays a success.
-			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: runOutcome(err)}
+			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: runOutcome(err), exit: containerExit(err)}
+		}
+		if exit := containerExit(err); exit != nil {
+			return exit
 		}
 		return err
 	}
+}
+
+// containerExit returns the container's exit within err, the CLI's error: the CLI's ExitError,
+// its own or within a cancelError, with Signal named from an exit code of 129 to 159, which
+// docker's init gives a program a signal ended; nil when err holds no exit.
+func containerExit(err error) *ExitError {
+	exit, ok := errors.AsType[*ExitError](err)
+	if !ok {
+		ce, isCancel := errors.AsType[*cancelError](err)
+		if !isCancel || ce.exit == nil {
+			return nil
+		}
+		exit = ce.exit
+	}
+	e := *exit
+	if e.Signal == "" && e.Code > 128 && e.Code < 160 {
+		e.Signal = signalName(e.Code - 128)
+	}
+	return &e
 }
 
 // stopContainer stops the container cname once ctx, its run's context, has ended, and returns once

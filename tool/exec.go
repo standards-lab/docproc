@@ -10,19 +10,40 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
 )
 
-// NewExec builds a Tool that runs spec's program directly. It validates the spec, then finds the
-// program on PATH, or takes a path containing a separator as given, then runs the version command
-// under ctx and refuses a program it can't find, whose version command fails, or whose version
-// is unmatched or older than the minimum.
+// NewExec builds a Tool that runs spec's program directly, the exec runner. It validates the
+// spec, then finds the program on PATH, or takes a path containing a separator as given, and,
+// for a spec with a MemoryLimit, util-linux's prlimit on PATH; then it runs the version command
+// under ctx, through prlimit under the bound as every run is, and refuses a program it can't
+// find, whose version command fails, or whose version is unmatched or older than the minimum. A
+// spec with a MemoryLimit and no prlimit on PATH is refused.
+//
+// Every run starts the program as the leader of a process group of its own, with:
+//
+//   - a fixed environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, and
+//     HOME and TMPDIR the invocation's Dir, made absolute, when it has one; then spec's Env, a key
+//     there replacing the fixed one's;
+//   - the memory bound, when spec has one, as RLIMIT_AS, set by `prlimit --as=<bytes> --` before
+//     the program is executed, so it holds from the program's first allocation;
+//   - SIGKILL as its parent-death signal, from an OS thread locked to the run, so a host that
+//     dies, even by SIGKILL, takes the program with it;
+//   - an oom_score_adj of 1000, so the kernel's OOM killer takes the program before its host.
+//     It is written to /proc once the program has started, so the program runs its first
+//     instructions, prlimit's, before it holds, and a host without /proc, or a program that has
+//     already exited, leaves it unset.
+//
+// Whenever the leader exits, its group is sent SIGKILL before the leader is reaped, so no child it
+// started outlives the run, whether the run succeeded, failed, or was ended.
 func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 	name := filepath.Base(spec.Program)
-	minimum, err := spec.minimum(name)
+	minimum, err := spec.validate(name)
 	if err != nil {
 		return nil, err
 	}
@@ -30,7 +51,19 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 	if err != nil {
 		return nil, err
 	}
-	run := execRun(name, path, nil, spec.killAfter())
+	cfg := execConfig{
+		name: name, path: path, killAfter: spec.KillAfter, lockdown: true,
+		fixed: []string{"PATH=" + os.Getenv("PATH"), "LANG=C.UTF-8"}, env: slices.Clone(spec.Env),
+	}
+	if spec.MemoryLimit > 0 {
+		prlimit, err := exec.LookPath("prlimit")
+		if err != nil {
+			return nil, fmt.Errorf("tool: %s: a memory limit needs util-linux's prlimit on PATH: %w", name, err)
+		}
+		cfg.path = prlimit
+		cfg.lead = []string{"--as=" + strconv.FormatInt(spec.MemoryLimit, 10), "--", path}
+	}
+	run := execRun(cfg)
 	version, err := checkVersion(ctx, name, spec, minimum, run)
 	if err != nil {
 		return nil, err
@@ -38,65 +71,53 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 	return &Tool{name: name, version: version, run: run}, nil
 }
 
-// NewScript builds a Tool that runs script through spec's program, its interpreter. It validates
-// the spec, refuses a script that doesn't exist or is a directory, and finds and checks the
-// interpreter as NewExec does a binary, its version command run without the script. Run executes
-// the interpreter with the script and then the invocation's arguments. The Tool is named for the
-// script; its version is the interpreter's.
-func NewScript(ctx context.Context, spec Spec, script string) (*Tool, error) {
-	interpreter := filepath.Base(spec.Program)
-	minimum, err := spec.minimum(interpreter)
-	if err != nil {
-		return nil, err
-	}
-	// The script's path is made absolute so an invocation's Dir doesn't change what it names.
-	abs, err := filepath.Abs(script)
-	if err != nil {
-		return nil, fmt.Errorf("tool: script %s: %w", script, err)
-	}
-	info, err := os.Stat(abs)
-	if err != nil {
-		return nil, fmt.Errorf("tool: script %s: %w", script, err)
-	}
-	if info.IsDir() {
-		return nil, fmt.Errorf("tool: script %s: is a directory", script)
-	}
-	path, err := lookPath(spec.Program)
-	if err != nil {
-		return nil, err
-	}
-	version, err := checkVersion(ctx, interpreter, spec, minimum, execRun(interpreter, path, nil, spec.killAfter()))
-	if err != nil {
-		return nil, err
-	}
-	name := filepath.Base(script)
-	return &Tool{name: name, version: version, run: execRun(name, path, []string{abs}, spec.killAfter())}, nil
+// execConfig is what the exec runner runs, and how.
+type execConfig struct {
+	// name is the program's name, for errors.
+	name string
+	// path is what is executed: the program, or prlimit leading it.
+	path string
+	// lead are the arguments before the invocation's: prlimit's, ending with the program's path.
+	lead []string
+	// killAfter is the time between SIGTERM and SIGKILL for a run that is ended.
+	killAfter time.Duration
+	// lockdown gives the program the fixed environment and env, and an oom_score_adj of 1000. The
+	// container runner's docker CLI runs without it, with the host's environment, which holds
+	// its daemon's address and its configuration, and the host's oom_score_adj.
+	lockdown bool
+	// fixed is the fixed environment, without HOME and TMPDIR, which each run's Dir gives.
+	fixed []string
+	// env is the spec's Env, which follows the fixed environment.
+	env []string
 }
 
-// lookPath finds program on PATH, or takes a path containing a separator as given.
-func lookPath(program string) (string, error) {
-	path, err := exec.LookPath(program)
-	if err != nil {
-		return "", fmt.Errorf("tool: %s: not found: %w", program, err)
-	}
-	return path, nil
-}
+// oomScoreAdj is the oom_score_adj a locked-down program takes: the most, so the OOM killer
+// chooses it first.
+const oomScoreAdj = "1000"
 
-// execRun returns the exec runner's runFunc for the program at path, which runs it with lead and
-// then the invocation's arguments, and gives a cancelled run killAfter, the KillAfter period,
-// between SIGTERM and SIGKILL.
+// execRun returns the exec runner's runFunc for cfg, which runs cfg.path with cfg.lead and then
+// the invocation's arguments, and gives a run that ctx ends cfg.killAfter between SIGTERM and
+// SIGKILL.
 //
-// The program leads a process group of its own, so a cancel reaches everything it started:
-// SIGTERM to the group when ctx ends; SIGKILL to the program once killAfter passes (WaitDelay);
-// and, once the program has exited but before it is reaped, SIGKILL to the group, so no child
-// outlives it.
+// The program leads a process group of its own, so an end reaches everything it started: SIGTERM
+// to the group when ctx ends; SIGKILL to the program once killAfter passes (WaitDelay), or with
+// the SIGTERM when killAfter is zero; and, once the program has exited but before it is reaped,
+// SIGKILL to the group, so no child outlives it.
 //
 // An *os.File stdin passes straight to the program; any other reader goes through a stdinFeed,
 // so a run never waits on a Read of the caller's.
-func execRun(name, path string, lead []string, killAfter time.Duration) runFunc {
+func execRun(cfg execConfig) runFunc {
+	name, killAfter := cfg.name, cfg.killAfter
 	return func(ctx context.Context, inv Invocation) error {
-		cmd := exec.CommandContext(ctx, path, slices.Concat(lead, inv.Args)...)
+		cmd := exec.CommandContext(ctx, cfg.path, slices.Concat(cfg.lead, inv.Args)...)
 		cmd.Dir = inv.Dir
+		if cfg.lockdown {
+			env, err := environ(cfg.fixed, cfg.env, inv.Dir)
+			if err != nil {
+				return fmt.Errorf("tool: %s: %w", name, err)
+			}
+			cmd.Env = env
+		}
 		cmd.Stdin = inv.Stdin
 		var feed *stdinFeed
 		if _, ok := inv.Stdin.(*os.File); inv.Stdin != nil && !ok {
@@ -114,25 +135,21 @@ func execRun(name, path string, lead []string, killAfter time.Duration) runFunc 
 			tail = &tailWriter{n: stderrTail}
 			cmd.Stderr = tail
 		}
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-		cmd.Cancel = func() error { return signalGroup(cmd.Process, syscall.SIGTERM) }
-		// WaitDelay's timer starts when ctx ends, in Start's own goroutine, so it SIGKILLs a
-		// program that outlasts killAfter while awaitExit blocks.
-		cmd.WaitDelay = killAfter
-		err := cmd.Start()
-		if feed != nil {
-			feed.start(err == nil)
-		}
-		if err == nil {
-			// The program is exited but unreaped once awaitExit returns: a zombie keeps its pid,
-			// and so the group's ID, from reuse, so the group's SIGKILL reaches only what the
-			// program started. Should waitid fail, which Linux has offered since 2.6.9, the
-			// group is left alone rather than risk a reused ID.
-			if awaitExit(cmd.Process.Pid) == nil && ctx.Err() != nil {
-				_ = signalGroup(cmd.Process, syscall.SIGKILL)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+		cmd.Cancel = func() error {
+			err := signalGroup(cmd.Process, syscall.SIGTERM)
+			if killAfter <= 0 {
+				err = signalGroup(cmd.Process, syscall.SIGKILL)
 			}
-			err = cmd.Wait()
+			return err
 		}
+		// WaitDelay's timer starts when ctx ends, in Start's own goroutine, so it SIGKILLs a
+		// program that outlasts killAfter while awaitExit blocks. Zero leaves the pipes to be read
+		// to their end, which the group's SIGKILL brings once the program has exited.
+		if killAfter > 0 {
+			cmd.WaitDelay = killAfter
+		}
+		err := startAndWait(cmd, feed, cfg.lockdown)
 		if inv.Usage != nil {
 			*inv.Usage = usage(cmd.ProcessState)
 		}
@@ -141,22 +158,81 @@ func execRun(name, path string, lead []string, killAfter time.Duration) runFunc 
 				err = fmt.Errorf("stdin: %w", ferr)
 			}
 		}
+		// The program's exit, when it was reaped: os/exec reports an exit 0 after ctx ended as
+		// ctx's error, so the facts come from the process state, not err.
+		var exit *ExitError
+		if state := cmd.ProcessState; state != nil && err != nil {
+			exit = &ExitError{Program: name, Code: state.ExitCode(), Signal: waitSignal(state), err: err}
+			if tail != nil {
+				exit.Message = string(tail.buf)
+			}
+		}
 		if err != nil && ctx.Err() != nil {
 			// ctx ended the run: its error is the cause, whatever the program's exit.
-			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: err}
+			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: err, exit: exit}
 		}
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			e := &ExitError{Program: name, Code: exitErr.ExitCode(), err: err}
-			if tail != nil {
-				e.Stderr = string(tail.buf)
-			}
-			return e
+		if _, ok := errors.AsType[*exec.ExitError](err); ok {
+			return exit
 		}
 		if err != nil {
 			return fmt.Errorf("tool: %s: %w", name, err)
 		}
 		return nil
 	}
+}
+
+// startAndWait starts cmd and waits for it, on an OS thread locked to the run from the start to
+// the reaping, since the parent-death signal is sent when the thread that started the program
+// exits, not the process. A stdin feed, when the run has one, starts its copy once the program
+// has started, and, with lockdown, the program's oom_score_adj is raised then. Once the program
+// has exited, and before it is reaped, its process group is sent SIGKILL.
+func startAndWait(cmd *exec.Cmd, feed *stdinFeed, lockdown bool) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	err := cmd.Start()
+	if feed != nil {
+		feed.start(err == nil)
+	}
+	if err != nil {
+		return err
+	}
+	if lockdown {
+		// Best effort: a program that has already exited has no oom_score_adj left to set.
+		_ = os.WriteFile("/proc/"+strconv.Itoa(cmd.Process.Pid)+"/oom_score_adj", []byte(oomScoreAdj), 0)
+	}
+	// The program is exited but unreaped once awaitExit returns: a zombie keeps its pid, and so
+	// the group's ID, from reuse, so the group's SIGKILL reaches only what the program started.
+	// Should waitid fail, which Linux has offered since 2.6.9, the group is left alone rather
+	// than risk a reused ID.
+	if awaitExit(cmd.Process.Pid) == nil {
+		_ = signalGroup(cmd.Process, syscall.SIGKILL)
+	}
+	return cmd.Wait()
+}
+
+// environ returns a run's environment: fixed; then HOME and TMPDIR, dir made absolute, when dir
+// isn't empty; then env, the spec's Env, last, so os/exec, which keeps a key's last value, gives
+// its keys precedence.
+func environ(fixed, env []string, dir string) ([]string, error) {
+	var home []string
+	if dir != "" {
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, fmt.Errorf("working directory %s: %w", dir, err)
+		}
+		home = []string{"HOME=" + abs, "TMPDIR=" + abs}
+	}
+	return slices.Concat(fixed, home, env), nil
+}
+
+// waitSignal returns the name of the signal that ended the program, from its wait status; empty
+// for an exit.
+func waitSignal(state *os.ProcessState) string {
+	status, ok := state.Sys().(syscall.WaitStatus)
+	if !ok || !status.Signaled() {
+		return ""
+	}
+	return signalName(int(status.Signal()))
 }
 
 // usage returns the CPU time of a reaped program, from its rusage; zero when state is nil, a
@@ -174,38 +250,6 @@ func usage(state *os.ProcessState) Usage {
 		UserCPU:   time.Duration(ru.Utime.Nano()),
 		SystemCPU: time.Duration(ru.Stime.Nano()),
 	}
-}
-
-// cancelError reports a run that its context ended. It matches the context's error alone; the
-// program's own outcome, its exit or the runner's failure, is only named in the message, so a
-// cancelled run is never an *ExitError.
-type cancelError struct {
-	program string
-	ctxErr  error
-	// outcome is the run's own error, nil when the program exited 0.
-	outcome error
-}
-
-func (e *cancelError) Error() string {
-	if e.outcome == nil {
-		return fmt.Sprintf("tool: %s: %v", e.program, e.ctxErr)
-	}
-	return fmt.Sprintf("tool: %s: %v (%v)", e.program, e.ctxErr, e.outcome)
-}
-
-func (e *cancelError) Unwrap() error { return e.ctxErr }
-
-// runOutcome returns the run's own outcome within err, a runner's error: a cancelError's outcome,
-// an ExitError's exec.ExitError, or err itself. A runner built on another's names the outcome it
-// gets once in its own error, without the inner runner's program or context.
-func runOutcome(err error) error {
-	if ce, ok := errors.AsType[*cancelError](err); ok {
-		return ce.outcome
-	}
-	if ee, ok := errors.AsType[*ExitError](err); ok {
-		return ee.err
-	}
-	return err
 }
 
 // stdinFeed is the pipe a run's stdin passes through when the caller's reader isn't an *os.File.
@@ -243,19 +287,21 @@ func (f *stdinFeed) start(started bool) {
 	f.done = make(chan error, 1)
 	go func() {
 		_, err := io.Copy(f.w, f.src)
-		_ = f.w.Close()
 		// EPIPE is a program that exited, or closed its stdin, without reading all of src, and
 		// ErrClosed is a write end that finish closed: neither is the copy's failure.
 		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
 			err = nil
 		}
+		// The outcome is in done before the program can read EOF, so a program that reads to
+		// the end, exits, and is reaped has its copy's outcome waiting for finish.
 		f.done <- err
+		_ = f.w.Close()
 	}()
 }
 
 // finish runs once the program has exited and been reaped, and returns the copy's error, a read
-// of src that failed while the program ran. A run that ctx ended doesn't wait for the copy at
-// all. Otherwise finish waits for the copy at most killAfter, as WaitDelay bounds the wait for
+// of src that failed while the program ran, when the copy has ended. A run that ctx ended doesn't
+// wait for the copy at all, nor does a zero killAfter. Otherwise finish waits for the copy at most killAfter, as WaitDelay bounds the wait for
 // the program's output, and stops early should ctx end: a program that read all of src has its
 // copy already ended, and one that left src unread ends its copy with EPIPE at the next write,
 // but a copy blocked in a Read of src, which the caller holds open, ends only when that Read
@@ -266,7 +312,12 @@ func (f *stdinFeed) finish(ctx context.Context, killAfter time.Duration) error {
 	if f.done == nil {
 		return nil
 	}
-	if ctx.Err() == nil {
+	select {
+	case err := <-f.done:
+		return err
+	default:
+	}
+	if ctx.Err() == nil && killAfter > 0 {
 		timer := time.NewTimer(killAfter)
 		defer timer.Stop()
 		select {

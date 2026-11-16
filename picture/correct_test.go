@@ -130,7 +130,7 @@ func TestCorrectMagickFails(t *testing.T) {
 	st.set(func(s *settings) { s.Fail = "magick: improper image header" })
 	err := c.Correct(t.Context(), all, bytes.NewReader(page), &bytes.Buffer{})
 	var exit *tool.ExitError
-	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "improper image header") {
+	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Message, "improper image header") {
 		t.Errorf("Correct returned %v, want a *tool.ExitError with code 1 and magick's stderr", err)
 	}
 	if got := len(st.args()); got != 1 {
@@ -339,7 +339,7 @@ func TestAssessMagickFails(t *testing.T) {
 	st.set(func(s *settings) { s.Fail = "magick: improper image header" })
 	_, err := c.Assess(t.Context(), bytes.NewReader(page))
 	var exit *tool.ExitError
-	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "improper image header") {
+	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Message, "improper image header") {
 		t.Errorf("Assess returned %v, want a *tool.ExitError with code 1 and magick's stderr", err)
 	}
 }

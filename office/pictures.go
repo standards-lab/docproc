@@ -1,5 +1,3 @@
-//go:build linux
-
 package office
 
 import (

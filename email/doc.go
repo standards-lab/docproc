@@ -1,9 +1,7 @@
-//go:build linux
-
 // Package email reads mail stores, Outlook .pst stores and .msg messages, and MIME messages, .eml
 // and mbox files, for a model through mail, spike-ai-pipeline-mail: an input in, its records
 // streamed out as typed Go values while mail runs. It provides pre-inference preparation only; a
-// layer above sends what it returns to a model. The package builds on Linux only, on the standard
+// layer above sends what it returns to a model. The package builds on every platform, on the standard
 // library and this module's tool package; the program it runs is a tool.Tool the caller built.
 //
 // A Reader is built at the composition root over a mail Tool, MailSpec declaring it. NewReader

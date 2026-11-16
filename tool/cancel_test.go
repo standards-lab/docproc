@@ -19,7 +19,7 @@ import (
 
 func TestCancelTerminates(t *testing.T) {
 	t.Parallel()
-	tl := newStandin(t) // the default KillAfter period, 10 s
+	tl := newStandin(t) // standinKillAfter, 10 s
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ready := newReadyWriter()
@@ -83,7 +83,7 @@ func TestCancelEndsChild(t *testing.T) {
 
 func TestCancelEndsChildHoldingOutput(t *testing.T) {
 	t.Parallel()
-	tl := newStandin(t) // the default KillAfter period, 10 s
+	tl := newStandin(t) // standinKillAfter, 10 s
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	pidFile := filepath.Join(t.TempDir(), "child.pid")

@@ -73,7 +73,7 @@ func TestCancelHeldReaderStdin(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
-			tl, assertNothingRunning := build(t, 0) // the default KillAfter period, 10 s
+			tl, assertNothingRunning := build(t, standinKillAfter)
 			stdin, held := io.Pipe()
 			defer func() { _ = held.Close() }()
 			ctx, cancel := context.WithCancel(t.Context())
@@ -142,7 +142,7 @@ func TestRunUnreadLargeStdin(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
-			tl, assertNothingRunning := build(t, 0) // the default KillAfter period, 10 s
+			tl, assertNothingRunning := build(t, standinKillAfter)
 			start := time.Now()
 			done := runAsync(t.Context(), tl, tool.Invocation{Args: []string{"print", "x"}, Stdin: bytes.NewReader(letters(largeStdin))})
 			elapsed, err := awaitRun(t, done, start, 15*time.Second)

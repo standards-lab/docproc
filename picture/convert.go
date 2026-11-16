@@ -1,5 +1,3 @@
-//go:build linux
-
 package picture
 
 import (
@@ -89,12 +87,12 @@ type Converter struct {
 // an error, and no Converter is built.
 func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
 	if cfg.Magick != nil {
-		if err := atLeast(cfg.Magick, MagickMinimum); err != nil {
+		if err := cfg.Magick.AtLeast(MagickMinimum); err != nil {
 			return nil, err
 		}
 	}
 	if cfg.LibreOffice != nil {
-		if err := atLeast(cfg.LibreOffice, LibreOfficeMinimum); err != nil {
+		if err := cfg.LibreOffice.AtLeast(LibreOfficeMinimum); err != nil {
 			return nil, err
 		}
 	}

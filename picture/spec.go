@@ -1,5 +1,3 @@
-//go:build linux
-
 package picture
 
 import (
@@ -52,17 +50,4 @@ func LibreOfficeSpec() tool.Spec {
 		VersionPattern: regexp.MustCompile(`LibreOffice (\d+(?:\.\d+)*)`),
 		Minimum:        LibreOfficeMinimum,
 	}
-}
-
-// atLeast refuses t when its version is older than minimum, whatever minimum its own Spec
-// declared, with a *tool.VersionError wrapping tool.ErrTooOld.
-func atLeast(t *tool.Tool, minimum string) error {
-	m, err := tool.ParseVersion(minimum)
-	if err != nil {
-		return err
-	}
-	if v := t.Version(); v.Compare(m) < 0 {
-		return &tool.VersionError{Program: t.Name(), Found: v.String(), Minimum: minimum, Err: tool.ErrTooOld}
-	}
-	return nil
 }

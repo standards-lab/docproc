@@ -56,19 +56,12 @@ func TestRunUsageOnCancel(t *testing.T) {
 }
 
 // TestRunUsageCountsReapedChildren checks that the usage covers a child the program waited for:
-// a script whose shell runs the spinning stand-in and reaps it before exiting. The echo after it
-// keeps the shell from exec'ing the stand-in in its own place, so the stand-in is a child.
+// the stand-in runs the spinning stand-in as a child and reaps it before exiting.
 func TestRunUsageCountsReapedChildren(t *testing.T) {
 	t.Parallel()
-	link := installStandin(t)
-	dir := t.TempDir()
-	script := writeScript(t, dir, "spin.sh", "standin spin print done\necho reaped")
-	tl, err := tool.NewScript(t.Context(), interpreterSpec(link, "1.0", "1.0"), script)
-	if err != nil {
-		t.Fatal(err)
-	}
+	tl := newStandin(t)
 	var u tool.Usage
-	if err := tl.Run(t.Context(), tool.Invocation{Usage: &u}); err != nil {
+	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"reap", "spin", "print", "done"}, Usage: &u}); err != nil {
 		t.Fatal(err)
 	}
 	assertUsage(t, u)

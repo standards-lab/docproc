@@ -1,5 +1,3 @@
-//go:build linux
-
 package picture
 
 import (
@@ -108,7 +106,7 @@ func NewCorrector(cfg Config) (*Corrector, error) {
 	if cfg.Magick == nil {
 		panic("picture: Config.Magick is nil")
 	}
-	if err := atLeast(cfg.Magick, MagickMinimum); err != nil {
+	if err := cfg.Magick.AtLeast(MagickMinimum); err != nil {
 		return nil, err
 	}
 	return &Corrector{magick: cfg.Magick}, nil

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/standards-lab/docproc/tool"
 )
@@ -20,13 +21,18 @@ import (
 // standinPattern captures the version the stand-in prints as "standin version V".
 var standinPattern = regexp.MustCompile(`standin version (\d+(?:\.\d+)*)`)
 
-// standinSpec declares the stand-in tool, printing version, with minimum.
+// standinKillAfter is the stand-in's KillAfter period unless a test sets its own: longer than any
+// test waits, so a test that ends sooner shows the run didn't wait for it.
+const standinKillAfter = 10 * time.Second
+
+// standinSpec declares the stand-in tool, printing version, with minimum and standinKillAfter.
 func standinSpec(program, version, minimum string) tool.Spec {
 	return tool.Spec{
 		Program:        program,
 		VersionArgs:    []string{"print", "standin version " + version},
 		VersionPattern: standinPattern,
 		Minimum:        minimum,
+		KillAfter:      standinKillAfter,
 	}
 }
 
@@ -248,8 +254,8 @@ func TestRunExitError(t *testing.T) {
 	if exitErr.Program != "standin" || exitErr.Code != 7 {
 		t.Errorf("ExitError = {%q, %d}, want {standin, 7}", exitErr.Program, exitErr.Code)
 	}
-	if exitErr.Stderr != "it broke" {
-		t.Errorf("Stderr = %q, want %q", exitErr.Stderr, "it broke")
+	if exitErr.Message != "it broke" {
+		t.Errorf("Message = %q, want %q", exitErr.Message, "it broke")
 	}
 	if msg := err.Error(); !strings.Contains(msg, "standin") || !strings.Contains(msg, "7") {
 		t.Errorf("error %q doesn't name the program and its exit code", msg)
@@ -271,8 +277,8 @@ func TestRunStderrTail(t *testing.T) {
 			}
 			all := letters(n)
 			want := string(all[max(0, n-4096):])
-			if exitErr.Stderr != want {
-				t.Errorf("Stderr is %d bytes, want the last %d of %d", len(exitErr.Stderr), len(want), n)
+			if exitErr.Message != want {
+				t.Errorf("Message is %d bytes, want the last %d of %d", len(exitErr.Message), len(want), n)
 			}
 		})
 	}
@@ -287,8 +293,8 @@ func TestRunStderrWriter(t *testing.T) {
 	if !ok {
 		t.Fatalf("Run error = %v, want a *tool.ExitError", err)
 	}
-	if exitErr.Stderr != "" {
-		t.Errorf("ExitError carries a %d-byte tail, want none", len(exitErr.Stderr))
+	if exitErr.Message != "" {
+		t.Errorf("ExitError carries a %d-byte tail, want none", len(exitErr.Message))
 	}
 	if !bytes.Equal(stderr.Bytes(), letters(50000)) {
 		t.Errorf("stderr writer got %d bytes, want all 50000", stderr.Len())

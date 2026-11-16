@@ -1,10 +1,8 @@
-//go:build linux
-
 // Package onenote reads OneNote sections, .one files from desktop OneNote 2016 and later or
 // downloaded from OneDrive, .onetoc2 notebooks and notebook directories, and .onepkg packages,
 // for a model through onenote, spike-ai-pipeline-onenote: an input in, its records streamed out
 // as typed Go values while onenote runs. It provides pre-inference preparation only; a layer
-// above sends what it returns to a model. The package builds on Linux only, on the standard
+// above sends what it returns to a model. The package builds on every platform, on the standard
 // library and this module's tool and route packages; the program it runs is a tool.Tool the
 // caller built.
 //

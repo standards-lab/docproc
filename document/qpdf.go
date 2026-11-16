@@ -1,5 +1,3 @@
-//go:build linux
-
 package document
 
 import (
@@ -50,23 +48,10 @@ func NewQPDF(cfg Config) (*QPDF, error) {
 	if cfg.QPDF == nil {
 		panic("document: Config.QPDF is nil")
 	}
-	if err := atLeast(cfg.QPDF, QPDFMinimum); err != nil {
+	if err := cfg.QPDF.AtLeast(QPDFMinimum); err != nil {
 		return nil, err
 	}
 	return &QPDF{qpdf: cfg.QPDF}, nil
-}
-
-// atLeast refuses t when its version is older than minimum, with a *tool.VersionError wrapping
-// tool.ErrTooOld.
-func atLeast(t *tool.Tool, minimum string) error {
-	m, err := tool.ParseVersion(minimum)
-	if err != nil {
-		return err
-	}
-	if v := t.Version(); v.Compare(m) < 0 {
-		return &tool.VersionError{Program: t.Name(), Found: v.String(), Minimum: minimum, Err: tool.ErrTooOld}
-	}
-	return nil
 }
 
 // stderrLimit is how much of a tool's standard error a qpdf or pdfdetach run keeps for its error.

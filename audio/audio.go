@@ -1,5 +1,3 @@
-//go:build linux
-
 package audio
 
 import (
@@ -63,7 +61,7 @@ func NewSplitter(cfg Config) (*Splitter, error) {
 		panic("audio: Config.FFprobe is nil")
 	}
 	for _, t := range []*tool.Tool{cfg.FFmpeg, cfg.FFprobe} {
-		if err := atLeast(t, FFmpegMinimum); err != nil {
+		if err := t.AtLeast(FFmpegMinimum); err != nil {
 			return nil, err
 		}
 	}

@@ -1,10 +1,8 @@
-//go:build linux
-
 // Package media reads a source's audio and video through one ffmpeg run and streams them, as they
 // arrive, as the inputs a model takes: windows of its audio, cut as audio cuts them, and frames of
 // its video, taken at its scene changes and at least every so often. It provides pre-inference
 // preparation only; a layer above sends the windows and frames to a model. The package builds on
-// Linux only, on the standard library and this module's audio and tool packages. The programs it
+// every platform, on the standard library and this module's audio and tool packages. The programs it
 // runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the caller built through either runner,
 // typically from audio.FFmpegSpec and audio.FFprobeSpec, minimum 9.0, the container runner running
 // them in audio.FFmpegImage.

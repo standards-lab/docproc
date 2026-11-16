@@ -1,5 +1,3 @@
-//go:build linux
-
 package document
 
 import (
@@ -57,7 +55,7 @@ func NewGhostscript(cfg Config) (*Ghostscript, error) {
 	if cfg.Ghostscript == nil {
 		panic("document: Config.Ghostscript is nil")
 	}
-	if err := atLeast(cfg.Ghostscript, GhostscriptMinimum); err != nil {
+	if err := cfg.Ghostscript.AtLeast(GhostscriptMinimum); err != nil {
 		return nil, err
 	}
 	return &Ghostscript{gs: cfg.Ghostscript}, nil
@@ -177,8 +175,8 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 	err = g.gs.Run(ctx, tool.Invocation{Args: textArgs(abs, page), Dir: filepath.Dir(abs), Stdout: &out, Stderr: &stderr})
 	if err != nil {
 		// Run keeps stderr for its *tool.ExitError only when the caller doesn't take it.
-		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Stderr == "" {
-			exit.Stderr = stderr.String()
+		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Message == "" {
+			exit.Message = stderr.String()
 		}
 		return "", err
 	}

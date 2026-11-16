@@ -9,8 +9,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
+	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -20,9 +21,8 @@ import (
 
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
-		"standin":       func(r tooltest.Run) int { return standin(r.Link, r.Args) },
-		interpreterName: func(r tooltest.Run) int { return interpreter(r.Link, r.Args) },
-		"docker":        dockerStandin,
+		"standin": func(r tooltest.Run) int { return standin(r.Link, r.Args) },
+		"docker":  dockerStandin,
 	})
 }
 
@@ -40,6 +40,19 @@ func TestMain(m *testing.M) {
 //	                  sleep 1m; the child has no streams, or with held, holds stdout and stderr
 //	spin CMD...       spins until it has spent spinCPU of user CPU time, then does CMD as the
 //	                  stand-in would
+//	reap CMD...       runs the stand-in on CMD as a child, waits for it, and exits with its code
+//	orphan FILE [held]
+//	                  starts a stubborn child, which writes its pid to FILE, waits for the
+//	                  pid, then exits 0; the child has no streams, or with held, holds stdout
+//	                  and stderr
+//	die SIGNAL        sends itself SIGNAL, TERM or KILL, by name
+//	alloc N           maps N bytes of anonymous memory, untouched, then writes allocated; exits
+//	                  3, naming mmap's error, when the mapping is refused
+//	as-print N TEXT   writes TEXT to stdout when its RLIMIT_AS is N bytes; else exits 1, naming
+//	                  the limit it has
+//	env               writes its environment to stdout as a JSON array, sorted
+//	oom               writes its oom_score_adj to stdout once it is other than 0, or after 5 s
+//	tick N D          writes a line N times, D apart, then exits 0
 func standin(link string, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "standin: no command")
@@ -94,6 +107,74 @@ func standin(link string, args []string) int {
 			return 2
 		}
 		return standin(link, args[1:])
+	case "reap":
+		child := exec.Command(link, args[1:]...)
+		child.Stdout, child.Stderr = os.Stdout, os.Stderr
+		if err := child.Run(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		return 0
+	case "orphan":
+		return orphan(link, args[1], len(args) > 2 && args[2] == "held")
+	case "die":
+		sig := map[string]syscall.Signal{"TERM": syscall.SIGTERM, "KILL": syscall.SIGKILL}[args[1]]
+		if err := syscall.Kill(os.Getpid(), sig); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		time.Sleep(time.Minute)
+		return 1
+	case "alloc":
+		mem, err := syscall.Mmap(-1, 0, atoi(args[1]), syscall.PROT_READ|syscall.PROT_WRITE,
+			syscall.MAP_PRIVATE|syscall.MAP_ANON|syscall.MAP_NORESERVE)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "alloc:", err)
+			return 3
+		}
+		_ = syscall.Munmap(mem)
+		fmt.Println("allocated")
+		return 0
+	case "as-print":
+		var lim syscall.Rlimit
+		if err := syscall.Getrlimit(syscall.RLIMIT_AS, &lim); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		if strconv.FormatUint(lim.Cur, 10) != args[1] {
+			fmt.Fprintf(os.Stderr, "RLIMIT_AS is %d\n", lim.Cur)
+			return 1
+		}
+		fmt.Println(args[2])
+		return 0
+	case "env":
+		env := os.Environ()
+		slices.Sort(env)
+		if err := json.NewEncoder(os.Stdout).Encode(env); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		return 0
+	case "oom":
+		var adj []byte
+		for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+			var err error
+			if adj, err = os.ReadFile("/proc/self/oom_score_adj"); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 2
+			}
+			if strings.TrimSpace(string(adj)) != "0" {
+				break
+			}
+		}
+		_, _ = os.Stdout.Write(adj)
+		return 0
+	case "tick":
+		for range atoi(args[1]) {
+			fmt.Println("tick")
+			time.Sleep(duration(args[2]))
+		}
+		return 0
 	}
 	fmt.Fprintf(os.Stderr, "standin: unknown command %q\n", args[0])
 	return 2
@@ -151,6 +232,28 @@ func spawn(link, file string, held bool) int {
 	return sleep("1m")
 }
 
+// orphan starts a stubborn stand-in as a child, through link, in the stand-in's process group,
+// which writes its pid to file once it ignores SIGTERM; it waits for that pid, then exits 0,
+// leaving the child running. The child holds none of the stand-in's streams, or, when held, its
+// stdout and stderr.
+func orphan(link, file string, held bool) int {
+	child := exec.Command(link, "stubborn", "1m", file)
+	if held {
+		child.Stdout, child.Stderr = os.Stdout, os.Stderr
+	}
+	if err := child.Start(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(10 * time.Millisecond) {
+		if b, err := os.ReadFile(file); err == nil && strings.HasSuffix(string(b), "\n") {
+			return 0
+		}
+	}
+	fmt.Fprintln(os.Stderr, "orphan: the child wrote no pid")
+	return 2
+}
+
 // writePid writes the process's pid and a newline to file, whole, through a rename, so a reader
 // never sees part of it.
 func writePid(file string) error {
@@ -159,25 +262,6 @@ func writePid(file string) error {
 		return err
 	}
 	return os.Rename(tmp, file)
-}
-
-// interpreterName is the stand-in interpreter's name: the test binary, linked under this name,
-// acts as a sh with a version command.
-const interpreterName = "standin-sh"
-
-// interpreter is the stand-in interpreter, run through link. With --version V it writes
-// "standin-sh version V" to stdout; otherwise it replaces itself with /bin/sh on the same
-// arguments, so a script runs in a real shell with the stand-in's pid and process group, its
-// PATH led by link's directory, so a script runs the stand-in as standin.
-func interpreter(link string, args []string) int {
-	if len(args) == 2 && args[0] == "--version" {
-		fmt.Println(interpreterName + " version " + args[1])
-		return 0
-	}
-	env := append(os.Environ(), "PATH="+filepath.Dir(link)+string(filepath.ListSeparator)+os.Getenv("PATH"))
-	err := syscall.Exec("/bin/sh", append([]string{"sh"}, args...), env)
-	fmt.Fprintln(os.Stderr, err)
-	return 2
 }
 
 // echo is what the stand-in's echo command writes.
@@ -214,14 +298,13 @@ func atoi(s string) int {
 	return n
 }
 
-// installStandin links the stand-in tool as standin, the stand-in interpreter as standin-sh, and
-// the stand-in docker CLI as docker, in a directory of their own, its daemon one docker can't
-// reach, and returns standin's path. The directory is the stand-in docker's state directory too.
+// installStandin links the stand-in tool as standin and the stand-in docker CLI as docker, in a
+// directory of their own, its daemon one docker can't reach, and returns standin's path. The
+// directory is the stand-in docker's state directory too.
 func installStandin(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	link := tooltest.Link(t, dir, "standin", nil)
-	tooltest.Link(t, dir, interpreterName, nil)
 	tooltest.Link(t, dir, "docker", dockerSettings{})
 	return link
 }

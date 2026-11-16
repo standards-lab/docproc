@@ -1,5 +1,3 @@
-//go:build linux
-
 package media
 
 import (
@@ -72,13 +70,9 @@ func NewStreamer(cfg Config) (*Streamer, error) {
 	if cfg.FFprobe == nil {
 		panic("media: Config.FFprobe is nil")
 	}
-	m, err := tool.ParseVersion(audio.FFmpegMinimum)
-	if err != nil {
-		return nil, err
-	}
 	for _, t := range []*tool.Tool{cfg.FFmpeg, cfg.FFprobe} {
-		if v := t.Version(); v.Compare(m) < 0 {
-			return nil, &tool.VersionError{Program: t.Name(), Found: v.String(), Minimum: audio.FFmpegMinimum, Err: tool.ErrTooOld}
+		if err := t.AtLeast(audio.FFmpegMinimum); err != nil {
+			return nil, err
 		}
 	}
 	return &Streamer{ffmpeg: cfg.FFmpeg, ffprobe: cfg.FFprobe}, nil

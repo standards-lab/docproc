@@ -137,7 +137,7 @@ func TestGhostscriptRenderFails(t *testing.T) {
 	st.set(func(s *settings) { s.Fail = "Error: /undefined in --runpdf--" })
 	err := g.Render(t.Context(), pdf, 1, 150, &bytes.Buffer{})
 	var exit *tool.ExitError
-	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "/undefined") {
+	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Message, "/undefined") {
 		t.Errorf("Render returned %v, want a *tool.ExitError with code 1 and gs's stderr", err)
 	}
 	if got := len(st.runs()); got != 1 {
@@ -323,7 +323,7 @@ func TestGhostscriptTextFails(t *testing.T) {
 	st.set(func(s *settings) { s.Fail = "Error: /undefined in --runpdf--" })
 	_, err := g.Text(t.Context(), pdf, 1)
 	var exit *tool.ExitError
-	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "/undefined") {
+	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Message, "/undefined") {
 		t.Errorf("Text returned %v, want a *tool.ExitError with code 1 and gs's stderr", err)
 	}
 }

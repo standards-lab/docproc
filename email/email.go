@@ -1,5 +1,3 @@
-//go:build linux
-
 package email
 
 import (
@@ -62,12 +60,8 @@ func NewReader(cfg Config) (*Reader, error) {
 	if cfg.Mail == nil {
 		panic("email: Config.Mail is nil")
 	}
-	m, err := tool.ParseVersion(MailMinimum)
-	if err != nil {
+	if err := cfg.Mail.AtLeast(MailMinimum); err != nil {
 		return nil, err
-	}
-	if v := cfg.Mail.Version(); v.Compare(m) < 0 {
-		return nil, &tool.VersionError{Program: cfg.Mail.Name(), Found: v.String(), Minimum: MailMinimum, Err: tool.ErrTooOld}
 	}
 	return &Reader{mail: cfg.Mail}, nil
 }
@@ -162,13 +156,8 @@ func (r *Reader) Read(ctx context.Context, req Request) (*Stream, error) {
 		return nil, fmt.Errorf("email: %w: after %d, past mail's last id, %d", ErrRequest, req.After, uint64(math.MaxUint32))
 	}
 	if req.After != 0 {
-		m, err := tool.ParseVersion(MailAfterMinimum)
-		if err != nil {
-			return nil, err
-		}
-		if v := r.mail.Version(); v.Compare(m) < 0 {
-			verr := &tool.VersionError{Program: r.mail.Name(), Found: v.String(), Minimum: MailAfterMinimum, Err: tool.ErrTooOld}
-			return nil, fmt.Errorf("email: %w: after needs mail %s or later: %w", ErrRequest, MailAfterMinimum, verr)
+		if err := r.mail.AtLeast(MailAfterMinimum); err != nil {
+			return nil, fmt.Errorf("email: %w: after needs mail %s or later: %w", ErrRequest, MailAfterMinimum, err)
 		}
 	}
 	input, err := filepath.Abs(req.Input)

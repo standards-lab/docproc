@@ -1,9 +1,7 @@
-//go:build linux
-
 // Package office prepares office documents, docx, xlsx, and pptx, the legacy doc, xls, and ppt, and
 // RTF, for a model through office, spike-ai-pipeline-office: a document in, office's JSON model or
 // its Markdown out, with the pictures the document embeds. It provides pre-inference preparation
-// only; a layer above sends what it returns to a model. The package builds on Linux only, on the
+// only; a layer above sends what it returns to a model. The package builds on every platform, on the
 // standard library and this module's tool, route, and picture packages; every program it runs is a
 // tool.Tool the caller built.
 //

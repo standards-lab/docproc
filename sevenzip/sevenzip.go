@@ -1,5 +1,3 @@
-//go:build linux
-
 package sevenzip
 
 import (
@@ -62,12 +60,8 @@ func NewReader(cfg Config) (*Reader, error) {
 	if cfg.SevenZip == nil {
 		panic("sevenzip: Config.SevenZip is nil")
 	}
-	m, err := tool.ParseVersion(SevenZipMinimum)
-	if err != nil {
+	if err := cfg.SevenZip.AtLeast(SevenZipMinimum); err != nil {
 		return nil, err
-	}
-	if v := cfg.SevenZip.Version(); v.Compare(m) < 0 {
-		return nil, &tool.VersionError{Program: cfg.SevenZip.Name(), Found: v.String(), Minimum: SevenZipMinimum, Err: tool.ErrTooOld}
 	}
 	return &Reader{sevenZip: cfg.SevenZip}, nil
 }

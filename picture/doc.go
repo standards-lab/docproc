@@ -1,8 +1,6 @@
-//go:build linux
-
 // Package picture converts pictures to PNG for a model's vision and corrects page images for scan
 // defects. It provides pre-inference preparation only; a layer above sends what it returns to a
-// model. The package builds on Linux only, on the standard library and this module's tool and
+// model. The package builds on every platform, on the standard library and this module's tool and
 // route packages; every program it runs is a tool.Tool the caller built: ImageMagick's magick,
 // MagickSpec declaring it, minimum 7.1, and LibreOffice's soffice, LibreOfficeSpec declaring it,
 // minimum 24.2, which the container runner runs in LibreOfficeImage under its full lockdown.

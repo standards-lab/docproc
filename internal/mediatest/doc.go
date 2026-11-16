@@ -1,12 +1,10 @@
-//go:build linux
-
 // Package mediatest holds the unit tier's stand-in for media's ffmpeg run, which the test packages
 // that run media's Streamer over a stand-in ffmpeg share: media's own and dispatch's video stage's.
 // Each package's stand-in decides where its PCM and frames come from; mediatest writes them as
 // media's run of ffmpeg does, the frames reported on stderr as the metadata filter reports them
 // and written as the image2 muxer writes them, interleaved with the PCM by source time. It builds
-// on Linux, as media does, untagged, so the unit tier proves it through those packages' tests,
-// and no released file imports it.
+// untagged, as media does, so the unit tier proves it through those packages' tests, and no
+// released file imports it.
 //
 // Its exported identifiers:
 //

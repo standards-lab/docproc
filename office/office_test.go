@@ -171,7 +171,7 @@ func TestConvertExits(t *testing.T) {
 				t.Errorf("error: got %q, want %q", err.Error(), want)
 			}
 			var texit *tool.ExitError
-			if !errors.As(err, &texit) || texit.Program != "spike-ai-pipeline-office" || strings.TrimSpace(texit.Stderr) != "" {
+			if !errors.As(err, &texit) || texit.Program != "spike-ai-pipeline-office" || strings.TrimSpace(texit.Message) != "" {
 				t.Errorf("tool error: got %#v, want office's *tool.ExitError", texit)
 			}
 			if got := entries(t, dir); len(got) != 0 {

@@ -1,5 +1,3 @@
-//go:build linux
-
 package office
 
 import (
@@ -73,7 +71,7 @@ func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
 	if cfg.Office == nil {
 		panic("office: Config.Office is nil")
 	}
-	if err := atLeast(cfg.Office, OfficeMinimum); err != nil {
+	if err := cfg.Office.AtLeast(OfficeMinimum); err != nil {
 		return nil, err
 	}
 	pictures, err := picture.NewConverter(ctx, picture.Config{Magick: cfg.Magick, LibreOffice: cfg.LibreOffice})
@@ -81,19 +79,6 @@ func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
 		return nil, err
 	}
 	return &Converter{office: cfg.Office, libreoffice: cfg.LibreOffice, magick: cfg.Magick, pictures: pictures}, nil
-}
-
-// atLeast refuses t when its version is older than minimum, with a *tool.VersionError wrapping
-// tool.ErrTooOld.
-func atLeast(t *tool.Tool, minimum string) error {
-	m, err := tool.ParseVersion(minimum)
-	if err != nil {
-		return err
-	}
-	if v := t.Version(); v.Compare(m) < 0 {
-		return &tool.VersionError{Program: t.Name(), Found: v.String(), Minimum: minimum, Err: tool.ErrTooOld}
-	}
-	return nil
 }
 
 // Format is the rendering a conversion returns.
