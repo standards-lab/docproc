@@ -1,0 +1,5 @@
+# Build output.
+target/
+
+# Untracked state: the publish task's binary.
+.state/

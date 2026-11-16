@@ -31,7 +31,7 @@ Each archive holds the `docproc-mail` binary, the repository's `LICENSE`, and
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.0-linux-x64.tar.gz
+tar -xzf docproc-mail-v0.1.1-linux-x64.tar.gz
 ./docproc-mail --version
 ```
 
@@ -74,7 +74,7 @@ usage error. An id that names no message is refused.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.0
+0.1.1
 schema 2
 ```
 

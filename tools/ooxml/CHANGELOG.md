@@ -9,6 +9,26 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-11-16
+
+### Fixed
+
+- A link's or an image's destination reads back as its target. A backslash in it is escaped, so
+  `\\server\Team Notes\plan.docx` no longer reads back with one leading backslash, and so is a
+  `&` that could begin a character reference. The rule is the one docproc's Rust tools share,
+  stated by tools/envelope/cases.json: a target holding whitespace, a control character, `<`, or
+  `>` is written within angle brackets, its `<` and `>` backslash-escaped, no longer
+  percent-encoded; any other is written bare, its parentheses backslash-escaped, no longer
+  angle-bracketed for them. A line ending or a NUL, which no destination can hold, is
+  percent-encoded. A `|` is still escaped.
+- A picture's title is written by the title rule docproc's tools share, stated by
+  tools/envelope/cases.json: each `\` and `"` is escaped, and so is a `&` that could begin a
+  character reference; a line ending is written as a character reference, `&#10;` or `&#13;`, so
+  a carriage return within a line no longer reads back as a line feed. A title read back as
+  written before but for that, through the literal-text escape; other markup, such as `*`, `_`,
+  `[`, or a `#` at its start, is no longer backslash-escaped in it, as a title reads it as itself.
+  Its lines are still trimmed and joined by spaces, and a `|` is still escaped.
+
 ## [v0.1.0] - 2026-11-13
 
 The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeline-office v0.1.0
@@ -65,5 +85,6 @@ says how it differs from the spike.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...HEAD
+[v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...tools/ooxml/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

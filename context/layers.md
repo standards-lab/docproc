@@ -46,7 +46,15 @@ text" states and applies field by field.
   ``\ * _ ` [ ] | ~ & $``, and before `<` when what follows could open an HTML tag, comment, or
   instruction (a letter, `/` then a letter or nothing, `!`, `?`, or the text's end); at a line's
   start, before a first `-`, `=`, `+`, `#`, or `>`, and before the `.` or `)` after one to nine
-  digits.
+  digits. A link's or an image's destination and title read back as written under CommonMark,
+  by the rules docproc-envelope's `destination` and `title` write and docproc-ooxml's
+  `MarkdownRenderer` matches. Both escape each `\`, and each `&` that could begin a character
+  reference (an optional `#`, ASCII letters and digits, then `;`: the envelope's
+  `reference_like`). A destination holding whitespace, a control character, `<`, or `>` is
+  written `<…>`, its `<` and `>` escaped; any other is written bare, its `(` and `)` escaped. A
+  title also escapes `"`. A destination percent-encodes a line feed, a carriage return, or a NUL
+  (`%0A`, `%0D`, `%00`), which no destination can hold; a title writes them as `&#10;`, `&#13;`,
+  and U+FFFD. A `|` is left to a table cell's writer.
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
   line that names it. Its name is the lowercase hex SHA-256 of its bytes plus `.` and the stored
@@ -71,9 +79,11 @@ text" states and applies field by field.
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
 - **Cases.** One committed table, `tools/envelope/cases.json`, holds the envelope's cases: the
   warning escape, a stderr line and the `where` and `what` it splits to, a payload's bytes and
-  stored name and the media name they make, the exit codes' meanings, and the literal-text
-  escape; docproc-ooxml's tests, docproc-envelope's, and docproc's `internal/cli`'s read it
-  in place, so no language restates a case.
+  stored name and the media name they make, the exit codes' meanings, the literal-text escape,
+  and the destinations and titles a target and a title make; docproc-ooxml's tests,
+  docproc-envelope's, and docproc's `internal/cli`'s read it in place, so no language restates a
+  case. docproc-envelope's tests also read each destination and title back through
+  pulldown-cmark.
 - **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
   docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
 
@@ -166,10 +176,19 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   line breaks, `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and
   `\'hh` decoded in the `\ansicpg` code page; nothing separates a table's cells. An RTF that
   encapsulates HTML (`\fromhtml`) has that HTML's text.
+- In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
+  and alt text, read back as the HTML holds them. The tool writes links and images with its own
+  htmd handlers, which write what htmd 0.5.6 does but through the envelope's destination and
+  title rules, an alt text's lines through the literal-text escape. htmd writes a text `&` as
+  itself, so before htmd writes, the tool replaces each `&` of the HTML's text with a
+  private-use character the body doesn't hold, and afterwards writes each one as `\&` where it
+  could begin a character reference outside a code span or block, and as `&` elsewhere. A body
+  whose text holds a `&` and which holds every private-use character is left without Markdown,
+  with a warning.
 - The content rule compares a source text with a Markdown text by standards alone, so no
-  fixture tunes it; docproc-onenote's OCR text is planned to follow it too. It is written once,
-  in the docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail depends
-  on and docproc-onenote is planned to. Its Unicode version, 18.0.0, the one its exactly pinned
+  fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in the
+  docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail and
+  docproc-onenote depend on. Its Unicode version, 18.0.0, the one its exactly pinned
   ICU4X 2.4.0 crates carry, is part of schema "2": the normalization, the word and sentence
   boundaries, and the general categories are that version's, a unit test asserts it, and another
   version is a change of meaning, so a crate bump that moves it fails the check and becomes a
@@ -230,7 +249,7 @@ their schema "1" fields, a `skipped` line gaining an optional `encrypted: true` 
 name (16 of 16). A page changes:
 
 ```text
-page      line, id, section, level, title?, creation_time?, modification_time?, author?,
+page      line, id, section, level, title?, creation_time?, modification_time, author?,
           markdown?, media?, ink_alternatives?
 media[]   kind (image|embedded_file|ink), file?, filename?, size?, extension?, type?
           in the order processing's Page.Media walks them (onenote/media.go)
@@ -395,10 +414,22 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
   79 B (8). The run text missing, 538 B, is every title's date and time paragraphs; the
-  `ocr_text` missing, 646 B, is OCR text no alt text holds, of which the content rule appends
-  566 B, the sentences of 6 images, whitespace collapsed; the tag labels missing, 30 B, are
-  "To Do", which the spike writes only as a task box. No image carries a `hyperlink`. Media
-  written over mail and onenote: 235 MB.
+  `ocr_text` missing, 646 B, is OCR text no alt text holds, all of it in 6 images with no alt
+  text; the tag labels missing, 30 B, are "To Do", which the spike writes only as a task box.
+  No image carries a `hyperlink`. Media written over mail and onenote: 235 MB.
+- **onenote's OCR text against the alt text.** docproc-onenote's content rule is measured over
+  the same 17 sections, unchanged against `~/docs`' MANIFEST.json, as docproc-onenote ships it:
+  onenote_parser 2.1.0, and the docproc-envelope crate on Rust 1.100.0, with NFC, the
+  dictionary-free UAX #29 word and sentence boundaries, and general categories from ICU4X 2.4.0
+  on Unicode 18.0.0, both texts read as plain text with no CommonMark reader, and the crate's own
+  Myers alignment. A scratch build of the tool writes each image's comparison of its `ocr_text`
+  with its `alt_text` to stderr. Of the 135 images holding OCR text (5,572 B), the sentences the
+  rule appends are 566 B, whitespace collapsed, in those 6 images: interop's
+  `FileSyncWOPI_OneNoteWithODB.one` (414 B in 40 sentences, the recognizer's reading of a scan as
+  CJK characters) and five in `LargeData.one` (30 or 31 B each, a number and "This is a testing
+  document."). The other 80 B of the 646 are the line breaks and spaces around those sentences
+  and one sentence, `',`, that holds no word, which the rule never appends. Every other image's
+  OCR text is in its alt text by the rule.
 
 ## Consumers of structured text
 
@@ -2051,8 +2082,8 @@ spike-ai-pipeline-office 0.1.0. What it leaves to later tasks:
 - **A tool's wiring.** Each tool's `mise.toml` pins its toolchain alone and defines `check`,
   `publish`, `golden`, `currency`, and `upgrade`, and `GLIBC_FLOOR` when its binary links glibc;
   the root's `TOOLS` lists it. CI's tool matrix runs the tools whose path filter in the `changes`
-  job matched, so mail and onenote each add a filter, and the steps their Rust toolchain needs.
-  `tools/pack.sh` and the release workflow take any tool by its name.
+  job matched, each tool with its own filter. `tools/pack.sh` and the release workflow take any
+  tool by its name.
 - **Memory.** Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in
   the spike.
 - **Unread kinds.** Reading text boxes, equations, SmartArt, pptx comments, and xlsx notes is
@@ -2066,13 +2097,14 @@ spike-ai-pipeline-mail 0.3.1. What it leaves to later tasks:
 - **Shared crate.** The docproc-envelope crate at `tools/envelope` holds the Rust tools' common
   envelope and the content rule; its `src/lib.rs` lists the parts. It has no lock or toolchain of
   its own: each Rust tool's check formats, lints, and tests it against that tool's Cargo.lock, and
-  each Rust tool's CI filter takes the `&envelope` anchor, so a change to the crate runs every
-  Rust tool and no .NET one. mail's `upgrade` raises the crate's requirements with its own.
-  docproc-onenote adopts it ("docproc-onenote [onenote]").
+  each Rust tool's CI filter takes the `&envelope` anchor, the crate's directory and
+  `tools/notices-rust.txt`, so a change to either runs every Rust tool and no .NET one. Each Rust
+  tool's `upgrade`, through `tools/currency.sh`, raises the crate's requirements with its own and
+  re-locks its own graph. docproc-mail and docproc-onenote both use it.
 - **Holds.** A tool's hold list is `HOLDS` in its `mise.toml`'s `[env]`, one
   `<item> <pin>: <reason>` per line, which `upgrade` skips and `currency` reports as held; a hold
   names its pin, so moving the pin by hand ends it. mail's list holds its fixture generator's
-  MimeKit at 4.18.2.
+  MimeKit at 4.18.2, and onenote's holds typed-path at 0.12.4.
 - **Notices.** `tools/notices.sh`'s cargo branch runs cargo-about, pinned in each Rust tool's
   `mise.toml`, against the accepted licenses in the tool's `about.toml`; mail's accepts MIT,
   Apache-2.0, BSD-3-Clause, and Unicode-3.0. cargo-about walks proc macros' build-time
@@ -2084,110 +2116,24 @@ spike-ai-pipeline-mail 0.3.1. What it leaves to later tasks:
 
 ### docproc-onenote [onenote]
 
-From spike-ai-pipeline-onenote 0.1.0, settled in `design.md`, "docproc-onenote". Nothing is
-asked of onenote_parser upstream: each workaround of its gaps is the tool's own tested code.
+Built at `tools/onenote/`: its README states the tool, and its CHANGELOG how it differs from
+spike-ai-pipeline-onenote 0.1.0. Nothing is asked of onenote_parser upstream: each workaround of
+its gaps is the tool's own tested code. What it leaves to later tasks:
 
-- **Toolchain.** onenote_parser is pinned `=2.1.0`, with the comment mail's exact pins carry,
-  since the workarounds below rest on this release's exact text and logic. They stay as the
-  tool's own tested code: a table of contents and a failed section told by the error message's
-  prefix, the `println!` on a malformed node kept off stdout (`stdout.rs`), and the recycle bin
-  read through `cab`, a direct dependency, with the parser's name normalisation mirrored.
-  typed-path is held at 0.12.4 in the tool's hold list ("docproc-mail [mail]", Holds); it moves
-  to 0.13.0 only with onenote_parser. Whether the math port's general categories move from
-  finl_unicode to icu_properties, which docproc-envelope already links, is the task's to decide.
-- **Layout.** Nested as `tools/onenote/`: `src/`, `tests/`, the release files, and its own
-  `mise.toml`, whose tasks resolve paths from their own directory and which the root's `check`,
-  `currency`, and `upgrade` call; the nested `.gitattributes` keeps its fixture rules. The root
-  workflow releases a `tools/onenote/v*` tag as `docproc-onenote-v<version>-linux-<arch>.tar.gz`
-  with `SHA256SUMS` through the shared pack script, and the task adds onenote's path filter to
-  docproc's CI. The tool's `currency` reports its crates and mise tools only; the action pins are
-  the root's.
-- **Left in the spike.** `bench/findings.rs`, `bench/rusage.c`, `scripts/findings.sh`, the
-  `[[example]]`, the `findings` task, and `docs/findings/`, at v0.1.0; a per-tool timing, if one
-  is wanted, is one harness for all three tools, in the acceptance task.
-- **Shared crate.** onenote adopts docproc-envelope ("docproc-mail [mail]", Shared crate) in
-  place of its own `jsonl.rs`, `guard.rs`, fault and warning code, media name rule, and `escape`.
-  Its check tests the crate against onenote's Cargo.lock, and its CI filter takes the `&envelope`
-  anchor. A panic's reason becomes the crate's "the reader panicked: <message>", where the
-  spike's reads "the parser panicked". Its media directory is created once the input is read,
-  where the spike's is created at its first file; it takes the content rule over plain tokens
-  without the CommonMark feature, comparing an image's `ocr_text` with its `alt_text`.
-- **Check.** The release profile sets `overflow-checks = true`, and the check runs
-  `cargo test --release --locked --target <musl>`, so the goldens run against the release artifact
-  and the debug build leaves the check. The media test writes under `CARGO_TARGET_TMPDIR`, not the
-  system temporary directory, so the check writes only `target/`.
-- **Notices.** `tools/notices.sh`'s cargo branch writes the notices and checks the licenses
-  ("docproc-mail [mail]", Notices). onenote's `about.toml` accepts MPL-2.0 by name, for
-  onenote_parser, beside the licenses its graph needs, and the notices state where
-  onenote_parser's source is.
-- **Memory.** Media go through the shared crate's streaming store, where the spike reads each
-  whole and writes the final name directly, so a killed run left a truncated file under the full
-  content's name.
-- **Depth.** The read runs on a thread with a large fixed stack, which holds outline, group,
-  table, and equation nesting far past any real page's at no cost in resident memory, where the
-  spike's main thread overflows its stack and dies by signal.
-- **Destinations.** Links go through the shared crate's destination writer, where the spike
-  escapes parentheses only. In a table cell, `|` is written `\|` in code spans and LaTeX. Unit
-  tests over built pages show a spaced link, a hyperlinked image with a spaced target, and a cell
-  holding each.
-- **Places.** Warnings go through the shared crate's warning writer, where the spike escapes a
-  name's control characters only; a unit test shows a name holding `": "` and a message holding a
-  line break.
-- **Tables of contents.** `--file-only`, which docproc always passes, refuses a `.onetoc2`, exit 3,
-  with "docproc-onenote"'s fixed reason, before any section is read, which a `.onetoc2`'s golden
-  pins; the notebook read warns at `/` when it read no entry.
-- **Encryption.** After a section's parse fails, the tool scans the file for 2.5.19's header and
-  footer constants; found, the reason begins `encrypted` and a `skipped` line carries
-  `encrypted: true`, as "docproc-onenote" states, where the spike reports the parser's
-  `Unexpected end of file`. `Encryption.one`'s golden shows the refusal.
-- **Ink words.** Each drawing's alt text is its own strokes' words, and a word no drawing carries
-  is one plain line after the page's content, as "docproc-onenote" states, where the spike gives
-  every word to the page's ink image alone. Unit tests over built pages show paragraph ink alone
-  and page and paragraph ink together.
-- **Limits.** The README states: unlisted sections, which a directory read leaves out; a failed
-  section inside a section group vanishing, and one section's parser panic refusing its whole
-  notebook; the parser holding a notebook, and a `.onepkg` decompressed, whole in memory, beside
-  issue #48; the three edges of byte identity in the parser's hash and directory order (a
-  group's `.onetoc2`, a OneDrive package's storage index and manifest, the order of two faults);
-  and the nesting depth the read's stack allows.
-- **Cut.** A page's `content` (containers, outlines, paragraphs, runs, tables, tags), its `ink`
-  record, and `ink_text`'s words and `language` (a Windows LCID number, not text); image
-  `alt_text`, `ocr_text`, `hyperlink`, `printout_page`; ink `strokes` and `bounds`; section and
-  section group `display_name`.
-- **Into the Markdown.** The title's date and time paragraphs, an image's `ocr_text` sentences its
-  `alt_text` lacks by the content rule's shared crate, an image's `hyperlink`, and every tag's
-  label, as "docproc-onenote" states. The golden of every fixture with pages (all but the refused
-  `Encryption.one`) shows the date and time, and interop's `FileSyncWOPI_OneNoteWithODB.one` the OCR
-  text; no fixture holds a hyperlinked image, so unit tests over a built page show it, as
-  `markdown.rs`'s own tests build one.
-- **Kept.** `ink_text`'s `alternatives`, a label, as the page's `ink_alternatives`, each with its
-  word's index among the page's recognized words; `handwriting_recognition.one`'s golden shows them.
-- **Added.** A page's `media`, flattened: each image, embedded file, and ink SVG that `content`
-  and `ink` held, in the order processing's `onenote/media.go` walks them, which the reader's
-  own visit already keeps: it appends one entry at each of its three store sites (image,
-  embedded file, drawing), a record with no data included, so processing's walk isn't ported.
-  The README says the Markdown's order differs from `media`'s by design. An embedded file's
-  `file_type` becomes `type`.
-- **Model.** The page content becomes a crate-private intermediate with no `Serialize`, less what
-  nothing reads once it isn't written: a run's underline, superscript, subscript, highlight, and
-  font colour; a list's bullet, prefix, suffix, and number format; a tag's completed time and
-  shape, a tag carrying `task: bool` decided where the shape is read; a word's language; an
-  image's printout page.
-- **Envelope.** `schema` "2"; `--version` writes `schema 2` on its second line; an error's
-  reason never leads with the input path, where the spike's refusal leads with it as given; a
-  page's `creation_time` and `modification_time` become optional:
-  `creation_time` left out when it is the parser's 1970 fallback, with a warning, and
-  `modification_time` as the parser gives it. The README states, as "docproc-onenote" does, that
-  a page with no stored modification time reports its creation time and that an untitled page's
-  `title` is its first line.
-- **Goldens.** Added, since the spike commits none. Each fixture gains a `.jsonl` and `.stderr`,
-  run with the fixtures' directory as the working directory and relative inputs, so a `.stderr`
-  is the same on every machine. The hand truth is re-seated on what schema "2" carries:
-  `content.json` points into `media` and `ink_alternatives`; `sections.json` keeps ids, levels,
-  titles, times, and refusals, less its kind counts; the run, list, table, and tag truth moves to
-  hand-written Markdown expectations and `src/content.rs`'s unit tests over built runs. A
-  package has no golden of its own: its read equals its directory's golden in every line but the
-  first.
+- **Parser pin.** onenote_parser is pinned `=2.1.0`, since the workarounds rest on that release's
+  exact text and logic, but it isn't held: an `upgrade` that moves it is a reviewed diff, which
+  the workaround tests and the goldens check. typed-path is held at 0.12.4 and moves to 0.13.0
+  only with onenote_parser.
+- **docproc's side.** docproc records the `--file-only` refusal of a table of contents as the
+  part's outcome, maps a reason beginning `encrypted` to `ErrEncrypted`, and reports a death by
+  signal ("docproc's packages [library]").
+- **Memory.** The read thread's stack is an address-space reservation of at most a quarter of
+  RLIMIT_AS (README, "Limits"), so `cmd/docproc`'s memory-bound starting value leaves room for
+  it. Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in the
+  spike; a per-tool timing, if one is wanted, is one harness for all three tools.
+- **Unicode.** docproc-envelope's general-category predicates (Cf, Zs, N*, Sm), which the math
+  port reads, make the crate the Rust tools' one Unicode home; the Go and .NET sides are later
+  tasks'.
 
 ### docproc's packages [library]
 

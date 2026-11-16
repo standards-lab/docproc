@@ -13,7 +13,9 @@ internal sealed record EnvelopeCases(
     IReadOnlyList<(string Where, string What, string Line)> Warnings,
     IReadOnlyList<(string Reason, string Line)> Errors,
     IReadOnlyList<(byte[] Bytes, string StoredName, string Name)> MediaNames,
-    IReadOnlyList<(string Text, string Markdown)> LiteralEscape)
+    IReadOnlyList<(string Text, string Markdown)> LiteralEscape,
+    IReadOnlyList<(string Target, string Markdown)> Destinations,
+    IReadOnlyList<(string Title, string Markdown)> Titles)
 {
     /// <summary>The table's path, beside the tool's directory under tools/.</summary>
     public static string Path { get; } = System.IO.Path.GetFullPath(System.IO.Path.Combine(Fixtures.Root, "..", "envelope", "cases.json"));
@@ -32,7 +34,9 @@ internal sealed record EnvelopeCases(
             [.. Rows("warnings").Select(r => (Text(r, "where"), Text(r, "what"), Text(r, "line")))],
             [.. Rows("errors").Select(r => (Text(r, "reason"), Text(r, "line")))],
             [.. Rows("media_names").Select(r => (Convert.FromHexString(Text(r, "bytes_hex")), Text(r, "stored_name"), Text(r, "name")))],
-            [.. Rows("literal_escape").Select(r => (Text(r, "text"), Text(r, "markdown")))]);
+            [.. Rows("literal_escape").Select(r => (Text(r, "text"), Text(r, "markdown")))],
+            [.. Rows("destinations").Select(r => (Text(r, "target"), Text(r, "markdown")))],
+            [.. Rows("titles").Select(r => (Text(r, "title"), Text(r, "markdown")))]);
     }
 
     /// <summary>A case's line as the given tool writes it.</summary>
@@ -44,7 +48,9 @@ internal sealed record EnvelopeCases(
 }
 
 // docproc-ooxml against every case of the envelope's table: its exit codes, its stderr writer, its
-// media names, and its literal-text escape.
+// media names, its literal-text escape, its destination writer, and its title writer. The tests
+// have no CommonMark reader, so a destination's and a title's read-back are the shared crate's
+// tests, over the same cases.
 public sealed class EnvelopeTests
 {
     private static readonly EnvelopeCases Cases = EnvelopeCases.Load();
@@ -124,6 +130,26 @@ public sealed class EnvelopeTests
         foreach (var (text, markdown) in Cases.LiteralEscape)
         {
             Assert.Equal(markdown, MarkdownRenderer.Escape(text));
+        }
+    }
+
+    [Fact]
+    public void ADestinationIsTheEnvelopes()
+    {
+        Assert.NotEmpty(Cases.Destinations);
+        foreach (var (target, markdown) in Cases.Destinations)
+        {
+            Assert.Equal(markdown, MarkdownRenderer.Destination(target));
+        }
+    }
+
+    [Fact]
+    public void ATitleIsTheEnvelopes()
+    {
+        Assert.NotEmpty(Cases.Titles);
+        foreach (var (title, markdown) in Cases.Titles)
+        {
+            Assert.Equal(markdown, MarkdownRenderer.Title(title));
         }
     }
 

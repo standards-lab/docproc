@@ -8,13 +8,16 @@
 //! - [`Lines`]: the JSON Lines writer of stdout.
 //! - [`guarded`]: a reader's error, or its panic, as a reason.
 //! - [`Media`]: the media store, streaming each medium to its hash name.
-//! - [`markdown`]: the literal-text escape and the destination writer.
+//! - [`markdown`]: the literal-text escape, the destination and title writers, and the test for a
+//!   `&` that could begin a character reference.
 //! - [`content`]: the content rule, the sentences of a source text that a target text lacks.
+//! - [`category`]: Unicode general-category predicates, on the content rule's Unicode version.
 //!
 //! Each tool keeps its own flags, readers, and model. The envelope's cases are
 //! tools/envelope/cases.json's, which this crate's unit tests read in place, as docproc-ooxml's
 //! tests and docproc's internal/cli do.
 
+pub mod category;
 pub mod content;
 mod fault;
 mod guard;

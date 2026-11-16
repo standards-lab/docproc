@@ -16,7 +16,7 @@ boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) 
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
 disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
-each artifact's first tag and the task that releases it.
+each artifact's tags and the task that releases each.
 
 ## Capability map
 
@@ -25,8 +25,9 @@ each artifact's first tag and the task that releases it.
 - **System tools**: docproc-ooxml (docx, xlsx, pptx), docproc-mail (.pst, .msg, .eml, mbox), and
   docproc-onenote (sections, .onepkg, notebooks), each writing JSON Lines under schema "2" with
   Markdown inside as the text layer (`layers.md`, "The tool contract"). docproc-ooxml is
-  [`tools/ooxml/`](../tools/ooxml/README.md) and docproc-mail
-  [`tools/mail/`](../tools/mail/README.md). The Rust tools share the docproc-envelope crate,
+  [`tools/ooxml/`](../tools/ooxml/README.md), docproc-mail
+  [`tools/mail/`](../tools/mail/README.md), and docproc-onenote
+  [`tools/onenote/`](../tools/onenote/README.md). The Rust tools share the docproc-envelope crate,
   [`tools/envelope/`](../tools/envelope/src/lib.rs), and every tool reads the envelope's cases
   from [`tools/envelope/cases.json`](../tools/envelope/cases.json).
 - **Media**: audio windows and pictures prepared for transcription and vision.
@@ -39,5 +40,5 @@ each artifact's first tag and the task that releases it.
   (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested
   modules"; `design.md`, "cmd/docproc").
-- **Releases**: each artifact's first tag and the task that tags it, the tools on linux-x64 and
+- **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
   linux-arm64 (`design.md`, "Releases").

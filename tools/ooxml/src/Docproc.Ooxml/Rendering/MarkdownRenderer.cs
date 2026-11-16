@@ -446,7 +446,7 @@ internal sealed class MarkdownRenderer
     private static string SheetCellText(TableCell cell)
     {
         var text = SheetCellValue(cell);
-        return cell.Target is { } target && text.Length > 0 ? $"[{text}]({Destination(target)})" : text;
+        return cell.Target is { } target && text.Length > 0 ? $"[{text}]({Target(target)})" : text;
     }
 
     private static string SheetCellValue(TableCell cell)
@@ -524,12 +524,13 @@ internal sealed class MarkdownRenderer
 
     // A picture as an image link to its file, relative to the media directory, or to a linked
     // picture's target; its alternative text, or else its title, is the image text, and a title
-    // that differs from the image text is the image's title. An embedded package or OLE object is
+    // that differs from the image text is the image's title, its lines joined by spaces and
+    // written by Title, a pipe escaped as Target escapes one. An embedded package or OLE object is
     // a link to its file, its text its program id or else its part's file name; it follows its
     // preview picture (context/layers.md, "docproc-ooxml").
     private static string RenderMedia(Media media)
     {
-        var destination = Destination(media.Name ?? media.Target ?? "");
+        var destination = Target(media.Name ?? media.Target ?? "");
         if (media.Kind != MediaKind.Picture)
         {
             var label = media.ProgId ?? (media.Source is { } part ? part[(part.LastIndexOf('/') + 1)..] : media.Name ?? "");
@@ -537,22 +538,126 @@ internal sealed class MarkdownRenderer
         }
         var text = media.Alt ?? media.Title;
         var alt = string.Join(" ", Lines(text ?? ""));
-        var title = media.Title is { } own && own != text ? string.Join(" ", Lines(own)) : "";
+        var title = media.Title is { } own && own != text ? string.Join(" ", TrimmedLines(own)) : "";
         return title.Length > 0
-            ? $"![{alt}]({destination} \"{title.Replace("\"", "\\\"", StringComparison.Ordinal)}\")"
+            ? $"![{alt}]({destination} \"{Title(title).Replace("|", "\\|", StringComparison.Ordinal)}\")"
             : $"![{alt}]({destination})";
     }
 
-    // A link's destination: as it is, or within angle brackets, its own percent-encoded, when it
-    // holds whitespace, a parenthesis, or an angle bracket; a pipe escaped either way, as a GFM
-    // table cell requires and a backslash escape anywhere else allows.
-    private static string Destination(string destination)
+    /// <summary>A link's or an image's title as the text of a Markdown title, within
+    /// <c>"…"</c>, that CommonMark reads back as the title, by the rule every system tool shares
+    /// (tools/envelope/cases.json). Each backslash and <c>"</c> is escaped, and each
+    /// <c>&amp;</c> that could begin a character reference, as in a <see cref="Destination"/>,
+    /// since CommonMark reads both escapes and references in a title; any other character reads
+    /// as itself. A line feed is written <c>&amp;#10;</c> and a carriage return
+    /// <c>&amp;#13;</c>, references CommonMark reads back as them, so the title keeps to its line.
+    /// A NUL, which CommonMark reads as U+FFFD wherever it is, is written as U+FFFD, the one way
+    /// the title reads back other than as written. A pipe is left to a table cell's writer, as the
+    /// caller's is (a picture's title may stand in a cell).</summary>
+    internal static string Title(string title)
     {
-        if (destination.Any(c => char.IsWhiteSpace(c) || c is '(' or ')' or '<' or '>'))
+        var text = new StringBuilder(title.Length + 8);
+        for (var i = 0; i < title.Length; i++)
         {
-            destination = "<" + destination.Replace("<", "%3C", StringComparison.Ordinal).Replace(">", "%3E", StringComparison.Ordinal) + ">";
+            var c = title[i];
+            switch (c)
+            {
+                case '\\' or '"':
+                    text.Append('\\').Append(c);
+                    break;
+                case '&' when ReferenceLike(title.AsSpan(i + 1)):
+                    text.Append(@"\&");
+                    break;
+                case '\n':
+                    text.Append("&#10;");
+                    break;
+                case '\r':
+                    text.Append("&#13;");
+                    break;
+                case '\0':
+                    text.Append('\uFFFD');
+                    break;
+                default:
+                    text.Append(c);
+                    break;
+            }
         }
-        return destination.Replace("|", "\\|", StringComparison.Ordinal);
+        return text.ToString();
+    }
+
+    // A link's destination by Destination, a pipe in it escaped too, as a GFM table cell requires
+    // and a backslash escape anywhere else allows: GFM takes \| back to | in a cell before it
+    // reads the cell's spans, and an escaped \ before it stays a backslash.
+    private static string Target(string target) => Destination(target).Replace("|", "\\|", StringComparison.Ordinal);
+
+    /// <summary>A link's or an image's target as a Markdown destination that CommonMark reads back
+    /// as the target, by the rule every system tool shares (tools/envelope/cases.json). One holding
+    /// whitespace, a control character, <c>&lt;</c>, or <c>&gt;</c> is written within angle
+    /// brackets, its <c>&lt;</c> and <c>&gt;</c> escaped; any other is written bare, its
+    /// parentheses escaped, so neither form ends before the target does, balanced or not. In both,
+    /// each backslash is escaped, and each <c>&amp;</c> that could begin a character reference,
+    /// since CommonMark reads both escapes and references in a destination. A line ending or a
+    /// NUL, which no destination can hold, is percent-encoded (%0A, %0D, %00), the one way the
+    /// destination reads back other than as the target.</summary>
+    internal static string Destination(string target)
+    {
+        var angled = target.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '<' or '>');
+        var text = new StringBuilder(target.Length + 8);
+        if (angled)
+        {
+            text.Append('<');
+        }
+        for (var i = 0; i < target.Length; i++)
+        {
+            var c = target[i];
+            switch (c)
+            {
+                case '\\':
+                    text.Append(@"\\");
+                    break;
+                case '&' when ReferenceLike(target.AsSpan(i + 1)):
+                    text.Append(@"\&");
+                    break;
+                case '<' or '>' when angled:
+                case '(' or ')' when !angled:
+                    text.Append('\\').Append(c);
+                    break;
+                case '\n':
+                    text.Append("%0A");
+                    break;
+                case '\r':
+                    text.Append("%0D");
+                    break;
+                case '\0':
+                    text.Append("%00");
+                    break;
+                default:
+                    text.Append(c);
+                    break;
+            }
+        }
+        if (angled)
+        {
+            text.Append('>');
+        }
+        return text.ToString();
+    }
+
+    // Whether what follows a & could make it a character reference: an optional #, one or more
+    // ASCII letters and digits, then ;. Every entity and numeric reference CommonMark reads is
+    // one, and a & escaped that begins none still reads as itself.
+    private static bool ReferenceLike(ReadOnlySpan<char> rest)
+    {
+        if (rest.StartsWith("#", StringComparison.Ordinal))
+        {
+            rest = rest[1..];
+        }
+        var name = 0;
+        while (name < rest.Length && char.IsAsciiLetterOrDigit(rest[name]))
+        {
+            name++;
+        }
+        return name > 0 && name < rest.Length && rest[name] == ';';
     }
 
     private static string Delimiter(int columns) => "|" + string.Concat(Enumerable.Repeat(" --- |", columns));
@@ -741,7 +846,7 @@ internal sealed class MarkdownRenderer
                     }
                     break;
                 default:
-                    text.Append("](").Append(Destination(segment.Text)).Append(')');
+                    text.Append("](").Append(Target(segment.Text)).Append(')');
                     break;
             }
         }
@@ -750,8 +855,11 @@ internal sealed class MarkdownRenderer
 
     // The non-empty lines of a text, trimmed (leading spaces would make an indented code block)
     // and escaped, tabs as spaces.
-    private static IEnumerable<string> Lines(string text) =>
-        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).Select(line => Escape(line));
+    private static IEnumerable<string> Lines(string text) => TrimmedLines(text).Select(line => Escape(line));
+
+    // The non-empty lines of a text, trimmed, tabs as spaces, as they are before they are escaped.
+    private static IEnumerable<string> TrimmedLines(string text) =>
+        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0);
 
     // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
     // (context/layers.md, "Common envelope"), which htmd's escaping and so mail's and onenote's

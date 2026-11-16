@@ -249,6 +249,28 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
+    // A picture's own title is written by the envelope's title rule, its lines joined by spaces
+    // and, in a table cell as anywhere, its pipes escaped: a backslash, a quote, and an & that
+    // could begin a reference are escaped, and other markup is left as it is, which a title reads
+    // as itself.
+    [Fact]
+    public void APicturesOwnTitleIsWrittenByTheTitleRule()
+    {
+        var picture = new Media { Name = "a.png", Alt = "A", Title = " C:\\x \"*y*\"\n\n &amp; |z| " };
+
+        var markdown = Render(picture, new Table([new TableRow([new TableCell([picture])])]));
+
+        Assert.Equal(
+            """
+            ![A](a.png "C:\\x \"*y*\" \&amp; \|z\|")
+
+            | ![A](a.png "C:\\x \"*y*\" \&amp; \|z\|") |
+            | --- |
+
+            """,
+            markdown);
+    }
+
     // A picture's image text is its alternative text, or else its title; a title that differs
     // from the image text is the image's title, its quotes escaped.
     [Fact]

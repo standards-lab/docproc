@@ -37,9 +37,10 @@ jobs:
       # One filter per tool, named as its directory under tools/, so the filters that match are
       # the matrix's tools. Each begins with the wiring every tool shares, anchored on the first:
       # this workflow, the root mise.toml its check loads, and tools/'s scripts and envelope table.
-      # A Rust tool's adds the shared envelope crate's directory, anchored on the first Rust tool:
-      # each Rust tool's check tests the crate against its own lock, so a change to the crate runs
-      # every Rust tool, and no .NET one.
+      # A Rust tool's adds the Rust tools' shared files, anchored on the first Rust tool: the shared
+      # envelope crate's directory, which each Rust tool's check tests against its own lock, and
+      # the standard library's and musl's notices every Rust tool's notices end with. So a change
+      # to either runs every Rust tool, and no .NET one.
       - id: tools
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -49,8 +50,12 @@ jobs:
               - 'tools/ooxml/**'
             mail:
               - *shared
-              - &envelope 'tools/envelope/**'
+              - &envelope ['tools/envelope/**', 'tools/notices-rust.txt']
               - 'tools/mail/**'
+            onenote:
+              - *shared
+              - *envelope
+              - 'tools/onenote/**'
 
       - id: lint
         uses: dorny/paths-filter@v4.0.3
@@ -69,7 +74,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       # The lint needs only the root's shellcheck and actionlint, not its Go toolchain.
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           install_args: actionlint shellcheck
 
@@ -99,7 +104,7 @@ jobs:
 
       # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
       # one installed; the tool's tasks put it ahead of the runner's own dotnet on PATH.
-      - uses: jdx/mise-action@v5.2.8
+      - uses: jdx/mise-action@v5.2.9
         with:
           working_directory: tools/${{ matrix.tool }}
 

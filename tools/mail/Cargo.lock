@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "docproc-mail"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "cfb",
  "codepage",
@@ -144,7 +144,9 @@ dependencies = [
  "encoding_rs",
  "htmd",
  "mail-parser",
+ "markup5ever_rcdom",
  "outlook-pst",
+ "pulldown-cmark",
  "serde",
  "serde_json",
 ]

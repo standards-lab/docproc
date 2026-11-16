@@ -1,0 +1,42 @@
+================================================================================
+onenote_parser 2.1.0: where its source is
+
+docproc-onenote reads OneNote files through onenote_parser 2.1.0, used
+unmodified, Copyright the onenote.rs contributors (Markus Siemens and others),
+under the Mozilla Public License 2.0, whose text is given above with the crate.
+
+Per section 3.2(a) of that license, the Source Code Form of onenote_parser, as
+built into this binary, is available at no charge:
+
+- from its repository, https://github.com/msiemens/onenote.rs, at tag v2.1.0,
+  commit 727389a674665dc07e0c31818cd4b54b64b9c684, in crates/parser/;
+- from crates.io, https://crates.io/crates/onenote_parser/2.1.0.
+
+The rest of this binary is a Larger Work (section 3.3) that links
+onenote_parser; its own code is under the Apache License 2.0, and nothing in it
+limits or alters the recipients' rights in onenote_parser's Source Code Form.
+
+================================================================================
+one2html 2.0.1: MIT License
+
+docproc-onenote's math lexer, parser, and LaTeX renderer, src/math/ast.rs,
+latex.rs, lexer.rs, parser.rs, and text.rs, are ported from one2html 2.0.1
+(https://github.com/msiemens/one2html), each file keeping this notice and
+saying what it changed:
+
+Copyright 2020 Markus Siemens
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without
+restriction, including without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or
+substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

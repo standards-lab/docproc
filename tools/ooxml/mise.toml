@@ -53,7 +53,7 @@ case "$(uname -m)" in
   *) echo "publish: no runtime identifier for $(uname -m)"; exit 1 ;;
 esac
 dotnet restore DocprocOoxml.slnx --locked-mode
-# Without the commit suffix the check's builds carry (0.1.0+<sha>), --version prints exactly the
+# Without the commit suffix the check's builds carry (<version>+<sha>), --version prints exactly the
 # version the csproj records, which pack.sh compares with the tag's.
 rm -rf .state/publish
 dotnet publish src/Docproc.Ooxml --no-restore -c Release -r "$rid" -warnaserror \

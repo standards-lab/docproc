@@ -1,0 +1,76 @@
+{
+  "note": "Hand-written expectations of the public fixtures' page media and ink alternatives, for tests/content.rs. Each field is a JSON pointer into one page line, the field kind it is checked under, and the value the CLI writes there when it holds what onenote_parser's API gives for the record: the same values tests/media.rs and tests/ink.rs assert, written by hand from that API, not from the CLI's output. A null value is a field the page must not have. A page is found by its id in the read of each of its files. A page's media come in the order the reader visits them: its containers in stored order, each outline's blocks in order, then the page's own ink drawing. Left out: the SVG drawings' names and strokes (tests/ink.rs), and the page's text, its runs, lists, tables and tags (tests/markdown.rs, and the unit tests in src/content.rs and src/markdown.rs).",
+  "pages": [
+    {
+      "files": ["onenote-rs/New Section 1.one", "onenote-rs/handwriting_recognition.one", "onenote-rs/non-legacy/New Section 1 2.one"],
+      "page": "5eaf76b1-8dde-8745-a8a7-1a9865cc478a",
+      "fields": [
+        {"kind": "Image", "pointer": "/media/0/kind", "value": "image"},
+        {"kind": "Image", "pointer": "/media/0/file", "value": "d6d4898c203cbff35fe92e844bbf404064293314a71d1e6b24e907334e5bdff9.jpg"},
+        {"kind": "Image", "pointer": "/media/0/size", "value": 90999},
+        {"kind": "Image", "pointer": "/media/0/filename", "value": "testimages_screenshot.jpg"},
+        {"kind": "Image", "pointer": "/media/0/type", "value": null},
+        {"kind": "Ink", "pointer": "/media/1/kind", "value": "ink"},
+        {"kind": "Ink", "pointer": "/media/1/filename", "value": null},
+        {"kind": "Ink", "pointer": "/media/1/size", "value": null},
+        {"kind": "Media", "pointer": "/media/2", "value": null}
+      ]
+    },
+    {
+      "files": ["onenote-rs/New Section 1.one", "onenote-rs/non-legacy/New Section 1 2.one"],
+      "page": "5eaf76b1-8dde-8745-a8a7-1a9865cc478a",
+      "fields": [
+        {"kind": "Image", "pointer": "/media/0/extension", "value": "jpg"},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives", "value": null}
+      ]
+    },
+    {
+      "files": ["onenote-rs/handwriting_recognition.one"],
+      "page": "5eaf76b1-8dde-8745-a8a7-1a9865cc478a",
+      "fields": [
+        {"kind": "Image", "pointer": "/media/0/extension", "value": null},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives/0", "value": {"word": 0, "alternatives": ["Hallo", "Hell", "HellO", "Hella"]}},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives/1", "value": {"word": 1, "alternatives": ["world", "Worlds", "Word", "World."]}},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives/2", "value": {"word": 2, "alternatives": ["Hallo", "Hell", "HellO", "Helle"]}},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives/3", "value": {"word": 3, "alternatives": ["world", "Worlds", "Word", "Would"]}},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives/4", "value": null}
+      ]
+    },
+    {
+      "files": ["onenote-rs/handwriting_recognition.one", "onenote-rs/non-legacy/New Section 1 2.one"],
+      "page": "b3784418-303a-ba4e-a772-5bb05abc8ddf",
+      "fields": [
+        {"kind": "Media", "pointer": "/media", "value": null},
+        {"kind": "Ink alternatives", "pointer": "/ink_alternatives", "value": null}
+      ]
+    },
+    {
+      "files": ["interop/SUT/OneWithFileData.one"],
+      "page": "d9fb6b6a-ab0c-42df-a684-4fadf122b557",
+      "fields": [
+        {"kind": "Embedded file", "pointer": "/media", "value": [{"kind": "embedded_file", "file": "8e99dc44681b8399608f7a181e44d3e41dc36fbacd35a9cfb2d1fc330ac68459.docx", "filename": "testing.docx", "size": 14660}]}
+      ]
+    },
+    {
+      "files": ["interop/SUT/FileSyncWOPI_OneNoteWithODB.one"],
+      "page": "19a0907d-cc34-459e-bdb6-dea53bdcd6f7",
+      "fields": [
+        {"kind": "Image", "pointer": "/media", "value": [{"kind": "image", "file": "954f7d96502b5c5fe2e98a5045bca7f5e9ba11e3dbf92a5c0214a6aa4c7f2208.jpg", "filename": "Chrysanthemum.jpg", "size": 879394}]}
+      ]
+    },
+    {
+      "files": ["onenote-rs/New Section Group/New Section 2.one"],
+      "page": "e9e2b25d-4462-ea4f-a86c-f167efa63e0d",
+      "fields": [
+        {"kind": "Image", "pointer": "/media", "value": [{"kind": "image", "file": "b7702e05282d4dfffe233281443536319d4739946f54ebce194230df8805b650.png", "filename": "dummy_1.png", "size": 27146, "extension": "png"}]}
+      ]
+    },
+    {
+      "files": ["onenote-rs/New Section Group/New Section 2.one"],
+      "page": "7198bad9-4462-a34e-b5a2-44b2b78e4e60",
+      "fields": [
+        {"kind": "Embedded file", "pointer": "/media", "value": [{"kind": "embedded_file", "file": "d2318cc34b6254cdc2db84b931adad166a4b2b701b4241c27b338b959ac738b0.mp3", "filename": "ff-16b-2c-44100hz.mp3", "size": 77279, "type": "audio"}]}
+      ]
+    }
+  ]
+}

@@ -9,6 +9,43 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.1] - 2026-11-16
+
+### Fixed
+
+- A link's or an image's destination in a message's Markdown reads back as its target. htmd
+  escaped only its parentheses, so `\\server\Team Notes\plan.docx` read back with one leading
+  backslash, and a target holding `&amp;` as one holding `&`. Links and images are now written by
+  docproc-mail's own handlers, through the destination rule docproc's Rust tools share, stated by
+  tools/envelope/cases.json: each `\` is escaped, and so is a `&` that could begin a character
+  reference; a target holding whitespace, a control character, `<`, or `>` is written within angle
+  brackets, its `<` and `>` escaped; any other is written bare, its parentheses escaped. A line
+  ending or a NUL, which no destination can hold, is percent-encoded. Link text, media names,
+  `inline`, and the unmatched-source warning are as before.
+- A link's or an image's title, and an image's alt text, in a message's Markdown read back as
+  written. htmd escaped only their `"`, so a `\` before punctuation, or an `&amp;`, read back as
+  something else. A title is now written by the title rule docproc's tools share, stated by
+  tools/envelope/cases.json: each `\` and `"` is escaped, and so is a `&` that could begin a
+  character reference; a line feed between its lines is written `&#10;`, so the title keeps to one
+  line. An alt text's lines are escaped as literal text. Both keep their lines trimmed and their
+  blank lines dropped.
+- The text of a message's Markdown made from HTML reads back as written: its paragraphs, link
+  text, list items, and table cells. htmd wrote a text `&` as itself, so a body whose text held a
+  literal `&amp;` or `&#59;` read back as `&` or `;`. A `&` of the HTML's text that could begin a
+  character reference, by the test the destination and title rules use, is now written `\&`, but
+  within a code span or a code block, where CommonMark reads none. Any other `&`, as in `AT&T`,
+  is written as itself, as before. Each is marked, before htmd writes the Markdown, by a
+  private-use character the body doesn't hold; a body with a text `&` that holds every one is
+  left without Markdown, warned of as `the Markdown body can't be made into Markdown (it holds every
+  private-use character); left out`.
+
+### Added
+
+- The release archive's `THIRD-PARTY-NOTICES.txt` gives the notices of the Rust standard library
+  and musl libc, which the static binary links, after its crates': the MIT License under which
+  each is given, their copyright, and where the standard library's own third-party notices and
+  musl's `COPYRIGHT` are. The binary is unchanged.
+
 ## [v0.1.0] - 2026-11-13
 
 The first release. docproc-mail was copied, in one commit, from spike-ai-pipeline-mail v0.3.1
@@ -91,5 +128,6 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...HEAD
+[v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0
