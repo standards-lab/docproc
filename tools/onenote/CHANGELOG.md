@@ -1,95 +1,115 @@
 # Changelog
 
-All notable changes to `spike-ai-pipeline-onenote` are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html). The JSON Lines of schema `"1"`, the
-`schema` version included, the arguments, the exit codes, the warning format, the media file
-names, and the Markdown rules are the CLI's output contract: a change to any of them is a change
-here.
+All notable changes to `docproc-onenote` are documented here. The format follows [Keep a
+Changelog](https://keepachangelog.com/en/1.1.0/), and the CLI adheres to [Semantic
+Versioning](https://semver.org/spec/v2.0.0.html). Each release's section is headed by the version
+its `tools/onenote/vX.Y.Z` tag carries, and is the release's notes. Its JSON Lines, their
+`schema` version included, the arguments, the exit codes, the warning format, the media names,
+and the Markdown rules are its output contract: a change to them is a change here. This changelog
+covers docproc-onenote only.
 
 ## [Unreleased]
 
-## [v0.1.0] - 2026-11-04
+## [v0.1.0] - 2026-11-16
+
+The first release. docproc-onenote was copied, in one commit, from spike-ai-pipeline-onenote
+v0.1.0 (8ea6b2d), its schema `"1"` CLI, renamed, and reworked into docproc's system tool; Changed
+says how it differs from the spike. The spike's findings, its scorer, and its timing harness stay
+in the spike.
 
 ### Added
 
-- `spike-ai-pipeline-onenote [--media <dir>] <input>`, which reads a OneNote `.one` section, in
-  desktop or OneDrive format, a `.onetoc2` notebook, a notebook directory through its one
-  `.onetoc2`, or a `.onepkg` package through onenote_parser 2.1.0, used unmodified. It sniffs the
-  input by content, never by name, and writes JSON Lines of schema `"1"` to stdout, which carries
-  them and nothing else. Exit codes: 0 read, even with sections skipped; 1 stdout or a media file not
-  written; 2 usage (usage on stderr); 3 refused (one reason line on stderr, nothing on stdout);
-  and 4 a fault of the CLI's own. `--version` prints the bare version.
-- The initial output contract, schema `"1"`: a `notebook` line first (input kind `"section"`,
-  `"notebook"`, or `"package"`, name, and a notebook's id and colour); then `section_group` and
-  `section` lines depth-first in the table of contents' order (id, parent group, path, display
-  name, and a section's colour), each section followed by its `page` lines; then a `skipped` line
-  for each section the parser couldn't read. A field with no value is left out, never written as
-  `null`, and the same input always gives byte-identical output.
-- Pages, at their latest revision: id, section, level, title, creation and modification times in
-  ISO 8601 UTC to the second, author as stored, content, recognised ink text, and a Markdown
-  body.
-- Content: the title area, outlines, images, embedded files, and ink containers with their
-  offsets; outline items nested as stored; paragraphs with their style, list marker (bullet, or
-  numbering format with its prefix, suffix, and restart), note tags (label, shape, status,
-  completed time), runs, and handwriting; runs with bold, italic, underline, strikethrough,
-  superscript, and subscript flags, highlight and font colour as hex, and link target, hidden
-  runs left out; tables of rows of cells, a cell holding outline items, an empty cell `{}`.
-- Math: an equation is one run of kind math, `"display"` or `"inline"`, with its LaTeX, from a
-  port of one2html 2.0.1's MIT math lexer, parser, and LaTeX renderer that keeps its notice. An
-  equation that doesn't parse keeps the LaTeX of its text, with a warning.
-- Media: images (file, size, extension, filename, alt text, OneNote's text from the picture,
-  hyperlink, printout page) and embedded files (file, filename, `"audio"` or `"video"` type,
-  size). `--media <dir>` writes each distinct content once, named by the lowercase hex SHA-256 of
-  its bytes and its stored extension when that is 1 to 8 ASCII letters and digits; a record whose
-  data is missing or invalid has no file, with a warning. Stored filenames are never paths.
-- Ink as SVG, written by the CLI: one per page and one per paragraph that holds handwriting, each
-  stroke a path with its colour, width, transparency, and pen tip; an ink record names its file,
-  stroke count, and bounds in ink units. A page's recognised text is its lines of words, each with
-  its best guess, alternatives, and language.
-- Markdown: containers top to bottom, then left to right; the title as `#` and `hN` one level
-  down; bold, italic, strikethrough, and links marked; code fenced and quotes quoted; lists nested
-  and numbered from their restart; To Do tags as task items and other tags as `[Label]`; GFM
-  tables; math as `$…$` and `$$…$$`; images, files, and ink linked by their media names; literal
-  text escaped by spike-ai-pipeline-mail's rules, and `$`.
-- Skips and warnings: a section that fails inside a notebook is a `skipped` line and a warning,
-  and the read exits 0; the recycle bin, in a directory or a package, is skipped with a warning;
-  every warning of onenote_parser's reports goes to stderr as
-  `spike-ai-pipeline-onenote: warning: <where>: <what>`.
-- Refusals: a missing or unreadable input, a ZIP (extract the OneDrive download first), a
-  directory with no `.onetoc2` or more than one, anything else, and a section, notebook, or
-  package onenote_parser can't read or that panics it, with its reason.
-- Fixtures: Interop-TestSuites' small MS-ONESTORE files (MIT, at `fe87ed32`) and onenote.rs's
-  maintainer samples (MPL-2.0, at `v2.1.0`), each set pinned and listed by SHA-256 with its
-  LICENSE, read against hand-written structural expectations; `.onepkg` packages built by the
-  tests through cab 0.6.0's MSZIP writer, each read as its directory; and content fields, each a
-  JSON pointer into a page line, in `tests/fixtures/content.json`.
-- The finding (`docs/findings/onenote-cli.md`), from recorded run v0.1.0: the fields recovered
-  per kind against the public fixtures' expectations, and the time and peak memory on every
-  committed input and on three large sections fetched for the run; `mise run findings` reruns it.
-- Releases: `spike-ai-pipeline-onenote-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each a
-  static musl binary, LICENSE, and `THIRD-PARTY-NOTICES.md`, and `SHA256SUMS`. The notices give
-  onenote_parser's MPL-2.0 licence and where its source is, one2html's MIT notice for the ported
-  math code, and the notices of every other crate the binary links.
+- `docproc-onenote [--media <dir>] [--file-only] <input>`, `--version`, and `--help`, the
+  arguments parsed by hand: a static musl binary on Rust 1.100.0 for linux-x64 and linux-arm64,
+  overflow checks on in release, its crate graph locked, onenote_parser pinned exactly at 2.1.0.
+  `--help` prints the usage to stdout and exits 0.
+- `--file-only`: a table of contents, as a `.onetoc2` or its notebook's directory, is refused,
+  exit 3, with the fixed reason `a table of contents; its sections are read on their own`,
+  before any section is read.
+- Schema `"2"` JSON Lines: a `notebook` line, then `section_group` and `section` lines
+  depth-first, each section followed by its `page` lines, then a `skipped` line per section left
+  out. Output is byte-identical for the same input, pinned by a `.jsonl` and a `.stderr` golden
+  for every committed `.one` and `.onetoc2`, and a refusal's for each table of contents read
+  with `--file-only`, all run against the release binary from the fixtures' directory.
+- A page's `media`: its images, embedded files, and ink drawings, flattened, in the reader's
+  visit order, each its `kind`, `file`, `filename`, `size`, `extension`, and `type` as it has
+  them.
+- A page's `ink_alternatives`: each recognised word with other guesses, by its page-wide index,
+  with its alternatives, best first.
+- The encryption signal: after a section's parse fails, its file is scanned for the two
+  constants of an [MS-ONESTORE] 2.5.19 encryption key. Found, an input is refused with a reason
+  beginning `encrypted`, and a notebook's section is a `skipped` line with that reason and
+  `encrypted: true`.
+- In the Markdown: the title's date and time paragraphs, joined by one space, as one line after
+  the title heading; every note tag's label as `[Label]`, a task's after its box; a hyperlinked
+  image as `[![alt](file)](hyperlink)`; an image's OCR sentences that its alt text lacks, after
+  the alt text, by the content rule of the shared crate, `tools/envelope`, on Unicode 18.0.0;
+  each ink drawing's alt text as the words its own strokes belong to, for page ink, paragraph
+  ink, and ink blocks, and any recognised word no drawing carries on one plain line after the
+  page's content.
+- Warnings for a notebook read that reads no section or section group, at `/`, and for a page
+  creation time the parser couldn't read.
+- The read runs on a thread with a fixed 256 MiB stack, an address-space reservation; a thread
+  that can't start is exit 4, `internal fault: the read thread can't start`.
+- The common envelope, through the shared crate: stderr lines `docproc-onenote: warning: <where>:
+  <what>` and `docproc-onenote: error: <reason>`, escaped, a reason never leading with the input
+  path; exit codes 0 read, 1 stdout or media not written, 2 usage, 3 refused before any output, 4
+  a fault of its own.
+- Releases: `docproc-onenote-vX.Y.Z-linux-x64.tar.gz` and `-linux-arm64.tar.gz`, each holding the
+  binary, LICENSE, and THIRD-PARTY-NOTICES.txt, with `SHA256SUMS`; a release is refused unless the
+  binary's `--version` is the tag's and it requires no glibc symbol. The notices give every
+  crate's, the Rust standard library's and musl libc's, one2html 2.0.1's MIT notice for the
+  ported math code, and where onenote_parser's MPL-2.0 source is.
+
+### Changed
+
+- `--version` prints the version, then `schema 2`, where the spike printed the version alone.
+- A page's Markdown carries its text: `content` (containers, outlines, paragraphs, runs, tables,
+  and tags), the page's `ink` record, and `ink_text` are gone, and with them an image's
+  `alt_text`, `ocr_text`, `hyperlink`, and `printout_page`, an ink record's `strokes` and
+  `bounds`, and a recognised word's `language`. A section's and a section group's
+  `display_name`, its `path`'s last name, is gone.
+- A page's `creation_time` is left out, with a warning, when it is the parser's 1970 fallback for
+  a time it couldn't read, no longer written as `1970-01-01T00:00:00Z`.
+- A password-protected section is refused, and skipped inside a notebook, as encrypted, no longer
+  with the parser's `Unexpected end of file`.
+- A refusal's reason no longer leads with the input's path. A `<where>` and a `<what>` are
+  escaped by the shared writer, a colon followed by a space in `<where>` among them, so a
+  section name holding `": "` no longer splits a warning wrong, and a parser message holding a
+  line break stays one line.
+- Ink words: each drawing carries its own strokes' words, no longer every word on the page's ink
+  image alone, where a paragraph's handwriting and an ink block had none.
+- Destinations are written by the shared destination writer, so one holding a space is a link,
+  no longer text; in a table cell, a `|` in a code span or an equation's LaTeX is escaped. Literal
+  text is escaped by the shared literal-text escape.
+- Media are streamed, hashed while copied through a fixed buffer into a temporary file renamed to
+  the hash name, no longer read whole and written to their name directly, so a killed run leaves
+  no truncated file under a full content's name. The media directory is created once the input is
+  read, no longer at its first file.
+- Nesting is read on the read thread's 256 MiB stack, no longer the main thread's, on which deep
+  nesting died by signal.
+- An integer overflow in the parser or the tool is a panic, refused or reported, no longer
+  wrapped silently, as the release binary now checks overflow.
 
 ### Known limits
 
-- Password-protected sections are refused, and skipped inside a notebook, with the parser's
-  `Unexpected end of file`: the encryption scheme is undocumented.
-- No OneNote-written `.onepkg` is tested; the tests build their own.
-- No authored hand truth: every expectation comes from the public Interop-TestSuites (MIT) and
-  onenote.rs (MPL-2.0) fixtures. A later release adds an authored notebook.
-- No desktop-format hand truth.
-- Merged table cells aren't exposed by onenote_parser.
-- Page history isn't read.
-- onenote_parser issues #39 (a copied text container fails a section), #48 (a 375 MB
-  OneDrive-format section needs over 9 GB), and #50 (a missing page space fails a section).
-- Skipped lines come after the notebook's entries, not in their place.
-- A section that fails inside a section group is lost silently.
-- A table-of-contents entry whose file is missing gets no warning.
-- onenote_parser's stdout is redirected to `/dev/null`, and what it prints there is lost.
-- A desktop printout image with no stored extension is named for its filename's extension
-  (`.pdf` for PNG bytes): route a printout image by its byte signature, not its extension.
+- A directory or `.onetoc2` read leaves out a `.one` its table of contents doesn't list, and a
+  listed section whose file is missing, with no warning.
+- A section that fails inside a section group vanishes, and a section that panics the parser
+  refuses its whole notebook.
+- onenote_parser holds a notebook, and a decompressed `.onepkg`, whole in memory; a OneDrive-format
+  section parses its whole storage index (issue #48).
+- Byte identity has three edges in the parser's hash and directory order: a group's table of
+  contents, a OneDrive-format file's storage index and manifest, and the order of two faults.
+- The read thread's 256 MiB stack is an address-space reservation, which an address-space limit
+  must leave room for; it allows outlines nested about 118,000 levels deep on x64.
+- A page with no stored modification time reports its creation time; an untitled page's title is
+  its first line.
+- The Markdown's order differs from `media`'s by design.
+- Password-protected sections are not read; the encryption signal is established for the desktop
+  format only.
+- Page history and merged table cells are not read.
+- Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/JaimeStill/spike-ai-pipeline-onenote/compare/v0.1.0...HEAD
-[v0.1.0]: https://github.com/JaimeStill/spike-ai-pipeline-onenote/releases/tag/v0.1.0
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/onenote/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/onenote/v0.1.0
