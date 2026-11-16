@@ -71,6 +71,24 @@ var (
 		"<svg xmlns=\"http://www.w3.org/2000/svg\">"
 )
 
+// utf16LE returns s in UTF-16LE after its byte order mark; s is ASCII.
+func utf16LE(s string) string {
+	b := []byte{0xff, 0xfe}
+	for i := range len(s) {
+		b = append(b, s[i], 0)
+	}
+	return string(b)
+}
+
+// utf16BE returns s in UTF-16BE after its byte order mark; s is ASCII.
+func utf16BE(s string) string {
+	b := []byte{0xfe, 0xff}
+	for i := range len(s) {
+		b = append(b, 0, s[i])
+	}
+	return string(b)
+}
+
 // TestIdentify: each kind is named by a minimal head of its signature, and each near-miss of a
 // signature is another kind or none.
 func TestIdentify(t *testing.T) {
@@ -131,7 +149,7 @@ func TestIdentify(t *testing.T) {
 		{"gzip", "\x1f\x8b\x08\x00", route.Gzip},
 		{"zstd", "\x28\xb5\x2f\xfd\x04", route.Zstd},
 		{"7z", "7z\xbc\xaf\x27\x1c\x00\x04", route.SevenZip},
-		{"pe", "MZ\x90\x00\x03\x00", route.PE},
+		{"pe", peBytes, route.PE},
 		{"elf", "\x7fELF\x02\x01\x01", route.ELF},
 		{"mach-o 32-bit", "\xfe\xed\xfa\xce\x00", route.MachO},
 		{"mach-o 64-bit", "\xfe\xed\xfa\xcf\x00", route.MachO},
@@ -139,6 +157,12 @@ func TestIdentify(t *testing.T) {
 		{"mach-o 64-bit little-endian", "\xcf\xfa\xed\xfe\x00", route.MachO},
 		{"mach-o universal", "\xca\xfe\xba\xbe\x00", route.MachO},
 		{"shebang", "#!/bin/sh\necho hi\n", route.Shebang},
+		{"shebang with a space", "#! \t/usr/bin/env python3\n", route.Shebang},
+		{"pdf after white space", "\r\n \x00\t" + pdfBytes, route.PDF},
+		{"pdf after a byte order mark", "\xef\xbb\xbf\n" + pdfBytes, route.PDF},
+		{"pdf header at 1,023", strings.Repeat(" ", 1023) + pdfBytes, route.PDF},
+		{"svg in utf-16 little-endian", utf16LE(svgProlog), route.SVG},
+		{"svg in utf-16 big-endian", utf16BE(svgPlain), route.SVG},
 		{"utf-8 bom", "\xef\xbb\xbfplain text", route.UTF8BOM},
 		{"utf-16 little-endian bom", "\xff\xfea\x00", route.UTF16BOM},
 		{"utf-16 big-endian bom", "\xfe\xff\x00a", route.UTF16BOM},
@@ -171,6 +195,18 @@ func TestIdentify(t *testing.T) {
 		{"tar magic cut short", tarHeader("a.txt", "ustar")[:261], route.Unknown},
 		{"tar magic elsewhere", tarHeader("a.txt", "")[:256] + "ustar", route.Unknown},
 		{"wordperfect without its ff", "WPC\x10", route.Unknown},
+		{"pdf header at 1,024", strings.Repeat(" ", 1024) + pdfBytes, route.Unknown},
+		{"pdf header after text", "a report\n" + pdfBytes, route.Unknown},
+		{"mz text", "MZ is a prefix, and this is prose that runs past the DOS header's sixty-four bytes", route.Unknown},
+		{"mz without a pe signature", pe(0x40)[:0x40] + strings.Repeat("\x00", 0x40), route.Unknown},
+		{"pe signature past the head", pe(route.HeadLen), route.Unknown},
+		{"id3 text", "ID3 tags name a track's artist", route.Unknown},
+		{"id3 of an unknown version", "ID3\x09\x00\x00\x00\x00\x00\x22", route.Unknown},
+		{"id3 with a size's high bit set", "ID3\x04\x00\x00\x80\x00\x00\x22", route.Unknown},
+		{"id3 cut short", "ID3\x04\x00\x00", route.Unknown},
+		{"shebang without a path", "#!python\n", route.Unknown},
+		{"shebang prose", "#! is a shebang\n", route.Unknown},
+		{"utf-16 text", utf16LE("plain text"), route.UTF16BOM},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

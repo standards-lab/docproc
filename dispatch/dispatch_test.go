@@ -66,18 +66,19 @@ func TestDepthFirst(t *testing.T) {
 
 // TestOutcomes: one input reaches every outcome but limited: a route with no stage and a stage
 // with no processor yet are no processor yet; a stage's ErrEncrypted, and a failing stage on
-// content flagged encrypted, are encrypted; a stage's failure is failed; a ZIP with a ".." entry
-// is quarantined, no stage run and its file kept; content equal to an ancestor's is a cycle;
+// content flagged encrypted, are encrypted; a stage's failure is failed; a ZIP whose central
+// directory can't be read is quarantined, no stage run and its file kept; content equal to an ancestor's is a cycle;
 // and content seen earlier in the input is seen, carrying its first event's outputs and flags.
 func TestOutcomes(t *testing.T) {
-	top := "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\ncopy traversal.zip\ncopy encrypted.zip\nfile loop.txt\ncopy javascript.pdf\nfile s1.txt\nfile s2.txt"
+	top := "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\nfile broken.zip\ncopy encrypted.zip\nfile loop.txt\ncopy javascript.pdf\nfile s1.txt\nfile s2.txt"
 	world := map[string]string{
-		"x.bin":    "\x00\x01no signature",
-		"n.txt":    "noproc",
-		"e.txt":    "encrypted",
-		"f.txt":    "leaf\nfail",
-		"loop.txt": "file again.txt",
-		"again.txt": "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\ncopy traversal.zip\ncopy encrypted.zip\nfile loop.txt\n" +
+		"x.bin":      "\x00\x01no signature",
+		"n.txt":      "noproc",
+		"e.txt":      "encrypted",
+		"f.txt":      "leaf\nfail",
+		"loop.txt":   "file again.txt",
+		"broken.zip": "PK\x03\x04 and no central directory",
+		"again.txt": "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\nfile broken.zip\ncopy encrypted.zip\nfile loop.txt\n" +
 			"copy javascript.pdf\nfile s1.txt\nfile s2.txt",
 		"s1.txt": "same",
 		"s2.txt": "same",
@@ -97,7 +98,7 @@ func TestOutcomes(t *testing.T) {
 		{"n.txt", 1, dispatch.NoProcessor},
 		{"e.txt", 1, dispatch.Encrypted},
 		{"f.txt", 1, dispatch.Failed},
-		{"traversal.zip", 1, dispatch.Quarantined},
+		{"broken.zip", 1, dispatch.Quarantined},
 		{"encrypted.zip", 1, dispatch.Encrypted},
 		{"again.txt", 2, dispatch.Cycle},
 		{"loop.txt", 1, dispatch.Prepared},
@@ -118,14 +119,14 @@ func TestOutcomes(t *testing.T) {
 	if ev := byName(t, events, "f.txt"); ev.Err == nil || len(ev.Outputs) != 1 {
 		t.Errorf("f.txt: %v, its outputs before the failure %+v", ev.Err, ev.Outputs)
 	}
-	q := byName(t, events, "traversal.zip")
-	if !(inspect.Report{Flags: q.Part.Flags}).Has(inspect.ZIPTraversal) || q.Reason == "" {
-		t.Errorf("traversal.zip: %+v, %q", q.Part.Flags, q.Reason)
+	q := byName(t, events, "broken.zip")
+	if !hasFlag(q.Part.Flags, inspect.ZIPUnreadable) || q.Reason == "" {
+		t.Errorf("broken.zip: %+v, %q", q.Part.Flags, q.Reason)
 	}
 	if _, err := os.Stat(quarantinedPath); err != nil {
 		t.Errorf("the quarantined file isn't kept: %v", err)
 	}
-	if enc := byName(t, events, "encrypted.zip"); !(inspect.Report{Flags: enc.Part.Flags}).Has(inspect.ZIPEncrypted) || enc.Err == nil {
+	if enc := byName(t, events, "encrypted.zip"); !hasFlag(enc.Part.Flags, inspect.ArchiveEncrypted) || enc.Err == nil {
 		t.Errorf("encrypted.zip: %+v, %v", enc.Part.Flags, enc.Err)
 	}
 	if f.archive.called() != 1 {
@@ -244,7 +245,7 @@ func TestSeenAcrossInputs(t *testing.T) {
 				t.Errorf("shared.txt's %d children, read back: %+v", shared.Children, got)
 			}
 			pdf := byName(t, events, "javascript.pdf")
-			if !(inspect.Report{Flags: pdf.Part.Flags}).Has(inspect.PDFJavaScript) || string(pdf.Outputs[0].Value) != `{"name":"javascript.pdf"}` {
+			if !hasFlag(pdf.Part.Flags, inspect.PDFJavaScript) || string(pdf.Outputs[0].Value) != `{"name":"javascript.pdf"}` {
 				t.Errorf("javascript.pdf: flags %+v, outputs %+v", pdf.Part.Flags, pdf.Outputs)
 			}
 			if f.text.called("shared.txt") != 1 || f.text.called("inner.txt") != 1 || f.pdf.called() != 1 {

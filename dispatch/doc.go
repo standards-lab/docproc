@@ -85,7 +85,7 @@
 //     pages. Given pdfdetach, through its [PDFDetach], each embedded file, the name tree's and
 //     the file attachment annotations', is written under its SHA-256, never its stored name, and
 //     found "attachment <name>", the bomb rule enforced on the bytes written, as the archive
-//     stage enforces it, its check inspect.PDFAttachmentBomb; the media behind a Screen or
+//     stage enforces it, its check inspect.ArchiveBomb; the media behind a Screen or
 //     Rendition annotation isn't extracted.
 //   - [OfficeStage], for route.Office: office's Markdown, and each medium office wrote, a
 //     converted picture as its PNG, found as a part, an RTF converted to docx first, as a legacy
@@ -154,25 +154,25 @@
 //
 // Before anything of a 7z, a cabinet, or a zstd stream is extracted, 7-Zip's listing is checked
 // by inspect.CheckListing against the rules inspect holds a tar to, a traversing, absolute, or
-// drive letter name, a link, a device, and an entry past both bomb thresholds by its declared
-// size, and a verdict to quarantine, under the policy of the inspect.Options its [ArchiveConfig]
-// is given, ends the stage with a [QuarantineError]: the part is [Quarantined], the listing's
-// flags its evidence, as inspect would have quarantined it. An encrypted 7z entry is a record and
+// drive letter name, a link, a device, and an entry past the bomb rule by its declared size, and a
+// verdict to quarantine, under the policy of the inspect.Options its [ArchiveConfig] is given,
+// ends the stage with a [QuarantineError]: the part is [Quarantined], the listing's flags its
+// evidence, as inspect would have quarantined it. An encrypted 7z entry is a record and
 // the 7z [Encrypted] once its other entries are dispatched, and a 7z whose headers are encrypted
 // is Encrypted at once.
 //
-// The stage enforces inspect's bomb rule again on the bytes it writes, or reads from 7zz, under
-// the thresholds of those inspect.Options, which should be the dispatcher's: an entry or stream
-// past both is stopped, its partial file removed, and recorded quarantined, with its evidence,
+// The stage enforces inspect's bomb rule again on the bytes it writes, or reads from 7zz, the rule
+// of those inspect.Options, which should be the dispatcher's, none when they set none: an entry
+// or stream past it is stopped, its partial file removed, and recorded quarantined, with its evidence,
 // whatever its header or listing declared; the ratio is a ZIP entry's against its compressed
 // size, a tar, 7z, or cabinet entry's against the whole archive's, and a gzip or zstd stream's
 // against the stream's. With no 7-Zip, a zstd stream, a 7z archive, or a cabinet has no processor
 // yet, and a ZIP entry 7-Zip would read is a record. Its identity is "archive", this package's
-// version of it, and a hash of its thresholds and its 7-Zip's version. A ZIP or tar with a
+// version of it, and a hash of its bomb rule and its 7-Zip's version. A ZIP or tar with a
 // traversing, absolute, or drive letter name, a ZIP's symbolic link, or a tar's link or device,
-// is quarantined by inspect before the stage runs; under a policy that lets it proceed, the stage
-// still writes each entry by its hash, inside the part's directory, as it does a 7z's or a
-// cabinet's.
+// is flagged active by inspect, and proceeds unless a policy quarantines it; the stage writes
+// each entry by its hash, inside the part's directory, as it does a 7z's or a cabinet's, and
+// records a link or device, no link or node made.
 //
 // [TextStage], for route.Text, is no format package's adapter either, and runs no tool, on any
 // platform: it yields one [TextOutput], "text", UTF-8, its line endings as stored. Its encoding

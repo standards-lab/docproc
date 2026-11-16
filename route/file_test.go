@@ -44,7 +44,7 @@ func TestFileRoutes(t *testing.T) {
 		{"cabinet named .ONEPKG", mscf, "NOTEBOOK.ONEPKG", "", route.OneNote, "cabinet signature, .onepkg extension"},
 		{"cabinet named .cab", mscf, "drivers.cab", "application/vnd.ms-cab-compressed", route.Archive, "cabinet signature without a .onepkg extension"},
 
-		{"zip", zipBytes, "a.zip", "application/zip", route.Archive, "ZIP signature without an OOXML extension or ODF mimetype"},
+		{"zip", zipBytes, "a.zip", "application/zip", route.Archive, "ZIP signature without an OOXML extension, [Content_Types].xml, or ODF mimetype"},
 		{"zip named .xlsb, which office doesn't read yet", zipBytes, "a.xlsb", "", route.Office, "ZIP signature, .xlsb extension, an Excel binary workbook"},
 		{"zip named .XLSB", zipBytes, "A.XLSB", "", route.Office, "ZIP signature, .xlsb extension, an Excel binary workbook"},
 		{"ole2 named .xlsb", ole2Bytes, "a.xlsb", "", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
@@ -88,8 +88,9 @@ func TestFileRoutes(t *testing.T) {
 		{"text stored as text/plain without a name", "plain text", "", "text/plain", route.Unrouted, "no routed signature"},
 		{"pdf named .txt", pdfBytes, "a.txt", "text/plain", route.Document, "PDF signature"},
 
-		// The .eml rule comes before text: a byte order mark breaks the header's shape.
-		{"eml with a byte order mark", "\xef\xbb\xbf" + headerShaped, "fwd.eml", "", route.Unrouted, "a message by its .eml extension, but not header-shaped"},
+		// The .eml rule comes before text, and a header after a UTF-8 byte order mark is
+		// header-shaped.
+		{"eml with a byte order mark", "\xef\xbb\xbf" + headerShaped, "fwd.eml", "", route.Nested, "a message by its .eml extension, header-shaped"},
 		{"rfc822 named .txt", headerShaped, "fwd.txt", "message/rfc822", route.Nested, "a message by its message/rfc822 type, header-shaped"},
 		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Unrouted, "a message by its message/rfc822 type, but not header-shaped"},
 
@@ -102,11 +103,12 @@ func TestFileRoutes(t *testing.T) {
 		{"mbox named .eml", mboxBytes, "a.eml", "message/rfc822", route.Nested, `mbox "From " line`},
 		{"mbox line named .txt, prose", "From the desk of Ann\n", "letter.txt", "text/plain", route.Text, "text by its .txt extension"},
 
-		{"pe", "MZ\x90\x00\x03\x00", "setup.exe", "application/x-msdownload", route.Unrouted, "PE signature, an executable"},
-		{"pe named .pdf", "MZ\x90\x00\x03\x00", "invoice.pdf", "application/pdf", route.Unrouted, "PE signature, an executable"},
+		{"pe", peBytes, "setup.exe", "application/x-msdownload", route.Unrouted, "PE signature, an executable"},
+		{"pe named .pdf", peBytes, "invoice.pdf", "application/pdf", route.Unrouted, "PE signature, an executable"},
 		{"elf", "\x7fELF\x02\x01\x01", "a", "", route.Unrouted, "ELF signature, an executable"},
 		{"mach-o", "\xcf\xfa\xed\xfe\x00", "a.dylib", "", route.Unrouted, "Mach-O signature, an executable"},
-		{"shebang named .txt", "#!/bin/sh\necho hi\n", "notes.txt", "text/plain", route.Unrouted, `"#!" line, an executable script`},
+		{"shebang", "#!/bin/sh\necho hi\n", "run", "", route.Unrouted, `"#!" line, an executable script`},
+		{"shebang named .sh", "#! /bin/sh\necho hi\n", "run.sh", "text/x-shellscript", route.Unrouted, `"#!" line, an executable script`},
 	}
 	dir := t.TempDir()
 	for _, c := range cases {

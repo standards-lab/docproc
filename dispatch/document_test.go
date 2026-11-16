@@ -264,11 +264,11 @@ func pngOf(t *testing.T) string {
 
 // TestDocumentStageAttachmentBomb: an embedded file of 8 MiB of zeros from a PDF of a few bytes
 // passes the ratio at once; under a 1 MiB bomb size, its saving stops just past it, its partial
-// file is removed, and it is a record named by its place, its check pdf-attachment-bomb, unsafe,
+// file is removed, and it is a record named by its place, its check archive-bomb, unsafe,
 // its outcome quarantined, with the bytes written as evidence; the PDF's pages are prepared.
 func TestDocumentStageAttachmentBomb(t *testing.T) {
 	zeros := string(make([]byte, 8<<20))
-	s := formsDocumentStage(t, nil, &fakeDetach{files: []string{"zeros.bin", zeros}}, inspect.Options{BombSize: 1 << 20})
+	s := formsDocumentStage(t, nil, &fakeDetach{files: []string{"zeros.bin", zeros}}, inspect.Options{BombRatio: 1000, BombSize: 1 << 20})
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Document: s}, Index: dispatch.NewMemoryIndex(), Dir: work})
 	if err != nil {
@@ -277,7 +277,7 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 	events := dispatchAll(t, d, input(t, "bomb.pdf", "%PDF-1.7\n%%EOF\n"), nil)
 	wantSteps(t, events, []step{{"bomb.pdf", 0, dispatch.Prepared}})
 	rec := outputNamed(t, events[0], dispatch.RecordOutput, "attachment zeros.bin")
-	if rec.Meta["check"] != string(inspect.PDFAttachmentBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
+	if rec.Meta["check"] != string(inspect.ArchiveBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
 		rec.Meta["outcome"] != string(dispatch.Quarantined) || !strings.Contains(rec.Meta["evidence"], "from a 15-byte PDF") {
 		t.Errorf("zeros.bin's record: %v", rec.Meta)
 	}
@@ -307,18 +307,18 @@ func TestDocumentIdentity(t *testing.T) {
 		return s.Identity().Config
 	}
 	base := id(dispatch.DocumentConfig{})
-	if id(dispatch.DocumentConfig{Inspect: inspect.Options{BombSize: 1}}) != base {
+	if id(dispatch.DocumentConfig{Inspect: inspect.Options{BombRatio: 1, BombSize: 1}}) != base {
 		t.Error("bomb thresholds changed the identity of a stage with no pdfdetach")
 	}
 	withQPDF := id(dispatch.DocumentConfig{QPDF: &fakeQPDF{}})
 	withDetach := id(dispatch.DocumentConfig{PDFDetach: &fakeDetach{}})
-	lowered := id(dispatch.DocumentConfig{PDFDetach: &fakeDetach{}, Inspect: inspect.Options{BombSize: 1}})
+	lowered := id(dispatch.DocumentConfig{PDFDetach: &fakeDetach{}, Inspect: inspect.Options{BombRatio: 1, BombSize: 1}})
 	all := []string{base, withQPDF, withDetach, lowered}
 	slices.Sort(all)
 	if len(slices.Compact(all)) != 4 {
 		t.Errorf("configs %s, %s, %s, %s: want four", base, withQPDF, withDetach, lowered)
 	}
-	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "x", Inspect: inspect.Options{BombRatio: -1}}); err == nil {
+	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "x", Inspect: inspect.Options{BombRatio: -1, BombSize: 1}}); err == nil {
 		t.Error("a negative bomb ratio was taken")
 	}
 }

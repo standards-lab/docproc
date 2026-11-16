@@ -24,7 +24,18 @@ var (
 	zipBytes  = "PK\x03\x04\x14\x00\x06\x00[Content_Types].xml"
 	ole2Bytes = "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1\x00\x00\x00\x00"
 	wmfPlace  = "\xd7\xcd\xc6\x9a\x00\x00\x00\x00"
+	peBytes   = pe(0x40)
 )
+
+// pe returns a PE executable's first bytes: "MZ", e_lfanew at 0x3c naming at, and the PE
+// signature at at.
+func pe(at uint32) string {
+	b := make([]byte, 0x80)
+	copy(b, "MZ")
+	binary.LittleEndian.PutUint32(b[0x3c:], at)
+	copy(b[0x40:], "PE\x00\x00")
+	return string(b)
+}
 
 // bmp returns a BMP's first bytes, its DIB header size at offset 14 being dib.
 func bmp(dib uint32) string {
@@ -197,7 +208,7 @@ func TestFileMessages(t *testing.T) {
 
 		// A signature decides first.
 		{"pdf named and stored as a message", pdfBytes, "a.eml", "message/rfc822", route.Document, "PDF signature"},
-		{"zip named as a message", zipBytes, "a.eml", "message/rfc822", route.Archive, "ZIP signature without an OOXML extension or ODF mimetype"},
+		{"zip named as a message", zipBytes, "a.eml", "message/rfc822", route.Archive, "ZIP signature without an OOXML extension, [Content_Types].xml, or ODF mimetype"},
 		{"ole2 stored as a message", ole2Bytes, "a.msg", "message/rfc822", route.Nested, "OLE2 signature, .msg extension"},
 	}
 	dir := t.TempDir()

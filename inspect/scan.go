@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/standards-lab/docproc/route"
 )
@@ -42,12 +43,11 @@ var containerKinds = map[route.Kind]bool{
 	route.Shebang: true,
 }
 
-// The signatures the stream looks for: a ZIP's end-of-central-directory record, a PDF's header,
-// and the name of an encrypted OOXML package's stream in an OLE2 directory, in UTF-16LE.
+// The signatures the stream looks for: a ZIP's end-of-central-directory record and a PDF's
+// header.
 var (
-	eocdSignature    = []byte("PK\x05\x06")
-	pdfHeader        = []byte("%PDF-")
-	encryptedPackage = utf16le("EncryptedPackage")
+	eocdSignature = []byte("PK\x05\x06")
+	pdfHeader     = []byte("%PDF-")
 )
 
 // eocdLen is the length of an end-of-central-directory record without its comment.
@@ -57,29 +57,19 @@ const eocdLen = 22
 // the last ones, where a ZIP appended to a file has its record.
 const maxEOCDCandidates = 64
 
-// utf16le returns s, ASCII, in UTF-16LE.
-func utf16le(s string) []byte {
-	b := make([]byte, 0, 2*len(s))
-	for i := range len(s) {
-		b = append(b, s[i], 0)
-	}
-	return b
-}
-
 // pattern is a byte string the stream looks for, and what it does at each offset it is found.
 type pattern struct {
 	sig   []byte
 	found func(off int64)
 }
 
-// stream reads the whole file once, from its start, for what the kind and the extension call
-// for: the PDF names in a PDF, the polyglot signatures in content that isn't a container, and an
-// EncryptedPackage stream in an OLE2 compound file named as an OOXML package. Its memory is a
+// stream reads the whole content once, from its start, for what its kind calls for: the PDF
+// names in a PDF, and the polyglot signatures in content that isn't a container. Its memory is a
 // chunk and a few bytes carried between chunks.
 func (in *inspection) stream(ctx context.Context) error {
 	var patterns []pattern
 	var names *pdfScanner
-	if in.kind == route.PDF || in.ext == ".pdf" {
+	if in.kind == route.PDF {
 		names = &pdfScanner{in: in}
 	}
 	var eocd []int64
@@ -96,9 +86,6 @@ func (in *inspection) stream(ctx context.Context) error {
 			}})
 		}
 	}
-	if in.kind == route.OLE2 && ooxmlExtensions[in.ext] {
-		patterns = append(patterns, pattern{encryptedPackage, func(int64) { in.encryptedPackage = true }})
-	}
 	if names == nil && len(patterns) == 0 {
 		return nil
 	}
@@ -107,9 +94,7 @@ func (in *inspection) stream(ctx context.Context) error {
 	for _, p := range patterns {
 		carryMax = max(carryMax, len(p.sig)-1)
 	}
-	if _, err := in.file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("inspect: %w", err)
-	}
+	file := io.NewSectionReader(in.file, 0, in.size)
 	buf := make([]byte, carryMax+chunkSize)
 	carry := 0
 	var base int64 // the file offset of buf[0]
@@ -117,7 +102,7 @@ func (in *inspection) stream(ctx context.Context) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		n, err := in.file.Read(buf[carry : carry+chunkSize])
+		n, err := file.Read(buf[carry : carry+chunkSize])
 		if n > 0 {
 			data := buf[:carry+n]
 			for _, p := range patterns {
@@ -178,9 +163,12 @@ func (in *inspection) checkEOCD(candidates []int64) error {
 	return nil
 }
 
-// pdfScanner reads a PDF's names, a chunk at a time, as pdfid does: a name begins with "/" and
-// runs to the next delimiter or whitespace, and "#" and two hex digits stand for a byte, so
-// /J#61vaScript is /JavaScript.
+// pdfScanner reads a PDF's names, a chunk at a time, as pdfid does, but for a stream's data: a
+// name begins with "/" and runs to the next delimiter or whitespace, and "#" and two hex digits
+// stand for a byte, so /J#61vaScript is /JavaScript. A stream's data, from the end of line after
+// its "stream" keyword through its "endstream", is skipped, since its bytes are compressed or
+// binary and any "/" in them is no name; a name inside a compressed object stream is unseen, as
+// it is by pdfid.
 type pdfScanner struct {
 	in *inspection
 	// raw is the name being read, its "/" left out; inName is set while one is.
@@ -189,7 +177,20 @@ type pdfScanner struct {
 	// start is the file offset of the name's "/"; long is set once it outgrows maxPDFName.
 	start int64
 	long  bool
+	// word is the run of regular bytes being read outside a name, kept up to one byte longer
+	// than "stream", so a "stream" keyword is told from a longer word.
+	word []byte
+	// inStream is set within a stream's data; tail is its last bytes read, fewer than
+	// "endstream", carried to the next chunk.
+	inStream bool
+	tail     []byte
 }
+
+// The keywords that begin and end a stream's data.
+var (
+	streamKeyword    = []byte("stream")
+	endstreamKeyword = []byte("endstream")
+)
 
 // pdfDelimiter reports whether b ends a PDF name: whitespace or a delimiter.
 func pdfDelimiter(b byte) bool {
@@ -203,32 +204,68 @@ func pdfDelimiter(b byte) bool {
 // scan reads chunk, whose first byte is at file offset base.
 func (s *pdfScanner) scan(chunk []byte, base int64) {
 	for i := 0; i < len(chunk); {
-		if !s.inName {
-			j := bytes.IndexByte(chunk[i:], '/')
-			if j < 0 {
+		if s.inStream {
+			n, ok := s.skip(chunk[i:])
+			if !ok {
 				return
 			}
-			i += j
-			s.begin(base + int64(i))
-			i++
+			i += n
 			continue
 		}
 		b := chunk[i]
-		if pdfDelimiter(b) {
-			s.end()
-			if b == '/' {
-				s.begin(base + int64(i))
-			}
-			i++
-			continue
-		}
-		if len(s.raw) < maxPDFName {
-			s.raw = append(s.raw, b)
-		} else {
-			s.long = true
-		}
 		i++
+		if s.inName {
+			if !pdfDelimiter(b) {
+				if len(s.raw) < maxPDFName {
+					s.raw = append(s.raw, b)
+				} else {
+					s.long = true
+				}
+				continue
+			}
+			s.end()
+		}
+		switch {
+		case b == '/':
+			s.begin(base + int64(i-1))
+			s.word = s.word[:0]
+		case pdfDelimiter(b):
+			if (b == '\r' || b == '\n') && bytes.Equal(s.word, streamKeyword) {
+				s.inStream = true
+			}
+			s.word = s.word[:0]
+		case len(s.word) <= len(streamKeyword):
+			s.word = append(s.word, b)
+		}
 	}
+}
+
+// skip reads data within a stream for its "endstream", which may begin in the chunk before. It
+// returns how many of data's bytes the stream's data and its keyword took, and false when the
+// stream runs past data, its last bytes kept for the next chunk.
+func (s *pdfScanner) skip(data []byte) (int, bool) {
+	// A keyword across the chunks' boundary: the bytes carried, then data's first.
+	joined := append(slices.Clip(s.tail), data[:min(len(data), len(endstreamKeyword)-1)]...)
+	if k := bytes.Index(joined, endstreamKeyword); k >= 0 {
+		return s.close(k + len(endstreamKeyword) - len(s.tail)), true
+	}
+	if k := bytes.Index(data, endstreamKeyword); k >= 0 {
+		return s.close(k + len(endstreamKeyword)), true
+	}
+	keep := len(endstreamKeyword) - 1
+	if len(data) >= keep {
+		s.tail = append(s.tail[:0], data[len(data)-keep:]...)
+	} else {
+		s.tail = append(s.tail, data...)
+		s.tail = s.tail[max(0, len(s.tail)-keep):]
+	}
+	return len(data), false
+}
+
+// close ends a stream's data at n bytes into the chunk being read, and returns n.
+func (s *pdfScanner) close(n int) int {
+	s.inStream, s.tail, s.word = false, s.tail[:0], s.word[:0]
+	return n
 }
 
 // begin starts a name whose "/" is at file offset off.

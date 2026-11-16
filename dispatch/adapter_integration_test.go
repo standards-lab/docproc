@@ -409,7 +409,7 @@ func TestOfficeEncrypted(t *testing.T) {
 		if ev.Part.Route != route.Office || !strings.Contains(ev.Part.Reason, "an encrypted OOXML package") {
 			t.Errorf("%s: route %q (%s), want office as an encrypted OOXML package", name, ev.Part.Route, ev.Part.Reason)
 		}
-		if !(inspect.Report{Flags: ev.Part.Flags}).Has(inspect.OOXMLEncrypted) || !errors.Is(ev.Err, dispatch.ErrEncrypted) {
+		if !hasFlag(ev.Part.Flags, inspect.OOXMLEncrypted) || !errors.Is(ev.Err, dispatch.ErrEncrypted) {
 			t.Errorf("%s: flags %+v, %v; want ooxml-encrypted and ErrEncrypted", name, ev.Part.Flags, ev.Err)
 		}
 	}

@@ -2,10 +2,10 @@
 
 The inspect package's synthesized hazard fixtures, each the smallest file that raises the checks
 it is for, and the clean tars and gzip streams the dispatcher's archive stage reads beside them.
-`~/docs`' archive hazards aren't redistributable, so none is copied; these stand in for them, and
-`TestDocs` reads `~/docs` itself when the machine has it. `generate.go` wrote them, every byte
-fixed, so a rerun writes the same files: run `go run generate.go` in this directory. The check
-never runs it, and reads the committed files. All are this repository's, Apache-2.0.
+`~/docs`' archive hazards aren't redistributable, so none is copied; these stand in for them.
+`generate.go` wrote them, every byte fixed, so a rerun writes the same files: run
+`go run generate.go` in this directory. The check never runs it, and reads the committed files;
+`TestFixtureNotes` holds the table below to them. All are this repository's, Apache-2.0.
 
 | File | Bytes | SHA-256 |
 | --- | --- | --- |
@@ -23,10 +23,14 @@ never runs it, and reads the committed files. All are this repository's, Apache-
 | `hyperlink.docx` | 1417 | `47c14f5431b38bd39ae76de5adf30a461bc76e7c735c55f22052c314f7232447` |
 | `invoice.pdf.exe` | 128 | `cbcb41c3a3adf01c68ffb4774e8fe6751e2c0aa9d4f107ffe8788fa1efa2313f` |
 | `javascript.pdf` | 386 | `0e4e1af14eb92b29a67e1ef3b863477f6448e19fed307f0269c0d34a551af3c6` |
+| `macro-latin1.docm` | 2754 | `8f3036273db922f9b889e0ede2e51fc1241127cc188f54c344f73ee532a5dd80` |
+| `macro-utf16.docm` | 2808 | `2ebbe84aeb5d157ab1bc19711d1a144827dd3ffc49abd4d6676cc5b6a2e0c054` |
 | `macro.docm` | 2746 | `79ba5fa3dc140f3d7e966bdc1f2258c18ada508cb76e022c128375dc01f98f2d` |
 | `mismatch.pdf` | 33 | `9eaf66cb2ab9389f42744617015dfdbfa9a382221513149241ab355a2bd32ea4` |
 | `polyglot.jpg` | 190 | `d1c17866e30e36d4e5b8040631e3c42bd45a9415b2b5d44ef52b19010f7b1216` |
 | `polyglot.png` | 48 | `cbd5685675f5c3a29790e5f2b5a5f5cd7aacb999e70cd03621952976302ce264` |
+| `script-latin1.svg` | 568 | `29d1914fc02bd68716feb3e7edd7cf767cf37ea5cc24e747f887b8e79d413666` |
+| `script-utf16.svg` | 1090 | `9f1725ddc29d8b8609b4b86ba4d291df16265a2dee885756ca1876dd5ebb24b4` |
 | `script.svg` | 543 | `be93fc0e63c0e3e9d4d3ea8d9aa52c3b8cdd3227d1e88ff4c8104540d2ca5783` |
 | `sparse-bomb.tar` | 2048 | `31c60295ae2a76c9cd58239726270eacb7d9a5acad061b54776e1c36c3f94bb3` |
 | `symlink.tar` | 2560 | `d1ddfb6699bd0ce451daaf8c97c53ce85cf5218dd00bda61ed7f18308ac0ca0f` |
@@ -36,27 +40,35 @@ never runs it, and reads the committed files. All are this repository's, Apache-
 | `traversal.zip` | 371 | `9b7f69a81b3f8fb353da43685093219d9a370d0d4df10e7dcdd04c8f33750577` |
 | `unnamed.tgz` | 208 | `543030f5bcd7cbbbbf076657dd7ad8e1c4ac68a65b2d0517a268a5b06ea21e33` |
 
-What each holds:
+The bomb fixtures are described against the tests' rule of 1,000:1 and 1 GiB; inspect has no
+default rule. What each holds:
 
 - `traversal.zip`: an ordinary entry and `docs/../../evil.txt`, a ".." element.
 - `absolute.zip`: `/tmp/evil.txt`, an absolute path, and `C:\evil.txt`, a drive letter.
 - `symlink.zip`: an ordinary entry and `passwd`, a symbolic link to `/etc/passwd` by its Unix
   mode.
-- `bomb.zip`: 8 MiB of zeros in one entry, about 1,030:1: past the default ratio, under the
-  default 1 GiB, so a test lowers the size to see the rule fire.
+- `bomb.zip`: 8 MiB of zeros in one entry, about 1,030:1: past the rule's ratio, under its
+  1 GiB, so a test lowers the size to see the rule fire.
 - `declared-bomb.zip`: one entry whose central directory declares 4 GiB expanded from 11 bytes,
-  past both defaults by the declared sizes alone; its real content is 1 KiB of zeros.
+  past both of the rule's bounds by the declared sizes alone; its real content is 1 KiB of zeros.
 - `encrypted.zip`: an ordinary entry and `secret.txt`, marked encrypted by its general purpose
   flags; its content isn't ciphertext.
 - `macro.docm`: a WordprocessingML package with a `word/vbaProject.bin`, an ActiveX part, an OLE
   object embedding, and a remote template, an external attachedTemplate relationship in
   `word/_rels/settings.xml.rels`, beside an external hyperlink, which isn't active content. The
   binary parts are placeholders.
+- `macro-latin1.docm`: `macro.docm` with its remote template's relationships part declared
+  ISO-8859-1, the template's name, `modèle.dotm`, in Latin-1's bytes.
+- `macro-utf16.docm`: `macro.docm` with that relationships part in UTF-16LE after its byte order
+  mark, declared UTF-16.
 - `hyperlink.docx`: the same package with its external hyperlink alone.
 - `javascript.pdf`: a one-page PDF whose catalog runs JavaScript through /OpenAction and again
   through /AA, the second action's /S hex-escaped as /J#61vaScript.
 - `script.svg`: an onload handler, a script element, an external xlink:href, and a
   foreignObject, beside an internal href and a data: href, which aren't external.
+- `script-latin1.svg`: `script.svg` declared ISO-8859-1, with a comment line of Latin-1 bytes,
+  `Café crème`, after its declaration.
+- `script-utf16.svg`: `script.svg` in UTF-16LE after its byte order mark, declared UTF-16.
 - `invoice.pdf.exe`: the start of a PE executable, MZ and a PE signature, named with a double
   extension.
 - `mismatch.pdf`: a PNG's signature, named .pdf.
@@ -80,8 +92,8 @@ What each holds:
   `pipe`, a FIFO.
 - `sparse-bomb.tar`: one old GNU sparse entry, written by hand, since archive/tar writes none,
   whose header declares 4 GiB, all a hole but its last 512 bytes, the only bytes stored, in a
-  2 KiB tar: past both default thresholds by its header alone, and as written once its hole is
+  2 KiB tar: past both of the rule's bounds by its header alone, and as written once its hole is
   read as zeros.
 - `bomb.tar.gz`: a tar of 8 MiB of zeros in one entry as a gzip stream, about 1,018:1 as it
-  decompresses: past the default ratio, under the default 1 GiB, as `bomb.zip` is, so a test
+  decompresses: past the rule's ratio, under its 1 GiB, as `bomb.zip` is, so a test
   lowers the size to see the rule fire. The tar it holds is no bomb.

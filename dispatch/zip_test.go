@@ -219,7 +219,7 @@ func TestZipEncrypted(t *testing.T) {
 		t.Errorf("encrypted.zip: %q, %v, %d children", z.Reason, z.Err, z.Children)
 	}
 	rec := outputNamed(t, z, dispatch.RecordOutput, "zip entry secret.txt")
-	if rec.Meta["check"] != string(inspect.ZIPEncrypted) || rec.Meta["reason"] != "encrypted" || rec.Meta["name"] != "secret.txt" ||
+	if rec.Meta["check"] != string(inspect.ArchiveEncrypted) || rec.Meta["reason"] != "encrypted" || rec.Meta["name"] != "secret.txt" ||
 		rec.Meta["outcome"] != string(dispatch.Encrypted) {
 		t.Errorf("secret.txt's record meta %v", rec.Meta)
 	}
@@ -229,10 +229,10 @@ func TestZipEncrypted(t *testing.T) {
 // TestZipBombAsWritten dispatches an entry whose central directory declares 1 KiB while it
 // expands to 8 MiB: inspect, reading the declared sizes, lets it proceed; under lowered
 // thresholds the stage stops writing it once its bytes pass both, removes the partial file, and
-// records it quarantined with its evidence. At the defaults it is written in full, and recorded
+// records it quarantined with its evidence. With no bomb rule it is written in full, and recorded
 // for the lie: its bytes aren't what its central directory declares. inspect's bomb.zip, honest
 // and past lowered thresholds, is quarantined before the stage, but under a policy that lets
-// zip-bomb proceed the stage stops it as written.
+// archive-bomb proceed the stage stops it as written.
 func TestZipBombAsWritten(t *testing.T) {
 	lying := zipBytes(t, zent{name: "zeros.bin", body: string(make([]byte, 8<<20)), declared: 1024})
 	lowered := inspect.Options{BombSize: 1 << 20, BombRatio: 100}
@@ -245,7 +245,7 @@ func TestZipBombAsWritten(t *testing.T) {
 	})
 	wantSteps(t, events, []step{{"lying.zip", 0, dispatch.Prepared}})
 	rec := outputNamed(t, events[0], dispatch.RecordOutput, "zip entry zeros.bin")
-	if rec.Meta["check"] != string(inspect.ZIPBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
+	if rec.Meta["check"] != string(inspect.ArchiveBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
 		rec.Meta["outcome"] != string(dispatch.Quarantined) || !strings.Contains(rec.Meta["evidence"], "declared 1024") {
 		t.Errorf("zeros.bin's record meta %v", rec.Meta)
 	}
@@ -255,7 +255,7 @@ func TestZipBombAsWritten(t *testing.T) {
 	events = dispatchAll(t, d, input(t, "lying.zip", lying), nil)
 	wantSteps(t, events, []step{{"lying.zip", 0, dispatch.Prepared}})
 	if m := outputNamed(t, events[0], dispatch.RecordOutput, "zip entry zeros.bin").Meta; m["reason"] != "8388608 bytes written, 1024 declared" || m["check"] != "" {
-		t.Errorf("zeros.bin at the defaults: meta %v", m)
+		t.Errorf("zeros.bin with no bomb rule: meta %v", m)
 	}
 	wantEmpty(t, work)
 
@@ -264,21 +264,22 @@ func TestZipBombAsWritten(t *testing.T) {
 	if ev := dispatchAll(t, d, bomb, nil)[0]; ev.Outcome != dispatch.Quarantined || zs.calls.Load() != 0 {
 		t.Errorf("bomb.zip at lowered thresholds: %s, the stage called %d times", ev.Outcome, zs.calls.Load())
 	}
-	lowered.Policy = map[inspect.Check]inspect.Verdict{inspect.ZIPBomb: inspect.Proceed}
+	lowered.Policy = map[inspect.Check]inspect.Verdict{inspect.ArchiveBomb: inspect.Proceed}
 	d, _, _ = archiveDispatcher(t, lowered)
 	ev := dispatchAll(t, d, bomb, nil)[0]
-	if m := outputNamed(t, ev, dispatch.RecordOutput, "zip entry zeros.bin").Meta; ev.Outcome != dispatch.Prepared || m["check"] != string(inspect.ZIPBomb) {
+	if m := outputNamed(t, ev, dispatch.RecordOutput, "zip entry zeros.bin").Meta; ev.Outcome != dispatch.Prepared || m["check"] != string(inspect.ArchiveBomb) {
 		t.Errorf("bomb.zip let proceed: %s, meta %v", ev.Outcome, m)
 	}
 }
 
-// TestZipUnsafeNames: inspect quarantines a ZIP with a traversing, an absolute, or a drive letter
-// name, or a symbolic link, and the archive stage never sees it. Under a policy that lets them
-// proceed, each entry is written by its SHA-256 inside the working directory, its stored name only
-// its name, no file lands outside, and the link is a file holding its target's text.
+// TestZipUnsafeNames: under a policy that quarantines them, inspect quarantines a ZIP with a
+// traversing, an absolute, or a drive letter name, or a symbolic link, and the archive stage never
+// sees it. By default, each flag active, each entry is written by its SHA-256 inside the working
+// directory, its stored name only its name, no file lands outside, and the link is a file holding
+// its target's text.
 func TestZipUnsafeNames(t *testing.T) {
-	permissive := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
-		inspect.ZIPTraversal: inspect.Proceed, inspect.ZIPAbsolutePath: inspect.Proceed, inspect.ZIPSymlink: inspect.Proceed,
+	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
+		inspect.ArchiveTraversal: inspect.Quarantine, inspect.ArchiveAbsolutePath: inspect.Quarantine, inspect.ArchiveSymlink: inspect.Quarantine,
 	}}
 	for _, c := range []struct {
 		fixture string
@@ -289,7 +290,7 @@ func TestZipUnsafeNames(t *testing.T) {
 		{"symlink.zip", []string{"notes.txt", "passwd"}},
 	} {
 		path := filepath.Join(inspectFixtures, c.fixture)
-		d, zs, _ := archiveDispatcher(t, inspect.Options{})
+		d, zs, _ := archiveDispatcher(t, strict)
 		if ev := dispatchAll(t, d, path, nil)[0]; ev.Outcome != dispatch.Quarantined || zs.calls.Load() != 0 {
 			t.Errorf("%s: %s, the stage called %d times; want quarantined before the stage", c.fixture, ev.Outcome, zs.calls.Load())
 		}
@@ -299,12 +300,12 @@ func TestZipUnsafeNames(t *testing.T) {
 		if err := os.MkdirAll(work, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		s, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{Inspect: permissive})
+		s, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work, Inspect: permissive,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -349,9 +350,9 @@ func TestArchiveNoSevenZip(t *testing.T) {
 }
 
 // TestArchiveIdentity: the archive stage names itself and this package's version, 3 since it
-// reads 7-Zip's kinds, hashes its bomb thresholds, inspect's defaults alike whether given or zero,
-// and its 7-Zip's version, but not the policy, and refuses a negative ratio, a policy inspect
-// refuses, and a 7-Zip with no version.
+// reads 7-Zip's kinds, hashes its bomb rule and its 7-Zip's version, but not the policy, and
+// refuses options inspect refuses, among them a negative ratio and one bound without the other,
+// and a 7-Zip with no version.
 func TestArchiveIdentity(t *testing.T) {
 	id := func(cfg dispatch.ArchiveConfig) dispatch.Identity {
 		t.Helper()
@@ -365,15 +366,14 @@ func TestArchiveIdentity(t *testing.T) {
 	if base.Name != "archive" || base.Version != "2" || len(base.Config) != 64 {
 		t.Errorf("archive identity %v", base)
 	}
-	if id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombRatio: inspect.DefaultBombRatio, BombSize: inspect.DefaultBombSize}}) != base {
-		t.Error("inspect's defaults, given, changed the archive identity")
-	}
-	policy := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ZIPBomb: inspect.Proceed}}
+	policy := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveBomb: inspect.Proceed}}
 	if id(dispatch.ArchiveConfig{Inspect: policy}) != base {
 		t.Error("a policy, the dispatcher's, changed the archive identity")
 	}
-	if id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombSize: 1 << 20}}).Config == base.Config ||
-		id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombRatio: 10}}).Config == base.Config {
+	ruled := id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombRatio: 1000, BombSize: 1 << 30}})
+	if ruled.Config == base.Config ||
+		id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombRatio: 1000, BombSize: 1 << 20}}).Config == ruled.Config ||
+		id(dispatch.ArchiveConfig{Inspect: inspect.Options{BombRatio: 10, BombSize: 1 << 30}}).Config == ruled.Config {
 		t.Error("a bomb threshold left the archive identity's config unchanged")
 	}
 	sz := &fakeSevenZip{}
@@ -385,7 +385,8 @@ func TestArchiveIdentity(t *testing.T) {
 		t.Error("a version with no 7-Zip changed the archive identity")
 	}
 	for name, cfg := range map[string]dispatch.ArchiveConfig{
-		"a negative bomb ratio": {Inspect: inspect.Options{BombRatio: -1}},
+		"a negative bomb ratio": {Inspect: inspect.Options{BombRatio: -1, BombSize: 1}},
+		"a bomb size alone":     {Inspect: inspect.Options{BombSize: 1 << 30}},
 		"a policy of no check":  {Inspect: inspect.Options{Policy: map[inspect.Check]inspect.Verdict{"no-such-check": inspect.Proceed}}},
 		"7-Zip with no version": {SevenZip: sz},
 	} {

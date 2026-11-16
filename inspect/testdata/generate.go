@@ -18,7 +18,9 @@ import (
 	"io/fs"
 	"os"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf16"
 )
 
 // modified is every entry's time, so the archives are the same bytes on every run.
@@ -48,40 +50,38 @@ func main() {
 			entry{name: "notes.txt", body: "an ordinary entry\n"},
 			entry{name: "passwd", body: "/etc/passwd", mode: fs.ModeSymlink | 0o777},
 		),
-		// bomb.zip holds 8 MiB of zeros, about 1,030:1: past the ratio, under the default size,
+		// bomb.zip holds 8 MiB of zeros, about 1,030:1: past a 1,000:1 ratio, under 1 GiB,
 		// so a test lowers the size to see the rule fire.
 		"bomb.zip": zipOf(entry{name: "zeros.bin", body: string(make([]byte, 8<<20))}),
 		// declared-bomb.zip's one entry declares 4 GiB expanded from its few compressed bytes,
-		// past both default thresholds by its central directory alone.
+		// past 1,000:1 and 1 GiB by its central directory alone.
 		"declared-bomb.zip": zipOf(entry{name: "zeros.bin", body: string(make([]byte, 1024)), declared: 4 << 30}),
 		"encrypted.zip": zipOf(
 			entry{name: "notes.txt", body: "an ordinary entry\n"},
 			entry{name: "secret.txt", body: "ciphertext stands in here\n", flags: 0x1},
 		),
-		"macro.docm": zipOf(
-			entry{name: "[Content_Types].xml", body: contentTypes},
-			entry{name: "_rels/.rels", body: packageRels},
-			entry{name: "word/document.xml", body: document},
-			entry{name: "word/_rels/document.xml.rels", body: documentRels},
-			entry{name: "word/_rels/settings.xml.rels", body: settingsRels},
-			entry{name: "word/settings.xml", body: settings},
-			entry{name: "word/vbaProject.bin", body: "stands in for a VBA project"},
-			entry{name: "word/activeX/activeX1.xml", body: `<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX"/>`},
-			entry{name: "word/embeddings/oleObject1.bin", body: "stands in for an OLE object"},
-		),
+		"macro.docm": zipOf(macroEntries([]byte(settingsRels))...),
 		"hyperlink.docx": zipOf(
 			entry{name: "[Content_Types].xml", body: contentTypes},
 			entry{name: "_rels/.rels", body: packageRels},
 			entry{name: "word/document.xml", body: document},
 			entry{name: "word/_rels/document.xml.rels", body: documentRels},
 		),
-		"javascript.pdf":  []byte(javascriptPDF),
-		"script.svg":      []byte(scriptSVG),
-		"invoice.pdf.exe": pe(),
-		"mismatch.pdf":    png(),
-		"polyglot.jpg":    append(jpeg(), zipOf(entry{name: "hidden.txt", body: "appended\n"})...),
-		"polyglot.png":    append(png(), []byte("%PDF-1.7\n%%EOF\n")...),
-		"encrypted.xlsx":  encryptedOOXML(),
+		// macro-latin1.docm and macro-utf16.docm are macro.docm with its remote template's
+		// relationships part in ISO-8859-1, declared, and in UTF-16LE after its byte order mark.
+		"macro-latin1.docm": zipOf(macroEntries(latin1(settingsRelsLatin1))...),
+		"macro-utf16.docm":  zipOf(macroEntries(utf16LE(strings.Replace(settingsRels, `encoding="UTF-8"`, `encoding="UTF-16"`, 1)))...),
+		"javascript.pdf":    []byte(javascriptPDF),
+		"script.svg":        []byte(scriptSVG),
+		// script-latin1.svg and script-utf16.svg are script.svg in ISO-8859-1, declared, a
+		// Latin-1 comment among its bytes, and in UTF-16LE after its byte order mark.
+		"script-latin1.svg": latin1(strings.Replace(scriptSVG, `encoding="UTF-8"?>`, "encoding=\"ISO-8859-1\"?>\n<!-- Caf\u00e9 cr\u00e8me -->", 1)),
+		"script-utf16.svg":  utf16LE(strings.Replace(scriptSVG, `encoding="UTF-8"`, `encoding="UTF-16"`, 1)),
+		"invoice.pdf.exe":   pe(),
+		"mismatch.pdf":      png(),
+		"polyglot.jpg":      append(jpeg(), zipOf(entry{name: "hidden.txt", body: "appended\n"})...),
+		"polyglot.png":      append(png(), []byte("%PDF-1.7\n%%EOF\n")...),
+		"encrypted.xlsx":    encryptedOOXML(),
 
 		"clean.tar": tarOf(cleanTar...),
 		// clean.tar.gz's header names its tar; unnamed.tgz's names nothing, so its tar is named
@@ -116,11 +116,11 @@ func main() {
 			tent{name: "pipe", typ: tar.TypeFifo},
 		),
 		// sparse-bomb.tar's one entry is a GNU sparse file declaring 4 GiB, all a hole but its
-		// last 512 bytes, in a 2 KiB tar: past both default thresholds by its header alone, and
+		// last 512 bytes, in a 2 KiB tar: past 1,000:1 and 1 GiB by its header alone, and
 		// as written once its holes are read as zeros.
 		"sparse-bomb.tar": sparseBomb(),
 		// bomb.tar.gz holds a tar of 8 MiB of zeros, about 1,000:1 as the gzip expands: past
-		// the ratio, under the default size, as bomb.zip is. The tar itself is no bomb.
+		// the ratio, under 1 GiB, as bomb.zip is. The tar itself is no bomb.
 		"bomb.tar.gz": gzipOf("bomb.tar", tarOf(tent{name: "zeros.bin", body: string(make([]byte, 8<<20))})),
 	}
 	for name, b := range files {
@@ -129,6 +129,42 @@ func main() {
 			os.Exit(1)
 		}
 	}
+}
+
+// macroEntries are macro.docm's entries, its settings part's relationships part rels.
+func macroEntries(rels []byte) []entry {
+	return []entry{
+		{name: "[Content_Types].xml", body: contentTypes},
+		{name: "_rels/.rels", body: packageRels},
+		{name: "word/document.xml", body: document},
+		{name: "word/_rels/document.xml.rels", body: documentRels},
+		{name: "word/_rels/settings.xml.rels", body: string(rels)},
+		{name: "word/settings.xml", body: settings},
+		{name: "word/vbaProject.bin", body: "stands in for a VBA project"},
+		{name: "word/activeX/activeX1.xml", body: `<ax:ocx xmlns:ax="http://schemas.microsoft.com/office/2006/activeX"/>`},
+		{name: "word/embeddings/oleObject1.bin", body: "stands in for an OLE object"},
+	}
+}
+
+// latin1 returns s, whose runes are all Latin-1's, in ISO-8859-1.
+func latin1(s string) []byte {
+	b := make([]byte, 0, len(s))
+	for _, r := range s {
+		if r > 0xff {
+			panic(fmt.Sprintf("%q isn't Latin-1", r))
+		}
+		b = append(b, byte(r))
+	}
+	return b
+}
+
+// utf16LE returns s in UTF-16LE after its byte order mark.
+func utf16LE(s string) []byte {
+	b := []byte{0xff, 0xfe}
+	for _, u := range utf16.Encode([]rune(s)) {
+		b = binary.LittleEndian.AppendUint16(b, u)
+	}
+	return b
 }
 
 // zipOf returns a ZIP of entries, each deflated, or written raw with the sizes it declares.
@@ -340,6 +376,10 @@ const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 // documentRels holds a hyperlink, external, which isn't active content.
 const documentRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.invalid/page" TargetMode="External"/></Relationships>`
+
+// settingsRelsLatin1 is settingsRels declared in ISO-8859-1, its template's name Latin-1's.
+const settingsRelsLatin1 = `<?xml version="1.0" encoding="ISO-8859-1" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate" Target="https://example.invalid/modèle.dotm" TargetMode="External"/></Relationships>`
 
 // settingsRels holds a remote template, external, which is.
 const settingsRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

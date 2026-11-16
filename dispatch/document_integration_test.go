@@ -200,9 +200,9 @@ func attachedPDF(t *testing.T, name string, content []byte) []byte {
 }
 
 // TestDocumentStageAttachmentBombReal: a PDF of about 8 KiB embedding 8 MiB of zeros, through this
-// machine's pdfdetach, is saved whole under the default thresholds, about 1,000:1 short of both;
-// under a 1 MiB size and a 100:1 ratio, pdfdetach is stopped past them, the file is a record, its
-// check pdf-attachment-bomb and its outcome quarantined, and nothing of it is left.
+// machine's pdfdetach, is saved whole under no bomb rule; under a 1 MiB size and a 100:1 ratio,
+// pdfdetach is stopped past them, the file is a record, its check archive-bomb and its outcome
+// quarantined, and nothing of it is left.
 func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	gs := pinned(t, document.GhostscriptSpec())
 	render, err := document.NewGhostscript(document.Config{Ghostscript: gs})
@@ -215,7 +215,7 @@ func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	d, work := newDispatcherIn(t, dispatch.Stages{route.Document: pdfStage(t, prep, gs, inspect.Options{})})
 	events := dispatchAll(t, d, pdf, nil)
 	if len(events) != 2 || events[0].Part.Name != "zeros.bin" || events[0].Part.Size != 8<<20 || events[0].Part.Where != "attachment zeros.bin" {
-		t.Errorf("default thresholds: %v", steps(events))
+		t.Errorf("no bomb rule: %v", steps(events))
 	}
 	wantEmpty(t, work)
 
@@ -229,7 +229,7 @@ func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	if err := json.Unmarshal(rec.Value, &saved); err != nil || saved.Written <= 1<<20 || saved.Written >= 8<<20 {
 		t.Errorf("written %d, %v: want past 1 MiB and short of 8 MiB", saved.Written, err)
 	}
-	if rec.Meta["check"] != string(inspect.PDFAttachmentBomb) || rec.Meta["outcome"] != string(dispatch.Quarantined) {
+	if rec.Meta["check"] != string(inspect.ArchiveBomb) || rec.Meta["outcome"] != string(dispatch.Quarantined) {
 		t.Errorf("zeros.bin's record: %v", rec.Meta)
 	}
 	t.Logf("zeros.bin: %s", rec.Meta["evidence"])

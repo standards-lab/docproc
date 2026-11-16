@@ -126,7 +126,8 @@ type Dispatcher struct {
 }
 
 // New returns a Dispatcher over cfg. A nil Index is the caller's mistake, and panics naming the
-// field. It refuses a Config with no working directory, or a stage that is nil.
+// field. It refuses a Config with no working directory, a stage that is nil, or inspection
+// options inspect refuses, validating them once.
 func New(cfg Config) (*Dispatcher, error) {
 	if cfg.Index == nil {
 		panic("dispatch: Config.Index is nil")
@@ -144,6 +145,9 @@ func New(cfg Config) (*Dispatcher, error) {
 	}
 	if cfg.Limits.Parts < 0 || cfg.Limits.Bytes < 0 || cfg.Limits.Depth < 0 {
 		return nil, errors.New("dispatch: negative limit")
+	}
+	if err := cfg.Inspect.Validate(); err != nil {
+		return nil, fmt.Errorf("dispatch: %w", err)
 	}
 	// A copy, so the caller's later change to its map changes nothing.
 	cfg.Stages = maps.Clone(cfg.Stages)
@@ -647,7 +651,7 @@ func (r *run) stageQuarantined(ev Event, dir string, stageErr error) result {
 // encrypted reports whether flags hold a check that marks content encrypted.
 func encrypted(flags []inspect.Flag) bool {
 	return slices.ContainsFunc(flags, func(f inspect.Flag) bool {
-		return f.Check == inspect.PDFEncrypt || f.Check == inspect.ZIPEncrypted || f.Check == inspect.OOXMLEncrypted
+		return f.Check == inspect.PDFEncrypt || f.Check == inspect.ArchiveEncrypted || f.Check == inspect.OOXMLEncrypted
 	})
 }
 

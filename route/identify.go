@@ -3,6 +3,8 @@ package route
 import (
 	"bytes"
 	"encoding/binary"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
 // Kind names the format a signature identifies; the zero Kind, [Unknown], is content of no
@@ -95,6 +97,7 @@ const PNGSignature = "\x89PNG\r\n\x1a\n"
 // size, and a WMF's standard header by its size as well as its type and version.
 var (
 	pdfSignature  = []byte("%PDF-")
+	peHeader      = []byte("PE\x00\x00")
 	pngSignature  = []byte(PNGSignature)
 	jpegSignature = []byte{0xff, 0xd8, 0xff}
 	gif87         = []byte("GIF87a")
@@ -176,7 +179,7 @@ func Identify(head []byte) Kind {
 // strong ones added since; the weak ones after them, an mbox's "From " line last but the byte
 // order marks.
 var signatures = []func([]byte) Kind{
-	prefix(pdfSignature, PDF),
+	isPDF,
 	prefix(pngSignature, PNG),
 	prefix(jpegSignature, JPEG),
 	prefix(gif87, GIF),
@@ -196,7 +199,7 @@ var signatures = []func([]byte) Kind{
 	prefix(mscfSignature, MSCF),
 	isRIFF,
 	prefix(flacSignature, FLAC),
-	prefix(id3Signature, MP3),
+	isID3,
 	prefix(oggSignature, Ogg),
 	isISOBMFF,
 	isEBML,
@@ -206,8 +209,8 @@ var signatures = []func([]byte) Kind{
 	isTar,
 	prefix(elfSignature, ELF),
 	isMachO,
-	prefix(peSignature, PE),
-	prefix(shebang, Shebang),
+	isPE,
+	isShebang,
 	isMPEGFrame,
 	isSVG,
 	prefix(mboxSeparator, Mbox),
@@ -226,6 +229,64 @@ func prefix(sig []byte, kind Kind) func([]byte) Kind {
 		}
 		return Unknown
 	}
+}
+
+// pdfLead is how far into a file a PDF's header may begin, as PDF readers accept one: within
+// its first 1,024 bytes.
+const pdfLead = 1024
+
+// isPDF names a PDF: its %PDF- header, after nothing but an optional UTF-8 byte order mark and
+// white space, PDF's own NUL among it, and beginning within the first pdfLead bytes. Other bytes
+// before the header, such as another format's signature, make it no PDF here; inspect's polyglot
+// check reads such a header.
+func isPDF(head []byte) Kind {
+	rest := bytes.TrimLeft(bytes.TrimPrefix(head, utf8BOM), " \t\r\n\f\x00")
+	if at := len(head) - len(rest); at < pdfLead && bytes.HasPrefix(rest, pdfSignature) {
+		return PDF
+	}
+	return Unknown
+}
+
+// isPE names a PE executable: "MZ", and the PE signature, "PE\0\0", at the offset the DOS
+// header's e_lfanew field, at 0x3c, gives, within head. "MZ" alone, as text may begin, is none.
+func isPE(head []byte) Kind {
+	if len(head) < 0x40 || !bytes.HasPrefix(head, peSignature) {
+		return Unknown
+	}
+	at := uint64(binary.LittleEndian.Uint32(head[0x3c:]))
+	if at+uint64(len(peHeader)) <= uint64(len(head)) && bytes.Equal(head[at:at+uint64(len(peHeader))], peHeader) {
+		return PE
+	}
+	return Unknown
+}
+
+// isID3 names an MP3 that begins with an ID3v2 tag: "ID3", a major version of 2, 3, or 4, a
+// revision other than 0xFF, a flags byte, and a size of four bytes whose high bits are clear,
+// as ID3v2's synchsafe integer is. "ID3" alone, as text may begin, is none.
+func isID3(head []byte) Kind {
+	if len(head) < 10 || !bytes.HasPrefix(head, id3Signature) {
+		return Unknown
+	}
+	if head[3] < 2 || head[3] > 4 || head[4] == 0xff {
+		return Unknown
+	}
+	for _, b := range head[6:10] {
+		if b&0x80 != 0 {
+			return Unknown
+		}
+	}
+	return MP3
+}
+
+// isShebang names a script's "#!" line: "#!", optional spaces or tabs, then the "/" an
+// interpreter's absolute path begins with. "#!" before anything else, as prose or a fragment
+// identifier may be, is none.
+func isShebang(head []byte) Kind {
+	rest, ok := bytes.CutPrefix(head, shebang)
+	if ok && bytes.HasPrefix(bytes.TrimLeft(rest, " \t"), []byte("/")) {
+		return Shebang
+	}
+	return Unknown
 }
 
 // isBMP names a BMP: "BM", then a DIB header of a known size at offset 14.
@@ -416,9 +477,10 @@ func isMPEGFrame(head []byte) Kind {
 
 // isSVG names an SVG: after an optional UTF-8 byte order mark, white space, an XML declaration,
 // comments, processing instructions, and a DOCTYPE, the root element is svg. The prolog must end
-// within head.
+// within head. A head that begins with a UTF-16 byte order mark is decoded from UTF-16 first, so
+// an SVG saved as UTF-16 is one too.
 func isSVG(head []byte) Kind {
-	rest := bytes.TrimPrefix(head, utf8BOM)
+	rest := bytes.TrimPrefix(decodeUTF16(head), utf8BOM)
 	for {
 		rest = bytes.TrimLeft(rest, " \t\r\n")
 		var end []byte
@@ -443,4 +505,27 @@ func isSVG(head []byte) Kind {
 		}
 		rest = rest[i+len(end):]
 	}
+}
+
+// decodeUTF16 returns head decoded from UTF-16 to UTF-8 when it begins with a UTF-16 byte order
+// mark, little- or big-endian, the mark dropped and an odd last byte with it; else head as it is.
+func decodeUTF16(head []byte) []byte {
+	var order binary.ByteOrder
+	switch {
+	case bytes.HasPrefix(head, utf16LEBOM):
+		order = binary.LittleEndian
+	case bytes.HasPrefix(head, utf16BEBOM):
+		order = binary.BigEndian
+	default:
+		return head
+	}
+	units := make([]uint16, 0, len(head)/2)
+	for i := 2; i+1 < len(head); i += 2 {
+		units = append(units, order.Uint16(head[i:]))
+	}
+	out := make([]byte, 0, len(units))
+	for _, r := range utf16.Decode(units) {
+		out = utf8.AppendRune(out, r)
+	}
+	return out
 }

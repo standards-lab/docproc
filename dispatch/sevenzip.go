@@ -27,12 +27,12 @@ type sevenZipKind struct {
 // sevenZipKinds are the kinds the archive stage reads through 7-Zip alone.
 var sevenZipKinds = map[route.Kind]sevenZipKind{
 	route.SevenZip: {
-		what: "a 7z archive", format: sevenzip.SevenZ, where: "7z entry ", bomb: inspect.SevenZipBomb,
-		encrypted: inspect.SevenZipEncrypted, symlink: inspect.SevenZipSymlink,
-		hardlink: inspect.SevenZipHardlink, device: inspect.SevenZipDevice,
+		what: "a 7z archive", format: sevenzip.SevenZ, where: "7z entry ", bomb: inspect.ArchiveBomb,
+		encrypted: inspect.ArchiveEncrypted, symlink: inspect.ArchiveSymlink,
+		hardlink: inspect.ArchiveHardlink, device: inspect.ArchiveDevice,
 	},
-	route.MSCF: {what: "a cabinet", format: sevenzip.Cabinet, where: "cabinet entry ", bomb: inspect.CabBomb},
-	route.Zstd: {what: "a zstd stream", format: sevenzip.Zstd, where: "zstd content ", bomb: inspect.ZstdBomb},
+	route.MSCF: {what: "a cabinet", format: sevenzip.Cabinet, where: "cabinet entry ", bomb: inspect.ArchiveBomb},
+	route.Zstd: {what: "a zstd stream", format: sevenzip.Zstd, where: "zstd content ", bomb: inspect.ArchiveBomb},
 }
 
 // listedEntry is what an entry of an archive 7-Zip reads that the stage can't write is recorded
@@ -161,14 +161,14 @@ func (s *ArchiveStage) listedEntry(ctx context.Context, p Part, k sevenZipKind, 
 		return recorded(rec)
 	}
 	if typ != inspect.FileEntry {
-		// The listing's checks quarantined the archive for it; a policy let it proceed. No link
-		// and no node is made, and a link's target is only its record's text.
+		// The listing's checks flag it, active: the entry is unread. No link and no node is
+		// made, and a link's target is only its record's text.
 		check := map[inspect.EntryType]inspect.Check{
 			inspect.SymlinkEntry: k.symlink, inspect.HardlinkEntry: k.hardlink, inspect.DeviceEntry: k.device,
 		}[typ]
 		rec.Reason = rec.Type + ": no part"
 		if check != "" {
-			rec.Check, rec.Class, rec.Evidence = string(check), string(inspect.Unsafe), quoted
+			rec.Check, rec.Class, rec.Evidence = string(check), string(inspect.Active), quoted
 		}
 		return recorded(rec)
 	}
@@ -194,7 +194,7 @@ func (s *ArchiveStage) listedEntry(ctx context.Context, p Part, k sevenZipKind, 
 		rec.Written, rec.Reason = written, "past the bomb thresholds as written"
 		rec.Check, rec.Class = string(k.bomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("%s: %d bytes written from a %d-byte archive, %.0f:1, listed %d; past %d bytes and %g:1",
-			quoted, written, whole, float64(written)/float64(max(whole, 1)), e.Size, s.size, s.ratio)
+			quoted, written, whole, float64(written)/float64(max(whole, 1)), e.Size, s.bomb.Size, s.bomb.Ratio)
 		return recorded(rec)
 	case why != nil:
 		rec.Written, rec.Reason = written, why.Error()
@@ -247,9 +247,9 @@ func (s *ArchiveStage) zstd(ctx context.Context, p Part, dir string, yield func(
 		yield(Item{}, err)
 		return
 	case errors.Is(why, errBomb):
-		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.ZstdBomb), string(inspect.Unsafe)
+		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.ArchiveBomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("content %q: %d bytes written from %d, %.0f:1; past %d bytes and %g:1",
-			name, written, compressed, float64(written)/float64(max(compressed, 1)), s.size, s.ratio)
+			name, written, compressed, float64(written)/float64(max(compressed, 1)), s.bomb.Size, s.bomb.Ratio)
 	case why != nil:
 		rec.Reason = why.Error()
 	default:

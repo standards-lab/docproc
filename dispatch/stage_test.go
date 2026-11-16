@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/inspect"
 	"github.com/standards-lab/docproc/route"
 )
 
@@ -271,6 +272,11 @@ func wantSteps(t *testing.T, events []dispatched, want []step) {
 	if got := steps(events); !slices.Equal(got, want) {
 		t.Fatalf("events:\n got %v\nwant %v", got, want)
 	}
+}
+
+// hasFlag reports whether flags hold one of check c.
+func hasFlag(flags []inspect.Flag, c inspect.Check) bool {
+	return slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == c })
 }
 
 // byName returns the first event of the part named name.

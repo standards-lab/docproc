@@ -93,7 +93,7 @@ func (s *ArchiveStage) zipEntry(ctx context.Context, archive string, f *zip.File
 	_, standard := zipDecompressors[f.Method]
 	switch {
 	case f.Flags&0x1 != 0:
-		rec.Reason, rec.Check, rec.Class, rec.Evidence = "encrypted", string(inspect.ZIPEncrypted), string(inspect.Active), quoted
+		rec.Reason, rec.Check, rec.Class, rec.Evidence = "encrypted", string(inspect.ArchiveEncrypted), string(inspect.Active), quoted
 		return recorded(rec)
 	case f.Method != zip.Store && !standard && s.sevenZip == nil:
 		rec.Reason = fmt.Sprintf("compression method %d has no processor yet without 7-Zip", f.Method)
@@ -106,10 +106,10 @@ func (s *ArchiveStage) zipEntry(ctx context.Context, archive string, f *zip.File
 		return Item{}, err
 	case errors.Is(why, errBomb):
 		rec.Written, rec.Reason = written, "past the bomb thresholds as written"
-		rec.Check, rec.Class = string(inspect.ZIPBomb), string(inspect.Unsafe)
+		rec.Check, rec.Class = string(inspect.ArchiveBomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("%s: %d bytes written from %d, %.0f:1, declared %d; past %d bytes and %g:1",
 			quoted, written, f.CompressedSize64, float64(written)/float64(max(f.CompressedSize64, 1)),
-			f.UncompressedSize64, s.size, s.ratio)
+			f.UncompressedSize64, s.bomb.Size, s.bomb.Ratio)
 		return recorded(rec)
 	case why != nil:
 		rec.Written, rec.Reason = written, why.Error()

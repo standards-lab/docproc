@@ -36,88 +36,74 @@ type Listed struct {
 	Encrypted bool
 }
 
-// listingChecks are the checks a kind's listing raises, each for one rule; a rule the kind's
-// format can't carry, such as a cabinet's links, has none.
-type listingChecks struct {
-	traversal, absolute, symlink, hardlink, device, bomb, encrypted Check
-}
-
-// listings are the checks of each kind [CheckListing] reads.
-var listings = map[route.Kind]listingChecks{
-	route.SevenZip: {
-		traversal: SevenZipTraversal, absolute: SevenZipAbsolutePath, symlink: SevenZipSymlink,
-		hardlink: SevenZipHardlink, device: SevenZipDevice, bomb: SevenZipBomb, encrypted: SevenZipEncrypted,
-	},
-	route.MSCF: {traversal: CabTraversal, absolute: CabAbsolutePath, bomb: CabBomb},
-	route.Zstd: {bomb: ZstdBomb},
-}
+// listed are the kinds [CheckListing] reads, and whether a kind's listing can name an entry: a
+// zstd stream's one entry is its content, checked by its declared size alone.
+var listed = map[route.Kind]bool{route.SevenZip: true, route.MSCF: true, route.Zstd: false}
 
 // CheckListing checks an archive's listing, entries, as a program that reads the archive lists
-// it, under the rules [Inspect] holds a tar's headers to: a name with a ".." element, an absolute
-// one, or one that begins with a drive letter, by the same name checks; a symbolic or hard link;
-// a device; and an entry past both bomb thresholds by the size it declares, the ratio against
-// size, the whole archive's, since a 7z's or cabinet's entries share their packed blocks. An
-// encrypted entry is of class Active. kind is the archive's: [route.SevenZip], [route.MSCF], or
-// [route.Zstd], whose one entry is its content, checked by its declared size alone. It returns
-// the report the flags come to under opts, its Kind kind, and an error for opts it refuses,
-// matching [ErrOptions], or a kind it doesn't read.
+// it, under the rules [Inspect] holds a tar's headers to, by the same checks: a name with a ".."
+// element, an absolute one, or one that begins with a drive letter; a symbolic or hard link; a
+// device; an encrypted entry; an entry past the bomb rule by the size it declares, its ratio
+// against size, the whole archive's, since a 7z's or cabinet's entries share their packed
+// blocks; and the sum of the declared sizes past it too. The program's reader bounds the
+// listing's length as it parses it. kind is the archive's: [route.SevenZip],
+// [route.MSCF], or [route.Zstd], whose one entry is its content, checked by its declared size
+// alone. It returns the report the flags come to under opts, its Kind kind, and an error for opts
+// it refuses, matching [ErrOptions], or a kind it doesn't read.
 //
 // Inspect runs no program, so it never lists such an archive itself: the stage that reads the
 // archive through its program calls CheckListing before it extracts anything, and quarantines
 // the archive on the report's verdict.
 func CheckListing(kind route.Kind, size int64, entries []Listed, opts Options) (Report, error) {
-	opts, err := opts.check()
-	if err != nil {
+	if err := opts.Validate(); err != nil {
 		return Report{}, err
 	}
-	checks, ok := listings[kind]
+	named, ok := listed[kind]
 	if !ok {
 		return Report{}, fmt.Errorf("inspect: no listing checks for kind %s", kind)
 	}
 	in := &inspection{size: size, kind: kind, opts: opts, found: map[Check]*finding{}}
+	whole := uint64(max(size, 0))
+	var sum uint64
 	for _, e := range entries {
-		in.listed(checks, e)
-	}
-	flags := in.flags()
-	return Report{Kind: kind, Flags: flags, Verdict: opts.verdict(flags)}, nil
-}
-
-// listed checks one listed entry against the checks of its archive's kind.
-func (in *inspection) listed(c listingChecks, e Listed) {
-	quoted := fmt.Sprintf("entry %q", e.Name)
-	raise := func(check Check, evidence string) {
-		if check != "" {
-			in.flag(check, evidence)
+		in.listed(e, named)
+		if e.Sized {
+			sum = addSat(sum, e.Declared)
 		}
 	}
-	if traverses(e.Name) {
-		raise(c.traversal, quoted)
+	if len(entries) > 1 && opts.Bomb().Past(sum, whole) {
+		in.flag(ArchiveBomb, fmt.Sprintf("declared sizes sum to %d bytes over %d entries in a %d-byte archive, %.0f:1", sum, len(entries), size, ratio(sum, whole)))
 	}
-	if absolute(e.Name) {
-		raise(c.absolute, quoted)
+	flags := in.flags()
+	return Report{Kind: kind, Flags: flags, Verdict: opts.Verdict(flags)}, nil
+}
+
+// listed checks one listed entry: its name, when named, its type, its encryption, and its
+// declared size.
+func (in *inspection) listed(e Listed, named bool) {
+	quoted := fmt.Sprintf("entry %q", e.Name)
+	if named {
+		in.entryName(e.Name)
+		// A link's target is its evidence when the listing names it; a 7z lists none, its
+		// target being the entry's content.
+		linked := quoted
+		if e.Link != "" {
+			linked = fmt.Sprintf("%s to %q", quoted, e.Link)
+		}
+		switch e.Type {
+		case SymlinkEntry:
+			in.flag(ArchiveSymlink, linked)
+		case HardlinkEntry:
+			in.flag(ArchiveHardlink, linked)
+		case DeviceEntry:
+			in.flag(ArchiveDevice, quoted)
+		}
+		if e.Encrypted {
+			in.flag(ArchiveEncrypted, quoted)
+		}
 	}
-	// A link's target is its evidence when the listing names it; a 7z lists none, its target
-	// being the entry's content.
-	linked := quoted
-	if e.Link != "" {
-		linked = fmt.Sprintf("%s to %q", quoted, e.Link)
-	}
-	switch e.Type {
-	case SymlinkEntry:
-		raise(c.symlink, linked)
-	case HardlinkEntry:
-		raise(c.hardlink, linked)
-	case DeviceEntry:
-		raise(c.device, quoted)
-	}
-	if e.Encrypted {
-		raise(c.encrypted, quoted)
-	}
-	if !e.Sized {
-		return
-	}
-	whole := uint64(max(in.size, 1))
-	if ratio := float64(e.Declared) / float64(whole); e.Declared > in.opts.BombSize && ratio > in.opts.BombRatio {
-		raise(c.bomb, fmt.Sprintf("%s: %d bytes declared in a %d-byte archive, %.0f:1", quoted, e.Declared, in.size, ratio))
+	whole := uint64(max(in.size, 0))
+	if e.Sized && in.opts.Bomb().Past(e.Declared, whole) {
+		in.flag(ArchiveBomb, fmt.Sprintf("%s: %d bytes declared in a %d-byte archive, %.0f:1", quoted, e.Declared, in.size, ratio(e.Declared, whole)))
 	}
 }

@@ -52,9 +52,9 @@ type DocumentConfig struct {
 	// PDFDetach, when not nil, saves each PDF's embedded files as parts; nil finds none. Whether
 	// it is given, and with it the bomb thresholds, is part of the stage's identity.
 	PDFDetach PDFDetach
-	// Inspect is the dispatcher's Config.Inspect: its BombRatio and BombSize, inspect's defaults
-	// when zero, are the thresholds an embedded file's saved bytes may not pass both of, the
-	// ratio against the whole PDF's size.
+	// Inspect is the dispatcher's Config.Inspect: its bomb rule, none when its BombRatio and
+	// BombSize are zero, is the one an embedded file's saved bytes may not pass, against the
+	// whole PDF's size.
 	Inspect inspect.Options
 }
 
@@ -83,7 +83,7 @@ type DocumentConfig struct {
 // inspect and route again, named by its stored name and found "attachment <name>". A file whose
 // saved bytes pass both bomb thresholds, its ratio against the whole PDF's size, is stopped and
 // its partial file removed, and is a record named by its place, as the archive stage records an
-// entry, its Meta's check "pdf-attachment-bomb", its class "unsafe", and its outcome
+// entry, its Meta's check "archive-bomb", its class "unsafe", and its outcome
 // "quarantined"; a file pdfdetach can't save is a record of why.
 //
 // The pages come last. A failure of qpdf or pdfdetach, other than a password, doesn't stop the
@@ -94,22 +94,20 @@ type DocumentStage struct {
 	request  document.ImagesRequest
 	qpdf     QPDF
 	detach   PDFDetach
-	ratio    float64
-	size     uint64
+	bomb     inspect.BombRule
 	id       Identity
 }
 
 // NewDocumentStage builds a DocumentStage over cfg, panicking naming Preparer when it is nil, the
-// caller's mistake, and refusing one with no Version, and bomb thresholds the archive stage would
-// refuse.
+// caller's mistake, and refusing one with no Version, and inspection options inspect refuses.
 func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 	if cfg.Preparer == nil {
 		panic("dispatch: DocumentConfig.Preparer is nil")
 	}
-	ratio, size, err := bombRule("document stage", cfg.Inspect)
-	if err != nil {
-		return nil, err
+	if err := cfg.Inspect.Validate(); err != nil {
+		return nil, fmt.Errorf("dispatch: document stage: %w", err)
 	}
+	bomb := cfg.Inspect.Bomb()
 	req := cfg.Request
 	corrections := make([]string, len(req.Corrections))
 	for i, c := range req.Corrections {
@@ -123,7 +121,7 @@ func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 	}
 	var detach *attachments
 	if cfg.PDFDetach != nil {
-		detach = &attachments{ratio, size}
+		detach = &attachments{bomb.Ratio, bomb.Size}
 	}
 	id, err := adapterIdentity("document", cfg.Version, struct {
 		DPI         int              `json:"dpi"`
@@ -139,7 +137,7 @@ func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 	}
 	return &DocumentStage{
 		preparer: cfg.Preparer, request: req, qpdf: cfg.QPDF, detach: cfg.PDFDetach,
-		ratio: ratio, size: size, id: id,
+		bomb: bomb, id: id,
 	}, nil
 }
 
@@ -250,7 +248,7 @@ type savedFile struct {
 func (s *DocumentStage) attachment(ctx context.Context, p Part, a document.Attachment, dir string) (Item, error) {
 	where := "attachment " + a.Name
 	whole := uint64(p.Size)
-	path, written, why, err := writeBySum(ctx, "document stage", s.ratio, s.size, func(w io.Writer) error {
+	path, written, why, err := writeBySum(ctx, "document stage", s.bomb, func(w io.Writer) error {
 		return s.detach.Save(ctx, p.Path, a.Number, w)
 	}, dir, whole, func(_ *bombWriter, saveErr error) error {
 		if saveErr != nil {
@@ -263,9 +261,9 @@ func (s *DocumentStage) attachment(ctx context.Context, p Part, a document.Attac
 	case err != nil:
 		return Item{}, err
 	case errors.Is(why, errBomb):
-		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.PDFAttachmentBomb), string(inspect.Unsafe)
+		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.ArchiveBomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("attachment %q: %d bytes written from a %d-byte PDF, %.0f:1; past %d bytes and %g:1",
-			a.Name, written, whole, float64(written)/float64(max(whole, 1)), s.size, s.ratio)
+			a.Name, written, whole, float64(written)/float64(max(whole, 1)), s.bomb.Size, s.bomb.Ratio)
 	case why != nil:
 		rec.Reason = why.Error()
 	default:

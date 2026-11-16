@@ -48,10 +48,11 @@ func fakeEntries(contents map[string]string, names ...string) []sevenzip.Entry {
 	return entries
 }
 
-// TestListingQuarantine: a 7z whose listing names a traversing entry is quarantined by the stage
-// before anything is extracted: its outcome is quarantined, its flags hold the listing's flag
-// beside its inspection's and its reason the evidence, and 7-Zip extracts nothing. Under a policy
-// that lets 7z-traversal proceed, each entry is extracted and found, "7z entry <name>".
+// TestListingQuarantine: under a policy that quarantines archive-traversal, a 7z whose listing
+// names a traversing entry is quarantined by the stage before anything is extracted: its outcome
+// is quarantined, its flags hold the listing's flag beside its inspection's and its reason says a
+// policy quarantined it, and 7-Zip extracts nothing. By default, the flag active, each entry is extracted and
+// found, "7z entry <name>".
 func TestListingQuarantine(t *testing.T) {
 	contents := map[string]string{"notes.txt": "an ordinary entry\n", "docs/../../evil.txt": "evil\n"}
 	fake := func() *fakeSevenZip {
@@ -60,14 +61,15 @@ func TestListingQuarantine(t *testing.T) {
 			contents: contents,
 		}
 	}
+	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveTraversal: inspect.Quarantine}}
 	sz := fake()
-	d, zs, work := archiveDispatcherWith(t, dispatch.ArchiveConfig{SevenZip: sz, Version: "7zz 26.5"})
+	d, zs, work := archiveDispatcherWith(t, dispatch.ArchiveConfig{Inspect: strict, SevenZip: sz, Version: "7zz 26.5"})
 	events := dispatchAll(t, d, input(t, "a.7z", sevenZipSignature), nil)
 	wantSteps(t, events, []step{{"a.7z", 0, dispatch.Quarantined}})
 	ev := events[0]
 	if !slices.ContainsFunc(ev.Part.Flags, func(f inspect.Flag) bool {
-		return f.Check == inspect.SevenZipTraversal && f.Evidence == `entry "docs/../../evil.txt"`
-	}) || !strings.Contains(ev.Reason, `7z-traversal: entry "docs/../../evil.txt"`) {
+		return f.Check == inspect.ArchiveTraversal && f.Evidence == `entry "docs/../../evil.txt"`
+	}) || ev.Reason != "quarantined by policy" {
 		t.Errorf("a.7z: flags %v, reason %q", ev.Part.Flags, ev.Reason)
 	}
 	if ev.Stage.Name != "archive" || zs.calls.Load() != 1 || len(sz.extracted) != 0 || len(ev.Outputs) != 0 {
@@ -75,9 +77,8 @@ func TestListingQuarantine(t *testing.T) {
 	}
 	wantEmpty(t, work)
 
-	permissive := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.SevenZipTraversal: inspect.Proceed}}
 	sz = fake()
-	d, _, work = archiveDispatcherWith(t, dispatch.ArchiveConfig{Inspect: permissive, SevenZip: sz, Version: "7zz 26.5"})
+	d, _, work = archiveDispatcherWith(t, dispatch.ArchiveConfig{SevenZip: sz, Version: "7zz 26.5"})
 	events = dispatchAll(t, d, input(t, "a.7z", sevenZipSignature), nil)
 	wantSteps(t, events, []step{
 		{"notes.txt", 1, dispatch.NoProcessor},

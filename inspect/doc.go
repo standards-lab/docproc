@@ -1,91 +1,95 @@
-// Package inspect inspects a part before its stage, on the standard library and route alone,
-// and says whether the part may go on to it. Unsafe means unsafe to read: content no stage may
-// open without harm to the host. Content that could act, were something to run it, is only
-// flagged, since no stage of this layer executes content.
+// Package inspect inspects a part before its stage, on the standard library, golang.org/x/text,
+// and route alone, and says whether the part may go on to it. Unsafe means unsafe to read: content
+// no stage may open without harm to the host. Content that could act, were something to run it,
+// and content a stage leaves unread, is only flagged, since no stage of this layer executes
+// content.
 //
-// [Inspect] reads the file at a path, with the name it was given, and returns a [Report]: the
-// [route.Kind] its signature names, its [Flag]s, each naming its [Check], its [Class], and its
-// evidence, and the [Verdict] they come to. The report is a function of the file's bytes and
-// name alone, with the [Options], so the same content gives the same report on every run and an
-// index may record it by the content's SHA-256. Inspect streams: its memory is bounded whatever
-// the file's size, and a ZIP is read by its central directory and a tar by its headers, no entry
-// extracted.
+// [Content] reads content already open, its size, and its kind, as route.Identify names it, and
+// returns a [Report]: the kind, its [Flag]s, each naming its [Check], its [Class], and its
+// evidence, and the [Verdict] they come to under the [Options]. A content check depends on the
+// kind and the bytes alone, so the same content gives the same report on every run and an index
+// may record it by the content's SHA-256. [Name] returns a name's flags, reading nothing, so a
+// dispatcher computes them at every name a part has. [Inspect] is both over the file at a path,
+// for a caller that triages a file before queueing it. Content streams: its memory is bounded
+// whatever the content's size, and a ZIP is read by its central directory and a tar by its
+// headers, no entry extracted.
 //
 // Its two classes:
 //
-//   - [Active]: content that could act, flagged, the part proceeding by default, since no stage
-//     executes it. A signature that disagrees with the name's extension; a polyglot, a ZIP's
-//     end-of-central-directory record inside content that isn't a container, or a PDF header
-//     after another signature; executable content, by route's PE, ELF, Mach-O, and "#!" kinds,
-//     an executable extension (.exe, .dll, .js, .vbs, .scr, .bat, .cmd, .ps1, .lnk, .hta, .jar,
-//     .msi), and one after another, as in "invoice.pdf.exe"; an OOXML package's VBA project,
-//     macro sheet, ActiveX controls, OLE objects, and external relationships other than
-//     hyperlinks, such as a remote template or a linked picture; the PDF names pdfid counts,
-//     /JavaScript, /JS, /OpenAction, /AA, /Launch, /EmbeddedFile, /RichMedia, /XFA, and /Encrypt,
-//     and /EmbeddedFiles and /EF, which mark an embedded file whose stream names no type,
-//     hex-escaped forms such as /J#61vaScript included, over the whole file; and an SVG's
-//     script elements, event handler attributes, hrefs that leave the document, and
-//     foreignObjects. Encrypted content is in this class too, not unsafe, since it is only
-//     unreadable: a ZIP's encrypted entries, an /Encrypt PDF, and an encrypted OOXML package.
-//   - [Unsafe]: content unsafe to read, flagged, the part quarantined by default: no stage runs
-//     on it, its content is kept, and it is reported with its evidence. A ZIP entry whose name
-//     has a ".." element, is absolute, or begins with a drive letter; a ZIP entry that is a
-//     symbolic link by its Unix mode; a ZIP entry past both the expansion ratio and the
-//     expanded size the Options allow, 1,000:1 and 1 GiB by default, by the sizes its central
-//     directory declares; and a ZIP whose central directory can't be read. A tar entry whose name
-//     has a ".." element, is absolute, or begins with a drive letter; a tar entry that is a
-//     symbolic or hard link, a character or block device, or a FIFO; a tar entry past both the
-//     ratio, against the whole tar's size, and the size, by the size its header declares, as only
-//     a sparse entry or a lying header can be; and a tar whose headers can't all be read, as a
-//     truncated tar's can't. A gzip stream past both by the bytes it decompresses to, which a
-//     stage raises, not Inspect: a gzip declares its expanded size only modulo 4 GiB; and a PDF's
-//     embedded file past both by the bytes it is saved as, which the document stage raises. A 7z,
-//     cabinet, or zstd stream's listing's findings, which [CheckListing] raises: a 7z or cabinet
-//     entry whose name has a ".." element, is absolute, or begins with a drive letter; a 7z entry
-//     that is a symbolic or hard link, or a device, a FIFO, or a socket; a 7z or cabinet entry
-//     past both thresholds by its declared size against the whole archive's; and a zstd stream
-//     past both by the content size its frame header declares, or as written. A 7z's encrypted
-//     entry is active, as a ZIP's is.
+//   - [Active]: flagged, the part proceeding by default. Content that could act, since no stage
+//     executes it: a polyglot, a ZIP's end-of-central-directory record inside content that isn't
+//     a container, or a PDF header after another signature; executable content, by route's PE,
+//     ELF, Mach-O, and "#!" kinds; an OOXML package's VBA project, macro sheet, ActiveX
+//     controls, OLE objects, and external relationships other than hyperlinks, such as a remote
+//     template or a linked picture; the PDF names pdfid counts, /JavaScript, /JS, /OpenAction,
+//     /AA, /Launch, /EmbeddedFile, /RichMedia, /XFA, and /Encrypt, and /EmbeddedFiles and /EF,
+//     which mark an embedded file whose stream names no type, hex-escaped forms such as
+//     /J#61vaScript included, outside the PDF's stream data; and an SVG's script elements,
+//     event handler attributes, hrefs that leave the document, and foreignObjects. A name's
+//     findings: a signature that disagrees with its extension, an executable extension (.exe,
+//     .dll, .js, .vbs, .scr, .bat, .cmd, .ps1, .lnk, .hta, .jar, .msi), and one after another,
+//     as in "invoice.pdf.exe". Content a stage leaves unread: an archive entry whose name has a
+//     ".." element, is absolute, or begins with a drive letter, a link, symbolic or hard, and a
+//     device, a FIFO, or a socket, each entry an unread child, the others read; an encrypted
+//     archive entry, an /Encrypt PDF, and an encrypted OOXML package, an OLE2 compound file
+//     holding an EncryptedPackage stream whatever its name; and an SVG or an OOXML
+//     relationships part whose scan ended early, what follows unseen.
+//   - [Unsafe]: flagged, the part quarantined by default: no stage runs on it, its content is
+//     kept, and it is reported with its evidence. A bomb: an archive entry past the bomb rule by
+//     the sizes it declares, its ratio against its compressed size, or against the whole
+//     archive's where its format shares one or declares none; an archive whose entries' declared
+//     sizes sum past the rule against its own size; a ZIP whose entries' declared compressed
+//     sizes sum past its own size, whatever the rule; and a gzip or zstd stream, or a PDF's
+//     embedded file, past the rule as a stage writes it. An unreadable directory: a ZIP whose
+//     central directory can't be read, or a tar whose headers can't all be, or either holding
+//     more entries than the Options allow.
 //
-// [CheckListing] holds a listing of an archive only a program reads, a 7z, a cabinet, or a zstd
-// stream, as 7-Zip lists it, to the rules Inspect holds a tar's headers to, by the same name
-// checks, and returns its report under the Options. Inspect runs no program, so it lists no such
-// archive itself: the dispatcher's archive stage lists it through 7-Zip and calls CheckListing
-// before extracting anything, quarantining the archive on its verdict.
+// The archive checks are seven rules, whatever the archive's format: [ArchiveTraversal],
+// [ArchiveAbsolutePath], [ArchiveSymlink], [ArchiveHardlink], [ArchiveDevice], [ArchiveEncrypted],
+// and [ArchiveBomb]. A stage that reads an archive through a program raises them too: it calls
+// [CheckListing] with the program's listing of a 7z, a cabinet, or a zstd stream before it
+// extracts anything, and raises ArchiveBomb on the bytes it writes.
 //
-// A policy, [Options.Policy], overrides any check's default action, so a caller may quarantine
-// a macro or let an unsafe finding proceed.
+// The Options carry no default bound. The zero Options weigh each flag by its class, apply no
+// bomb rule but the one no ZIP passes, its declared compressed sizes against its own size, and
+// bound no listing. [Options.Policy] overrides any check's default action, so a caller may
+// quarantine a macro or a traversing name, or let a bomb proceed. A bomb rule, [Options.Bomb],
+// is set by its ratio and its size together, and content is past it when it passes both.
+// [Options.Entries] bounds a ZIP's or a tar's entries: a ZIP whose end record lists more is
+// unreadable before archive/zip reads its central directory.
+//
+// The XML scans, an SVG's and an OOXML package's relationships parts', decode the charset the
+// XML declares, by its IANA name through x/text's ianaindex, or UTF-16 by a byte order mark; a
+// charset no decoder knows ends the scan early. A package's relationships parts share one budget
+// of 16 MiB, expanded.
 //
 // The checks read what pdfid and a careful reader read, not everything: a PDF name inside a
-// compressed object stream is unseen, as it is by pdfid; legacy OLE2 documents' macros and ODF
-// packages' scripts aren't checked; and a container's members are not inspected here, but as
-// parts of their own once the stage that extracts them yields them, the dispatcher's archive
-// stage enforcing the bomb rule on the bytes it writes, since a declared size may lie. A gzip
-// stream is checked as a gzip no further: the tar a .tar.gz holds is inspected once the stage
-// decompresses it.
+// compressed object stream is unseen, its stream data skipped; legacy OLE2 documents' macros and
+// ODF packages' scripts aren't checked; and a container's members are not inspected here, but as
+// parts of their own once the stage that extracts them yields them, the stage enforcing the bomb
+// rule on the bytes it writes, since a declared size may lie. A gzip stream is checked as a gzip
+// no further: the tar a .tar.gz holds is inspected once the stage decompresses it.
 //
 // Its exported identifiers:
 //
-//   - [Inspect] inspects the file at a path, and returns its [Report]; [Report.Has] reports
-//     whether it holds a check's flag.
+//   - [Inspect] inspects the file at a path, named; [Content] inspects open content of a kind;
+//     [Name] checks a name. Each returns its [Report], or Name its flags.
 //   - [CheckListing] checks an archive's listing, its [Listed] entries, each of an [EntryType],
 //     [FileEntry], [DirEntry], [SymlinkEntry], [HardlinkEntry], or [DeviceEntry], and returns its
 //     Report.
-//   - [Options] tune it: a [Options.Policy] and the bomb rule's thresholds, by default
-//     [DefaultBombRatio] and [DefaultBombSize]; an invalid one matches [ErrOptions].
-//   - [Flag] is one finding, its [Check], [Class], and evidence.
+//   - [Options] tune them: a policy, a bomb rule, and an entry bound. [Options.Validate] refuses
+//     invalid ones, matching [ErrOptions]; [Options.Bomb] returns the [BombRule], whose
+//     [BombRule.Past] weighs content against it; and [Options.Verdict] is the verdict flags come
+//     to.
+//   - [Flag] is one finding, its [Check], [Class], and evidence, JSON by its tags.
 //   - [Class] is [Active] or [Unsafe]; [Verdict] is [Proceed] or [Quarantine].
-//   - [Check] names a check. Of class Active: [SignatureMismatch], [Polyglot], [Executable],
-//     [ExecutableExtension], [DoubleExtension], [VBAProject], [MacroSheet], [ActiveX],
-//     [OLEObject], [ExternalRelationship], [OOXMLEncrypted], and [ZIPEncrypted]; the PDF names,
-//     [PDFJavaScript], [PDFJS], [PDFOpenAction], [PDFAA], [PDFLaunch], [PDFEmbeddedFile],
-//     [PDFRichMedia], [PDFXFA], and [PDFEncrypt]; and [SVGScript], [SVGEventHandler],
-//     [SVGExternalHref], and [SVGForeignObject]. Of class Unsafe: [ZIPTraversal],
-//     [ZIPAbsolutePath], [ZIPSymlink], [ZIPBomb], and [ZIPUnreadable]; [TarTraversal],
-//     [TarAbsolutePath], [TarSymlink], [TarHardlink], [TarDevice], [TarBomb], and
-//     [TarUnreadable]; [GzipBomb]; [PDFAttachmentBomb]; and, of a listing, [SevenZipTraversal],
-//     [SevenZipAbsolutePath], [SevenZipSymlink], [SevenZipHardlink], [SevenZipDevice], and
-//     [SevenZipBomb]; [CabTraversal], [CabAbsolutePath], and [CabBomb]; and [ZstdBomb]. Of class
-//     Active too: [SevenZipEncrypted]. [Checks] lists them, and [ClassOf] returns a check's
-//     class.
+//   - [Check] names a check, by its rule. Of class Active: [SignatureMismatch], [Polyglot],
+//     [Executable], [ExecutableExtension], and [DoubleExtension]; [VBAProject], [MacroSheet],
+//     [ActiveX], [OLEObject], [ExternalRelationship], [RelationshipsUnreadable], and
+//     [OOXMLEncrypted]; the PDF names, [PDFJavaScript], [PDFJS], [PDFOpenAction], [PDFAA],
+//     [PDFLaunch], [PDFEmbeddedFile], [PDFRichMedia], [PDFXFA], and [PDFEncrypt]; [SVGScript],
+//     [SVGEventHandler], [SVGExternalHref], [SVGForeignObject], and [SVGUnreadable]; and
+//     [ArchiveTraversal], [ArchiveAbsolutePath], [ArchiveSymlink], [ArchiveHardlink],
+//     [ArchiveDevice], and [ArchiveEncrypted]. Of class Unsafe: [ArchiveBomb], [ZIPUnreadable],
+//     and [TarUnreadable]. [Checks] lists them, for a policy's configuration.
 package inspect

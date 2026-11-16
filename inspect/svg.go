@@ -3,6 +3,7 @@ package inspect
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,14 +13,12 @@ import (
 // svg reads an SVG's elements and attributes, a token at a time, for a script element, a
 // foreignObject, an event handler attribute, and an href, xlink's or SVG 2's, that leaves the
 // document: one that doesn't begin "#", a fragment of its own, or "data:", inline content. It
-// reads leniently, as a browser would, undefined entities kept as text and never expanded, and
-// checks markup that doesn't decode as far as it decodes. Its memory follows the token being
-// read.
+// decodes the SVG's charset, a declared one or a UTF-16 byte order mark's, and reads leniently,
+// as a browser would, undefined entities kept as text and never expanded. Markup that doesn't
+// decode to its end is checked as far as it decodes, and is [SVGUnreadable]. Its memory follows
+// the token being read.
 func (in *inspection) svg(ctx context.Context) error {
-	if _, err := in.file.Seek(0, io.SeekStart); err != nil {
-		return fmt.Errorf("inspect: %w", err)
-	}
-	d := xml.NewDecoder(in.file)
+	d := xmlDecoder(io.NewSectionReader(in.file, 0, in.size))
 	d.Strict = false
 	for n := 0; ; n++ {
 		if n%1024 == 0 {
@@ -28,7 +27,11 @@ func (in *inspection) svg(ctx context.Context) error {
 			}
 		}
 		tok, err := d.Token()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		if err != nil {
+			in.flag(SVGUnreadable, fmt.Sprintf("ended at line %d: %s", line(d), clip(err.Error())))
 			return nil
 		}
 		start, ok := tok.(xml.StartElement)

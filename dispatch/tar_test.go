@@ -109,15 +109,16 @@ func TestGzipStem(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestTarUnsafe: inspect quarantines a tar with a traversing, an absolute, or a drive letter name,
-// a symbolic or hard link, or a device or a FIFO, and the archive stage never sees it. Under a
-// policy that lets them proceed, each regular entry is written by its SHA-256 inside the working
-// directory, its stored name only its name, no file lands outside, and each link, device, and FIFO
-// is a record naming its check, no link or node made.
+// TestTarUnsafe: under a policy that quarantines them, inspect quarantines a tar with a
+// traversing, an absolute, or a drive letter name, a symbolic or hard link, or a device or a FIFO,
+// and the archive stage never sees it. By default, each flag active, each regular entry is written
+// by its SHA-256 inside the working directory, its stored name only its name, no file lands
+// outside, and each link, device, and FIFO is a record naming its check, active, no link or node
+// made.
 func TestTarUnsafe(t *testing.T) {
-	permissive := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
-		inspect.TarTraversal: inspect.Proceed, inspect.TarAbsolutePath: inspect.Proceed, inspect.TarSymlink: inspect.Proceed,
-		inspect.TarHardlink: inspect.Proceed, inspect.TarDevice: inspect.Proceed,
+	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
+		inspect.ArchiveTraversal: inspect.Quarantine, inspect.ArchiveAbsolutePath: inspect.Quarantine, inspect.ArchiveSymlink: inspect.Quarantine,
+		inspect.ArchiveHardlink: inspect.Quarantine, inspect.ArchiveDevice: inspect.Quarantine,
 	}}
 	for _, c := range []struct {
 		fixture string
@@ -126,13 +127,13 @@ func TestTarUnsafe(t *testing.T) {
 	}{
 		{"traversal.tar", []string{"notes.txt", "docs/../../evil.txt"}, nil},
 		{"absolute.tar", []string{"/tmp/evil.txt", `C:\evil.txt`}, nil},
-		{"symlink.tar", []string{"notes.txt"}, map[string]inspect.Check{"passwd": inspect.TarSymlink}},
-		{"hardlink.tar", []string{"notes.txt"}, map[string]inspect.Check{"shadow": inspect.TarHardlink}},
+		{"symlink.tar", []string{"notes.txt"}, map[string]inspect.Check{"passwd": inspect.ArchiveSymlink}},
+		{"hardlink.tar", []string{"notes.txt"}, map[string]inspect.Check{"shadow": inspect.ArchiveHardlink}},
 		{"device.tar", []string{"notes.txt"}, map[string]inspect.Check{
-			"null": inspect.TarDevice, "sda": inspect.TarDevice, "pipe": inspect.TarDevice,
+			"null": inspect.ArchiveDevice, "sda": inspect.ArchiveDevice, "pipe": inspect.ArchiveDevice,
 		}},
 	} {
-		d, zs, _ := archiveDispatcher(t, inspect.Options{})
+		d, zs, _ := archiveDispatcher(t, strict)
 		if ev := dispatchAll(t, d, inspectFixture(c.fixture), nil)[0]; ev.Outcome != dispatch.Quarantined || zs.calls.Load() != 0 {
 			t.Errorf("%s: %s, the stage called %d times; want quarantined before the stage", c.fixture, ev.Outcome, zs.calls.Load())
 		}
@@ -142,12 +143,12 @@ func TestTarUnsafe(t *testing.T) {
 		if err := os.MkdirAll(work, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		s, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{Inspect: permissive})
+		s, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work, Inspect: permissive,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -174,7 +175,7 @@ func TestTarUnsafe(t *testing.T) {
 		}
 		for name, check := range c.records {
 			m := outputNamed(t, last, dispatch.RecordOutput, "tar entry "+name).Meta
-			if m["check"] != string(check) || m["class"] != string(inspect.Unsafe) || m["name"] != name ||
+			if m["check"] != string(check) || m["class"] != string(inspect.Active) || m["name"] != name ||
 				!strings.HasSuffix(m["reason"], ": no part") || m["outcome"] != "" {
 				t.Errorf("%s: %s's record meta %v", c.fixture, name, m)
 			}
@@ -185,13 +186,14 @@ func TestTarUnsafe(t *testing.T) {
 	}
 }
 
-// TestTarGzipUnsafe: a gzip stream holding an unsafe tar is safe itself, so it is prepared, and
-// the tar it holds is quarantined once inspected, its entries never written, its content kept.
+// TestTarGzipUnsafe: a gzip stream holding a tar a policy quarantines is safe itself, so it is
+// prepared, and the tar it holds is quarantined once inspected, its entries never written, its
+// content kept.
 func TestTarGzipUnsafe(t *testing.T) {
-	d, zs, work := archiveDispatcher(t, inspect.Options{})
+	d, zs, work := archiveDispatcher(t, inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveTraversal: inspect.Quarantine}})
 	events := dispatchAll(t, d, inspectFixture("traversal.tar.gz"), nil)
 	wantSteps(t, events, []step{{"traversal.tar", 1, dispatch.Quarantined}, {"traversal.tar.gz", 0, dispatch.Prepared}})
-	if ev := events[0]; !slices.ContainsFunc(ev.Part.Flags, func(f inspect.Flag) bool { return f.Check == inspect.TarTraversal }) {
+	if ev := events[0]; !slices.ContainsFunc(ev.Part.Flags, func(f inspect.Flag) bool { return f.Check == inspect.ArchiveTraversal }) {
 		t.Errorf("traversal.tar's flags %v", ev.Part.Flags)
 	}
 	if n := zs.calls.Load(); n != 1 {
@@ -205,7 +207,7 @@ func TestTarGzipUnsafe(t *testing.T) {
 
 // TestTarBombAsWritten: sparse-bomb.tar's entry declares 4 GiB, all a hole but its last 512
 // bytes, in a 2 KiB tar, and inspect quarantines it by that header. Under a policy that lets
-// tar-bomb proceed, at lowered thresholds, the stage stops writing the hole's zeros once they
+// archive-bomb proceed, at lowered thresholds, the stage stops writing the hole's zeros once they
 // pass both, removes the partial file, and records it quarantined with its evidence.
 func TestTarBombAsWritten(t *testing.T) {
 	lowered := inspect.Options{BombSize: 1 << 20, BombRatio: 100}
@@ -214,7 +216,7 @@ func TestTarBombAsWritten(t *testing.T) {
 		t.Errorf("sparse-bomb.tar: %s, the stage called %d times", ev.Outcome, zs.calls.Load())
 	}
 
-	lowered.Policy = map[inspect.Check]inspect.Verdict{inspect.TarBomb: inspect.Proceed}
+	lowered.Policy = map[inspect.Check]inspect.Verdict{inspect.ArchiveBomb: inspect.Proceed}
 	d, _, work := archiveDispatcher(t, lowered)
 	events := dispatchAll(t, d, inspectFixture("sparse-bomb.tar"), func(ev *dispatch.Event) {
 		if left := files(t, work); len(left) > 0 {
@@ -223,7 +225,7 @@ func TestTarBombAsWritten(t *testing.T) {
 	})
 	wantSteps(t, events, []step{{"sparse-bomb.tar", 0, dispatch.Prepared}})
 	rec := outputNamed(t, events[0], dispatch.RecordOutput, "tar entry zeros.bin")
-	if rec.Meta["check"] != string(inspect.TarBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
+	if rec.Meta["check"] != string(inspect.ArchiveBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
 		rec.Meta["outcome"] != string(dispatch.Quarantined) || !strings.Contains(rec.Meta["evidence"], "from a 2048-byte tar") ||
 		!strings.Contains(rec.Meta["evidence"], "declared 4294967296") {
 		t.Errorf("zeros.bin's record meta %v", rec.Meta)
@@ -233,9 +235,8 @@ func TestTarBombAsWritten(t *testing.T) {
 
 // TestGzipBombAsWritten: bomb.tar.gz expands about 1,000:1 to a tar of 8 MiB of zeros. At
 // lowered thresholds the stage stops decompressing it once its bytes pass both, removes the
-// partial file, and records it quarantined, its check gzip-bomb; at the defaults, under the
-// size, its tar is written in full and dispatched, its entry no bomb, since a tar stores its
-// bytes as they are.
+// partial file, and records it quarantined, its check archive-bomb; with no bomb rule its tar is
+// written in full and dispatched, its entry no bomb, since a tar stores its bytes as they are.
 func TestGzipBombAsWritten(t *testing.T) {
 	d, _, work := archiveDispatcher(t, inspect.Options{BombSize: 1 << 20, BombRatio: 100})
 	events := dispatchAll(t, d, inspectFixture("bomb.tar.gz"), func(ev *dispatch.Event) {
@@ -245,7 +246,7 @@ func TestGzipBombAsWritten(t *testing.T) {
 	})
 	wantSteps(t, events, []step{{"bomb.tar.gz", 0, dispatch.Prepared}})
 	rec := outputNamed(t, events[0], dispatch.RecordOutput, "gzip content bomb.tar")
-	if rec.Meta["check"] != string(inspect.GzipBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
+	if rec.Meta["check"] != string(inspect.ArchiveBomb) || rec.Meta["class"] != string(inspect.Unsafe) ||
 		rec.Meta["outcome"] != string(dispatch.Quarantined) || rec.Meta["name"] != "bomb.tar" ||
 		!strings.Contains(rec.Meta["evidence"], `content "bomb.tar"`) {
 		t.Errorf("bomb.tar's record meta %v", rec.Meta)

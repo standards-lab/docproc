@@ -183,16 +183,15 @@ func TestZipMethods(t *testing.T) {
 }
 
 // TestSevenZipUnsafe: the stage quarantines a 7z or cabinet whose 7-Zip listing names a
-// traversing, absolute, or drive letter entry, a symbolic link, or a FIFO, before anything is
-// extracted, the listing's flags its evidence, and the archive's file kept. Under a policy that
-// lets them proceed, each file is written by its SHA-256 inside the working directory, its
-// stored name only its name, no file lands outside, and each link or FIFO is a record naming its
-// check, no link or node made.
+// traversing, absolute, or drive letter entry, a symbolic link, or a FIFO, under a policy that
+// quarantines them, before anything is extracted, the listing's flags its evidence, and the
+// archive's file kept. By default, each flag active, each file is written by its SHA-256 inside
+// the working directory, its stored name only its name, no file lands outside, and each link or
+// FIFO is a record naming its check, active, no link or node made.
 func TestSevenZipUnsafe(t *testing.T) {
-	permissive := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
-		inspect.SevenZipTraversal: inspect.Proceed, inspect.SevenZipAbsolutePath: inspect.Proceed,
-		inspect.SevenZipSymlink: inspect.Proceed, inspect.SevenZipDevice: inspect.Proceed,
-		inspect.CabTraversal: inspect.Proceed, inspect.CabAbsolutePath: inspect.Proceed,
+	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
+		inspect.ArchiveTraversal: inspect.Quarantine, inspect.ArchiveAbsolutePath: inspect.Quarantine,
+		inspect.ArchiveSymlink: inspect.Quarantine, inspect.ArchiveDevice: inspect.Quarantine,
 	}}
 	for _, c := range []struct {
 		fixture string
@@ -200,19 +199,19 @@ func TestSevenZipUnsafe(t *testing.T) {
 		parts   []string
 		records map[string]inspect.Check
 	}{
-		{"traversal.7z", inspect.SevenZipTraversal, []string{"docs/../../evil.txt", "notes.txt"}, nil},
-		{"absolute.7z", inspect.SevenZipAbsolutePath, []string{"/tmp/evil.txt", `C:\evil.txt`}, nil},
-		{"symlink.7z", inspect.SevenZipSymlink, []string{"notes.txt"}, map[string]inspect.Check{"passwd": inspect.SevenZipSymlink}},
-		{"device.7z", inspect.SevenZipDevice, []string{"notes.txt"}, map[string]inspect.Check{"pipe": inspect.SevenZipDevice}},
-		{"traversal.cab", inspect.CabTraversal, []string{"notes.txt", "docs/../../evil.txt"}, nil},
-		{"absolute.cab", inspect.CabAbsolutePath, []string{"/tmp/evil.txt", "C:/evil.txt"}, nil},
+		{"traversal.7z", inspect.ArchiveTraversal, []string{"docs/../../evil.txt", "notes.txt"}, nil},
+		{"absolute.7z", inspect.ArchiveAbsolutePath, []string{"/tmp/evil.txt", `C:\evil.txt`}, nil},
+		{"symlink.7z", inspect.ArchiveSymlink, []string{"notes.txt"}, map[string]inspect.Check{"passwd": inspect.ArchiveSymlink}},
+		{"device.7z", inspect.ArchiveDevice, []string{"notes.txt"}, map[string]inspect.Check{"pipe": inspect.ArchiveDevice}},
+		{"traversal.cab", inspect.ArchiveTraversal, []string{"notes.txt", "docs/../../evil.txt"}, nil},
+		{"absolute.cab", inspect.ArchiveAbsolutePath, []string{"/tmp/evil.txt", "C:/evil.txt"}, nil},
 	} {
-		d, zs, work := sevenZipDispatcher(t, inspect.Options{})
+		d, zs, work := sevenZipDispatcher(t, strict)
 		events := dispatchAll(t, d, sevenZipFixture("generated/"+c.fixture), nil)
 		ev := events[0]
 		if len(events) != 1 || ev.Outcome != dispatch.Quarantined || zs.calls.Load() != 1 ||
 			!slices.ContainsFunc(ev.Part.Flags, func(f inspect.Flag) bool { return f.Check == c.check }) ||
-			!strings.Contains(ev.Reason, string(c.check)+": entry ") {
+			ev.Reason != "quarantined by policy" {
 			t.Errorf("%s: %v, flags %v, reason %q; want quarantined by the stage for %s", c.fixture, steps(events), ev.Part.Flags, ev.Reason, c.check)
 		}
 		wantEmpty(t, work)
@@ -222,13 +221,13 @@ func TestSevenZipUnsafe(t *testing.T) {
 		if err := os.MkdirAll(work, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		cfg := sevenZipConfig(t, permissive)
+		cfg := sevenZipConfig(t, inspect.Options{})
 		s, err := dispatch.NewArchiveStage(cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work, Inspect: permissive,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -256,7 +255,7 @@ func TestSevenZipUnsafe(t *testing.T) {
 		}
 		for name, check := range c.records {
 			m := outputNamed(t, last, dispatch.RecordOutput, where+name).Meta
-			if m["check"] != string(check) || m["class"] != string(inspect.Unsafe) || m["name"] != name ||
+			if m["check"] != string(check) || m["class"] != string(inspect.Active) || m["name"] != name ||
 				!strings.HasSuffix(m["reason"], ": no part") || m["outcome"] != "" {
 				t.Errorf("%s: %s's record meta %v", c.fixture, name, m)
 			}
@@ -267,28 +266,29 @@ func TestSevenZipUnsafe(t *testing.T) {
 	}
 }
 
-// TestSevenZipQuarantineKept: a quarantined 7z found inside a ZIP keeps its file, as a part
-// inspect quarantines does, and its flags, the listing's among them, are the index's.
+// TestSevenZipQuarantineKept: a 7z found inside a ZIP and quarantined by policy keeps its file,
+// as a part inspect quarantines does, and its flags, the listing's among them, are the index's.
 func TestSevenZipQuarantineKept(t *testing.T) {
 	traversal, err := os.ReadFile(sevenZipFixture("generated/traversal.7z"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := sevenZipConfig(t, inspect.Options{})
+	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveTraversal: inspect.Quarantine}}
+	cfg := sevenZipConfig(t, strict)
 	s, err := dispatch.NewArchiveStage(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
 	index := dispatch.NewMemoryIndex()
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Archive: s}, Index: index, Dir: work})
+	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Archive: s}, Index: index, Dir: work, Inspect: strict})
 	if err != nil {
 		t.Fatal(err)
 	}
 	events := dispatchAll(t, d, input(t, "outer.zip", zipBytes(t, zent{name: "traversal.7z", body: string(traversal)})), nil)
 	wantSteps(t, events, []step{{"traversal.7z", 1, dispatch.Quarantined}, {"outer.zip", 0, dispatch.Prepared}})
 	flags, ok, err := index.Flags(t.Context(), events[0].Part.SHA256)
-	if err != nil || !ok || !slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == inspect.SevenZipTraversal }) {
+	if err != nil || !ok || !slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == inspect.ArchiveTraversal }) {
 		t.Errorf("the index's flags for traversal.7z: %v, %t, %v", flags, ok, err)
 	}
 	if left := files(t, work); len(left) != 1 || filepath.Base(left[0]) != events[0].Part.SHA256 {
@@ -297,10 +297,10 @@ func TestSevenZipQuarantineKept(t *testing.T) {
 }
 
 // TestSevenZipBombs: bomb.7z's and bomb.cab's listings declare 8 MiB and declared-bomb.zst's
-// frame header 4 GiB; past the thresholds, lowered for the 8 MiB, each is quarantined by its
-// listing, nothing extracted. Under a policy that lets the listing's bomb proceed, the stage
-// stops writing the zeros 7zz gives once they pass both, removes the partial file, and records
-// the entry quarantined, its check the kind's bomb; bomb.zst, whose header declares no size,
+// frame header 4 GiB; past a rule of 1,000:1 and 1 GiB, lowered for the 8 MiB, each is
+// quarantined by its listing, nothing extracted. Under a policy that lets archive-bomb proceed,
+// the stage stops writing the zeros 7zz gives once they pass both, removes the partial file, and
+// records the entry quarantined, its check archive-bomb; bomb.zst, whose header declares no size,
 // passes its listing and is stopped as written.
 func TestSevenZipBombs(t *testing.T) {
 	lowered := inspect.Options{BombSize: 1 << 20, BombRatio: 100}
@@ -309,9 +309,9 @@ func TestSevenZipBombs(t *testing.T) {
 		opts    inspect.Options
 		check   inspect.Check
 	}{
-		{"bomb.7z", lowered, inspect.SevenZipBomb},
-		{"bomb.cab", lowered, inspect.CabBomb},
-		{"declared-bomb.zst", inspect.Options{}, inspect.ZstdBomb},
+		{"bomb.7z", lowered, inspect.ArchiveBomb},
+		{"bomb.cab", lowered, inspect.ArchiveBomb},
+		{"declared-bomb.zst", inspect.Options{BombRatio: 1000, BombSize: 1 << 30}, inspect.ArchiveBomb},
 	} {
 		d, _, work := sevenZipDispatcher(t, c.opts)
 		events := dispatchAll(t, d, sevenZipFixture("generated/"+c.fixture), nil)
@@ -325,9 +325,9 @@ func TestSevenZipBombs(t *testing.T) {
 		fixture, record string
 		check           inspect.Check
 	}{
-		{"bomb.7z", "7z entry zeros.bin", inspect.SevenZipBomb},
-		{"bomb.cab", "cabinet entry zeros.bin", inspect.CabBomb},
-		{"bomb.zst", "zstd content bomb", inspect.ZstdBomb},
+		{"bomb.7z", "7z entry zeros.bin", inspect.ArchiveBomb},
+		{"bomb.cab", "cabinet entry zeros.bin", inspect.ArchiveBomb},
+		{"bomb.zst", "zstd content bomb", inspect.ArchiveBomb},
 	} {
 		opts := lowered
 		opts.Policy = map[inspect.Check]inspect.Verdict{c.check: inspect.Proceed}
@@ -348,7 +348,7 @@ func TestSevenZipBombs(t *testing.T) {
 }
 
 // TestSevenZipEncrypted: encrypted.7z's clear entry is found and its encrypted one recorded, its
-// check 7z-encrypted and its outcome encrypted, and the archive is encrypted once its readable
+// check archive-encrypted and its outcome encrypted, and the archive is encrypted once its readable
 // entry is dispatched; encrypted-headers.7z, which lists nothing without its password, is
 // encrypted at once.
 func TestSevenZipEncrypted(t *testing.T) {
@@ -357,7 +357,7 @@ func TestSevenZipEncrypted(t *testing.T) {
 	wantSteps(t, events, []step{{"notes.txt", 1, dispatch.NoProcessor}, {"encrypted.7z", 0, dispatch.Encrypted}})
 	last := events[1]
 	m := outputNamed(t, last, dispatch.RecordOutput, "7z entry secret.txt").Meta
-	if m["check"] != string(inspect.SevenZipEncrypted) || m["class"] != string(inspect.Active) || m["outcome"] != string(dispatch.Encrypted) {
+	if m["check"] != string(inspect.ArchiveEncrypted) || m["class"] != string(inspect.Active) || m["outcome"] != string(dispatch.Encrypted) {
 		t.Errorf("secret.txt's record meta %v", m)
 	}
 	if !strings.Contains(last.Reason, "1 of 2 entries") {

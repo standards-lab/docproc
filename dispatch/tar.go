@@ -18,11 +18,11 @@ var tarUnwritten = map[byte]struct {
 	what  string
 	check inspect.Check
 }{
-	tar.TypeSymlink: {"symbolic link", inspect.TarSymlink},
-	tar.TypeLink:    {"hard link", inspect.TarHardlink},
-	tar.TypeChar:    {"character device", inspect.TarDevice},
-	tar.TypeBlock:   {"block device", inspect.TarDevice},
-	tar.TypeFifo:    {"FIFO", inspect.TarDevice},
+	tar.TypeSymlink: {"symbolic link", inspect.ArchiveSymlink},
+	tar.TypeLink:    {"hard link", inspect.ArchiveHardlink},
+	tar.TypeChar:    {"character device", inspect.ArchiveDevice},
+	tar.TypeBlock:   {"block device", inspect.ArchiveDevice},
+	tar.TypeFifo:    {"FIFO", inspect.ArchiveDevice},
 }
 
 // tarEntry is what a tar entry the stage can't write is recorded as: its stored name, its type,
@@ -95,10 +95,10 @@ func (s *ArchiveStage) tarEntry(ctx context.Context, h *tar.Header, r io.Reader,
 	quoted := fmt.Sprintf("entry %q", h.Name)
 	if h.Typeflag != tar.TypeReg && h.Typeflag != tar.TypeGNUSparse {
 		if u, ok := tarUnwritten[h.Typeflag]; ok {
-			// Inspect quarantined the tar for it; a policy let it proceed. No link and no node
-			// is made, and a link's target is only its record's text.
+			// Inspect flags it, active: the entry is unread. No link and no node is made, and a
+			// link's target is only its record's text.
 			rec.Type = u.what
-			rec.Reason, rec.Check, rec.Class, rec.Evidence = u.what+": no part", string(u.check), string(inspect.Unsafe), quoted
+			rec.Reason, rec.Check, rec.Class, rec.Evidence = u.what+": no part", string(u.check), string(inspect.Active), quoted
 			return recorded(rec)
 		}
 		rec.Type = fmt.Sprintf("%q", h.Typeflag)
@@ -121,9 +121,9 @@ func (s *ArchiveStage) tarEntry(ctx context.Context, h *tar.Header, r io.Reader,
 		return Item{}, err
 	case errors.Is(why, errBomb):
 		rec.Written, rec.Reason = written, "past the bomb thresholds as written"
-		rec.Check, rec.Class = string(inspect.TarBomb), string(inspect.Unsafe)
+		rec.Check, rec.Class = string(inspect.ArchiveBomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("%s: %d bytes written from a %d-byte tar, %.0f:1, declared %d; past %d bytes and %g:1",
-			quoted, written, whole, float64(written)/float64(max(whole, 1)), h.Size, s.size, s.ratio)
+			quoted, written, whole, float64(written)/float64(max(whole, 1)), h.Size, s.bomb.Size, s.bomb.Ratio)
 		return recorded(rec)
 	case why != nil:
 		rec.Written, rec.Reason = written, why.Error()
@@ -183,9 +183,9 @@ func (s *ArchiveStage) gzip(ctx context.Context, p Part, dir string, yield func(
 		yield(Item{}, err)
 		return
 	case errors.Is(why, errBomb):
-		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.GzipBomb), string(inspect.Unsafe)
+		rec.Reason, rec.Check, rec.Class = "past the bomb thresholds as written", string(inspect.ArchiveBomb), string(inspect.Unsafe)
 		rec.Evidence = fmt.Sprintf("content %q: %d bytes written from %d, %.0f:1; past %d bytes and %g:1",
-			name, written, compressed, float64(written)/float64(max(compressed, 1)), s.size, s.ratio)
+			name, written, compressed, float64(written)/float64(max(compressed, 1)), s.bomb.Size, s.bomb.Ratio)
 	case why != nil:
 		rec.Reason = why.Error()
 	default:
