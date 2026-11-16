@@ -72,11 +72,18 @@ mod tests {
         holds_key(Trickle { bytes, step }).unwrap()
     }
 
-    /// The constants as `Encryption.one` stores them, each at its first offset there.
+    /// Interop's password-protected `Encryption.one` holds both constants, as it stores them;
+    /// its sections that read hold neither pair.
     #[test]
-    fn the_constants_are_stored_little_endian() {
-        assert_eq!(HEADER, [0x67, 0xa0, 0xd1, 0xda, 0x85, 0xa3, 0x6b, 0xfb]);
-        assert_eq!(FOOTER, [0x3c, 0x8b, 0x19, 0x8e, 0x4f, 0x29, 0x49, 0x26]);
+    fn a_password_protected_section_holds_the_key() {
+        let fixture = |path: &str| {
+            let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/interop/SUT/");
+            std::fs::File::open(format!("{dir}{path}")).unwrap()
+        };
+        assert!(holds_key(fixture("Encryption.one")).unwrap());
+        for path in ["OneWithFileData.one", "OneWithoutFileData.one"] {
+            assert!(!holds_key(fixture(path)).unwrap(), "{path}");
+        }
     }
 
     #[test]

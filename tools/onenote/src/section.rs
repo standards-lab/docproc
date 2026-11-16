@@ -229,7 +229,10 @@ mod tests {
     /// next second among them.
     #[test]
     fn the_parsers_fallback_is_no_creation_time() {
-        assert_eq!(creation_time(UNREAD_TIME, "/Section, page 1"), None);
+        assert_eq!(
+            creation_time(utc_datetime!(1970-01-01 0:00), "/Section, page 1"),
+            None
+        );
         assert_eq!(
             creation_time(utc_datetime!(1970-01-01 0:00:01), "/Section, page 1"),
             Some("1970-01-01T00:00:01Z".to_owned())

@@ -273,22 +273,18 @@ fn file_only_refuses_a_table_of_contents_and_reads_the_rest() {
     assert_eq!(out.stderr, error("No such file or directory (os error 2)"));
 }
 
-/// The read thread's stack is reserved as address space: under an address-space limit too small
-/// for it, the thread can't start, a fault outside any record, exit 4 with nothing on stdout.
-/// The limit, 64 MiB, leaves the static binary room to start and parse its arguments, and is a
-/// quarter of the stack it would reserve.
-#[test]
-fn a_read_thread_that_cant_start_is_exit_4() {
-    const LIMIT: libc::rlim_t = 64 << 20;
+/// One run of the binary over [`DESKTOP`] under an address-space limit of `limit` bytes, with
+/// RUST_MIN_STACK, std's default stack for a spawned thread, set to 64 KiB.
+fn run_limited(limit: libc::rlim_t) -> std::process::Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_docproc-onenote"));
-    command.arg(fixture(DESKTOP));
+    command.arg(fixture(DESKTOP)).env("RUST_MIN_STACK", "65536");
     // SAFETY: setrlimit is async-signal-safe, and the closure touches nothing else between the
     // fork and the exec.
     unsafe {
-        command.pre_exec(|| {
+        command.pre_exec(move || {
             let limit = libc::rlimit {
-                rlim_cur: LIMIT,
-                rlim_max: LIMIT,
+                rlim_cur: limit,
+                rlim_max: limit,
             };
             if libc::setrlimit(libc::RLIMIT_AS, &limit) == 0 {
                 Ok(())
@@ -297,13 +293,28 @@ fn a_read_thread_that_cant_start_is_exit_4() {
             }
         });
     }
-    let out = command.output().unwrap();
+    command.output().unwrap()
+}
+
+/// The read thread's stack is reserved as address space: under an address-space limit too small
+/// for it, the thread can't start, a fault outside any record, exit 4 with nothing on stdout.
+/// The limit, 64 MiB, leaves the static binary room to start and parse its arguments, and is a
+/// quarter of the stack it would reserve; under 384 MiB, room for the stack and the read, the
+/// same input reads. So the stack is fixed between the two, and RUST_MIN_STACK, set small for
+/// both runs, doesn't change it.
+#[test]
+fn a_read_thread_that_cant_start_is_exit_4() {
+    let out = run_limited(64 << 20);
     assert_eq!(out.status.code(), Some(4));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
     assert_eq!(
         String::from_utf8(out.stderr).unwrap(),
         error("internal fault: the read thread can't start")
     );
+    let out = run_limited(384 << 20);
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    assert_eq!(out.stdout, run(&[fixture(DESKTOP)]).stdout.into_bytes());
 }
 
 /// A parser panic is caught by the shared guard and refused with exit 3, never 4. The byte set here makes
