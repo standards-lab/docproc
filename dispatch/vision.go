@@ -49,14 +49,14 @@ func (s *VisionStage) Identity() Identity { return s.id }
 // another kind, which route.Vision never names, fails.
 func (s *VisionStage) Prepare(_ context.Context, p Part, _ string) iter.Seq2[Item, error] {
 	return func(yield func(Item, error) bool) {
-		mime, ok := visionTypes[p.Kind]
+		mime, ok := visionTypes[p.ContentType.Kind]
 		if !ok {
 			yield(Item{}, fmt.Errorf("vision stage: %s isn't a PNG, JPEG, GIF, or BMP", p.Name))
 			return
 		}
 		yield(OutputItem(Output{
 			Kind: ImageOutput, Name: "picture", MediaType: mime, Path: p.Path,
-			Meta: map[string]string{"kind": string(p.Kind)},
+			Meta: map[string]string{"kind": string(p.ContentType.Kind)},
 		}), nil)
 	}
 }

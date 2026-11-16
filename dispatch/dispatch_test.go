@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -24,8 +25,8 @@ func sum(content string) string {
 
 // TestDepthFirst: every part a stage finds is dispatched, with every part in it, before the
 // stage's next; a part's event follows its descendants', the input's last. Each part names its
-// size, SHA-256, kind, route and reason, parent, depth, and where it was found, and its event its
-// stage's identity, its outputs, and its children.
+// ID, size, SHA-256, kind, route and reason, parent's ID, depth, and where it was found, and its
+// event its stage's identity, its outputs, and its children, which its entry's log records.
 func TestDepthFirst(t *testing.T) {
 	world := map[string]string{
 		"b.txt": "file d.txt",
@@ -42,25 +43,34 @@ func TestDepthFirst(t *testing.T) {
 		{"a.txt", 0, dispatch.Prepared},
 	})
 	d, b, a := byName(t, events, "d.txt"), byName(t, events, "b.txt"), byName(t, events, "a.txt")
-	if d.Part.Parent != sum(world["b.txt"]) || b.Part.Parent != sum(top) || a.Part.Parent != "" {
+	if d.Part.Parent != "/line 1" || b.Part.Parent != "/" || a.Part.Parent != "" {
 		t.Errorf("parents: d %s, b %s, a %q", d.Part.Parent, b.Part.Parent, a.Part.Parent)
+	}
+	if d.Part.ID != "/line 1/line 1" || b.Part.ID != "/line 1" || a.Part.ID != "/" {
+		t.Errorf("IDs: d %s, b %s, a %s", d.Part.ID, b.Part.ID, a.Part.ID)
 	}
 	if d.Part.SHA256 != sum("leaf d") || d.Part.Size != int64(len("leaf d")) || d.Part.Where != "line 1" {
 		t.Errorf("d: %+v", d.Part)
 	}
-	if a.Part.Route != route.Text || a.Part.Reason != "text by its .txt extension" || a.Part.Kind != route.Unknown {
-		t.Errorf("a's route: %s, %q, kind %q", a.Part.Route, a.Part.Reason, a.Part.Kind)
+	if a.Part.ContentType.Route != route.Text || a.Part.ContentType.RouteReason != "text by its .txt extension" || a.Part.ContentType.Kind != route.Unknown {
+		t.Errorf("a's route: %s, %q, kind %q", a.Part.ContentType.Route, a.Part.ContentType.RouteReason, a.Part.ContentType.Kind)
 	}
 	if a.Stage != f.text.Identity() || len(a.Outputs) != 1 || a.Outputs[0].Kind != dispatch.TextOutput {
 		t.Errorf("a's stage and outputs: %v, %+v", a.Stage, a.Outputs)
 	}
-	want := []dispatch.Child{
-		{SHA256: sum(world["b.txt"]), Name: "b.txt", Where: "line 1", Size: int64(len(world["b.txt"])), Route: route.Text, Outcome: dispatch.Prepared},
-		{SHA256: sum(world["c.txt"]), Name: "c.txt", Where: "line 2", Size: int64(len(world["c.txt"])), Route: route.Text, Outcome: dispatch.Prepared},
+	want := []dispatch.Part{b.Part, byName(t, events, "c.txt").Part}
+	for i := range want {
+		want[i].Path = ""
 	}
 	key := dispatch.Key{SHA256: a.Part.SHA256, Stage: f.text.Identity()}
-	if got := children(t, f.index, key); a.Children != len(want) || !slices.Equal(got, want) {
-		t.Errorf("a's %d children, read back:\n got %+v\nwant %+v", a.Children, got, want)
+	got := children(t, f.index, key)
+	if a.Children != len(want) || len(got) != len(want) {
+		t.Fatalf("a's %d children, read back: %+v", a.Children, got)
+	}
+	for i, c := range got {
+		if c.Outcome != dispatch.Prepared || !reflect.DeepEqual(c.Part, want[i]) {
+			t.Errorf("a's child %d, read back:\n got %+v\nwant %+v", i, c, want[i])
+		}
 	}
 }
 
@@ -206,7 +216,7 @@ func TestLimits(t *testing.T) {
 		})
 	}
 	t.Run("limited is not recorded", func(t *testing.T) {
-		index := dispatch.NewMemoryIndex()
+		index := dispatch.NewMemoryIndex(0)
 		path := input(t, "top.txt", top)
 		dispatchAll(t, newFixture(t, world, index, dispatch.Limits{Depth: 1}).d, path, nil)
 		events := dispatchAll(t, newFixture(t, world, index, dispatch.Limits{}).d, path, nil)
@@ -218,18 +228,14 @@ func TestLimits(t *testing.T) {
 }
 
 // TestSeenAcrossInputs: two inputs sharing an index prepare their shared content once; the
-// second's seen events carry the Refs the caller set on the first's outputs, not their removed
-// paths, and the flags the index recorded.
+// second's seen events carry the outputs' SHA-256s, not their removed paths, and the flags the
+// entry recorded.
 func TestSeenAcrossInputs(t *testing.T) {
 	world := map[string]string{"shared.txt": "file inner.txt", "inner.txt": "leaf"}
 	for name, newIndex := range indexes() {
 		t.Run(name, func(t *testing.T) {
-			f := newFixture(t, world, newIndex(t, nil), dispatch.Limits{})
-			dispatchAll(t, f.d, input(t, "one.txt", "file shared.txt\ncopy javascript.pdf"), func(ev *dispatch.Event) {
-				if ev.Output != nil {
-					ev.Output.Ref = "ref:" + ev.Part.Name
-				}
-			})
+			f := newFixture(t, world, newIndex(t), dispatch.Limits{})
+			dispatchAll(t, f.d, input(t, "one.txt", "file shared.txt\ncopy javascript.pdf"), nil)
 			events := dispatchAll(t, f.d, input(t, "two.txt", "copy javascript.pdf\nfile shared.txt"), nil)
 			wantSteps(t, events, []step{
 				{"javascript.pdf", 1, dispatch.Seen},
@@ -237,15 +243,15 @@ func TestSeenAcrossInputs(t *testing.T) {
 				{"two.txt", 0, dispatch.Prepared},
 			})
 			shared := byName(t, events, "shared.txt")
-			if len(shared.Outputs) != 1 || shared.Outputs[0].Ref != "ref:shared.txt" || shared.Outputs[0].Path != "" {
+			if len(shared.Outputs) != 1 || shared.Outputs[0].SHA256 != sum("1") || shared.Outputs[0].Path != "" {
 				t.Errorf("shared.txt's outputs: %+v", shared.Outputs)
 			}
 			got := children(t, f.index, dispatch.Key{SHA256: shared.Part.SHA256, Stage: shared.Stage})
-			if shared.Children != 1 || len(got) != 1 || got[0].Name != "inner.txt" || got[0].SHA256 != sum("leaf") {
+			if shared.Children != 1 || len(got) != 1 || got[0].Part.Name != "inner.txt" || got[0].Part.SHA256 != sum("leaf") {
 				t.Errorf("shared.txt's %d children, read back: %+v", shared.Children, got)
 			}
 			pdf := byName(t, events, "javascript.pdf")
-			if !hasFlag(pdf.Part.Flags, inspect.PDFJavaScript) || string(pdf.Outputs[0].Value) != `{"name":"javascript.pdf"}` {
+			if !hasFlag(pdf.Part.Flags, inspect.PDFJavaScript) || pdf.Outputs[0].SHA256 != sum(`{"name":"javascript.pdf"}`) {
 				t.Errorf("javascript.pdf: flags %+v, outputs %+v", pdf.Part.Flags, pdf.Outputs)
 			}
 			if f.text.called("shared.txt") != 1 || f.text.called("inner.txt") != 1 || f.pdf.called() != 1 {
@@ -331,16 +337,24 @@ func sameSet(a, b []string) bool {
 	return slices.Equal(a, b)
 }
 
-// TestKeptOutputPath: a kept event's outputs are recorded with their paths, which stay.
+// TestKeptOutputPath: a kept output's file stays, and the index records the output without its
+// path, so a seen part's output carries its SHA-256 alone.
 func TestKeptOutputPath(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	path := input(t, "top.txt", "leaf")
-	dispatchAll(t, f.d, path, func(ev *dispatch.Event) { ev.Keep() })
+	var kept string
+	dispatchAll(t, f.d, path, func(ev *dispatch.Event) {
+		if ev.Output != nil {
+			kept = ev.Output.Path
+		}
+		ev.Keep()
+	})
+	if _, err := os.Stat(kept); err != nil {
+		t.Fatalf("the kept output's file: %v", err)
+	}
 	events := dispatchAll(t, f.d, path, nil)
-	if p := events[0].Outputs[0].Path; events[0].Outcome != dispatch.Seen || p == "" {
-		t.Fatalf("seen %s, output path %q", events[0].Outcome, p)
-	} else if _, err := os.Stat(p); err != nil {
-		t.Fatal(err)
+	if o := events[0].Outputs[0]; events[0].Outcome != dispatch.Seen || o.Path != "" || o.SHA256 != sum("1") {
+		t.Fatalf("seen %s, output %+v", events[0].Outcome, o)
 	}
 }
 
@@ -389,7 +403,7 @@ func (f failingRecord) Record(ctx context.Context, key dispatch.Key, token strin
 // TestRecordFails: an index that fails to record stops the dispatch with its error, alone and
 // last, and the files of the part it failed on are removed all the same.
 func TestRecordFails(t *testing.T) {
-	f := newFixture(t, map[string]string{"b.txt": "leaf"}, failingRecord{dispatch.NewMemoryIndex()}, dispatch.Limits{})
+	f := newFixture(t, map[string]string{"b.txt": "leaf"}, failingRecord{dispatch.NewMemoryIndex(0)}, dispatch.Limits{})
 	var events []dispatch.Event
 	var errs []error
 	for ev, err := range f.d.Dispatch(t.Context(), dispatch.Input{Path: input(t, "top.txt", "file b.txt")}) {
@@ -441,7 +455,7 @@ func TestInputErrors(t *testing.T) {
 // is refused; one with no index panics, naming the field.
 func TestNew(t *testing.T) {
 	t.Parallel()
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	dir := t.TempDir()
 	wantPanic(t, "dispatch: Config.Index is nil", func() { _, _ = dispatch.New(dispatch.Config{Dir: dir}) })
 	for name, cfg := range map[string]dispatch.Config{

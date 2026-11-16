@@ -82,7 +82,7 @@ func TestEmailStageReleases(t *testing.T) {
 				stages[r] = &picky{}
 			}
 			dir := t.TempDir()
-			d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(), Dir: dir})
+			d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: dir})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -119,7 +119,7 @@ func archiveDispatcherWith(t *testing.T, cfg dispatch.ArchiveConfig) (*dispatch.
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
 		Stages:  dispatch.Stages{route.Archive: zs, route.Vision: dispatch.NewVisionStage()},
-		Index:   dispatch.NewMemoryIndex(),
+		Index:   dispatch.NewMemoryIndex(0),
 		Dir:     work,
 		Inspect: cfg.Inspect,
 	})
@@ -194,11 +194,11 @@ func TestZipStage(t *testing.T) {
 	if got := wheres(events); !slices.Equal(got, want) {
 		t.Errorf("wheres:\n got %q\nwant %q", got, want)
 	}
-	if ev := byName(t, events, "inner.zip"); ev.Part.Route != route.Archive || ev.Stage.Name != "archive" || ev.Children != 2 {
-		t.Errorf("inner.zip: %s by %v, %d children", ev.Part.Route, ev.Stage, ev.Children)
+	if ev := byName(t, events, "inner.zip"); ev.Part.ContentType.Route != route.Archive || ev.Stage.Name != "archive" || ev.Children != 2 {
+		t.Errorf("inner.zip: %s by %v, %d children", ev.Part.ContentType.Route, ev.Stage, ev.Children)
 	}
-	if ev := byName(t, events, unicode); ev.Part.Route != route.Text {
-		t.Errorf("%s routed %s, want text", unicode, ev.Part.Route)
+	if ev := byName(t, events, unicode); ev.Part.ContentType.Route != route.Text {
+		t.Errorf("%s routed %s, want text", unicode, ev.Part.ContentType.Route)
 	}
 	if n := zs.calls.Load(); n != 2 {
 		t.Errorf("the archive stage prepared %d parts, want 2", n)
@@ -305,7 +305,7 @@ func TestZipUnsafeNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -342,8 +342,8 @@ func TestArchiveNoSevenZip(t *testing.T) {
 		"a.cab":     {"MSCF" + strings.Repeat("\x00", 32), "a cabinet without 7-Zip"},
 	} {
 		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
-		if ev.Part.Route != route.Archive || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
-			t.Errorf("%s: %s %s, %q; want archive, no processor, %q", name, ev.Part.Route, ev.Outcome, ev.Reason, c.reason)
+		if ev.Part.ContentType.Route != route.Archive || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
+			t.Errorf("%s: %s %s, %q; want archive, no processor, %q", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason, c.reason)
 		}
 	}
 	wantEmpty(t, work)

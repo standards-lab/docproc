@@ -40,7 +40,7 @@ type Stages map[route.Route]Stage
 
 // Identity is a stage's identity: its name, the version of the tool behind it, and a hash of
 // its configuration, such as [HashConfig] returns. It is comparable, and part of every key the
-// index records a stage's outputs under.
+// index records a stage's entry under; as JSON it is the stage an event and an entry name.
 type Identity struct {
 	Name    string `json:"name"`
 	Version string `json:"version"`
@@ -167,22 +167,21 @@ const (
 
 // Output is one thing a stage prepared for a model: its kind, a name the stage gives it, such as
 // "page 3", its media type, and either a file the stage wrote, at Path, or its bytes inline, in
-// Value: text and Markdown as UTF-8, a record as JSON. Meta holds whatever else the stage says
-// of it, such as a page's number and count.
+// Value: text and Markdown as UTF-8, a record as its media type says. Meta holds whatever else the
+// stage says of it, such as a page's number and count, under the keys [MetaPage] and the rest.
 //
-// Ref is the caller's: the dispatcher never sets it. A caller that persists an output sets its
-// Ref, through its output event's Output, to its own key for it, and the index records the Ref,
-// so a later [Seen] part's output event carries the caller's key rather than a file the
-// dispatcher has since removed. The recorded output keeps its Path only when the caller kept the
-// output's file in its event.
+// SHA256 is its content's SHA-256, lowercase hex, which the dispatcher fills: the content store
+// holds the content by it, and the index records the output with it. Path and Value are local and
+// never marshal, so a recorded or replayed output carries its SHA256 alone, its content found in
+// the content store.
 type Output struct {
 	Kind      OutputKind        `json:"kind"`
 	Name      string            `json:"name,omitzero"`
 	MediaType string            `json:"media_type,omitzero"`
-	Path      string            `json:"path,omitzero"`
-	Value     []byte            `json:"value,omitzero"`
-	Meta      map[string]string `json:"meta,omitzero"`
-	Ref       string            `json:"ref,omitzero"`
+	Meta      map[string]string `json:"meta,omitempty"`
+	SHA256    string            `json:"sha256"`
+	Path      string            `json:"-"`
+	Value     []byte            `json:"-"`
 }
 
 // record returns a record output named name holding v as JSON, through encoding/json/v2, as the
@@ -195,24 +194,26 @@ func record(name string, v any, meta map[string]string) (Output, error) {
 	return Output{Kind: RecordOutput, Name: name, MediaType: "application/json", Value: b, Meta: meta}, nil
 }
 
-// Part is one part of an input, the input itself among them: the file at Path, the name it was
-// given, its stored MIME type, its size and SHA-256, the kind its signature names, its route and
-// why, its inspection's flags, the SHA-256 of the part it was found in, "" for the input, its
-// depth, 0 for the input, and where it was found, in its parent's stage's words. After is the
-// input's [Input.After], the message its stage resumes after, on the input's part alone; a stage
-// that doesn't resume ignores it.
+// Part is one part of an input, the input itself among them. ID names its occurrence in the
+// input, stable across runs: "/" for the input, and a found part's its parent's ID followed by its
+// Where as one more segment, "%" and "/" percent-encoded. It has the name it was given, its size
+// and SHA-256, lowercase hex, its [ContentType], what routing read of it, its flags, its parent's
+// ID, "" for the input, its depth, 0 for the input, and where it was found, in its parent's
+// stage's words.
+//
+// Path and After are local and never marshal: Path is its file, while its stage runs, and After
+// the input's [Input.After], the message its stage resumes after, on the input's part alone; a
+// stage that doesn't resume ignores it.
 type Part struct {
-	Path   string
-	Name   string
-	MIME   string
-	Size   int64
-	SHA256 string
-	Kind   route.Kind
-	Route  route.Route
-	Reason string
-	Flags  []inspect.Flag
-	Parent string
-	Depth  int
-	Where  string
-	After  uint64
+	ID          string         `json:"id"`
+	Name        string         `json:"name"`
+	Size        int64          `json:"size"`
+	SHA256      string         `json:"sha256"`
+	ContentType ContentType    `json:"content_type"`
+	Flags       []inspect.Flag `json:"flags,omitempty"`
+	Parent      string         `json:"parent,omitzero"`
+	Depth       int            `json:"depth"`
+	Where       string         `json:"where,omitzero"`
+	Path        string         `json:"-"`
+	After       uint64         `json:"-"`
 }

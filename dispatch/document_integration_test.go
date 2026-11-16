@@ -50,7 +50,7 @@ func outputNames(ev dispatched) []string {
 // their permissions render their page as any PDF does, as does the unicode baseline, which isn't
 // encrypted. inspect flags /Encrypt on the five encrypted, as before.
 func TestDocumentStageEncryptedReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct {
 		outcome dispatch.Outcome
 		flagged bool
@@ -80,7 +80,7 @@ func TestDocumentStageEncryptedReal(t *testing.T) {
 // fields the generator's exactly, then its page; ~/docs' two single-field forms yield their one
 // field each; and the clean PDF, with no AcroForm, yields none.
 func TestDocumentStageFormsReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	ev := dispatchAll(t, d, filepath.Join("..", "document", "testdata", "forms", "acroform.pdf"), nil)[0]
 	if got, want := outputNames(ev), []string{"record forms", "text page 1", "image page 1"}; ev.Outcome != dispatch.Prepared || !slices.Equal(got, want) {
 		t.Fatalf("acroform.pdf: %s, %q; want %q", ev.Outcome, got, want)
@@ -141,7 +141,7 @@ func TestDocumentStageAttachmentsReal(t *testing.T) {
 		if pdf.Outcome != dispatch.Prepared || pdf.Children != 1 || !slices.Contains(outputNames(pdf), "image page 1") {
 			t.Errorf("%s: %s, %d children, %q", name, pdf.Outcome, pdf.Children, outputNames(pdf))
 		}
-		t.Logf("%s: %s, %s by %s, %s", name, att.Part.Name, att.Part.Kind, att.Part.Route, att.Outcome)
+		t.Logf("%s: %s, %s by %s, %s", name, att.Part.Name, att.Part.ContentType.Kind, att.Part.ContentType.Route, att.Outcome)
 	}
 	events := dispatchAll(t, d, edgePDF(t, "attachments/embedded-video-avi.pdf"), nil)
 	if len(events) != 1 || events[0].Outcome != dispatch.Prepared || events[0].Children != 0 {
@@ -154,7 +154,7 @@ func TestDocumentStageAttachmentsReal(t *testing.T) {
 func newDispatcherIn(t *testing.T, stages dispatch.Stages) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}

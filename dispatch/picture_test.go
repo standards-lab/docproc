@@ -111,7 +111,7 @@ func standinPictureStage(t *testing.T, listing string, pages int) *dispatch.Pict
 // order, each a PNG named "page N", its Meta naming the kind, its page, and the page count.
 func TestPictureStageTIFFPages(t *testing.T) {
 	t.Parallel()
-	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 3)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 3)}, dispatch.NewMemoryIndex(0))
 	var held []string
 	events := dispatchAll(t, d, input(t, "scan.tif", pictureTIFF), func(ev *dispatch.Event) {
 		if ev.Output != nil {
@@ -143,7 +143,7 @@ func TestPictureStageTIFFPages(t *testing.T) {
 // PNG named "picture", its Meta naming the kind, its first image read through its kind's coder.
 func TestPictureStageRasters(t *testing.T) {
 	t.Parallel()
-	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 0)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 0)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct {
 		content string
 		kind    route.Kind
@@ -177,7 +177,7 @@ func TestPictureStageRasters(t *testing.T) {
 // have no processor yet, each reason naming the missing reader.
 func TestPictureNoReader(t *testing.T) {
 	t.Parallel()
-	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, "", 0)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, "", 0)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct{ content, what string }{
 		"x.heic": {pictureHEIC, "a HEIC"},
 		"x.webp": {pictureWebP, "a WebP"},

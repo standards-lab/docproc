@@ -149,7 +149,7 @@ func videoArgs(t *testing.T, standins *ffStandins) []string {
 func videoDispatch(t *testing.T, stages dispatch.Stages, path string) ([]dispatched, string) {
 	t.Helper()
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -222,8 +222,8 @@ func TestVideoStage(t *testing.T) {
 	events, work := videoDispatch(t, dispatch.Stages{route.Video: stage}, path)
 	wantSteps(t, events, []step{{"talk.mkv", 0, dispatch.Prepared}})
 	ev := events[0]
-	if ev.Part.Route != route.Video || ev.Stage != stage.Identity() || stage.Identity().Name != "video" {
-		t.Errorf("the part's route %s, stage %v", ev.Part.Route, ev.Stage)
+	if ev.Part.ContentType.Route != route.Video || ev.Stage != stage.Identity() || stage.Identity().Name != "video" {
+		t.Errorf("the part's route %s, stage %v", ev.Part.ContentType.Route, ev.Stage)
 	}
 	got := kinds(ev.Outputs)
 	if len(got) == 0 || got[0] != "record plan" {
@@ -298,8 +298,8 @@ func TestVideoStageRoutes(t *testing.T) {
 	} {
 		events, _ := videoDispatch(t, dispatch.Stages{route.Video: stage}, writeInput(t, in.name, in.content))
 		wantSteps(t, events, []step{{in.name, 0, dispatch.Prepared}})
-		if ev := events[0]; ev.Part.Route != route.Video || len(ev.Outputs) != 5 {
-			t.Errorf("%s: route %s, %d outputs", in.name, ev.Part.Route, len(ev.Outputs))
+		if ev := events[0]; ev.Part.ContentType.Route != route.Video || len(ev.Outputs) != 5 {
+			t.Errorf("%s: route %s, %d outputs", in.name, ev.Part.ContentType.Route, len(ev.Outputs))
 		}
 	}
 }
@@ -334,7 +334,7 @@ func TestVideoStageTracks(t *testing.T) {
 // wrapping media.ErrNoMedia, after ffprobe alone ran: it has no outputs, the plan among them.
 func TestVideoNoStream(t *testing.T) {
 	t.Parallel()
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	stage, standins := videoStage(t, videoProbeNone, media.Request{})
 	d := newDispatcher(t, dispatch.Stages{route.Video: stage}, index)
 	events := dispatchAll(t, d, writeInput(t, "subtitles.mkv", mkvBytes), nil)
@@ -375,7 +375,7 @@ func TestVideoCancel(t *testing.T) {
 	standins.set(t, func(s *ffSettings) { s.HoldMS = 30000 })
 	path := writeInput(t, "held.mkv", mkvBytes)
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Video: stage}, Index: dispatch.NewMemoryIndex(), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Video: stage}, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -429,11 +429,11 @@ func TestVideoStageInArchive(t *testing.T) {
 func TestVideoNoProcessor(t *testing.T) {
 	t.Parallel()
 	_, standins := videoStage(t, videoProbeBoth, media.Request{})
-	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "talk.webm", webmBytes), nil)
 	wantSteps(t, events, []step{{"talk.webm", 0, dispatch.NoProcessor}})
-	if ev := events[0]; ev.Part.Route != route.Video || ev.Reason != "no stage for route video" {
-		t.Errorf("route %s, reason %q", ev.Part.Route, ev.Reason)
+	if ev := events[0]; ev.Part.ContentType.Route != route.Video || ev.Reason != "no stage for route video" {
+		t.Errorf("route %s, reason %q", ev.Part.ContentType.Route, ev.Reason)
 	}
 	if runs := standins.runs(t); len(runs) != 0 {
 		t.Errorf("the video part ran %q", runs)

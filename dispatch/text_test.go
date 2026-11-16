@@ -140,7 +140,7 @@ func TestTextDispatch(t *testing.T) {
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
 		Stages: dispatch.Stages{route.Text: dispatch.NewTextStage()},
-		Index:  dispatch.NewMemoryIndex(), Dir: work,
+		Index:  dispatch.NewMemoryIndex(0), Dir: work,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -163,8 +163,8 @@ func TestTextDispatch(t *testing.T) {
 			}
 		})
 		ev := events[len(events)-1]
-		if ev.Part.Route != route.Text || ev.Outcome != dispatch.Prepared || ev.Stage != dispatch.NewTextStage().Identity() || len(ev.Outputs) != 1 {
-			t.Fatalf("%s: %s %s by %s, %d outputs", name, ev.Part.Route, ev.Outcome, ev.Stage, len(ev.Outputs))
+		if ev.Part.ContentType.Route != route.Text || ev.Outcome != dispatch.Prepared || ev.Stage != dispatch.NewTextStage().Identity() || len(ev.Outputs) != 1 {
+			t.Fatalf("%s: %s %s by %s, %d outputs", name, ev.Part.ContentType.Route, ev.Outcome, ev.Stage, len(ev.Outputs))
 		}
 		if want := "café"; !strings.HasPrefix(text, want) {
 			t.Errorf("%s: text %q, want it to begin %q", name, text, want)

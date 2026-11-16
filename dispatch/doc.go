@@ -13,13 +13,13 @@
 // its own event, before the stage's next item. A part's own event, its Output nil, follows all of
 // that, once its outcome is known, so the input's event is last. A part is a file: its SHA-256,
 // streamed, and size are taken before any stage runs, its route by route.File, its flags by
-// inspect.Inspect, and it names its parent's SHA-256, its depth, and where its parent's stage
-// found it.
+// inspect.Inspect, and it names its occurrence by its ID, its parent's ID, its depth, and where
+// its parent's stage found it.
 //
 // # Events
 //
 // An output event carries the part it belongs to, the identity of its stage, and the [Output],
-// which the caller's loop body may persist, setting its Ref, as ev.Output.Ref = key. A part's own
+// its SHA256 filled, which the caller's loop body may persist. A part's own
 // event carries its outcome and why, the error a failed part came to, its stage's identity, how
 // many outputs it yielded, in Outputs, and how many parts it found, in Children; never the outputs
 // or the parts themselves, whose events the caller has had. Once the body returns for an output
@@ -38,11 +38,10 @@
 //     [ErrNoProcessor], as office's does for a kind it has no processor for yet.
 //   - [Seen]: the index already holds its content's entry under its stage's identity, recorded
 //     by this dispatch, an earlier one, or a concurrent one this dispatch waited on. Its recorded
-//     outputs are output events, streamed from the index one at a time, each with the Outcome
-//     Seen and the Ref the caller set when it was prepared; then its own event carries the entry's
-//     outcome, in Recorded, and its counts, and the flags the index holds; Index.Children reads its
-//     children back, streamed, as the caller wants them. The part is neither inspected, prepared,
-//     nor recursed into again.
+//     outputs are output events, streamed from the entry's log one at a time, each with the
+//     Outcome Seen and its SHA256, and no file; then its own event carries the entry's outcome, in
+//     Recorded, its counts, and its flags. The part is neither inspected, prepared, nor recursed
+//     into again.
 //   - [Cycle]: its SHA-256 is an ancestor's; it is neither inspected, prepared, nor recursed
 //     into.
 //   - [Quarantined]: its inspection's verdict quarantines it, its flags holding the evidence: no
@@ -199,47 +198,57 @@
 //
 // An [Index] is content-addressed. It records a stage's [Entry] for content by a [Key], the
 // content's SHA-256 and the stage's identity, so a new tool version or configuration prepares
-// it again; and the content's inspection flags by its SHA-256 alone. A dispatch looks the key
-// up, and on a miss claims it: one claimant prepares the content, and a concurrent dispatch that
-// meets the claim waits until the claimant records the entry, then reports the part [Seen], or
-// releases it, then claims it in turn. A part that fails releases its claim, so another dispatch
-// may try again.
+// it again. A dispatch looks the key up, and on a miss claims it: one claimant prepares the
+// content, and a concurrent dispatch that meets the claim waits until the claimant records the
+// entry, then reports the part [Seen], or releases it, then claims it in turn. A part that fails
+// releases its claim, so another dispatch may try again.
 //
-// The claimant appends each output to the claim's pending entry by Index.Append, once the
-// caller's loop body returns for its event, as the body left it, its Ref set, its Path cleared
-// unless the body kept it; the part's own event commits them by Index.Record, in the order
-// appended, with the outcome and reason, or releases them by Index.Release when the part fails,
-// is limited, or the loop stops. Each part the stage finds is appended as a [Child], its
-// reference, by Index.AppendChild, once the found part's own event is done, and committed or
-// released with the outputs. Index.Outputs and Index.Children read a recorded entry's outputs and
-// children back, streamed, never all at once, and Lookup's Entry counts them.
+// An entry's outputs, warnings, and children are one log of [Recorded] items, appended as the
+// part's stage yields them and read back by Index.Items in that order. The claimant appends each
+// output, once the caller's loop body returns for its event, and each part the stage finds, as a
+// [Child], the found part whole and its outcome, once the found part's own event is done; the
+// part's own event commits the log by Index.Record, with the entry: its outcome and reason, its
+// counts, the distinct stages its subtree ran, and its content flags. Index.Release discards the
+// log when the part fails, is limited, or the loop stops. A claim is a lease, which Claim returns
+// and Index.Renew renews, and Index.Drop removes an entry and its log; package dispatchtest holds
+// the contract as conformance suites.
 //
 // An entry is recorded only for a part whose stage ran and whose whole subtree came to an outcome
 // the content decides: a part with a [Failed] or [Limited] descendant, or that failed itself, is
 // not recorded, so a later dispatch prepares it again and retries what failed. A part whose route
-// has no stage records only its flags, never an entry under any stage, so a stage registered later
-// prepares it in a later dispatch. A [Seen] part's entry references its children, by their SHA-256,
-// name, where they were found, size, route, and outcome, as [Child]ren, read by Index.Children,
-// rather than yielding their events again: their own entries and flags are in the index, and their
-// outputs where the caller put them.
+// has no stage records nothing, so a stage registered later prepares it in a later dispatch. A
+// [Seen] part's entry holds its children in its log rather than yielding their events again:
+// their own entries are in the index.
 //
-// [MemoryIndex] holds the index in memory, every output among it, its waiters woken the moment a
-// claim ends. [FileIndex] holds it in a directory the caller names, on the standard library alone:
-// a file per record, written by atomic rename, a claim file per claim, created with O_EXCL, which a
-// claimant takes over once it is older than [FileOptions.Stale], as a dead claimant would leave it,
-// and two pending files per claim, its outputs and its children as JSON lines, appended as they
-// come and renamed beside the entry when it is recorded, so its memory holds none of them; its
-// waiters poll, and a takeover removes the dead claim's pending files. A claim is never renewed, so
-// the stale timeout must outlast the slowest stage. Two dispatches each holding a part the other
-// contains wait on each other, as only content that contains itself can arrange; their contexts end
-// the wait.
+// [MemoryIndex] holds the index in memory, its claims lasting the lease it is given, none by
+// default, its waiters woken the moment a claim ends. [FileIndex] holds it in a directory the
+// caller names, on the standard library alone, for one process: its claims are MemoryIndex's,
+// never expiring, and its entries and logs are files, sharded by the first two hex digits of a
+// key's name, a claim's log written under a temporary name as it comes and renamed at Record, so
+// its memory holds none of it. Two dispatches each holding a part the other contains wait on each
+// other, as only content that contains itself can arrange; their contexts end the wait.
+//
+// # The content store
+//
+// A [Content] store holds content by its SHA-256: a put is all or nothing, skipped while the
+// content is present and younger than the store's renew age, and an open of an absent content
+// misses with fs.ErrNotExist. [FileContent] holds it in a directory, each content in its
+// [ContentFile], the stable layout of its name's first two hex digits, then the whole name;
+// [MemoryContent] holds it in memory.
+//
+// # Shapes
+//
+// [Event], [Part], [ContentType], [Identity], [Output], and [Warning] are the JSON shapes a
+// dispatch yields, the index's [Key], [Entry], [Recorded], and [Child] the shapes it stores, and
+// [Tool], [Row], and [State] the stage table's, all on encoding/json and versioned by [Version],
+// with the Meta keys a consumer reads and the record outputs' media types. A field local to a
+// process, such as a part's or an output's Path, never marshals.
 //
 // # Outputs and the caller's loop
 //
 // The caller's loop owns an event until its body returns. The dispatcher appends an output to
-// the part's pending entry only then, as the caller left it, so a caller that persists an output
-// sets its Ref, as ev.Output.Ref = key, and a later [Seen] part's output events carry the
-// caller's Refs; it records the part's entry only once the body returns for the part's own event.
+// the part's log only then, and records the part's entry only once the body returns for the
+// part's own event.
 // Then the dispatcher removes the part's file, but for the input's and a quarantined part's, and
 // the part's working directory, the outputs' files and anything else its stage wrote. An output's
 // file is there until its part's own event is done.
@@ -252,16 +261,15 @@
 // caller keeping nothing of it. Content whose route has no stage is settled too, once the
 // caller's loop has moved past its [NoProcessor] event without keeping it: the caller had its
 // chance, and a later record naming it in the same dispatch is no processor yet again, with no
-// file, its flags those the index holds under its SHA-256 and its route and reason the first's.
+// file, its flags, route, and reason the first's.
 // So a store's working directory holds the attachments of the messages in flight, those mail has
 // written ahead of the dispatch among them, rather than every attachment until the store's own
 // event, whether or not a stage is registered for them. What the dispatcher doesn't settle stays
 // until then, so no record loses its content: an original whose part failed, was limited,
 // quarantined, or a cycle, or that the caller kept, is there for the next record naming it, which
 // is dispatched from it again. [Event.Keep], in an output event, keeps the
-// output's file, and the index records its Path, the path otherwise cleared; in a part's own
-// event, it keeps the part's file and its working directory, the caller then owning them. A file
-// the caller moved away is not missed.
+// output's file; in a part's own event, it keeps the part's file and its working directory, the
+// caller then owning them. The index records no path. A file the caller moved away is not missed.
 //
 // # The pool
 //
@@ -286,8 +294,8 @@
 // is seen, resumed or not, and the parts found below are recorded as ever.
 //
 // A caller resuming a large store after a crash combines three things it keeps as it goes: a
-// [FileIndex] in a directory that outlives the process, which holds the entries and flags of the
-// parts recorded before the crash, so the resumed dispatch sees each attachment already prepared;
+// [FileIndex] in a directory that outlives the process, which holds the entries of the parts
+// recorded before the crash, so the resumed dispatch sees each attachment already prepared;
 // the cursor, the id of the last message whose outputs it has persisted; and an email.Threader,
 // fed every message up to the cursor, saved by its MarshalBinary together with it: a checkpoint.
 //
@@ -320,10 +328,8 @@
 // the same index directory, with After set to the checkpoint's cursor: every part prepared before
 // the crash is seen, the parts of the messages past the cursor included, and once the store's
 // event is done, the Threader's threads are the whole store's. A process that died leaves its
-// claims and pending outputs in the index's directory until they are [FileOptions.Stale], so the
-// resumed dispatch waits that out before it claims the store, or a part in flight at the crash,
-// and the takeover removes the dead claim's pending outputs; a dispatch whose loop stopped, rather
-// than died, released them.
+// claims' temporary logs in the index's directory, which the next [NewFileIndex] over it removes,
+// its claims having died with it; a dispatch whose loop stopped, rather than died, released them.
 //
 // Its exported identifiers:
 //
@@ -349,10 +355,16 @@
 //   - [ArchiveStage], made by [NewArchiveStage] over an [ArchiveConfig], on any platform, reading
 //     7-Zip's kinds through its [SevenZip].
 //   - [TextStage], made by [NewTextStage], on any platform.
-//   - [Index], keyed by a [Key], holding [Entry]s, each counting its outputs and its [Child]ren,
-//     both appended under a claim and read back streamed; the shipped
-//     ones are [MemoryIndex], made by [NewMemoryIndex], and [FileIndex], made by
-//     [NewFileIndex] under [FileOptions], [DefaultStale] and [DefaultPoll] by default. A
-//     [Found] part may carry its SHA-256 and a release, for content a stage holds for later
+//   - [Index], keyed by a [Key], holding [Entry]s, each with its log of [Recorded] items, an
+//     output, a [Warning], or a [Child], appended under a claim and read back streamed; the shipped
+//     ones are [MemoryIndex], made by [NewMemoryIndex], and [FileIndex], made by [NewFileIndex].
+//     A [Found] part may carry its SHA-256 and a release, for content a stage holds for later
 //     records.
+//   - [Content], the content store, its layout [ContentFile]; the shipped ones are [FileContent],
+//     made by [NewFileContent], and [MemoryContent], made by [NewMemoryContent].
+//   - The shapes, versioned by [Version]: [Event], its [Part] and the part's [ContentType], an
+//     [Output], a [Warning], and the stage table's [Tool], [Row], and [State], [Wired],
+//     [Missing], or [Excluded]; the Meta keys [MetaPage], [MetaCount], [MetaWindow],
+//     [MetaFrame], and [MetaSheet]; and the record media types [MediaAudioPlan],
+//     [MediaVideoPlan], [MediaOOXML], [MediaMail], and [MediaOneNote].
 package dispatch

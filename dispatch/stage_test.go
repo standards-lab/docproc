@@ -159,7 +159,7 @@ type fixture struct {
 func newFixture(t *testing.T, world map[string]string, index dispatch.Index, limits dispatch.Limits) *fixture {
 	t.Helper()
 	if index == nil {
-		index = dispatch.NewMemoryIndex()
+		index = dispatch.NewMemoryIndex(0)
 	}
 	f := &fixture{
 		index:   index,
@@ -312,4 +312,29 @@ func wheres(events []dispatched) []string {
 		}
 	}
 	return out
+}
+
+// logged reads key's log from index whole.
+func logged(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Recorded {
+	t.Helper()
+	var got []dispatch.Recorded
+	for r, err := range index.Items(t.Context(), key) {
+		if err != nil {
+			t.Fatalf("items: %v", err)
+		}
+		got = append(got, r)
+	}
+	return got
+}
+
+// children returns the children key's log records, in its order.
+func children(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Child {
+	t.Helper()
+	var got []dispatch.Child
+	for _, r := range logged(t, index, key) {
+		if r.Child != nil {
+			got = append(got, *r.Child)
+		}
+	}
+	return got
 }

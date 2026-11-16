@@ -94,7 +94,7 @@ func documentStage(t *testing.T, render document.Renderer) *dispatch.DocumentSta
 // fails fails the part once the others are prepared.
 func TestDocumentStage(t *testing.T) {
 	pdf := input(t, "three.pdf", "%PDF-1.7\n%%EOF\n")
-	d := newDispatcher(t, dispatch.Stages{route.Document: documentStage(t, &pages{n: 3, empty: 2})}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Document: documentStage(t, &pages{n: 3, empty: 2})}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, pdf, func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.ImageOutput {
 			b, err := os.ReadFile(o.Path)
@@ -117,7 +117,7 @@ func TestDocumentStage(t *testing.T) {
 		t.Errorf("outputs:\n got %q\nwant %q", got, want)
 	}
 
-	d = newDispatcher(t, dispatch.Stages{route.Document: documentStage(t, &pages{n: 3, fail: 2})}, dispatch.NewMemoryIndex())
+	d = newDispatcher(t, dispatch.Stages{route.Document: documentStage(t, &pages{n: 3, fail: 2})}, dispatch.NewMemoryIndex(0))
 	ev := dispatchAll(t, d, pdf, nil)[0]
 	if ev.Outcome != dispatch.Failed || !strings.Contains(ev.Reason, "1 of 3 pages failed") || len(ev.Outputs) != 4 {
 		t.Errorf("a failing page: %s, %q, %d outputs", ev.Outcome, ev.Reason, len(ev.Outputs))
@@ -127,7 +127,7 @@ func TestDocumentStage(t *testing.T) {
 // TestPictureNoProcessor: a Converter given no tool has no processor yet for a WebP, a HEIC, an
 // AVIF, a TIFF, or an EMF; each reason says why.
 func TestPictureNoProcessor(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: toollessPicture(t)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: toollessPicture(t)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct{ content, reason string }{
 		"x.webp": {"RIFF\x10\x00\x00\x00WEBPVP8 ", "is a WebP picture: no magick converter"},
 		"x.heic": {"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic", "is a HEIC picture: no magick converter"},
@@ -136,8 +136,8 @@ func TestPictureNoProcessor(t *testing.T) {
 		"x.emf":  {"\x01\x00\x00\x00" + strings.Repeat("\x00", 36) + " EMF" + strings.Repeat("\x00", 40), "no LibreOffice converter"},
 	} {
 		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
-		if ev.Part.Route != route.VisionConverted || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
-			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.Route, ev.Outcome, ev.Reason, c.reason)
+		if ev.Part.ContentType.Route != route.VisionConverted || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
+			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason, c.reason)
 		}
 	}
 }

@@ -137,7 +137,7 @@ func wantPNG(t *testing.T, o dispatch.Output) {
 // TestDocumentStageReal: the clean PDF's six pages, through gs, are each its text layer and a
 // PNG, in page order, the text the page's own.
 func TestDocumentStageReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join("..", "document", "testdata", "clean.pdf"), func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.ImageOutput {
 			wantPNG(t, *o)
@@ -163,12 +163,12 @@ func TestDocumentStageReal(t *testing.T) {
 // TestOfficeStageReal: a document's EMF, with LibreOffice and magick, is found as its PNG and
 // prepared by the vision stage, as its PNGs are.
 func TestOfficeStageReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
 	const emf = "670be6349ed84b27d6ca43d66ba6e9454c632f68de8d9b8fea78a480e90afb31"
 	for _, ev := range events[:len(events)-1] {
-		if ev.Part.Route != route.Vision || ev.Outcome != dispatch.Prepared {
-			t.Errorf("%s at %q: %s %s", ev.Part.Name, ev.Part.Where, ev.Part.Route, ev.Outcome)
+		if ev.Part.ContentType.Route != route.Vision || ev.Outcome != dispatch.Prepared {
+			t.Errorf("%s at %q: %s %s", ev.Part.Name, ev.Part.Where, ev.Part.ContentType.Route, ev.Outcome)
 		}
 	}
 	if ev := byName(t, events, emf+".png"); ev.Part.Where != "media "+emf+".emf, as PNG" {
@@ -182,11 +182,11 @@ func TestOfficeStageReal(t *testing.T) {
 // TestOfficeStageRTFReal: an RTF, through LibreOffice in its pinned image to docx and then
 // office, is one Markdown document converted from "rtf", holding the RTF's heading and table.
 func TestOfficeStageRTFReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join("..", "office", "testdata", "rtf", "memo.rtf"), nil)
 	wantSteps(t, events, []step{{"memo.rtf", 0, dispatch.Prepared}})
-	if ev := events[0]; ev.Part.Route != route.Office || ev.Part.Kind != route.RTF {
-		t.Errorf("memo.rtf: %s %s", ev.Part.Route, ev.Part.Kind)
+	if ev := events[0]; ev.Part.ContentType.Route != route.Office || ev.Part.ContentType.Kind != route.RTF {
+		t.Errorf("memo.rtf: %s %s", ev.Part.ContentType.Route, ev.Part.ContentType.Kind)
 	}
 	md := outputNamed(t, events[0], dispatch.MarkdownOutput, "document")
 	if md.Meta["converted_from"] != "rtf" {
@@ -202,7 +202,7 @@ func TestOfficeStageRTFReal(t *testing.T) {
 // TestPictureStageReal: an SVG, a HEIC, a WebP, and an AVIF each convert to one PNG, and a TIFF
 // of three pages to three, in page order, each naming its page and the count.
 func TestPictureStageReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	for name, kind := range map[string]route.Kind{
 		"shapes.svg": route.SVG, "two-images.heic": route.HEIC, "animated.webp": route.WebP, "animated.avif": route.AVIF,
 	} {
@@ -236,9 +236,9 @@ func TestPictureStageReal(t *testing.T) {
 // the EMF the picture stage's; and the forwarded .msg email's again. A PDF attachment reaches the
 // document stage.
 func TestEmailStageReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, builtMSG, func(ev *dispatch.Event) {
-		if ev.Part.Route == route.VisionConverted && ev.Output != nil {
+		if ev.Part.ContentType.Route == route.VisionConverted && ev.Output != nil {
 			wantPNG(t, *ev.Output)
 		}
 	})
@@ -248,11 +248,11 @@ func TestEmailStageReal(t *testing.T) {
 	}
 	for i, ev := range events {
 		if ev.Outcome != dispatch.Prepared {
-			t.Errorf("%s@%d at %q: %s %s, %s", ev.Part.Name, ev.Part.Depth, ev.Part.Where, ev.Part.Route, ev.Outcome, ev.Reason)
+			t.Errorf("%s@%d at %q: %s %s, %s", ev.Part.Name, ev.Part.Depth, ev.Part.Where, ev.Part.ContentType.Route, ev.Outcome, ev.Reason)
 		}
 		if want, ok := top[ev.Part.Name]; ok && ev.Part.Depth == 1 {
-			if ev.Part.Route != want || !strings.HasPrefix(ev.Part.Where, "message, attachment ") {
-				t.Errorf("%s at %q: route %s, want %s", ev.Part.Name, ev.Part.Where, ev.Part.Route, want)
+			if ev.Part.ContentType.Route != want || !strings.HasPrefix(ev.Part.Where, "message, attachment ") {
+				t.Errorf("%s at %q: route %s, want %s", ev.Part.Name, ev.Part.Where, ev.Part.ContentType.Route, want)
 			}
 			delete(top, ev.Part.Name)
 		}
@@ -280,9 +280,9 @@ func TestEmailStageReal(t *testing.T) {
 
 // TestOneNoteStageReal: a page's ink, an SVG, reaches the picture stage and becomes a PNG.
 func TestOneNoteStageReal(t *testing.T) {
-	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex())
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(onenoteFixtures, "handwriting_recognition.one"), func(ev *dispatch.Event) {
-		if ev.Part.Route == route.VisionConverted && ev.Output != nil {
+		if ev.Part.ContentType.Route == route.VisionConverted && ev.Output != nil {
 			wantPNG(t, *ev.Output)
 		}
 	})
@@ -375,7 +375,7 @@ func TestAdapterIdentities(t *testing.T) {
 // have no processor yet, nor a legacy document or an RTF for a Converter with no LibreOffice;
 // each reason names the kind.
 func TestOfficeNoProcessor(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.Office: officeStage(t)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Office: officeStage(t)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct{ content, reason string }{
 		"x.rtf":  {`{\rtf1\ansi hello}`, "x.rtf is an RTF document: no LibreOffice converter"},
 		"x.wpd":  {"\xffWPC\x10\x00\x00\x00\x01\x0a", "office stage: no processor yet for a WordPerfect document"},
@@ -384,8 +384,8 @@ func TestOfficeNoProcessor(t *testing.T) {
 		"x.doc":  {"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + strings.Repeat("\x00", 504), "no LibreOffice converter"},
 	} {
 		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
-		if ev.Part.Route != route.Office || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
-			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.Route, ev.Outcome, ev.Reason, c.reason)
+		if ev.Part.ContentType.Route != route.Office || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
+			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason, c.reason)
 		}
 	}
 }
@@ -402,12 +402,12 @@ func TestOfficeEncrypted(t *testing.T) {
 	}
 	for _, name := range []string{"encrypted.xlsx", "encrypted.xlsb"} {
 		// An index of its own, so the same bytes aren't seen.
-		d := newDispatcher(t, dispatch.Stages{route.Office: stage}, dispatch.NewMemoryIndex())
+		d := newDispatcher(t, dispatch.Stages{route.Office: stage}, dispatch.NewMemoryIndex(0))
 		events := dispatchAll(t, d, input(t, name, string(content)), nil)
 		wantSteps(t, events, []step{{name, 0, dispatch.Encrypted}})
 		ev := events[0]
-		if ev.Part.Route != route.Office || !strings.Contains(ev.Part.Reason, "an encrypted OOXML package") {
-			t.Errorf("%s: route %q (%s), want office as an encrypted OOXML package", name, ev.Part.Route, ev.Part.Reason)
+		if ev.Part.ContentType.Route != route.Office || !strings.Contains(ev.Part.ContentType.RouteReason, "an encrypted OOXML package") {
+			t.Errorf("%s: route %q (%s), want office as an encrypted OOXML package", name, ev.Part.ContentType.Route, ev.Part.ContentType.RouteReason)
 		}
 		if !hasFlag(ev.Part.Flags, inspect.OOXMLEncrypted) || !errors.Is(ev.Err, dispatch.ErrEncrypted) {
 			t.Errorf("%s: flags %+v, %v; want ooxml-encrypted and ErrEncrypted", name, ev.Part.Flags, ev.Err)
@@ -422,7 +422,7 @@ func TestOfficeEncrypted(t *testing.T) {
 func TestOfficeStage(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{
 		route.Office: officeStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: toollessPicture(t),
-	}, dispatch.NewMemoryIndex())
+	}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
 	const (
 		red   = "0fcca33bb0baf1a0669bd2fcdcaeb34e33d27196f7ffb5294b27aea8a9e46446"
@@ -440,11 +440,11 @@ func TestOfficeStage(t *testing.T) {
 	if got, want := wheres(events), []string{"media " + red + ".png", "media " + blue + ".png", "media " + emf + ".emf", "media " + green + ".png"}; !slices.Equal(got, want) {
 		t.Errorf("wheres:\n got %q\nwant %q", got, want)
 	}
-	if ev := byName(t, events, red+".png"); ev.Part.Route != route.Vision || ev.Outputs[0].Kind != dispatch.ImageOutput || ev.Outputs[0].MediaType != "image/png" {
-		t.Errorf("red: %s, %+v", ev.Part.Route, ev.Outputs)
+	if ev := byName(t, events, red+".png"); ev.Part.ContentType.Route != route.Vision || ev.Outputs[0].Kind != dispatch.ImageOutput || ev.Outputs[0].MediaType != "image/png" {
+		t.Errorf("red: %s, %+v", ev.Part.ContentType.Route, ev.Outputs)
 	}
-	if ev := byName(t, events, emf+".emf"); ev.Part.Route != route.VisionConverted || ev.Part.MIME != "image/x-emf" {
-		t.Errorf("emf: %s, %q", ev.Part.Route, ev.Part.MIME)
+	if ev := byName(t, events, emf+".emf"); ev.Part.ContentType.Route != route.VisionConverted || ev.Part.ContentType.Stored != "image/x-emf" {
+		t.Errorf("emf: %s, %q", ev.Part.ContentType.Route, ev.Part.ContentType.Stored)
 	}
 	md := outputNamed(t, events[len(events)-1], dispatch.MarkdownOutput, "document")
 	if !bytes.HasPrefix(md.Value, []byte("# Media")) || !bytes.Contains(md.Value, []byte(red+".png")) {
@@ -459,7 +459,7 @@ func TestOfficeStage(t *testing.T) {
 // takes, are no processor yet. Every part is found where its message says, and its event comes
 // before the message's record, which comes right before its Markdown and says one follows.
 func TestEmailStage(t *testing.T) {
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t), route.Vision: dispatch.NewVisionStage()}, index)
 	const (
 		moth = "moth.png"
@@ -538,7 +538,7 @@ func TestEmailResume(t *testing.T) {
 	stage := emailStage(t)
 	stages := dispatch.Stages{route.Nested: stage, route.Vision: dispatch.NewVisionStage()}
 	path := filepath.Join(mailFixtures, "generated", "pst", "mailbox.pst")
-	whole := dispatchAll(t, newDispatcher(t, stages, dispatch.NewMemoryIndex()), path, nil)
+	whole := dispatchAll(t, newDispatcher(t, stages, dispatch.NewMemoryIndex(0)), path, nil)
 	wholeStore := whole[len(whole)-1]
 	var ids []string
 	for _, o := range wholeStore.Outputs {
@@ -576,7 +576,7 @@ func TestEmailResume(t *testing.T) {
 			len(want), len(wholeStore.Outputs), len(wantWheres), len(wheres(whole)))
 	}
 
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, stages, index)
 	resumed := collect(t, d.Dispatch(t.Context(), dispatch.Input{Path: path, After: after}), nil)
 	store := resumed[len(resumed)-1]
@@ -596,9 +596,6 @@ func TestEmailResume(t *testing.T) {
 	for _, ev := range resumed[:len(resumed)-1] {
 		if ev.Part.After != 0 {
 			t.Errorf("%s, found below the input, carries after %d", ev.Part.Name, ev.Part.After)
-		}
-		if _, ok, err := index.Flags(t.Context(), ev.Part.SHA256); err != nil || !ok {
-			t.Errorf("%s's flags not recorded: %v", ev.Part.Name, err)
 		}
 	}
 	key := dispatch.Key{SHA256: store.Part.SHA256, Stage: stage.Identity()}
@@ -632,7 +629,7 @@ func TestEmailResume(t *testing.T) {
 // and Markdown named by its place and naming the message it is embedded in, while a file beside
 // it, a PDF here, which no stage takes in this test, is found.
 func TestEmailEmbedded(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(mailFixtures, "msg", "tika", "testMSG_att_msg.msg"), nil)
 	wantSteps(t, events, []step{
 		{"smbprn.00009008.KdcPjl.pdf", 1, dispatch.NoProcessor},
@@ -641,8 +638,8 @@ func TestEmailEmbedded(t *testing.T) {
 	if got := wheres(events); !slices.Equal(got, []string{"message, attachment 2"}) {
 		t.Errorf("wheres %q", got)
 	}
-	if ev := events[0]; ev.Part.Route != route.Document {
-		t.Errorf("the PDF's route %s", ev.Part.Route)
+	if ev := events[0]; ev.Part.ContentType.Route != route.Document {
+		t.Errorf("the PDF's route %s", ev.Part.ContentType.Route)
 	}
 	inline := outputNamed(t, events[1], dispatch.RecordOutput, "message, attachment 1")
 	if inline.Meta["embedded_in"] != "message" || inline.Meta["subject"] != "Test Attachment" {
@@ -664,7 +661,7 @@ func TestEmailEmbedded(t *testing.T) {
 // its id, folder, topic, and whether it was missed. The note is a message record and Markdown, as
 // before. Each item's Markdown is its hand truth's, in truth.json, found by its subject.
 func TestEmailConversations(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex(0))
 	generated := filepath.Join(mailFixtures, "generated")
 	events := dispatchAll(t, d, filepath.Join(generated, "pst", "conversations.pst"), nil)
 	wantSteps(t, events, []step{{"conversations.pst", 0, dispatch.Prepared}})
@@ -735,7 +732,7 @@ func TestEmailConversations(t *testing.T) {
 // notebook records; the image, found on its page, is prepared by the vision stage, then seen; the
 // ink, an SVG, goes to the picture stage, which has no processor without magick.
 func TestOneNoteStage(t *testing.T) {
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{
 		route.OneNote: onenoteStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: toollessPicture(t),
 	}, index)
@@ -747,7 +744,7 @@ func TestOneNoteStage(t *testing.T) {
 	events := dispatchAll(t, d, filepath.Join(onenoteFixtures, "handwriting_recognition.one"), nil)
 	var names []string
 	for _, ev := range events {
-		names = append(names, fmt.Sprintf("%s@%d:%s %s", filepath.Ext(ev.Part.Name), ev.Part.Depth, ev.Outcome, ev.Part.Route))
+		names = append(names, fmt.Sprintf("%s@%d:%s %s", filepath.Ext(ev.Part.Name), ev.Part.Depth, ev.Outcome, ev.Part.ContentType.Route))
 	}
 	want := []string{".jpg@1:prepared vision", ".svg@1:no processor yet vision-converted", ".one@0:prepared onenote"}
 	if !slices.Equal(names, want) {
@@ -758,8 +755,8 @@ func TestOneNoteStage(t *testing.T) {
 			t.Errorf("where %q: want the page and the medium's place", w)
 		}
 	}
-	if ink := events[1]; ink.Part.Name != inked || !strings.HasSuffix(ink.Part.Where, ", page ink") || ink.Part.Kind != route.SVG {
-		t.Errorf("ink: %s at %q, %s", ink.Part.Name, ink.Part.Where, ink.Part.Kind)
+	if ink := events[1]; ink.Part.Name != inked || !strings.HasSuffix(ink.Part.Where, ", page ink") || ink.Part.ContentType.Kind != route.SVG {
+		t.Errorf("ink: %s at %q, %s", ink.Part.Name, ink.Part.Where, ink.Part.ContentType.Kind)
 	}
 	section := events[2]
 	outputNamed(t, section, dispatch.RecordOutput, "notebook")

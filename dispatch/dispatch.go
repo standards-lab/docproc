@@ -46,45 +46,48 @@ const (
 	Limited Outcome = "limited"
 )
 
-// Event is what the dispatcher reports of one part: an output its stage prepared, as the stage
-// yields it, or, once its outcome is known, the part's own event.
+// Event is what the dispatcher reports of one part, and the JSON shape a host writes of it: an
+// output its stage prepared, as the stage yields it, or, once its outcome is known, the part's
+// own event. Each kind sets only its own fields, and a field left out of the JSON is zero.
 //
 // An output event has Output set: the part it belongs to, as far as it is known, the identity of
-// its stage, and the output. The dispatcher yields each as its stage yields it, among the events
-// of the parts the stage finds, in the stage's order, and holds nothing of it once the caller's
-// loop body returns, but for what it appends to the part's pending entry in the index: the output
-// as the body left it, so a caller that persists it sets its Ref, as ev.Output.Ref = key, and the
-// index records the Ref. A [Seen] part's recorded outputs are output events too, streamed from
-// the index before its own event, each with its Outcome [Seen] and the entry's in Recorded, the
-// Ref the caller set when it was prepared on it; a prepared output's event has no Outcome.
+// its stage, and the output, its SHA256 filled. The dispatcher yields each as its stage yields it,
+// among the events of the parts the stage finds, in the stage's order, and holds nothing of it
+// once the caller's loop body returns, but for what it appends to the part's log in the index. A
+// [Seen] part's recorded outputs are output events too, streamed from the index before its own
+// event, each with its Outcome [Seen] and the entry's in Recorded, and with no file; a prepared
+// output's event has no Outcome.
 //
 // A part's own event has Output nil, and follows its outputs' events and every part found in it:
 // the part, its outcome and why, the error a [Failed] part came to, the identity of the stage its
 // route has, if any, how many outputs it yielded, and how many parts it found, each of whose own
 // events came before it; the dispatcher holds none of them, appending each, as a [Child], to the
-// part's pending entry in the index as its event is done. A [Seen] event carries the entry the
-// index recorded, its outcome in Recorded and its counts; the index's Children reads its
-// children back, streamed.
+// part's log in the index as its event is done. A [Seen] event carries the entry the index
+// recorded, its outcome in Recorded and its counts.
+//
+// Err is local, beside its text in Reason. Warning and After are the shape's, which a later
+// dispatcher sets; this one sets neither yet.
 //
 // The caller's loop owns the event until its body returns. It may call [Event.Keep] to keep the
 // event's files, which the dispatcher otherwise removes once the part's own event is done.
 type Event struct {
-	Part     Part
-	Output   *Output
-	Outcome  Outcome
-	Reason   string
-	Err      error
-	Stage    Identity
-	Recorded Outcome
-	Outputs  int
-	Children int
+	Part     Part     `json:"part,omitzero"`
+	Stage    Identity `json:"stage,omitzero"`
+	Output   *Output  `json:"output,omitempty"`
+	Warning  *Warning `json:"warning,omitempty"`
+	After    uint64   `json:"after,omitzero"`
+	Outcome  Outcome  `json:"outcome,omitzero"`
+	Recorded Outcome  `json:"recorded,omitzero"`
+	Reason   string   `json:"reason,omitzero"`
+	Err      error    `json:"-"`
+	Outputs  int      `json:"outputs,omitzero"`
+	Children int      `json:"children,omitzero"`
 	keep     *bool
 }
 
-// Keep keeps the event's files. Called in an output event, it keeps the output's file, and the
-// index records its path; called in a part's own event, it keeps the part's file and its working
-// directory, the files of all its outputs among them, though the index records the path only of
-// an output kept in its own event. The caller then owns them. A file the caller moved away is not
+// Keep keeps the event's files. Called in an output event, it keeps the output's file; called in
+// a part's own event, it keeps the part's file and its working directory, the files of all its
+// outputs among them. The caller then owns them; the index records no path. A file the caller moved away is not
 // missed: the dispatcher's removal ignores it.
 func (e Event) Keep() {
 	if e.keep != nil {
@@ -211,23 +214,25 @@ type run struct {
 	released map[string]released
 }
 
-// released is what a released content's part was: its size, kind, and route, and why, and its
-// outcome, [NoProcessor] for content whose route has no stage.
+// released is what a released content's part was: its size, what routing read of it, its
+// outcome, [NoProcessor] for content whose route has no stage, and, for that content, its flags,
+// which no entry holds.
 type released struct {
-	size    int64
-	kind    route.Kind
-	route   route.Route
-	reason  string
-	outcome Outcome
+	size        int64
+	contentType ContentType
+	outcome     Outcome
+	flags       []inspect.Flag
 }
 
-// result is what a part came to, for its parent's entry: a reference to it, whether its whole
-// subtree is complete, so its parent may be recorded, and whether it is settled: the index holds
-// its content's entry under its stage, or its route has no stage and the index holds its flags,
-// and the caller kept nothing of it, so a later part of the same content needs no file.
+// result is what a part came to, for its parent's entry: the child its parent's log records,
+// whether its whole subtree is complete, so its parent may be recorded, the distinct stages its
+// subtree ran, for its parent's entry, and whether it is settled: the index holds its content's
+// entry under its stage, or its route has no stage, and the caller kept nothing of it, so a later
+// part of the same content needs no file.
 type result struct {
 	child    Child
 	complete bool
+	stages   []Identity
 	settled  bool
 }
 
@@ -250,10 +255,7 @@ func (r *run) emit(ev Event, dir string, complete bool, record func(Event) (bool
 	if !r.yield(ev, nil) {
 		r.stopped = true
 	}
-	res := result{child: Child{
-		SHA256: ev.Part.SHA256, Name: ev.Part.Name, Where: ev.Part.Where, Size: ev.Part.Size,
-		Route: ev.Part.Route, Outcome: ev.Outcome,
-	}, complete: complete}
+	res := result{child: Child{Part: ev.Part, Outcome: ev.Outcome}, complete: complete}
 	var err error
 	if record != nil {
 		var held bool
@@ -332,21 +334,37 @@ func (r *run) clean(dir string) error {
 	return nil
 }
 
-// part dispatches one part, f, found in the part whose SHA-256 is parent, at depth, then, when
-// it is settled and f's SHA-256 is its content's, calls f's Release, as [Found] says.
+// part dispatches one part, f, found in the part whose ID is parent, at depth, then, when it is
+// settled and f's SHA-256 is its content's, calls f's Release, as [Found] says.
 func (r *run) part(f Found, parent string, depth int) result {
-	p := Part{Path: f.Path, Name: f.Name, MIME: f.MIME, Parent: parent, Depth: depth, Where: f.Where}
+	p := Part{
+		ID: "/", Path: f.Path, Name: f.Name, ContentType: ContentType{Stored: f.MIME},
+		Parent: parent, Depth: depth, Where: f.Where,
+	}
 	if depth == 0 {
 		p.After = r.after
+	} else {
+		p.ID = childID(parent, f.Where)
 	}
 	res := r.dispatchPart(&p, f.SHA256)
 	if res.settled && f.Release != nil && f.Path != "" && f.SHA256 == p.SHA256 && !r.stopped {
 		r.released[p.SHA256] = released{
-			size: p.Size, kind: p.Kind, route: p.Route, reason: p.Reason, outcome: res.child.Outcome,
+			size: p.Size, contentType: p.ContentType, outcome: res.child.Outcome, flags: res.child.Part.Flags,
 		}
 		f.Release()
 	}
 	return res
+}
+
+// childID returns the ID of the part found where in the part whose ID is parent: parent's
+// followed by where as one more path segment, "%" and "/" percent-encoded, after a "/" unless
+// parent's ends in one.
+func childID(parent, where string) string {
+	segment := strings.NewReplacer("%", "%25", "/", "%2F").Replace(where)
+	if strings.HasSuffix(parent, "/") {
+		return parent + segment
+	}
+	return parent + "/" + segment
 }
 
 // dispatchPart dispatches p, as part says; sum is the SHA-256 its stage gave, which a part with
@@ -366,7 +384,9 @@ func (r *run) dispatchPart(p *Part, sum string) result {
 		if !ok {
 			return failed(fmt.Errorf("dispatch: %s has no file, and its content is none this dispatch released", p.Name))
 		}
-		p.SHA256, p.Size, p.Kind, p.Route, p.Reason = sum, c.size, c.kind, c.route, c.reason
+		stored := p.ContentType.Stored
+		p.SHA256, p.Size, p.ContentType = sum, c.size, c.contentType
+		p.ContentType.Stored = stored
 	} else {
 		sum, size, head, err := hashFile(p.Path)
 		if err != nil {
@@ -375,8 +395,9 @@ func (r *run) dispatchPart(p *Part, sum string) result {
 			}
 			return failed(err)
 		}
-		p.SHA256, p.Size, p.Kind = sum, size, route.Identify(head)
-		if p.Route, p.Reason, err = route.File(p.Path, p.Name, p.MIME); err != nil {
+		p.SHA256, p.Size, p.ContentType.Kind = sum, size, route.Identify(head)
+		ct := &p.ContentType
+		if ct.Route, ct.RouteReason, err = route.File(p.Path, p.Name, ct.Stored); err != nil {
 			return failed(fmt.Errorf("dispatch: route %s: %w", p.Name, err))
 		}
 	}
@@ -391,7 +412,7 @@ func (r *run) dispatchPart(p *Part, sum string) result {
 	r.parts++
 	r.bytes += p.Size
 
-	stage := r.d.cfg.Stages[p.Route]
+	stage := r.d.cfg.Stages[p.ContentType.Route]
 	switch {
 	case p.Path == "":
 		return r.releasedPart(*p, stage, failed)
@@ -415,24 +436,15 @@ func (r *run) limit(p Part) string {
 	return ""
 }
 
-// inspect inspects p and records its flags in the index.
+// inspect inspects p, setting its flags, which its entry records.
 func (r *run) inspect(p *Part) (inspect.Report, error) {
 	rep, err := inspect.Inspect(r.ctx, p.Path, p.Name, r.d.cfg.Inspect)
 	if err != nil {
 		return rep, err
 	}
 	p.Flags = rep.Flags
-	if err := r.d.cfg.Index.RecordFlags(r.ctx, p.SHA256, rep.Flags); err != nil {
-		return rep, &indexError{err}
-	}
 	return rep, nil
 }
-
-// indexError marks an index's failure, which stops the dispatch, from a part's own.
-type indexError struct{ err error }
-
-func (e *indexError) Error() string { return e.err.Error() }
-func (e *indexError) Unwrap() error { return e.err }
 
 // quarantined returns the event of a part its inspection quarantined.
 func quarantined(p Part) Event {
@@ -450,15 +462,13 @@ func quarantined(p Part) Event {
 }
 
 // unstaged dispatches p, whose route has no stage: it is inspected, and is quarantined or no
-// processor yet. Nothing but its flags is recorded, so a stage registered later prepares it, in a
-// later dispatch. A no processor part is settled once the caller's loop body returns for its
-// event without keeping it, its flags being all the index holds of it: a later part of the same
-// content in this dispatch is no processor again, with no file.
+// processor yet. Nothing is recorded, so a stage registered later prepares it, in a later
+// dispatch. A no processor part is settled once the caller's loop body returns for its event
+// without keeping it: a later part of the same content in this dispatch is no processor again,
+// with no file, and the flags this one had.
 func (r *run) unstaged(p Part, failed func(error) result) result {
 	rep, err := r.inspect(&p)
-	if ie := (*indexError)(nil); errors.As(err, &ie) {
-		return r.fatal(err)
-	} else if err != nil {
+	if err != nil {
 		return failed(err)
 	}
 	if rep.Verdict == inspect.Quarantine {
@@ -469,22 +479,20 @@ func (r *run) unstaged(p Part, failed func(error) result) result {
 
 // noStage returns the event of p, a part whose route has no stage, as no processor yet.
 func noStage(p Part) Event {
-	return Event{Part: p, Outcome: NoProcessor, Reason: fmt.Sprintf("no stage for route %s", p.Route)}
+	return Event{Part: p, Outcome: NoProcessor, Reason: fmt.Sprintf("no stage for route %s", p.ContentType.Route)}
 }
 
 // releasedPart dispatches p, a part with no file of content this dispatch released, to stage:
 // it is seen, the index holding the content's entry under stage since the release; or, the
-// content's route having no stage, it is no processor yet again, its flags the index's.
+// content's route having no stage, it is no processor yet again, with the flags its released
+// part had.
 func (r *run) releasedPart(p Part, stage Stage, failed func(error) result) result {
 	if stage == nil {
-		if r.released[p.SHA256].outcome != NoProcessor {
-			return failed(fmt.Errorf("dispatch: %s has no file, and its route %s no stage", p.Name, p.Route))
+		c := r.released[p.SHA256]
+		if c.outcome != NoProcessor {
+			return failed(fmt.Errorf("dispatch: %s has no file, and its route %s no stage", p.Name, p.ContentType.Route))
 		}
-		flags, _, err := r.d.cfg.Index.Flags(r.ctx, p.SHA256)
-		if err != nil {
-			return r.fatal(err)
-		}
-		p.Flags = flags
+		p.Flags = c.flags
 		return r.emit(noStage(p), "", true, nil)
 	}
 	id := stage.Identity()
@@ -514,7 +522,7 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 		if ok {
 			return r.seen(p, id, key, e)
 		}
-		t, claimed, err := idx.Claim(r.ctx, key)
+		t, _, claimed, err := idx.Claim(r.ctx, key)
 		if err != nil {
 			return r.fatal(err)
 		}
@@ -538,9 +546,7 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 	}()
 
 	rep, err := r.inspect(&p)
-	if ie := (*indexError)(nil); errors.As(err, &ie) {
-		return r.fatal(err)
-	} else if err != nil {
+	if err != nil {
 		return failed(err)
 	}
 	if rep.Verdict == inspect.Quarantine {
@@ -555,14 +561,13 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 	}
 	// A resumed read's outputs are its tail alone, no entry of the content's: nothing is
 	// appended.
-	var add func(Output) error
-	var addChild func(Child) error
+	var add func(Recorded) error
 	if p.After == 0 {
-		add = func(o Output) error { return idx.Append(r.ctx, key, token, o) }
-		addChild = func(c Child) error { return idx.AppendChild(r.ctx, key, token, c) }
+		add = func(rec Recorded) error { return idx.Append(r.ctx, key, token, rec) }
 	}
 	ev := Event{Part: p, Stage: id}
 	complete := true
+	stages := []Identity{id}
 	var stageErr error
 	r.ancestors = append(r.ancestors, p.SHA256)
 	for item, err := range stage.Prepare(r.ctx, p, dir) {
@@ -576,11 +581,12 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 			ev.Outputs++
 		case item.Part != nil:
 			// Once the dispatch is stopped there is no parent event to report the child in.
-			if res := r.part(*item.Part, p.SHA256, p.Depth+1); !r.stopped {
+			if res := r.part(*item.Part, p.ID, p.Depth+1); !r.stopped {
 				ev.Children++
 				complete = complete && res.complete
-				if addChild != nil {
-					if err := addChild(res.child); err != nil {
+				stages = addStages(stages, res.stages)
+				if add != nil {
+					if err := add(Recorded{Child: &res.child}); err != nil {
 						r.fatal(err)
 					}
 				}
@@ -618,30 +624,43 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 		if !complete || p.After != 0 {
 			return false, nil
 		}
-		e := Entry{Outcome: ev.Outcome, Reason: ev.Reason, Outputs: ev.Outputs, Children: ev.Children}
+		e := Entry{
+			Outcome: ev.Outcome, Reason: ev.Reason, Outputs: ev.Outputs, Children: ev.Children,
+			Stages: stages, Flags: p.Flags,
+		}
 		if err := idx.Record(context.WithoutCancel(r.ctx), key, token, e); err != nil {
 			return false, err
 		}
 		recorded = true
 		return true, nil
 	}
-	return r.emit(ev, dir, complete, record)
+	res := r.emit(ev, dir, complete, record)
+	if res.settled {
+		res.stages = stages
+	}
+	return res
+}
+
+// addStages adds to stages each of more it doesn't hold, in more's order.
+func addStages(stages, more []Identity) []Identity {
+	for _, id := range more {
+		if !slices.Contains(stages, id) {
+			stages = append(stages, id)
+		}
+	}
+	return stages
 }
 
 // stageQuarantined emits ev, the event of a part its stage quarantined, ending with stageErr,
 // which matches ErrQuarantined, before preparing any of it: a *QuarantineError's flags are added
-// to the part's, sorted by check, and recorded in the index, and the part is quarantined as its
-// inspection would have quarantined it. As for that part, no entry is recorded, so a later
-// dispatch reads the part again, and its file is kept.
+// to the part's, sorted by check, and the part is quarantined as its inspection would have
+// quarantined it. As for that part, no entry is recorded, so a later dispatch reads the part
+// again, and its file is kept.
 func (r *run) stageQuarantined(ev Event, dir string, stageErr error) result {
 	if qe, ok := errors.AsType[*QuarantineError](stageErr); ok && len(qe.Flags) > 0 {
 		flags := slices.Concat(ev.Part.Flags, qe.Flags)
 		slices.SortStableFunc(flags, func(a, b inspect.Flag) int { return strings.Compare(string(a.Check), string(b.Check)) })
 		ev.Part.Flags = flags
-		if err := r.d.cfg.Index.RecordFlags(r.ctx, ev.Part.SHA256, flags); err != nil {
-			_ = r.clean(dir)
-			return r.fatal(err)
-		}
 	}
 	q := quarantined(ev.Part)
 	ev.Outcome, ev.Reason = q.Outcome, q.Reason
@@ -655,51 +674,61 @@ func encrypted(flags []inspect.Flag) bool {
 	})
 }
 
-// output yields o as an output event of p's, prepared by the stage id names, then, once the
-// caller's loop body returns, appends it to p's pending entry by add, when not nil, as the body
-// left it, its Path cleared unless the body kept it. An append that fails stops the dispatch.
-func (r *run) output(p Part, id Identity, o Output, add func(Output) error) {
+// output fills o's SHA256, its file's or its bytes', the part's own when its file is the part's,
+// yields o as an output event of p's, prepared by the stage id names, then, once the caller's
+// loop body returns, appends it to p's log by add, when not nil. A file it can't hash, or an
+// append that fails, stops the dispatch.
+func (r *run) output(p Part, id Identity, o Output, add func(Recorded) error) {
+	switch {
+	case o.Path != "" && o.Path == p.Path:
+		o.SHA256 = p.SHA256
+	case o.Path != "":
+		sum, _, _, err := hashFile(o.Path)
+		if err != nil {
+			r.fatal(err)
+			return
+		}
+		o.SHA256 = sum
+	default:
+		sum := sha256.Sum256(o.Value)
+		o.SHA256 = hex.EncodeToString(sum[:])
+	}
 	r.yieldOutput(Event{Part: p, Stage: id, Output: &o}, add)
 }
 
 // yieldOutput yields ev, an output event, as output says.
-func (r *run) yieldOutput(ev Event, add func(Output) error) {
+func (r *run) yieldOutput(ev Event, add func(Recorded) error) {
 	var keep bool
 	ev.keep = &keep
 	if !r.yield(ev, nil) {
 		r.stopped = true
 		return
 	}
-	rec := *ev.Output
-	if keep && rec.Path != "" {
-		r.kept[rec.Path] = true
-	} else {
-		rec.Path = ""
+	if keep && ev.Output.Path != "" {
+		r.kept[ev.Output.Path] = true
 	}
 	if add == nil {
 		return
 	}
-	if err := add(rec); err != nil {
+	if err := add(Recorded{Output: ev.Output}); err != nil {
 		r.fatal(err)
 	}
 }
 
 // seen emits p's event as content the index holds under key, e its entry under id, its flags the
-// index's: each recorded output an output event, streamed from the index, then p's own, which
-// counts the entry's children, never reading them.
+// entry's: each recorded output an output event, streamed from the index's log, then p's own,
+// which counts the entry's children, never replaying them.
 func (r *run) seen(p Part, id Identity, key Key, e Entry) result {
-	idx := r.d.cfg.Index
-	flags, _, err := idx.Flags(r.ctx, p.SHA256)
-	if err != nil {
-		return r.fatal(err)
-	}
-	p.Flags = flags
+	p.Flags = e.Flags
 	n := 0
-	for o, err := range idx.Outputs(r.ctx, key) {
+	for rec, err := range r.d.cfg.Index.Items(r.ctx, key) {
 		if err != nil {
 			return r.fatal(err)
 		}
-		if r.yieldOutput(Event{Part: p, Stage: id, Output: &o, Outcome: Seen, Recorded: e.Outcome}, nil); r.stopped {
+		if rec.Output == nil {
+			continue
+		}
+		if r.yieldOutput(Event{Part: p, Stage: id, Output: rec.Output, Outcome: Seen, Recorded: e.Outcome}, nil); r.stopped {
 			return result{}
 		}
 		n++
@@ -708,7 +737,9 @@ func (r *run) seen(p Part, id Identity, key Key, e Entry) result {
 		Part: p, Outcome: Seen, Reason: "recorded by " + id.String(), Err: nil, Stage: id,
 		Recorded: e.Outcome, Outputs: n, Children: e.Children,
 	}
-	return r.emit(ev, "", true, func(Event) (bool, error) { return true, nil })
+	res := r.emit(ev, "", true, func(Event) (bool, error) { return true, nil })
+	res.stages = e.Stages
+	return res
 }
 
 // hashFile returns the lowercase hex SHA-256 of the file at path, streamed, its size, and its

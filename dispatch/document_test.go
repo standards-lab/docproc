@@ -94,7 +94,7 @@ func formsDocumentStage(t *testing.T, q dispatch.QPDF, d dispatch.PDFDetach, opt
 // Where.
 func documentOrder(t *testing.T, s *dispatch.DocumentStage, pdf string) ([]dispatched, []string) {
 	t.Helper()
-	d := newDispatcher(t, dispatch.Stages{route.Document: s}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Document: s}, dispatch.NewMemoryIndex(0))
 	var order []string
 	events := dispatchAll(t, d, pdf, func(ev *dispatch.Event) {
 		switch {
@@ -205,7 +205,7 @@ func TestDocumentStageAttachments(t *testing.T) {
 	}
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
-		Stages: dispatch.Stages{route.Document: s, route.Vision: dispatch.NewVisionStage()}, Index: dispatch.NewMemoryIndex(), Dir: work,
+		Stages: dispatch.Stages{route.Document: s, route.Vision: dispatch.NewVisionStage()}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -236,8 +236,8 @@ func TestDocumentStageAttachments(t *testing.T) {
 	if ev := events[0]; ev.Part.SHA256 != sum("a Quattro Pro file's bytes\n") {
 		t.Errorf("KSBASE.WQ2: SHA-256 %s", ev.Part.SHA256)
 	}
-	if ev := events[1]; ev.Part.Route != route.Vision || ev.Part.SHA256 != sum(png) {
-		t.Errorf("../../evil.png: %s, %s", ev.Part.Route, ev.Part.SHA256)
+	if ev := events[1]; ev.Part.ContentType.Route != route.Vision || ev.Part.SHA256 != sum(png) {
+		t.Errorf("../../evil.png: %s, %s", ev.Part.ContentType.Route, ev.Part.SHA256)
 	}
 	rec := outputNamed(t, events[2], dispatch.RecordOutput, "attachment broken.bin")
 	if rec.Meta["name"] != "broken.bin" || !strings.Contains(rec.Meta["reason"], "doesn't save: told to fail") {
@@ -270,7 +270,7 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 	zeros := string(make([]byte, 8<<20))
 	s := formsDocumentStage(t, nil, &fakeDetach{files: []string{"zeros.bin", zeros}}, inspect.Options{BombRatio: 1000, BombSize: 1 << 20})
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Document: s}, Index: dispatch.NewMemoryIndex(), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Document: s}, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}

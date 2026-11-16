@@ -87,9 +87,6 @@ func TestPool(t *testing.T) {
 			if _, ok, err := f.index.Lookup(t.Context(), key); err != nil || ok {
 				t.Errorf("shared.txt recorded before its event's body returned: %t, %v", ok, err)
 			}
-			if ev.Output != nil {
-				ev.Output.Ref = "ref-shared"
-			}
 		}
 		g := gatherers[pe.Input.Path]
 		if g == nil {
@@ -112,8 +109,8 @@ func TestPool(t *testing.T) {
 	outcomes := map[dispatch.Outcome]int{}
 	for _, ev := range shared {
 		outcomes[ev.Outcome]++
-		if ev.Outcome == dispatch.Seen && (len(ev.Outputs) != 1 || ev.Outputs[0].Ref != "ref-shared") {
-			t.Errorf("a seen shared.txt's outputs %+v, want the caller's Ref", ev.Outputs)
+		if ev.Outcome == dispatch.Seen && (len(ev.Outputs) != 1 || ev.Outputs[0].SHA256 != sum("1")) {
+			t.Errorf("a seen shared.txt's outputs %+v, want the recorded line count's SHA-256", ev.Outputs)
 		}
 	}
 	if outcomes[dispatch.Prepared] != 1 || outcomes[dispatch.Seen] != n-1 {

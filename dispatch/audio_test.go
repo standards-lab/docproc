@@ -290,7 +290,7 @@ func checkStandinWAV(t *testing.T, o dispatch.Output) {
 func TestAudioStage(t *testing.T) {
 	t.Parallel()
 	stage, _ := audioStage(t, audioProbe)
-	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.AudioOutput {
 			checkStandinWAV(t, *o)
@@ -298,8 +298,8 @@ func TestAudioStage(t *testing.T) {
 	})
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Prepared}})
 	ev := events[0]
-	if ev.Part.Route != route.Audio || ev.Stage != stage.Identity() || stage.Identity().Name != "audio" {
-		t.Errorf("the part's route %s, stage %v", ev.Part.Route, ev.Stage)
+	if ev.Part.ContentType.Route != route.Audio || ev.Stage != stage.Identity() || stage.Identity().Name != "audio" {
+		t.Errorf("the part's route %s, stage %v", ev.Part.ContentType.Route, ev.Stage)
 	}
 	var got []string
 	for _, o := range ev.Outputs {
@@ -353,7 +353,7 @@ func TestAudioStageInArchive(t *testing.T) {
 	}
 	stage, _ := audioStage(t, audioProbe)
 	stages := dispatch.Stages{route.Audio: stage, route.Archive: zs}
-	d := newDispatcher(t, stages, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, stages, dispatch.NewMemoryIndex(0))
 	path := writeInput(t, "recordings.zip", zipBytes(t, zent{name: "talks/speech.flac", body: flacBytes}))
 	events := dispatchAll(t, d, path, nil)
 	wantSteps(t, events, []step{{"talks/speech.flac", 1, dispatch.Prepared}, {"recordings.zip", 0, dispatch.Prepared}})
@@ -367,7 +367,7 @@ func TestAudioStageInArchive(t *testing.T) {
 // route.Audio; and NewAudioStage panics on a config with no Splitter, naming the field.
 func TestAudioNoProcessor(t *testing.T) {
 	t.Parallel()
-	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), nil)
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.NoProcessor}})
 	if ev := events[0]; ev.Reason != "no stage for route audio" || len(ev.Outputs) != 0 {
@@ -375,11 +375,11 @@ func TestAudioNoProcessor(t *testing.T) {
 	}
 
 	stage, standins := audioStage(t, audioProbe)
-	d = newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
+	d = newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 	events = dispatchAll(t, d, writeInput(t, "clip.mp4", mp4Bytes), nil)
 	wantSteps(t, events, []step{{"clip.mp4", 0, dispatch.NoProcessor}})
-	if ev := events[0]; ev.Part.Route != route.Video || ev.Reason != "no stage for route video" {
-		t.Errorf("route %s, reason %q", ev.Part.Route, ev.Reason)
+	if ev := events[0]; ev.Part.ContentType.Route != route.Video || ev.Reason != "no stage for route video" {
+		t.Errorf("route %s, reason %q", ev.Part.ContentType.Route, ev.Reason)
 	}
 	if runs := standins.runs(t); len(runs) != 0 {
 		t.Errorf("the video part ran %q", runs)
@@ -395,14 +395,14 @@ func TestAudioNoProcessor(t *testing.T) {
 // and its entry isn't recorded, so a later dispatch tries it again.
 func TestAudioNoStream(t *testing.T) {
 	t.Parallel()
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	stage, standins := audioStage(t, audioNoStream)
 	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, index)
 	events := dispatchAll(t, d, writeInput(t, "silent.m4a", m4aBytes), nil)
 	wantSteps(t, events, []step{{"silent.m4a", 0, dispatch.Failed}})
 	ev := events[0]
-	if ev.Part.Route != route.Audio || !errors.Is(ev.Err, audio.ErrNoAudio) || len(ev.Outputs) != 0 {
-		t.Errorf("route %s, err %v, %d outputs; want audio, audio.ErrNoAudio, none", ev.Part.Route, ev.Err, len(ev.Outputs))
+	if ev.Part.ContentType.Route != route.Audio || !errors.Is(ev.Err, audio.ErrNoAudio) || len(ev.Outputs) != 0 {
+		t.Errorf("route %s, err %v, %d outputs; want audio, audio.ErrNoAudio, none", ev.Part.ContentType.Route, ev.Err, len(ev.Outputs))
 	}
 	if runs := standins.runs(t); !slices.Equal(runs, []string{"ffprobe"}) {
 		t.Errorf("runs %q, want ffprobe alone", runs)
@@ -421,7 +421,7 @@ func TestAudioFailedWindow(t *testing.T) {
 	standins.set(t, func(s *ffSettings) {
 		s.FailWindow = strconv.Itoa(int(audioWindows[0].Start*audio.SampleRate + 0.5))
 	})
-	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
+	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), nil)
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Failed}})
 	ev := events[0]

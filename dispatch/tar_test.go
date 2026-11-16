@@ -39,11 +39,11 @@ func TestTarStage(t *testing.T) {
 	if got, want := wheres(events), []string{"tar entry docs/notes.txt", "tar entry docs/pixel.png"}; !slices.Equal(got, want) {
 		t.Errorf("wheres:\n got %q\nwant %q", got, want)
 	}
-	if ev := events[2]; ev.Part.Kind != route.Tar || ev.Stage.Name != "archive" || ev.Children != 2 || len(ev.Outputs) != 0 {
-		t.Errorf("clean.tar: %s by %v, %d children, %d outputs", ev.Part.Kind, ev.Stage, ev.Children, len(ev.Outputs))
+	if ev := events[2]; ev.Part.ContentType.Kind != route.Tar || ev.Stage.Name != "archive" || ev.Children != 2 || len(ev.Outputs) != 0 {
+		t.Errorf("clean.tar: %s by %v, %d children, %d outputs", ev.Part.ContentType.Kind, ev.Stage, ev.Children, len(ev.Outputs))
 	}
-	if ev := events[0]; ev.Part.Route != route.Text {
-		t.Errorf("docs/notes.txt routed %s, want text", ev.Part.Route)
+	if ev := events[0]; ev.Part.ContentType.Route != route.Text {
+		t.Errorf("docs/notes.txt routed %s, want text", ev.Part.ContentType.Route)
 	}
 	if n := zs.calls.Load(); n != 1 {
 		t.Errorf("the archive stage prepared %d parts, want 1", n)
@@ -73,8 +73,8 @@ func TestGzipStage(t *testing.T) {
 		if got := wheres(events); !slices.Equal(got, want) {
 			t.Errorf("%s: wheres:\n got %q\nwant %q", c.fixture, got, want)
 		}
-		if tar, gz := events[2], events[3]; tar.Part.Kind != route.Tar || gz.Part.Kind != route.Gzip || gz.Children != 1 || len(gz.Outputs) != 0 {
-			t.Errorf("%s: %s holding %s, %d children, %d outputs", c.fixture, gz.Part.Kind, tar.Part.Kind, gz.Children, len(gz.Outputs))
+		if tar, gz := events[2], events[3]; tar.Part.ContentType.Kind != route.Tar || gz.Part.ContentType.Kind != route.Gzip || gz.Children != 1 || len(gz.Outputs) != 0 {
+			t.Errorf("%s: %s holding %s, %d children, %d outputs", c.fixture, gz.Part.ContentType.Kind, tar.Part.ContentType.Kind, gz.Children, len(gz.Outputs))
 		}
 		if n := zs.calls.Load(); n != 2 {
 			t.Errorf("%s: the archive stage prepared %d parts, want 2", c.fixture, n)
@@ -148,7 +148,7 @@ func TestTarUnsafe(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)

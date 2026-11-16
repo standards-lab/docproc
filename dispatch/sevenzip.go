@@ -71,7 +71,7 @@ func listedType(e sevenzip.Entry) (inspect.EntryType, string) {
 // inspect.CheckListing under the stage's options: nil when they may be extracted, else the
 // *QuarantineError holding the flags, or the stage's failure.
 func (s *ArchiveStage) listedChecks(p Part, entries []inspect.Listed) error {
-	rep, err := inspect.CheckListing(p.Kind, p.Size, entries, s.opts)
+	rep, err := inspect.CheckListing(p.ContentType.Kind, p.Size, entries, s.opts)
 	switch {
 	case err != nil:
 		return fmt.Errorf("archive stage: %w", err)

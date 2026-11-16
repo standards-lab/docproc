@@ -169,11 +169,11 @@ func (s *ArchiveStage) Identity() Identity { return s.id }
 func (s *ArchiveStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error] {
 	return func(yield func(Item, error) bool) {
 		// Each kind the stage reads has its reader here; 7-Zip's kinds need 7-Zip.
-		if k, ok := sevenZipKinds[p.Kind]; ok && s.sevenZip == nil {
+		if k, ok := sevenZipKinds[p.ContentType.Kind]; ok && s.sevenZip == nil {
 			yield(Item{}, fmt.Errorf("archive stage: %s without 7-Zip: %w", k.what, ErrNoProcessor))
 			return
 		}
-		switch p.Kind {
+		switch p.ContentType.Kind {
 		case route.ZIP:
 			s.zip(ctx, p, dir, yield)
 		case route.Tar:
@@ -183,9 +183,9 @@ func (s *ArchiveStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq
 		case route.Zstd:
 			s.zstd(ctx, p, dir, yield)
 		case route.SevenZip, route.MSCF:
-			s.listed(ctx, p, dir, sevenZipKinds[p.Kind], yield)
+			s.listed(ctx, p, dir, sevenZipKinds[p.ContentType.Kind], yield)
 		default:
-			yield(Item{}, fmt.Errorf("archive stage: content of kind %s: %w", p.Kind, ErrNoProcessor))
+			yield(Item{}, fmt.Errorf("archive stage: content of kind %s: %w", p.ContentType.Kind, ErrNoProcessor))
 		}
 	}
 }

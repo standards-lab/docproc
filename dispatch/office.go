@@ -80,8 +80,8 @@ var unread = map[route.Kind]string{
 // Prepare converts the document at p.Path, as the type's doc says.
 func (s *OfficeStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error] {
 	return func(yield func(Item, error) bool) {
-		what, ok := unread[p.Kind]
-		if !ok && p.Kind == route.ZIP && strings.EqualFold(filepath.Ext(p.Name), ".xlsb") {
+		what, ok := unread[p.ContentType.Kind]
+		if !ok && p.ContentType.Kind == route.ZIP && strings.EqualFold(filepath.Ext(p.Name), ".xlsb") {
 			what, ok = "an Excel binary workbook", true
 		}
 		if ok {

@@ -5,7 +5,6 @@ package dispatch_test
 import (
 	"context"
 	jsonv2 "encoding/json/v2"
-	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -13,7 +12,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/email"
@@ -56,7 +54,6 @@ func (c *storeCaller) take(t *testing.T, ev dispatch.Event) {
 	if ev.Part.Depth > 0 || !strings.HasPrefix(o.Name, "message") {
 		return
 	}
-	o.Ref = "persisted " + o.Name
 	c.pending = append(c.pending, string(o.Kind)+" "+o.Name)
 	own := o.Meta["embedded_in"] == "" && o.Meta["id"] != ""
 	if !own {
@@ -101,19 +98,19 @@ func (c *crashing) Release(ctx context.Context, key dispatch.Key, token string) 
 // TestStoreCrashResume dispatches mailbox.pst and nine.mboxrd whole over a file index, then, on a
 // fresh one, again until a crash just after message K's last output: at the end of the next
 // message's first attachment where there is one, so that attachment is recorded, else at once.
-// The crash either stops the loop, the dispatcher releasing its claims, or leaves the claims and
-// pending outputs behind, a dead process's, which a resumed dispatch, its index's Stale short,
-// takes over. The dispatch resumed with After set to the cursor, K's id, and the Threader
+// The crash either stops the loop, the dispatcher releasing its claims, or leaves the claims'
+// temporary logs behind, a dead process's, which the resumed dispatch's index removes as it
+// opens. The dispatch resumed with After set to the cursor, K's id, and the Threader
 // restored from the one saved with it, commits the rest: the committed message outputs of the
 // two equal the whole dispatch's, in order, none twice; every part prepared before the crash
-// is seen; the threads are the whole read's; and no claim or pending output is left.
+// is seen; the threads are the whole read's; and no temporary log is left.
 func TestStoreCrashResume(t *testing.T) {
 	stages := dispatch.Stages{route.Nested: emailStage(t), route.Vision: dispatch.NewVisionStage()}
 	for _, rel := range []string{"generated/pst/mailbox.pst", "mime/nine.mboxrd"} {
 		path := filepath.Join(mailFixtures, rel)
 		t.Run(filepath.Base(rel), func(t *testing.T) {
 			whole := &storeCaller{}
-			for ev, err := range newDispatcher(t, stages, fileIndex(t, t.TempDir(), 0)).Dispatch(t.Context(), dispatch.Input{Path: path}) {
+			for ev, err := range newDispatcher(t, stages, fileIndex(t, t.TempDir())).Dispatch(t.Context(), dispatch.Input{Path: path}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -128,7 +125,7 @@ func TestStoreCrashResume(t *testing.T) {
 			for _, leftBehind := range []bool{false, true} {
 				t.Run("left behind "+strconv.FormatBool(leftBehind), func(t *testing.T) {
 					dir := t.TempDir()
-					idx := &crashing{Index: fileIndex(t, dir, 0)}
+					idx := &crashing{Index: fileIndex(t, dir)}
 					crashed := &storeCaller{}
 					past := false
 					for ev, err := range newDispatcher(t, stages, idx).Dispatch(t.Context(), dispatch.Input{Path: path}) {
@@ -156,12 +153,12 @@ func TestStoreCrashResume(t *testing.T) {
 						t.Fatal("no attachment was prepared before the crash")
 					}
 					if leftBehind {
-						if left, _ := os.ReadDir(filepath.Join(dir, "claims")); len(left) == 0 {
-							t.Fatal("the crash left no claim behind")
+						if left, _ := filepath.Glob(filepath.Join(dir, "*", ".tmp-*")); len(left) == 0 {
+							t.Fatal("the crash left no temporary log behind")
 						}
 					}
 
-					resumedIdx := fileIndex(t, dir, 50*time.Millisecond)
+					resumedIdx := fileIndex(t, dir)
 					resumed := &storeCaller{}
 					if err := resumed.threads.UnmarshalBinary(crashed.saved); err != nil {
 						t.Fatal(err)
@@ -199,8 +196,8 @@ func TestStoreCrashResume(t *testing.T) {
 					if got := resumed.threads.Threads(); !reflect.DeepEqual(got, wantThreads) {
 						t.Errorf("the resumed threads differ from the whole read's: %d roots, want %d", len(got), len(wantThreads))
 					}
-					if left, err := os.ReadDir(filepath.Join(dir, "claims")); err != nil || len(left) != 0 {
-						t.Errorf("the claims directory holds %v, %v", left, err)
+					if left, err := filepath.Glob(filepath.Join(dir, "*", ".tmp-*")); err != nil || len(left) != 0 {
+						t.Errorf("temporary logs left: %v, %v", left, err)
 					}
 				})
 			}
@@ -239,11 +236,10 @@ func crashPoint(t *testing.T, whole *storeCaller) (uint64, bool) {
 	return ids[len(ids)/2], false
 }
 
-// fileIndex returns a file index in dir, polling every 5 milliseconds, with stale its Stale, the
-// default when zero.
-func fileIndex(t *testing.T, dir string, stale time.Duration) *dispatch.FileIndex {
+// fileIndex returns a file index in dir.
+func fileIndex(t *testing.T, dir string) *dispatch.FileIndex {
 	t.Helper()
-	idx, err := dispatch.NewFileIndex(dir, dispatch.FileOptions{Stale: stale, Poll: 5 * time.Millisecond})
+	idx, err := dispatch.NewFileIndex(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -61,11 +61,11 @@ func TestSevenZipStage(t *testing.T) {
 	if got, want := wheres(events), []string{"7z entry docs/notes.txt", "7z entry docs/pixel.png"}; !slices.Equal(got, want) {
 		t.Errorf("wheres:\n got %q\nwant %q", got, want)
 	}
-	if ev := events[2]; ev.Part.Kind != route.SevenZip || ev.Stage.Name != "archive" || ev.Children != 2 || len(ev.Outputs) != 0 {
-		t.Errorf("clean.7z: %s by %v, %d children, %d outputs", ev.Part.Kind, ev.Stage, ev.Children, len(ev.Outputs))
+	if ev := events[2]; ev.Part.ContentType.Kind != route.SevenZip || ev.Stage.Name != "archive" || ev.Children != 2 || len(ev.Outputs) != 0 {
+		t.Errorf("clean.7z: %s by %v, %d children, %d outputs", ev.Part.ContentType.Kind, ev.Stage, ev.Children, len(ev.Outputs))
 	}
-	if events[0].Part.Route != route.Text || events[0].Part.Size != 22 {
-		t.Errorf("docs/notes.txt: %s, %d bytes", events[0].Part.Route, events[0].Part.Size)
+	if events[0].Part.ContentType.Route != route.Text || events[0].Part.Size != 22 {
+		t.Errorf("docs/notes.txt: %s, %d bytes", events[0].Part.ContentType.Route, events[0].Part.Size)
 	}
 	if n := zs.calls.Load(); n != 1 {
 		t.Errorf("the archive stage prepared %d parts, want 1", n)
@@ -97,8 +97,8 @@ func TestSevenZipStreams(t *testing.T) {
 		{"notebook.cab", 0, dispatch.Prepared},
 	})
 	for _, ev := range events[:2] {
-		if ev.Part.Route != route.OneNote || ev.Part.Where != "cabinet entry "+ev.Part.Name {
-			t.Errorf("%s: %s at %q", ev.Part.Name, ev.Part.Route, ev.Part.Where)
+		if ev.Part.ContentType.Route != route.OneNote || ev.Part.Where != "cabinet entry "+ev.Part.Name {
+			t.Errorf("%s: %s at %q", ev.Part.Name, ev.Part.ContentType.Route, ev.Part.Where)
 		}
 	}
 	section, err := os.ReadFile(filepath.Join("..", "onenote", "testdata", "onenote", "fixtures", "onenote-rs", "New Section Group", "New Section 1.one"))
@@ -227,7 +227,7 @@ func TestSevenZipUnsafe(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(), Dir: work,
+			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -279,7 +279,7 @@ func TestSevenZipQuarantineKept(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Archive: s}, Index: index, Dir: work, Inspect: strict})
 	if err != nil {
@@ -287,9 +287,8 @@ func TestSevenZipQuarantineKept(t *testing.T) {
 	}
 	events := dispatchAll(t, d, input(t, "outer.zip", zipBytes(t, zent{name: "traversal.7z", body: string(traversal)})), nil)
 	wantSteps(t, events, []step{{"traversal.7z", 1, dispatch.Quarantined}, {"outer.zip", 0, dispatch.Prepared}})
-	flags, ok, err := index.Flags(t.Context(), events[0].Part.SHA256)
-	if err != nil || !ok || !slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == inspect.ArchiveTraversal }) {
-		t.Errorf("the index's flags for traversal.7z: %v, %t, %v", flags, ok, err)
+	if flags := events[0].Part.Flags; !slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == inspect.ArchiveTraversal }) {
+		t.Errorf("traversal.7z's flags: %v", flags)
 	}
 	if left := files(t, work); len(left) != 1 || filepath.Base(left[0]) != events[0].Part.SHA256 {
 		t.Errorf("files left: %q, want the quarantined 7z's alone", left)

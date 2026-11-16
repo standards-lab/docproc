@@ -237,7 +237,7 @@ func storeDispatcher(t *testing.T, s *store, leaf dispatch.Stage) (*dispatch.Dis
 	t.Helper()
 	dir := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
-		Stages: dispatch.Stages{route.Text: s, route.Unrouted: leaf}, Index: dispatch.NewMemoryIndex(), Dir: dir,
+		Stages: dispatch.Stages{route.Text: s, route.Unrouted: leaf}, Index: dispatch.NewMemoryIndex(0), Dir: dir,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -349,7 +349,7 @@ func TestReleaseRefused(t *testing.T) {
 	})
 	t.Run("no file", func(t *testing.T) {
 		d, err := dispatch.New(dispatch.Config{
-			Stages: dispatch.Stages{route.Text: ghost{}}, Index: dispatch.NewMemoryIndex(), Dir: t.TempDir(),
+			Stages: dispatch.Stages{route.Text: ghost{}}, Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir(),
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -397,7 +397,7 @@ func unstagedDispatcher(t *testing.T, s *store, index dispatch.Index) (*dispatch
 func TestReleaseUnstaged(t *testing.T) {
 	const n, every, size = 10_000, 10, 1024
 	s := heavyStore(n, every, size)
-	index := dispatch.NewMemoryIndex()
+	index := dispatch.NewMemoryIndex(0)
 	d, dir := unstagedDispatcher(t, s, index)
 	var first dispatch.Event
 	pr := probeStore(t, d, dir, func(ev *dispatch.Event) {
@@ -408,10 +408,10 @@ func TestReleaseUnstaged(t *testing.T) {
 			first = *ev
 			return
 		}
-		if ev.Part.Path != "" || ev.Reason != first.Reason || ev.Part.Route != first.Part.Route ||
+		if ev.Part.Path != "" || ev.Reason != first.Reason || ev.Part.ContentType.Route != first.Part.ContentType.Route ||
 			!reflect.DeepEqual(ev.Part.Flags, first.Part.Flags) {
 			t.Errorf("%s: path %q, %q, %s, flags %v; the first: %q, %s, flags %v", ev.Part.Where,
-				ev.Part.Path, ev.Reason, ev.Part.Route, ev.Part.Flags, first.Reason, first.Part.Route, first.Part.Flags)
+				ev.Part.Path, ev.Reason, ev.Part.ContentType.Route, ev.Part.Flags, first.Reason, first.Part.ContentType.Route, first.Part.Flags)
 		}
 	})
 
@@ -455,7 +455,7 @@ func TestReleaseUnstaged(t *testing.T) {
 func TestReleaseUnstagedKept(t *testing.T) {
 	const n, every, size = 1000, 10, 64
 	s := heavyStore(n, every, size)
-	d, dir := unstagedDispatcher(t, s, dispatch.NewMemoryIndex())
+	d, dir := unstagedDispatcher(t, s, dispatch.NewMemoryIndex(0))
 	paths := map[string]string{}
 	pr := probeStore(t, d, dir, func(ev *dispatch.Event) {
 		if ev.Output == nil && ev.Part.Depth == 1 {

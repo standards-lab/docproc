@@ -47,7 +47,7 @@ func (f *flood) Prepare(_ context.Context, _ dispatch.Part, _ string) iter.Seq2[
 func floodDispatcher(t *testing.T, s dispatch.Stage) (*dispatch.Dispatcher, dispatch.Index, string) {
 	t.Helper()
 	dir := t.TempDir()
-	idx, err := dispatch.NewFileIndex(dir, dispatch.FileOptions{})
+	idx, err := dispatch.NewFileIndex(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,6 +57,9 @@ func floodDispatcher(t *testing.T, s dispatch.Stage) (*dispatch.Dispatcher, disp
 	}
 	return d, idx, dir
 }
+
+// floodSum returns the SHA-256 of flood's output i, of size bytes.
+func floodSum(i, size int) string { return sha(bytes.Repeat([]byte{byte(i)}, size)) }
 
 // heap returns the bytes of the live heap, once a collection has run.
 func heap() uint64 {
@@ -96,15 +99,11 @@ func TestStreamedOutputs(t *testing.T) {
 				last = ev
 				continue
 			}
-			if o := ev.Output; o.Name != fmt.Sprintf("o%d", i) || len(o.Value) != size || o.Value[0] != byte(i) || ev.Outcome != wantOutcome {
-				t.Fatalf("output %d: %s, %d bytes, outcome %q", i, o.Name, len(o.Value), ev.Outcome)
+			if o := ev.Output; o.Name != fmt.Sprintf("o%d", i) || o.SHA256 != floodSum(i, size) || ev.Outcome != wantOutcome {
+				t.Fatalf("output %d: %s, %s, outcome %q", i, o.Name, o.SHA256, ev.Outcome)
 			}
-			if wantOutcome == dispatch.Seen {
-				if ev.Output.Ref != fmt.Sprintf("ref %d", i) {
-					t.Fatalf("seen output %d's Ref %q", i, ev.Output.Ref)
-				}
-			} else {
-				ev.Output.Ref = fmt.Sprintf("ref %d", i)
+			if o := ev.Output; wantOutcome != dispatch.Seen && (len(o.Value) != size || o.Value[0] != byte(i)) {
+				t.Fatalf("prepared output %d: %d bytes", i, len(o.Value))
 			}
 			i++
 			if i%every == 0 {
@@ -130,12 +129,12 @@ func TestStreamedOutputs(t *testing.T) {
 		t.Fatalf("the record: %+v, %v, %v", e, ok, err)
 	}
 	i := 0
-	for o, err := range idx.Outputs(t.Context(), key) {
+	for r, err := range idx.Items(t.Context(), key) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if o.Name != fmt.Sprintf("o%d", i) || o.Ref != fmt.Sprintf("ref %d", i) || len(o.Value) != size {
-			t.Fatalf("recorded output %d: %s, %q, %d bytes", i, o.Name, o.Ref, len(o.Value))
+		if o := r.Output; o == nil || o.Name != fmt.Sprintf("o%d", i) || o.SHA256 != floodSum(i, size) || o.Value != nil {
+			t.Fatalf("recorded item %d: %+v", i, r)
 		}
 		i++
 	}
@@ -149,8 +148,8 @@ func TestStreamedOutputs(t *testing.T) {
 }
 
 // TestStreamReleased: a stage that fails after yielding outputs, and a loop that stops among
-// them, each leave no record and no pending outputs, under either index: the claim is released,
-// so the key may be claimed again, and the file index's claims directory is empty.
+// them, each leave no record and no log, under either index: the claim is released, so the key
+// may be claimed again, and the file index holds no temporary log.
 func TestStreamReleased(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -185,10 +184,10 @@ func TestStreamReleased(t *testing.T) {
 			if _, ok, err := idx.Lookup(t.Context(), key); err != nil || ok {
 				t.Fatalf("recorded: %v, %v", ok, err)
 			}
-			if left, err := os.ReadDir(filepath.Join(dir, "claims")); err != nil || len(left) != 0 {
-				t.Fatalf("the claims directory holds %v, %v", left, err)
+			if left, err := filepath.Glob(filepath.Join(dir, "*", ".tmp-*")); err != nil || len(left) != 0 {
+				t.Fatalf("temporary logs left: %v, %v", left, err)
 			}
-			tok, ok, err := idx.Claim(t.Context(), key)
+			tok, _, ok, err := idx.Claim(t.Context(), key)
 			if err != nil || !ok {
 				t.Fatalf("claim after the release: %v, %v", ok, err)
 			}
@@ -197,7 +196,7 @@ func TestStreamReleased(t *testing.T) {
 	}
 	t.Run("memory", func(t *testing.T) {
 		s := &flood{n: 1000, size: 16, failAt: 600}
-		idx := dispatch.NewMemoryIndex()
+		idx := dispatch.NewMemoryIndex(0)
 		d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Text: s}, Index: idx, Dir: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
@@ -207,7 +206,7 @@ func TestStreamReleased(t *testing.T) {
 		if _, ok, _ := idx.Lookup(t.Context(), key); ok {
 			t.Fatal("a failed part was recorded")
 		}
-		if _, ok, err := idx.Claim(t.Context(), key); err != nil || !ok {
+		if _, _, ok, err := idx.Claim(t.Context(), key); err != nil || !ok {
 			t.Fatalf("claim after the release: %v, %v", ok, err)
 		}
 	})
@@ -245,7 +244,7 @@ func (interleaved) Prepare(_ context.Context, p dispatch.Part, dir string) iter.
 // before and after it; the part's own event comes last.
 func TestStreamOrder(t *testing.T) {
 	d, err := dispatch.New(dispatch.Config{
-		Stages: dispatch.Stages{route.Text: interleaved{}}, Index: dispatch.NewMemoryIndex(), Dir: t.TempDir(),
+		Stages: dispatch.Stages{route.Text: interleaved{}}, Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -359,7 +358,7 @@ func TestStreamedChildren(t *testing.T) {
 		t.Fatalf("the record: %+v, %v, %v", e, ok, err)
 	}
 	base, peak, i = heap(), 0, 0
-	for c, err := range idx.Children(t.Context(), key) {
+	for r, err := range idx.Items(t.Context(), key) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -367,8 +366,10 @@ func TestStreamedChildren(t *testing.T) {
 		if i == 0 {
 			wantOutcome = dispatch.Prepared
 		}
-		if c.Name != broodName(i, false) || c.Where != broodName(i, true) || c.SHA256 != sum("leaf") || c.Outcome != wantOutcome {
-			t.Fatalf("recorded child %d: %+v", i, c)
+		c := r.Child
+		if c == nil || c.Part.Name != broodName(i, false) || c.Part.Where != broodName(i, true) ||
+			c.Part.SHA256 != sum("leaf") || c.Outcome != wantOutcome {
+			t.Fatalf("recorded item %d: %+v", i, r)
 		}
 		i++
 		if i%every == 0 {

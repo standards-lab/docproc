@@ -73,9 +73,9 @@ func (s *PictureStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq
 		for i, png := range pngs {
 			o := Output{
 				Kind: ImageOutput, Name: "picture", MediaType: "image/png", Path: png,
-				Meta: map[string]string{"from": string(p.Kind)},
+				Meta: map[string]string{"from": string(p.ContentType.Kind)},
 			}
-			if p.Kind == route.TIFF {
+			if p.ContentType.Kind == route.TIFF {
 				// A TIFF yields its every page, as the document stage yields a PDF's.
 				o.Name = "page " + strconv.Itoa(i+1)
 				o.Meta["page"], o.Meta["count"] = strconv.Itoa(i+1), strconv.Itoa(len(pngs))

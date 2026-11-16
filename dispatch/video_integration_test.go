@@ -143,7 +143,7 @@ func TestVideoStageReal(t *testing.T) {
 			}
 			wantFrames, wantWindows := streamed(t, s, path)
 
-			d := newDispatcher(t, dispatch.Stages{route.Video: stage}, dispatch.NewMemoryIndex())
+			d := newDispatcher(t, dispatch.Stages{route.Video: stage}, dispatch.NewMemoryIndex(0))
 			events := dispatchAll(t, d, path, func(ev *dispatch.Event) {
 				o := ev.Output
 				switch {

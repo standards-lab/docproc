@@ -65,7 +65,7 @@ func TestAudioStageReal(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
+			d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 			events := dispatchAll(t, d, path, func(ev *dispatch.Event) {
 				if o := ev.Output; o != nil && o.Kind == dispatch.AudioOutput {
 					checkWAV(t, *o)
