@@ -29,6 +29,12 @@ output contract: a change to them is a change here. This changelog covers docpro
   character reference; a line feed between its lines is written `&#10;`, so the title keeps to one
   line. An alt text's lines are escaped as literal text. Both keep their lines trimmed and their
   blank lines dropped.
+- The text of a message's Markdown made from HTML reads back as written: its paragraphs, link
+  text, list items, and table cells. htmd wrote a text `&` as itself, so a body whose text held a
+  literal `&amp;` or `&#59;` read back as `&` or `;`. Each `&` of the HTML's text is now written
+  `\&`, as `Shelving \& racking` in conversations.pst's chat, and as itself within a code span or a
+  code block, where CommonMark reads no character reference. Each is marked, before htmd writes
+  the Markdown, by a private-use character the body doesn't hold.
 
 ### Added
 
