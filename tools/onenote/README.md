@@ -28,7 +28,7 @@ spike-ai-pipeline-onenote --version
 
 It reads one input and writes JSON Lines of schema `"1"` to stdout, and nothing else there. The
 arguments may come in any order, and a path needn't be UTF-8. `--version`, alone, prints the bare
-version, `0.1.0`.
+version, `0.1.0`, then `schema 1`.
 
 The input's kind is sniffed from its content, never from its name:
 
@@ -39,7 +39,8 @@ The input's kind is sniffed from its content, never from its name:
 - a directory is a notebook, read through the one `.onetoc2` it holds.
 
 With `--media <dir>`, each image, embedded file, and ink drawing is written into `<dir>`,
-created if missing, each distinct content once, before the line that names it. Without it nothing
+created if missing once the input is read, each distinct content once, before the line that names
+it, through a temporary file renamed to its name, so a name there always holds the whole content. Without it nothing
 is written to disk, and the model names the files all the same.
 
 | Exit code | Meaning |
@@ -47,7 +48,7 @@ is written to disk, and the model names the files all the same.
 | 0 | Read, even when sections were skipped. |
 | 1 | stdout, the media directory, or a file in it couldn't be written. |
 | 2 | A usage error: no input, more than one, an unknown option, `--media` without a directory, given twice, or naming something that isn't a directory, or `--version` with other arguments. Usage goes to stderr. |
-| 3 | Refused, before any output: the input is missing or unreadable; a ZIP (`a ZIP archive; extract the OneDrive download first`); a directory with no `.onetoc2`, or with more than one; anything else (`not a OneNote section, notebook, or package`); or a section, notebook, or package onenote_parser can't read, with its reason, or that panics it (`the parser panicked: <message>`). |
+| 3 | Refused, before any output: the input is missing or unreadable; a ZIP (`a ZIP archive; extract the OneDrive download first`); a directory with no `.onetoc2`, or with more than one; anything else (`not a OneNote section, notebook, or package`); or a section, notebook, or package onenote_parser can't read, with its reason, or that panics it (`the reader panicked: <message>`). |
 | 4 | A fault of the CLI's own, never reported as any other code. |
 
 An error, for exit codes 1 to 4, is one line on stderr,

@@ -10,7 +10,7 @@ use std::fs::{self, File};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::Fault;
+use docproc_envelope::Fault;
 
 /// What the input is.
 #[derive(Debug, PartialEq)]

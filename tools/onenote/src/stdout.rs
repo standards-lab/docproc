@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd};
 
-use crate::Fault;
+use docproc_envelope::Fault;
 
 /// Takes stdout for the lines: a file on the descriptor stdout was, with descriptor 1 left
 /// pointing at /dev/null.

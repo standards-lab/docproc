@@ -208,8 +208,8 @@ fn a_repeated_content_is_one_file() {
     assert_eq!(files_under(&dir), expected);
 }
 
-/// A media directory that can't be created exits 1 with one error line, and the page line
-/// that would name its file is never written.
+/// A media directory that can't be created exits 1 with one error line. It is created once the
+/// section is read, before its first line, so no line is written.
 #[test]
 fn an_unwritable_media_directory_exits_1() {
     let base = scratch("media-unwritable");
@@ -222,12 +222,29 @@ fn an_unwritable_media_directory_exits_1() {
     assert_eq!(
         out.stderr,
         format!(
-            "{NAME}: error: media directory {} can't be created: Not a directory (os error 20)\n",
+            "{NAME}: error: the media directory {} can't be created: Not a directory (os error 20)\n",
             dir.display()
         )
     );
-    let kinds: Vec<Value> = out.lines().iter().map(|l| l["line"].clone()).collect();
-    assert_eq!(kinds, [json!("notebook"), json!("section")]);
+    assert_eq!(out.stdout, "");
+}
+
+/// The media directory is created once the input is read, with or without a medium to write: a
+/// section with none leaves it, empty. An input refused before it is read leaves none.
+#[test]
+fn the_media_directory_is_created_once_the_input_is_read() {
+    let base = scratch("media-created");
+    let dir = base.join("made");
+    let section = fixture("interop/SUT/OneWithoutFileData.one");
+    let out = run(&[section.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert!(dir.is_dir());
+    assert!(files_under(&dir).is_empty());
+    let refused = base.join("refused");
+    let input = fixture("interop/SUT/Encryption.one");
+    let out = run(&[input.as_os_str(), "--media".as_ref(), refused.as_os_str()]);
+    assert_eq!(out.code, Some(3));
+    assert!(!refused.exists());
 }
 
 /// Without --media nothing is written to disk: the working directory stays empty, without a

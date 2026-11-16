@@ -18,11 +18,16 @@ const USAGE: &str = "usage: docproc-onenote [--media <dir>] <input>
 const DESKTOP: &str = "interop/SUT/OneWithoutFileData.one";
 const ONEDRIVE: &str = "onenote-rs/New Section 1.one";
 
+/// The bare crate version on the first line, which a release compares with its tag's, and the
+/// schema on the second.
 #[test]
-fn version_prints_the_bare_crate_version() {
+fn version_prints_the_bare_crate_version_then_the_schema() {
     let out = run(&["--version"]);
     assert_eq!(out.code, Some(0));
-    assert_eq!(out.stdout, format!("{}\n", env!("CARGO_PKG_VERSION")));
+    assert_eq!(
+        out.stdout,
+        format!("{}\nschema 1\n", env!("CARGO_PKG_VERSION"))
+    );
     assert_eq!(out.stderr, "");
 }
 
@@ -174,7 +179,7 @@ fn a_password_protected_section_is_refused_with_the_parsers_reason() {
     assert_eq!(out.stderr, error(&input, "Unexpected end of file"));
 }
 
-/// A parser panic is caught and refused with exit 3, never 4. The byte set here makes
+/// A parser panic is caught by the shared guard and refused with exit 3, never 4. The byte set here makes
 /// onenote_parser add past its integer's range; the tests run the release binary, whose overflow
 /// checks (Cargo.toml's release profile) make that a panic.
 #[test]
@@ -185,7 +190,7 @@ fn a_parser_panic_is_refused_with_exit_3() {
     assert_eq!(out.stdout, "");
     assert_eq!(
         out.stderr,
-        error(&input, "the parser panicked: attempt to add with overflow")
+        error(&input, "the reader panicked: attempt to add with overflow")
     );
 }
 

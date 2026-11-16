@@ -29,8 +29,6 @@ libc = "0.2.191"
 # package's entries for its recycle bin, which the parser drops without a word; and, in the
 # tests, its MSZIP writer, which builds the packages they read.
 cab = "0.6.0"
-# SHA-256, which names each media file by its content.
-sha2 = "0.11.1"
 
 [dev-dependencies]
 # utc_datetime!, for the unit tests' times.

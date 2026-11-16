@@ -19,16 +19,14 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
+use docproc_envelope::{Fault, Lines, Media, guarded};
 use onenote_parser::Parser;
 use onenote_parser::notebook::Notebook;
 use onenote_parser::section::SectionEntry;
 
-use crate::guard::guarded;
-use crate::jsonl::Lines;
-use crate::media::Media;
 use crate::model::{self, SCHEMA};
 use crate::section::{self, hex, place, typed};
-use crate::{Fault, warn};
+use crate::warn;
 
 /// The directory OneNote keeps a notebook's deleted sections and pages in, beside its .onetoc2.
 const RECYCLE_BIN: &str = "OneNote_RecycleBin";
@@ -42,7 +40,7 @@ const FAILED_SECTION: &str = "failed to import section ";
 /// it is in.
 pub fn read(toc: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Result<(), Fault> {
     let notebook = guarded(|| Parser::new().parse_notebook(typed(toc)))
-        .map_err(|failure| refused(toc, &failure.reason()))?;
+        .map_err(|failure| refused(toc, &failure.reason))?;
     let toc_dir = toc.parent().unwrap_or(Path::new(""));
     let dir = if toc_dir.as_os_str().is_empty() {
         Path::new(".")
@@ -66,7 +64,7 @@ pub fn read_package(
     out: &mut Lines<impl Write>,
 ) -> Result<(), Fault> {
     let notebook = guarded(|| Parser::new().parse_package(typed(path)))
-        .map_err(|failure| refused(path, &failure.reason()))?;
+        .map_err(|failure| refused(path, &failure.reason))?;
     // The parser read the cabinet, so a second reading of its entries fails only if the file
     // changed in between.
     let names = File::open(path)
@@ -112,6 +110,8 @@ impl Read {
         media: &mut Media,
         out: &mut Lines<impl Write>,
     ) -> Result<(), Fault> {
+        // The notebook is read, so its media directory is created before its first line.
+        media.create()?;
         out.write(&model::Notebook {
             line: "notebook",
             schema: SCHEMA,

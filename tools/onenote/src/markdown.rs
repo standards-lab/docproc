@@ -8,7 +8,11 @@
 //! marked; underline, highlight, colour, superscript and subscript are plain text. A list
 //! marker makes its element a list item, its children nested under it and its numbers counted
 //! from its restart; a To Do tag makes one a task item, and other tags are a `[Label]` prefix.
-//! A table is GFM's, its first row the header. Literal text is escaped by mail's rules.
+//! A table is GFM's, its first row the header. Literal text is escaped by the shared envelope's
+//! literal-text escape, the Rust tools' one, which escapes `$` as this Markdown writes math
+//! between `$`s.
+
+use docproc_envelope::markdown::escape;
 
 use crate::ink::UNITS_PER_HALF_INCH;
 use crate::model::{
@@ -440,51 +444,6 @@ impl Inline {
         if !line.is_empty() {
             self.lines.push(line.to_owned());
         }
-    }
-}
-
-/// Literal text escaped as mail's Markdown escapes it, htmd's rules and its own: a backslash
-/// before each of ``\ * _ ` [ ] | ~ &``, and before `<` where it could open an HTML tag. At a
-/// line's start, `line_start`, a first `-`, `=`, `+`, `#` or `>` is escaped, and so is the `.`
-/// or `)` after one to nine digits, so no line reads as a heading, a rule, a quote or a list
-/// item. `$` is escaped as well, since this Markdown writes math between `$`s.
-fn escape(text: &str, line_start: bool) -> String {
-    let mut out = String::with_capacity(text.len() + 8);
-    let mut chars = text.char_indices().peekable();
-    if line_start {
-        if chars.peek().is_some_and(|&(_, c)| "-=+#>".contains(c)) {
-            out.push('\\');
-        }
-        let digits = text.bytes().take_while(u8::is_ascii_digit).count();
-        if (1..=9).contains(&digits) && matches!(text.as_bytes().get(digits), Some(b'.' | b')')) {
-            out.push_str(&text[..digits]);
-            out.push('\\');
-            for _ in 0..digits {
-                chars.next();
-            }
-        }
-    }
-    for (index, c) in chars {
-        match c {
-            '\\' | '*' | '_' | '`' | '[' | ']' | '|' | '~' | '&' | '$' => {
-                out.push('\\');
-                out.push(c);
-            }
-            '<' if html_like(&text[index + 1..]) => out.push_str("\\<"),
-            _ => out.push(c),
-        }
-    }
-    out
-}
-
-/// Whether what follows a `<` could make it an HTML tag, a comment or an instruction, as htmd
-/// judges it. A `<` that ends its text is escaped too, since the next run could carry on.
-fn html_like(rest: &str) -> bool {
-    let mut chars = rest.chars();
-    match chars.next() {
-        None | Some('!' | '?') => true,
-        Some('/') => chars.next().is_none_or(|c| c.is_ascii_alphabetic()),
-        Some(c) => c.is_ascii_alphabetic(),
     }
 }
 
@@ -1347,11 +1306,11 @@ mod tests {
         assert!(!out.contains("RECOGNISED"));
     }
 
-    /// Literal text is escaped by mail's rules: the characters Markdown reads as markup
+    /// Literal text is escaped by the shared escape: the characters Markdown reads as markup
     /// anywhere, and at a line's start the ones that would make it a heading, a rule, a quote
     /// or a list item. `$` is escaped since math is written between `$`s.
     #[test]
-    fn literal_text_is_escaped_as_mail_escapes_it() {
+    fn literal_text_is_escaped_by_the_shared_escape() {
         let paragraphs = [
             "Hi *all* _x_ `c` [a](b) <t> & a|b ~~s~~ \\ $5 end",
             "# not a heading",
@@ -1377,9 +1336,6 @@ mod tests {
     /// A line's start is escaped only where it starts a line, not after a mark or in a cell.
     #[test]
     fn only_a_lines_start_is_escaped_as_one() {
-        assert_eq!(escape("# a", false), "# a");
-        assert_eq!(escape("10. a", true), "10\\. a");
-        assert_eq!(escape("1234567890. a", true), "1234567890. a");
         let bold = Run {
             bold: true,
             ..text("# bold")

@@ -4,30 +4,25 @@
 //! nothing else goes there. Warnings and errors are single lines on stderr. Exit codes:
 //! 0 read, even with records skipped; 1 output that can't be written, to stdout or to the
 //! media directory; 2 a usage error; 3 an input refused before any output; 4 a fault of the
-//! CLI's own.
+//! CLI's own. The envelope, those lines and codes, the lines writer, the guard, and the media
+//! directory's store, is docproc-envelope's.
 
 mod content;
-mod guard;
 mod ink;
-mod jsonl;
 mod markdown;
 mod math;
-mod media;
 mod model;
 mod notebook;
 mod section;
 mod sniff;
 mod stdout;
 
-use std::any::Any;
 use std::ffi::OsString;
-use std::io::{self, BufWriter, Write};
-use std::panic::{self, AssertUnwindSafe};
+use std::io::BufWriter;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use jsonl::Lines;
-use media::Media;
+use docproc_envelope::{Fault, Lines, Media, stderr};
 use sniff::Input;
 
 /// The binary's name, which Cargo.toml's package gives, leading every stderr line.
@@ -41,20 +36,6 @@ const USAGE: &str = concat!(
     " --version"
 );
 
-/// Why a run stopped short of exit 0.
-pub enum Fault {
-    /// The arguments: exit 2, with usage.
-    Usage(String),
-    /// The input: exit 3, with one reason line and nothing on stdout.
-    Refused(String),
-    /// stdout couldn't be written: exit 1.
-    Output(io::Error),
-    /// The media directory, or a file in it, couldn't be written: exit 1, with this reason.
-    Media(String),
-    /// A fault of the CLI's own: exit 4.
-    Internal(String),
-}
-
 /// The parsed command line.
 enum Command {
     Version,
@@ -67,36 +48,16 @@ struct Args {
 }
 
 fn main() -> ExitCode {
-    // Panics are reported once, as an error line, never by the default hook.
-    panic::set_hook(Box::new(|_| {}));
     // args_os: a path needn't be UTF-8, and std::env::args panics on one that isn't.
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
-    let outcome = panic::catch_unwind(AssertUnwindSafe(|| run(&args)))
-        .unwrap_or_else(|payload| Err(Fault::Internal(panic_text(&*payload))));
-    match outcome {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(Fault::Output(err)) => fail(1, &format!("stdout can't be written: {err}")),
-        Err(Fault::Media(reason)) => fail(1, &reason),
-        Err(Fault::Usage(reason)) => {
-            eprintln!("{NAME}: error: {reason}\n{USAGE}");
-            ExitCode::from(2)
-        }
-        Err(Fault::Refused(reason)) => fail(3, &reason),
-        Err(Fault::Internal(reason)) => fail(4, &format!("internal fault: {reason}")),
-    }
-}
-
-fn fail(code: u8, reason: &str) -> ExitCode {
-    eprintln!("{NAME}: error: {reason}");
-    ExitCode::from(code)
+    docproc_envelope::run(NAME, USAGE, || run(&args))
 }
 
 fn run(args: &[OsString]) -> Result<(), Fault> {
     let args = match parse(args)? {
+        // The bare version, which the release compares with its tag's, then the schema.
         Command::Version => {
-            // The bare version, which the release compares with its tag's. Written, not
-            // println!ed, so a stdout that can't take it exits 1 rather than panicking.
-            return writeln!(io::stdout(), "{}", env!("CARGO_PKG_VERSION")).map_err(Fault::Output);
+            return docproc_envelope::version(env!("CARGO_PKG_VERSION"), model::SCHEMA);
         }
         Command::Read(args) => args,
     };
@@ -113,10 +74,10 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
     out.flush().map_err(Fault::Output)
 }
 
-/// Writes one warning line: `place` names the record, from its section down, and `what` says
-/// what happened to it.
+/// Writes one warning line, "docproc-onenote: warning: <where>: <what>", escaped: `place` names
+/// the record, from its section down, and `what` says what happened to it.
 pub fn warn(place: &str, what: &str) {
-    eprintln!("{NAME}: warning: {place}: {what}");
+    stderr::warning(NAME, place, what);
 }
 
 /// Parses the arguments by hand: `--version` alone, or one input and an optional
@@ -162,13 +123,4 @@ fn parse(args: &[OsString]) -> Result<Command, Fault> {
         return usage(&format!("--media {} is not a directory", dir.display()));
     }
     Ok(Command::Read(Args { input, media }))
-}
-
-/// The message a panic was raised with.
-pub fn panic_text(payload: &(dyn Any + Send)) -> String {
-    payload
-        .downcast_ref::<&str>()
-        .map(|text| (*text).to_owned())
-        .or_else(|| payload.downcast_ref::<String>().cloned())
-        .unwrap_or_else(|| "a panic without a message".to_owned())
 }

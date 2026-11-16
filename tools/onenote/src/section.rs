@@ -5,35 +5,36 @@ use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
+use docproc_envelope::{Fault, Lines, Media, guarded};
 use onenote_parser::Parser;
-use onenote_parser::errors::Error;
 use onenote_parser::page::Page;
 use onenote_parser::property::common::Color;
 use typed_path::{PathType, TypedPath};
 
 use crate::content;
-use crate::guard::{Failure, guarded};
-use crate::jsonl::Lines;
 use crate::markdown;
-use crate::media::Media;
 use crate::model::{self, SCHEMA};
-use crate::{Fault, notebook, warn};
+use crate::{notebook, warn};
 
 /// Reads a OneStore input: a section's lines, or, when the parser finds a table of contents,
-/// the notebook's.
+/// the notebook's. The media directory is created once the section is read, before its first
+/// line.
 pub fn read(path: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Result<(), Fault> {
     let parser = Parser::new();
     let section = match guarded(|| parser.parse_section(typed(path))) {
         Ok(section) => section,
-        Err(Failure::Error(err)) if is_toc(&err) => return notebook::read(path, media, out),
+        Err(failure) if !failure.panicked && is_toc(&failure.reason) => {
+            return notebook::read(path, media, out);
+        }
         Err(failure) => {
             return Err(Fault::Refused(format!(
                 "{}: {}",
                 path.display(),
-                failure.reason()
+                failure.reason
             )));
         }
     };
+    media.create()?;
     let stem = path.file_stem().unwrap_or_default();
     out.write(&model::Notebook {
         line: "notebook",
@@ -140,27 +141,17 @@ fn ink_text(page: &Page) -> Vec<Vec<model::Word>> {
         .collect()
 }
 
-/// A section's place in a warning: its path from the notebook's root, "/Group/Section", with
-/// control characters escaped so the warning stays one line.
+/// A section's place in a warning: its path from the notebook's root, "/Group/Section". The
+/// warning writer escapes it, so a name holding a line break or `": "` keeps the warning one line
+/// that splits where docproc splits it.
 pub fn place(path: &[String]) -> String {
-    let mut place = String::new();
-    for name in path {
-        place.push('/');
-        for c in name.chars() {
-            if c.is_control() {
-                place.extend(c.escape_debug());
-            } else {
-                place.push(c);
-            }
-        }
-    }
-    place
+    path.iter().map(|name| format!("/{name}")).collect()
 }
 
-/// Whether the parser refused a section because its store is a table of contents. Its error
-/// kind isn't public, so this reads ErrorKind::NotASectionFile's message.
-fn is_toc(err: &Error) -> bool {
-    err.to_string().starts_with("Not a section file: ")
+/// Whether the parser refused a section because its store is a table of contents, by its error's
+/// reason. Its error kind isn't public, so this reads ErrorKind::NotASectionFile's message.
+fn is_toc(reason: &str) -> bool {
+    reason.starts_with("Not a section file: ")
 }
 
 /// A stored string, or none when it is empty.
@@ -214,10 +205,23 @@ mod tests {
         );
     }
 
+    /// A section named with `": "` and a message holding a line break make one warning line, the
+    /// name's colon escaped so the line splits at its first three `": "` as docproc splits it.
     #[test]
-    fn a_place_is_the_sections_path_on_one_line() {
-        let path = ["Group".to_owned(), "Sec\ntion".to_owned()];
-        assert_eq!(place(&path), "/Group/Sec\\ntion");
+    fn a_warning_at_a_place_is_one_line_that_splits_at_its_where() {
+        let path = ["Group".to_owned(), "Notes: 2024".to_owned()];
+        let line = docproc_envelope::stderr::warning_line(
+            crate::NAME,
+            &format!("{}, page 1", place(&path)),
+            "the first line\nthe second",
+        );
+        assert_eq!(
+            line,
+            "docproc-onenote: warning: /Group/Notes:\\ 2024, page 1: the first line\\nthe second\n"
+        );
+        let parts: Vec<&str> = line.trim_end().splitn(4, ": ").collect();
+        assert_eq!(parts[2], "/Group/Notes:\\ 2024, page 1");
+        assert_eq!(parts[3], "the first line\\nthe second");
     }
 
     #[test]

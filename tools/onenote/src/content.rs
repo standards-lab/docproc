@@ -6,6 +6,7 @@
 use std::io::Read;
 use std::ops::Range;
 
+use docproc_envelope::{Fault, Media, extension_of};
 use onenote_parser::contents::{
     Content, EmbeddedFile, FileDataStatus, Image, List, NoteTag, Outline, OutlineElement,
     OutlineItem, ParagraphStyling, RichText, Table,
@@ -16,10 +17,9 @@ use onenote_parser::property::embedded_file::FileType;
 
 use crate::ink::{self, Stroke};
 use crate::math::{self, Object};
-use crate::media::{self, Media};
 use crate::model::{self, Block, Container, Item, Offsets};
 use crate::section::{iso8601, text};
-use crate::{Fault, warn};
+use crate::warn;
 
 /// A page's content and its own ink.
 pub struct PageRead {
@@ -293,7 +293,7 @@ impl Reader<'_> {
         let file = self.file(
             image.data_status(),
             image.read(),
-            extension.or_else(|| filename.as_deref().and_then(media::extension_of)),
+            extension.or_else(|| filename.as_deref().and_then(extension_of)),
             &place,
         )?;
         Ok(model::Image {
@@ -318,7 +318,7 @@ impl Reader<'_> {
             file: self.file(
                 file.data_status(),
                 Some(file.read()),
-                filename.as_deref().and_then(media::extension_of),
+                filename.as_deref().and_then(extension_of),
                 &place,
             )?,
             filename,
@@ -338,14 +338,15 @@ impl Reader<'_> {
             return Ok(None);
         };
         Ok(Some(model::Ink {
-            file: self.media.store(&svg, Some("svg"))?,
+            file: self.media.store(svg.as_slice(), Some("svg"))?,
             strokes: strokes.len(),
             bounds,
         }))
     }
 
-    /// A record's file: its content stored in the media and named. Data that is missing,
-    /// invalid, or can't be read gives no file and a warning at `place`.
+    /// A record's file: its content streamed into the media and named. Data that is missing or
+    /// invalid gives no file and a warning at `place`; data that fails partway through its read
+    /// is a media fault, exit 1, as the store makes every payload it can't read.
     fn file(
         &mut self,
         status: FileDataStatus,
@@ -354,15 +355,11 @@ impl Reader<'_> {
         place: &str,
     ) -> Result<Option<String>, Fault> {
         let problem = match (status, read) {
-            (FileDataStatus::Available, Some(mut read)) => {
-                let mut bytes = Vec::new();
-                match read.read_to_end(&mut bytes) {
-                    Ok(_) => return self.media.store(&bytes, extension).map(Some),
-                    Err(err) => format!("its data can't be read: {err}"),
-                }
+            (FileDataStatus::Available, Some(read)) => {
+                return self.media.store(read, extension).map(Some);
             }
-            (FileDataStatus::Invalid, _) => "its data is invalid".to_owned(),
-            _ => "its data is missing".to_owned(),
+            (FileDataStatus::Invalid, _) => "its data is invalid",
+            _ => "its data is missing",
         };
         warn(place, &format!("no file: {problem}"));
         Ok(None)
@@ -795,7 +792,7 @@ mod tests {
     }
 
     /// Data that is missing or invalid gives no file, and nothing goes to the media, which a
-    /// directory that can't be created would refuse; no committed fixture holds such a record.
+    /// directory that can't be written would refuse; no committed fixture holds such a record.
     #[test]
     fn missing_or_invalid_data_has_no_file() {
         let mut media = Media::new(Some("/dev/null/media".into()));
