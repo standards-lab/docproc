@@ -3,139 +3,215 @@
 package email_test
 
 import (
-	"bufio"
-	"bytes"
-	jsonv2 "encoding/json/v2"
+	"archive/zip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	"io/fs"
-	"maps"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/email"
-	"github.com/standards-lab/docproc/route"
+	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// These tests run the real mail binary, which the unit tier doesn't provide, so they run in the
-// integration tier.
+// These tests run the real docproc-mail, built from tools/mail in this checkout and found on PATH,
+// which the unit tier doesn't provide, so they run in the integration tier.
 
-// TestRealVersion: the mail the check's mise pins is the version whose tag the copy of its
-// fixtures and goldens was taken from, so the goldens TestReal compares against are that mail's.
-func TestRealVersion(t *testing.T) {
-	tl, err := tool.NewExec(t.Context(), email.MailSpec())
-	if err != nil {
-		t.Fatalf("mail, which mise pins, run the check through mise run check: %v", err)
-	}
-	header, _ := readManifest(t)
-	if got, want := tl.Version().String(), strings.TrimPrefix(header["tag"], "v"); got != want {
-		t.Errorf("mail %s, the fixtures' tag %s: refresh them with mise run fixtures:mail", got, header["tag"])
-	}
-}
+// fixtures is docproc-mail's committed inputs, read in place under tools/.
+const fixtures = "mail/tests/fixtures"
 
-// TestReal runs the real pinned mail over every .pst and .msg among the copied fixtures. Each
-// read succeeds: its first record is the store, of Schema and the input's format, and it yields
-// the golden's records, one per line, in order and of the same kinds, each of which marshals back
-// to its line's fields; its warnings are the golden stderr's lines, mail's prefix taken off, none
-// where mail ships no stderr golden. Between them the fixtures hold folders, messages, skipped
-// records, warnings, and a .msg's nested messages.
-func TestReal(t *testing.T) {
+// inputExtensions are the extensions of docproc-mail's committed inputs, as its golden test
+// names them; mbox.rlug's splits, mbox.rlug-0 to -4, are .eml inputs of their own without
+// goldens.
+var inputExtensions = []string{".pst", ".msg", ".eml", ".mboxrd", ".rlug"}
+
+// TestRealGoldens runs the real docproc-mail over every committed input that has a golden, with a
+// media directory, and holds its records to the golden as TestReplayGoldens does: one record per
+// line, each written back as its line, the senders' added SMTP addresses their headers', and the
+// golden's warnings. Each attachment's file is in the media directory, its content's SHA-256 its
+// name's and its size the record's.
+func TestRealGoldens(t *testing.T) {
 	r := realReader(t)
-	root := filepath.Join(mailCopy, "fixtures")
-	inputs, _ := realInputs(t)
-	kinds := map[string]bool{}
-	warned, nested := false, false
-	for _, rel := range inputs {
+	root := tooltest.Tools(t, goldens)
+	in := tooltest.Tools(t, fixtures)
+	n := 0
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return err
+		}
+		stem := strings.TrimSuffix(path, ".jsonl")
+		rel, err := filepath.Rel(root, stem)
+		if err != nil {
+			return err
+		}
+		input := ""
+		for _, ext := range inputExtensions {
+			if _, err := os.Stat(filepath.Join(in, rel+ext)); err == nil {
+				input = filepath.Join(in, rel+ext)
+			}
+		}
+		n++
 		t.Run(rel, func(t *testing.T) {
-			stdoutPath, stderrPath := golden(rel)
-			want := goldenLines(t, stdoutPath)
-			wantWarnings := goldenWarnings(t, stderrPath)
-
-			s := mustRead(t)(r.Read(t.Context(), email.Request{Input: filepath.Join(root, rel)}))
-			recs, err := collect(s, nil)
+			if input == "" {
+				t.Fatalf("no input for the golden %s", rel)
+			}
+			media := t.TempDir()
+			recs, err := collect(r.Read(t.Context(), email.Request{Input: input, Media: media}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			store, ok := recs[0].(*email.Store)
-			if !ok || store.Schema != email.Schema || store.Format != strings.TrimPrefix(filepath.Ext(rel), ".") {
-				t.Errorf("first record %#v", recs[0])
-			}
-			checkLines(t, recs, want, "the golden's")
+			checkReplay(t, stem, media, recs)
 			for _, rec := range recs {
-				kinds[rec.Line()] = true
-				if m, ok := rec.(*email.Message); ok && hasNested(m) {
-					nested = true
+				if m, ok := rec.(*email.Message); ok {
+					checkWritten(t, m)
 				}
 			}
-			if got := s.Warnings(); !slices.Equal(got, wantWarnings) {
-				t.Errorf("warnings %q, the golden's %q", got, wantWarnings)
-			}
-			if len(wantWarnings) > 0 {
-				warned = true
-			}
 		})
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, kind := range []string{"store", "folder", "message", "skipped"} {
-		if !kinds[kind] {
-			t.Errorf("no fixture gives a %s record", kind)
-		}
-	}
-	if !warned || !nested {
-		t.Errorf("warnings among the fixtures %t, nested messages %t; want both", warned, nested)
+	if n == 0 {
+		t.Fatalf("no goldens under %s", root)
 	}
 }
 
-// TestRealMIME runs the real pinned mail over every .eml and mbox among the inputs, for which mail
-// ships no goldens. Each read succeeds and is checked twice: against mail's own stdout and stderr
-// from a run of its own on the same input, each record marshalling back to its line and the
-// warnings mail's; and against mimeTruth's records. Each is as a MIME store is: its store has
-// no encoding, password, or display name; no message has a folder, an .eml's no id; and no
-// message, nested ones included, has a class or a creation or modification time, every address
-// is SMTP, and an embedded message is nested under its attachment record, routed route.Nested.
-func TestRealMIME(t *testing.T) {
-	r := realReader(t)
-	_, inputs := realInputs(t)
-	if got := slices.Sorted(maps.Keys(mimeTruth)); !slices.Equal(got, slices.Sorted(slices.Values(inputs))) {
-		t.Errorf("mimeTruth covers %q, the inputs are %q", got, inputs)
+// checkWritten checks that each of m's attachments and media with a file, a nested message's
+// included, was written at its Path, its content's SHA-256 its SHA256 and an attachment's size the
+// record's.
+func checkWritten(t *testing.T, m *email.Message) {
+	t.Helper()
+	check := func(file, path, sum string, size *int64) {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("%s: %v", file, err)
+			return
+		}
+		got := sha256.Sum256(content)
+		if hex.EncodeToString(got[:]) != sum {
+			t.Errorf("%s: its content's SHA-256 is %x", file, got)
+		}
+		if size != nil && *size != int64(len(content)) {
+			t.Errorf("%s: size %d, the file's %d", file, *size, len(content))
+		}
 	}
-	for _, rel := range inputs {
-		t.Run(rel, func(t *testing.T) {
-			input, err := filepath.Abs(filepath.Join("testdata", rel))
-			if err != nil {
-				t.Fatal(err)
-			}
-			want, wantWarnings := mailOutput(t, input)
+	for _, a := range m.Attachments {
+		if a.File != "" {
+			check(a.File, a.Path, a.SHA256, a.Size)
+		}
+		if a.Message != nil {
+			checkWritten(t, a.Message)
+		}
+	}
+	for _, md := range m.Media {
+		check(md.File, md.Path, md.SHA256, nil)
+	}
+}
 
-			s := mustRead(t)(r.Read(t.Context(), email.Request{Input: input}))
-			recs, err := collect(s, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			checkLines(t, recs, want, "mail's")
-			if got := s.Warnings(); !slices.Equal(got, wantWarnings) {
-				t.Errorf("warnings %q, mail's %q", got, wantWarnings)
-			}
-			var got []string
-			for _, rec := range recs {
-				got = append(got, describe(rec))
-			}
-			if want := mimeTruth[rel]; !slices.Equal(got, want) {
-				t.Errorf("records %q, want %q", got, want)
-			}
-			checkMIME(t, recs)
-		})
+// TestRealBuilt runs the real docproc-mail over the built .msg with a media directory. Its one
+// message holds builtSources' attachments, in order, each by value and written as its source, byte
+// for byte; the forwarded .msg, whose source docproc-mail's fixtures no longer hold byte for byte,
+// as an OLE2 compound file, a file and not an embedded message.
+func TestRealBuilt(t *testing.T) {
+	r := realReader(t)
+	media := t.TempDir()
+	recs, err := collect(r.Read(t.Context(), email.Request{Input: filepath.Join("testdata", "built", "msg", "office-attachments.msg"), Media: media}))
+	if err != nil {
+		t.Fatal(err)
 	}
+	var m *email.Message
+	for _, rec := range recs {
+		if msg, ok := rec.(*email.Message); ok {
+			m = msg
+		}
+	}
+	if m == nil || len(m.Attachments) != len(builtSources) {
+		t.Fatalf("message %+v, want %d attachments", m, len(builtSources))
+	}
+	checkWritten(t, m)
+	for i, s := range builtSources {
+		a := m.Attachments[i]
+		if a.Filename != s.filename || a.Method != "by_value" || a.Message != nil {
+			t.Errorf("attachment %d: %q, method %q, nested %t; want %q by value", i+1, a.Filename, a.Method, a.Message != nil, s.filename)
+			continue
+		}
+		got, err := os.ReadFile(a.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s.path == "" {
+			if !strings.HasPrefix(string(got), "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1") {
+				t.Errorf("%s: not an OLE2 compound file", s.filename)
+			}
+			continue
+		}
+		if want := s.content(t); string(got) != string(want) {
+			t.Errorf("%s: %d bytes, not its source's %d", s.filename, len(got), len(want))
+		}
+	}
+}
+
+// builtSource is one of the built .msg's attachments: its filename and its source, a file, or a
+// member of a ZIP, under the repository; none for the forwarded .msg.
+type builtSource struct {
+	filename, path, member string
+}
+
+// builtSources are the built .msg's attachments, in order, as testdata/README.md gives them.
+var builtSources = []builtSource{
+	{"minutes.docx", "../office/testdata/ooxml/tables.libreoffice.docx", ""},
+	{"budget.xls", "../office/testdata/legacy/generated/formulas.libreoffice.xls", ""},
+	{"scan.tif", "../office/testdata/pictures/tiff.docx", "word/media/image1.tiff"},
+	{"diagram.emf", "../office/testdata/ooxml/word-with-attachments.docx", "word/media/image4.emf"},
+	{"forwarded.msg", "", ""},
+}
+
+// content returns s's source's bytes.
+func (s builtSource) content(t *testing.T) []byte {
+	t.Helper()
+	if s.member == "" {
+		b, err := os.ReadFile(s.path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	return zipMember(t, s.path, s.member)
+}
+
+// zipMember returns the bytes of member in the ZIP at path.
+func zipMember(t *testing.T, path, member string) []byte {
+	t.Helper()
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = zr.Close() }()
+	f, err := zr.Open(member)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	b, err := io.ReadAll(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
 }
 
 // TestRealMboxOrdinals: an mbox message's id is its ordinal in the file, so an empty entry, a
-// separator line with the next straight after it, skips a number, and a message mail can't read,
-// one whose header block has no From or Date, is a skipped record of kind message whose id is its
-// ordinal, with a warning naming it.
+// separator line with the next straight after it, skips a number, and a message docproc-mail can't
+// read, one whose header block has no From or Date, is a skipped record of kind message whose id
+// is its ordinal, with a warning naming it.
 func TestRealMboxOrdinals(t *testing.T) {
 	r := realReader(t)
 	input := filepath.Join(t.TempDir(), "ordinals.mbox")
@@ -146,29 +222,29 @@ func TestRealMboxOrdinals(t *testing.T) {
 	if err := os.WriteFile(input, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	want, wantWarnings := mailOutput(t, input)
-	s := mustRead(t)(r.Read(t.Context(), email.Request{Input: input}))
-	recs, err := collect(s, nil)
+	recs, err := collect(r.Read(t.Context(), email.Request{Input: input}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkLines(t, recs, want, "mail's")
-	var got []string
+	var got, warnings []string
 	for _, rec := range recs {
+		if _, ok := rec.(*email.Warning); ok {
+			warnings = append(warnings, describe(rec))
+			continue
+		}
 		got = append(got, describe(rec))
 	}
 	if want := []string{"store mbox", "message 1", "message 3", "skipped message id 4"}; !slices.Equal(got, want) {
 		t.Errorf("records %q, want %q", got, want)
 	}
-	if got, want := s.Warnings(), []string{"message 4: skipped: it has no header block with a From or Date field"}; !slices.Equal(got, want) || !slices.Equal(got, wantWarnings) {
-		t.Errorf("warnings %q, want %q, mail's %q", got, want, wantWarnings)
+	if want := []string{"warning message 4: skipped: it has no header block with a From or Date field"}; !slices.Equal(warnings, want) {
+		t.Errorf("warnings %q, want %q", warnings, want)
 	}
-	checkMIME(t, recs)
 }
 
-// TestRealRefused: the real mail refuses an .ost, and a file that is no mail, neither a .pst, a
-// .msg, an .eml, nor an mbox, with exit code 3, and the error carries its reason without the
-// input's path.
+// TestRealRefused: the real docproc-mail refuses an .ost, and a file that is no mail, neither a
+// .pst, a .msg, an .eml, nor an mbox, with exit code 3, and the error carries its reason, which
+// isn't classed, without the input's path.
 func TestRealRefused(t *testing.T) {
 	r := realReader(t)
 	// An .ost's header: a PST's, its client magic SO, padded to the header's size.
@@ -188,302 +264,26 @@ func TestRealRefused(t *testing.T) {
 				t.Fatal(err)
 			}
 			recs, err := collect(r.Read(t.Context(), email.Request{Input: path}))
-			var exit *email.ExitError
-			if !errors.Is(err, email.ErrRefused) || !errors.As(err, &exit) || exit.Code != 3 {
-				t.Fatalf("got %v, want a refusal, exit code 3", err)
+			exit, ok := errors.AsType[*cli.ExitError](err)
+			if !errors.Is(err, email.ErrRefused) || !ok || exit.Code != 3 || exit.Refusal() != cli.Unclassed {
+				t.Fatalf("got %v, want an unclassed refusal, exit code 3", err)
 			}
 			if len(recs) != 0 {
 				t.Errorf("records %v, want none", recs)
 			}
 			if strings.Contains(exit.Message, path) || !strings.HasPrefix(exit.Message, c.reason) {
-				t.Errorf("message %q: want mail's reason alone, beginning %q", exit.Message, c.reason)
+				t.Errorf("message %q: want docproc-mail's reason alone, beginning %q", exit.Message, c.reason)
 			}
 		})
 	}
 }
 
-// golden returns the golden mail ships for the fixture at rel, a path under fixtures/: its
-// stdout's path and its stderr's, under golden/. The generated fixtures keep their directories;
-// the public ones are named for their source and file.
-func golden(rel string) (stdout, stderr string) {
-	stem := strings.TrimSuffix(rel, filepath.Ext(rel))
-	if !strings.HasPrefix(rel, "generated/") {
-		dir, source := filepath.Split(filepath.Dir(stem))
-		stem = filepath.Join(dir, source+"-"+filepath.Base(stem))
-	}
-	base := filepath.Join(mailCopy, "golden", stem)
-	return base + ".jsonl", base + ".stderr"
-}
-
-// checkLines checks recs, a read's records, against want, mail's lines for the same input, whose
-// lines its errors call them: there is one record per line, in order and of the line's kind, none
-// of an unknown kind, and each marshals back to its line's fields, less "line" and any false
-// boolean. A Conversation is a message line's: the line, decoded as a Message and read through
-// Message.Conversation, marshals as the record does.
-func checkLines(t *testing.T, recs []email.Record, want []map[string]any, whose string) {
-	t.Helper()
-	if len(recs) != len(want) {
-		t.Fatalf("%d records, %s %d lines", len(recs), whose, len(want))
-	}
-	for i, rec := range recs {
-		if _, ok := rec.(*email.UnknownRecord); ok {
-			t.Errorf("record %d: unknown kind %s", i, rec.Line())
-		}
-		line := maps.Clone(want[i])
-		kind := rec.Line()
-		if _, ok := rec.(*email.Conversation); ok {
-			kind = "message"
-		}
-		if line["line"] != kind {
-			t.Errorf("record %d: kind %s, %s %v", i, rec.Line(), whose, line["line"])
-		}
-		delete(line, "line")
-		if _, ok := rec.(*email.Conversation); ok {
-			line = conversationLine(t, line)
-		}
-		got := marshalled(t, rec)
-		dropFalse(line)
-		if !reflect.DeepEqual(got, line) {
-			t.Errorf("record %d marshals to\n%v\n%s line is\n%v", i, got, whose, line)
-		}
-	}
-}
-
-// mimeTruth is each MIME input's records, in order, as describe gives them, keyed by the input's
-// path under testdata/. It is written from the inputs themselves, not from mail's output: an .eml
-// is a store and its one message, an mbox a store and a message per "From " separator, numbered
-// from 1 in file order; each message's attachments are its parts that aren't body text, each
-// by_value but a message/rfc822 part, embedded_message, nested with its own subject. mbox.rlug's
-// five splits are its messages one per file, each an .eml, without its separator line. No input
-// holds a part mail can't read, so none gives a skipped record.
-var mimeTruth = map[string][]string{
-	"mail/fixtures/generated/eml/01-plain.eml":               {"store eml", "message"},
-	"mail/fixtures/generated/eml/02-reply-latin1.eml":        {"store eml", "message"},
-	"mail/fixtures/generated/eml/03-html-inline-image.eml":   {"store eml", "message [by_value]"},
-	"mail/fixtures/generated/eml/04-attachment-cyrillic.eml": {"store eml", "message [by_value]"},
-	"mail/fixtures/generated/eml/05-japanese.eml":            {"store eml", "message"},
-	"mail/fixtures/generated/eml/06-chinese.eml":             {"store eml", "message"},
-	"mail/fixtures/generated/eml/07-html-only-bcc.eml":       {"store eml", "message"},
-	"mail/fixtures/generated/eml/08-forward-attached-message.eml": {
-		"store eml", "message [by_value embedded_message(Notes on the engine (draft))]",
-	},
-	"mail/fixtures/mime/eml/09-threading.eml": {"store eml", "message"},
-	"mail/fixtures/mime/nine.mboxrd": {
-		"store mbox", "message 1", "message 2", "message 3 [by_value]", "message 4 [by_value]",
-		"message 5", "message 6", "message 7",
-		"message 8 [by_value embedded_message(Notes on the engine (draft))]", "message 9",
-	},
-	"mail/fixtures/mime/rlug/mbox.rlug": {
-		"store mbox", "message 1", "message 2", "message 3", "message 4", "message 5",
-	},
-	"mail/fixtures/mime/rlug/mbox.rlug-0": {"store eml", "message"},
-	"mail/fixtures/mime/rlug/mbox.rlug-1": {"store eml", "message"},
-	"mail/fixtures/mime/rlug/mbox.rlug-2": {"store eml", "message"},
-	"mail/fixtures/mime/rlug/mbox.rlug-3": {"store eml", "message"},
-	"mail/fixtures/mime/rlug/mbox.rlug-4": {"store eml", "message"},
-	"built/" + builtEML: {
-		"store eml", "message [by_value by_value by_value by_value by_value]",
-	},
-}
-
-// mailOutput runs the real pinned mail on input itself, without the Reader, and returns its
-// stdout's lines and its stderr's warnings, as goldenLines and goldenWarnings read a golden's.
-func mailOutput(t *testing.T, input string) (lines []map[string]any, warnings []string) {
-	t.Helper()
-	tl, err := tool.NewExec(t.Context(), email.MailSpec())
-	if err != nil {
-		t.Fatalf("mail, which mise pins, run the check through mise run check: %v", err)
-	}
-	var stdout, stderr bytes.Buffer
-	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{input}, Stdout: &stdout, Stderr: &stderr}); err != nil {
-		t.Fatalf("mail on %s: %v: %s", input, err, stderr.String())
-	}
-	return jsonLines(t, input, stdout.Bytes()), warningLines(t, input, stderr.Bytes())
-}
-
-// checkMIME checks recs, an .eml's or an mbox's records, for what a MIME store gives: a store of
-// format eml or mbox with no encoding, password, or display name; no folder records; messages with
-// no folder, an .eml's with no id and an mbox's each with one, each as checkMIMEMessage checks;
-// and an .eml's skipped records naming no message.
-func checkMIME(t *testing.T, recs []email.Record) {
-	t.Helper()
-	store, ok := recs[0].(*email.Store)
-	if !ok || (store.Format != "eml" && store.Format != "mbox") || store.Encoding != "" || store.Password || store.DisplayName != "" {
-		t.Fatalf("store %#v, want an eml or mbox store alone", recs[0])
-	}
-	for i, rec := range recs {
-		if i == 0 {
-			continue
-		}
-		switch rec := rec.(type) {
-		case *email.Message:
-			if rec.Folder != 0 || (store.Format == "eml") != (rec.ID == 0) {
-				t.Errorf("record %d: message id %d, folder %d", i, rec.ID, rec.Folder)
-			}
-			checkMIMEMessage(t, rec)
-		case *email.Skipped:
-			if store.Format == "eml" && rec.Message != 0 {
-				t.Errorf("record %d: skipped %+v names a message", i, rec)
-			}
-		default:
-			t.Errorf("record %d: a %s record", i, rec.Line())
-		}
-	}
-}
-
-// checkMIMEMessage checks m and every message nested in it for what a MIME message gives: no
-// class, no creation or modification time, every address of type SMTP, and each embedded
-// message nested under its attachment record, which routes it route.Nested.
-func checkMIMEMessage(t *testing.T, m *email.Message) {
-	t.Helper()
-	if m.Class != "" || !m.CreationTime.IsZero() || !m.ModificationTime.IsZero() {
-		t.Errorf("%q: class %q, created %v, modified %v", m.Subject, m.Class, m.CreationTime, m.ModificationTime)
-	}
-	addrs := slices.Concat(m.To, m.CC, m.BCC)
-	if m.Sender != (email.Address{}) {
-		addrs = append(addrs, m.Sender)
-	}
-	for _, a := range addrs {
-		if a.AddressType != "SMTP" {
-			t.Errorf("%q: address %+v, want SMTP", m.Subject, a)
-		}
-	}
-	for _, a := range m.Attachments {
-		if (a.Method == "embedded_message") != (a.Message != nil) {
-			t.Errorf("%q: attachment %q, method %s, nested %t", m.Subject, a.Filename, a.Method, a.Message != nil)
-		}
-		if a.Message == nil {
-			continue
-		}
-		if rt, _, err := a.Route(); err != nil || rt != route.Nested {
-			t.Errorf("%q: embedded message routed %v, %v", m.Subject, rt, err)
-		}
-		checkMIMEMessage(t, a.Message)
-	}
-}
-
-// hasNested reports whether any of m's attachments nests a message.
-func hasNested(m *email.Message) bool {
-	return slices.ContainsFunc(m.Attachments, func(a email.Attachment) bool { return a.Message != nil })
-}
-
-// goldenLines reads the golden at path, one JSON object per line.
-func goldenLines(t *testing.T, path string) []map[string]any {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return jsonLines(t, path, data)
-}
-
-// jsonLines reads data, mail's stdout from name, one JSON object per line.
-func jsonLines(t *testing.T, name string, data []byte) []map[string]any {
-	t.Helper()
-	var lines []map[string]any
-	scanner := bufio.NewScanner(bytes.NewReader(data))
-	scanner.Buffer(nil, len(data)+1)
-	for scanner.Scan() {
-		var line map[string]any
-		if err := jsonv2.Unmarshal(scanner.Bytes(), &line); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		lines = append(lines, line)
-	}
-	if err := scanner.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return lines
-}
-
-// goldenWarnings reads the stderr golden at path, each line a warning, mail's prefix and the
-// warning label taken off; nil when mail ships none.
-func goldenWarnings(t *testing.T, path string) []string {
-	t.Helper()
-	data, err := os.ReadFile(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return warningLines(t, path, data)
-}
-
-// warningLines reads data, mail's stderr from name, each line a warning, mail's prefix and the
-// warning label taken off; nil for none.
-func warningLines(t *testing.T, name string, data []byte) []string {
-	t.Helper()
-	var warnings []string
-	for line := range strings.Lines(string(data)) {
-		w, ok := strings.CutPrefix(strings.TrimRight(line, "\n"), "spike-ai-pipeline-mail: warning: ")
-		if !ok {
-			t.Fatalf("%s: not a warning: %q", name, line)
-		}
-		warnings = append(warnings, w)
-	}
-	return warnings
-}
-
-// marshalled returns rec marshalled through encoding/json/v2 and read back as a JSON object.
-func marshalled(t *testing.T, rec email.Record) map[string]any {
-	t.Helper()
-	data, err := jsonv2.Marshal(rec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var obj map[string]any
-	if err := jsonv2.Unmarshal(data, &obj); err != nil {
-		t.Fatal(err)
-	}
-	return obj
-}
-
-// conversationLine returns line, a message line's fields, as the Conversation Message.Conversation
-// reads from it marshals; it fails the test for a line of no conversation class.
-func conversationLine(t *testing.T, line map[string]any) map[string]any {
-	t.Helper()
-	data, err := jsonv2.Marshal(line)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var m email.Message
-	if err := jsonv2.Unmarshal(data, &m); err != nil {
-		t.Fatal(err)
-	}
-	c, ok := m.Conversation()
-	if !ok {
-		t.Fatalf("a conversation from a line of class %q", m.Class)
-	}
-	return marshalled(t, c)
-}
-
-// dropFalse removes every false boolean from v, nested objects and arrays included: a record
-// marshals a false boolean as none.
-func dropFalse(v any) {
-	switch v := v.(type) {
-	case map[string]any:
-		for k, x := range v {
-			if x == false {
-				delete(v, k)
-			} else {
-				dropFalse(x)
-			}
-		}
-	case []any:
-		for _, x := range v {
-			dropFalse(x)
-		}
-	}
-}
-
-// realReader builds a Reader over the real mail the check's mise pins, found on PATH through the
-// exec runner.
+// realReader builds a Reader over the real docproc-mail on PATH, through the exec runner.
 func realReader(t *testing.T) *email.Reader {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), email.MailSpec())
 	if err != nil {
-		t.Fatalf("mail, which mise pins, run the check through mise run check: %v", err)
+		t.Fatalf("docproc-mail, built from tools/mail and put on PATH: %v", err)
 	}
 	r, err := email.NewReader(email.Config{Mail: tl})
 	if err != nil {
@@ -492,13 +292,21 @@ func realReader(t *testing.T) *email.Reader {
 	return r
 }
 
-// describe gives rec's kind, its ids, and its skips in a few words, for mimeTruth: a store's
-// format; a message's id, if any, and each attachment's method, an embedded message's subject
-// after it; a skipped record's kind, its message, and its id.
+// mailFixture returns the path of rel, a path under docproc-mail's tests/fixtures, read in place.
+func mailFixture(t *testing.T, rel string) string {
+	t.Helper()
+	return tooltest.Tools(t, fixtures+"/"+rel)
+}
+
+// describe gives rec's kind, its ids, and its skips in a few words: a store's format; a message's
+// id, if any, and each attachment's method, an embedded message's subject after it; a skipped
+// record's kind, its message, and its id; a warning's where and what.
 func describe(rec email.Record) string {
 	switch rec := rec.(type) {
 	case *email.Store:
 		return "store " + rec.Format
+	case *email.Folder:
+		return "folder " + strconv.FormatUint(rec.ID, 10)
 	case *email.Message:
 		s := "message"
 		if rec.ID != 0 {
@@ -525,40 +333,10 @@ func describe(rec email.Record) string {
 			s += " id " + strconv.FormatUint(*rec.ID, 10)
 		}
 		return s
+	case *email.Warning:
+		return "warning " + rec.Where + ": " + rec.What
+	case *email.UnknownRecord:
+		return rec.Kind
 	}
-	return rec.Line()
-}
-
-// realInputs returns every input the real-binary tests read, and fails the test unless they are
-// the 40. stores are the copied fixtures' .pst and .msg, mail's 23, each a path under
-// fixtures/, which mail ships goldens for. mime are the 17 .eml and mbox, each a path under
-// testdata/: the copied fixtures' .eml, the nine-message mboxrd, mbox.rlug and its five splits,
-// and the built .msg's .eml source.
-func realInputs(t *testing.T) (stores, mime []string) {
-	t.Helper()
-	root := filepath.Join(mailCopy, "fixtures")
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		switch ext := filepath.Ext(path); {
-		case ext == ".pst" || ext == ".msg":
-			stores = append(stores, filepath.ToSlash(rel))
-		case ext == ".eml" || ext == ".mboxrd" || strings.HasPrefix(d.Name(), "mbox."):
-			mime = append(mime, "mail/fixtures/"+filepath.ToSlash(rel))
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	mime = append(mime, "built/"+builtEML)
-	if len(stores) != 23 || len(mime) != 17 {
-		t.Errorf("%d .pst and .msg, %d .eml and mbox, want 23 and 17, 40 in all", len(stores), len(mime))
-	}
-	return stores, mime
+	return "?"
 }

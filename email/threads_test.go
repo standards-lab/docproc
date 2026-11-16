@@ -554,16 +554,18 @@ func TestThreadsOrder(t *testing.T) {
 	}
 }
 
-// TestThreadsRecords: Threads takes a read's records, ignoring all but messages and the messages
-// nested under attachment records, and returns the error that ends them, with no threads.
+// TestThreadsRecords: Threads takes a read's records, ignoring all but messages, the messages
+// nested under attachment records, and a message of a conversation class, and returns the error that ends them, with no threads.
 func TestThreadsRecords(t *testing.T) {
 	nested := msg(3, "<n@x>", "", "<a@x>")
 	recs := []email.Record{
-		&email.Store{Schema: email.Schema, Format: "pst"},
+		&email.Store{Schema: "2", Format: "pst"},
+		&email.Warning{Tool: "docproc-mail", Where: "store", What: "odd"},
 		&email.Folder{ID: 32802},
 		msg(1, "<a@x>", "", ""),
 		&email.Skipped{Kind: "message", Folder: 32802},
 		&email.UnknownRecord{Kind: "calendar"},
+		&email.Message{ID: 4, Class: email.ConversationClass, Subject: "Re: chat", References: "<a@x>"},
 		func() *email.Message {
 			m := msg(2, "<b@x>", "", "<a@x>")
 			m.Attachments = []email.Attachment{{Method: "embedded_message", Message: nested}}
@@ -599,17 +601,17 @@ func TestThreadsRecords(t *testing.T) {
 	}
 }
 
-// TestThreadsStandin: Threads takes a Stream's Records whole.
+// TestThreadsStandin: Threads takes a read's records whole.
 func TestThreadsStandin(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
-	mail.stdout(`{"line":"store","schema":"1","format":"pst"}
+	mail.stdout(`{"line":"store","schema":"2","format":"pst"}
 {"line":"folder","id":32802}
 {"line":"message","id":2097156,"folder":32802,"subject":"Hello","message_id":"<a@x>","submit_time":"2026-01-12T14:15:00Z"}
 {"line":"folder","id":32866,"parent":32802}
 {"line":"message","id":2097188,"folder":32866,"subject":"Re: Hello","in_reply_to":"<a@x>","submit_time":"2026-01-12T15:15:00Z"}
 `)
-	threads, err := email.Threads(mustRead(t)(r.Read(t.Context(), email.Request{Input: "store.pst"})).Records())
+	threads, err := email.Threads(r.Read(t.Context(), email.Request{Input: "store.pst"}))
 	if err != nil {
 		t.Fatal(err)
 	}

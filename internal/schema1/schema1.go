@@ -1,6 +1,6 @@
-// Package schema1 holds the schema "1" spikes' stderr reading, which office, email, and onenote
-// keep until each decodes its tool's schema "2" through internal/cli's envelope reader; it goes
-// with the last of them. Its lines differ from the envelope's: a failure's line begins with a
+// Package schema1 holds the schema "1" spikes' stderr reading, which onenote, the last reader of a
+// spike, keeps until it decodes its tool's schema "2" through internal/cli's envelope reader; it
+// goes with it. Its lines differ from the envelope's: a failure's line begins with a
 // label of its program's, office's one per outcome, and a line may lead with the input's path.
 //
 // Its exported identifiers:

@@ -258,7 +258,7 @@ func TestEmailStageReal(t *testing.T) {
 			delete(top, ev.Part.Name)
 		}
 		// Post-order: a part's parent's event comes after it.
-		if ev.Part.Depth > 0 && !slices.ContainsFunc(events[i+1:], func(p dispatched) bool { return p.Part.SHA256 == ev.Part.Parent }) {
+		if ev.Part.Depth > 0 && !slices.ContainsFunc(events[i+1:], func(p dispatched) bool { return p.Part.ID == ev.Part.Parent }) {
 			t.Errorf("event %d, %s@%d, comes after its parent's", i, ev.Part.Name, ev.Part.Depth)
 		}
 	}
@@ -269,7 +269,7 @@ func TestEmailStageReal(t *testing.T) {
 		t.Error("budget.xls wasn't converted from xls")
 	}
 
-	events = dispatchAll(t, d, filepath.Join(mailFixtures, "msg", "tika", "testMSG_att_msg.msg"), nil)
+	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "msg", "tika", "testMSG_att_msg.msg"), nil)
 	wantSteps(t, events, []step{
 		{"smbprn.00009008.KdcPjl.pdf", 1, dispatch.Prepared},
 		{"testMSG_att_msg.msg", 0, dispatch.Prepared},
@@ -361,9 +361,9 @@ func TestAdapterIdentities(t *testing.T) {
 	if p.Name != "picture" || p.Version != "none" {
 		t.Errorf("picture identity %v", p)
 	}
-	for _, id := range []dispatch.Identity{emailStage(t).Identity(), onenoteStage(t).Identity()} {
-		if id.Config == "" || !strings.HasPrefix(id.Version, "spike-ai-pipeline-") {
-			t.Errorf("%s identity %v: want its tool's name and version", id.Name, id)
+	for prefix, id := range map[string]dispatch.Identity{"docproc-mail ": emailStage(t).Identity(), "spike-ai-pipeline-onenote ": onenoteStage(t).Identity()} {
+		if id.Config == "" || !strings.HasPrefix(id.Version, prefix) {
+			t.Errorf("%s identity %v: want its tool's name and version, %s…", id.Name, id, prefix)
 		}
 	}
 	v := dispatch.NewVisionStage().Identity()
@@ -469,7 +469,7 @@ func TestEmailStage(t *testing.T) {
 		csv  = "отчёт.csv"
 		note = "note-g.txt"
 	)
-	events := dispatchAll(t, d, filepath.Join(mailFixtures, "generated", "msg", "03-html-inline-image.msg"), nil)
+	events := dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "msg", "03-html-inline-image.msg"), nil)
 	wantSteps(t, events, []step{{moth, 1, dispatch.Prepared}, {"03-html-inline-image.msg", 0, dispatch.Prepared}})
 	if got := wheres(events); !slices.Equal(got, []string{"message, attachment 1"}) {
 		t.Errorf("wheres %q", got)
@@ -486,7 +486,7 @@ func TestEmailStage(t *testing.T) {
 	// order is every event's label, in the order the loop takes them: an output's kind and name,
 	// a part's own event's Where.
 	var order []string
-	events = dispatchAll(t, d, filepath.Join(mailFixtures, "generated", "pst", "mailbox.pst"), func(ev *dispatch.Event) {
+	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), func(ev *dispatch.Event) {
 		switch {
 		case ev.Output != nil && ev.Part.Depth == 0:
 			order = append(order, string(ev.Output.Kind)+" "+ev.Output.Name)
@@ -540,7 +540,7 @@ func TestEmailStage(t *testing.T) {
 func TestEmailResume(t *testing.T) {
 	stage := emailStage(t)
 	stages := dispatch.Stages{route.Nested: stage, route.Vision: dispatch.NewVisionStage()}
-	path := filepath.Join(mailFixtures, "generated", "pst", "mailbox.pst")
+	path := filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst")
 	whole := dispatchAll(t, newDispatcher(t, stages, dispatch.NewMemoryIndex(0)), path, nil)
 	wholeStore := whole[len(whole)-1]
 	var ids []string
@@ -617,7 +617,7 @@ func TestEmailResume(t *testing.T) {
 		}
 	}
 
-	msg := filepath.Join(mailFixtures, "generated", "msg", "01-plain.msg")
+	msg := filepath.Join(mailFixtures(t), "generated", "msg", "01-plain.msg")
 	for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: msg, After: 1}) {
 		if err != nil {
 			t.Fatal(err)
@@ -633,7 +633,7 @@ func TestEmailResume(t *testing.T) {
 // it, a PDF here, which no stage takes in this test, is found.
 func TestEmailEmbedded(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex(0))
-	events := dispatchAll(t, d, filepath.Join(mailFixtures, "msg", "tika", "testMSG_att_msg.msg"), nil)
+	events := dispatchAll(t, d, filepath.Join(mailFixtures(t), "msg", "tika", "testMSG_att_msg.msg"), nil)
 	wantSteps(t, events, []step{
 		{"smbprn.00009008.KdcPjl.pdf", 1, dispatch.NoProcessor},
 		{"testMSG_att_msg.msg", 0, dispatch.Prepared},
@@ -650,7 +650,7 @@ func TestEmailEmbedded(t *testing.T) {
 	}
 	outputNamed(t, events[1], dispatch.MarkdownOutput, "message, attachment 1")
 
-	events = dispatchAll(t, d, filepath.Join(mailFixtures, "generated", "eml", "08-forward-attached-message.eml"), nil)
+	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "eml", "08-forward-attached-message.eml"), nil)
 	wantSteps(t, events, []step{{"note-g.txt", 1, dispatch.NoProcessor}, {"08-forward-attached-message.eml", 0, dispatch.Prepared}})
 	if m := outputNamed(t, events[1], dispatch.RecordOutput, "message, attachment 2").Meta; m["subject"] != "Notes on the engine (draft)" {
 		t.Errorf("the forwarded message's meta %v", m)
@@ -665,7 +665,7 @@ func TestEmailEmbedded(t *testing.T) {
 // before. Each item's Markdown is its hand truth's, in truth.json, found by its subject.
 func TestEmailConversations(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: emailStage(t)}, dispatch.NewMemoryIndex(0))
-	generated := filepath.Join(mailFixtures, "generated")
+	generated := filepath.Join(mailFixtures(t), "generated")
 	events := dispatchAll(t, d, filepath.Join(generated, "pst", "conversations.pst"), nil)
 	wantSteps(t, events, []step{{"conversations.pst", 0, dispatch.Prepared}})
 	data, err := os.ReadFile(filepath.Join(generated, "truth.json"))
@@ -780,9 +780,14 @@ func TestOneNoteStage(t *testing.T) {
 	}
 }
 
+// mailFixtures returns docproc-mail's committed inputs, read in place under tools/.
+func mailFixtures(t *testing.T) string {
+	t.Helper()
+	return tooltest.Tools(t, "mail/tests/fixtures")
+}
+
 // The format packages' fixtures the adapters' tests dispatch.
 var (
-	mailFixtures    = filepath.Join("..", "email", "testdata", "mail", "fixtures")
 	onenoteFixtures = filepath.Join("..", "onenote", "testdata", "onenote", "fixtures", "onenote-rs")
 	officeFixtures  = filepath.Join("..", "office", "testdata", "ooxml")
 )

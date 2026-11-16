@@ -3,8 +3,13 @@
 package email_test
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
+	"iter"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -14,38 +19,47 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinLines is the stand-in mail's output when its settings give no Stdout: a .msg's store line
-// and its message.
-const standinLines = `{"line":"store","schema":"1","format":"msg"}
+// standinLines is the stand-in docproc-mail's output when its settings give no Stdout: a .msg's
+// store line and its message.
+const standinLines = `{"line":"store","schema":"2","format":"msg"}
 {"line":"message","class":"IPM.Note","subject":"Hello"}
 `
 
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
-		"spike-ai-pipeline-mail": standin,
-		"magick":                 pictureStandin,
+		"docproc-mail": standin,
+		"docker":       dockerStandin,
 	})
 }
 
-// mailSettings are the stand-in mail's settings, which its link names.
+// mailSettings are the stand-in docproc-mail's settings, which its link names.
 type mailSettings struct {
-	// Version is what its --version prints.
+	// Version is what its --version prints on its first line.
 	Version string `json:"version"`
+	// Schema, when set, is the schema its --version prints in place of 2.
+	Schema string `json:"schema"`
 	// Stdout, when not nil, is what a run writes to stdout in place of standinLines.
 	Stdout *string `json:"stdout"`
-	// Stderr is what a run writes to stderr, after its stdout, each {path} in it the input's
-	// path, its last argument, as the run was given it.
+	// Stderr is what a run writes to stderr, after its stdout.
 	Stderr string `json:"stderr"`
 	// Exit is a run's exit code.
 	Exit int `json:"exit"`
 	// Sleep makes a run sleep a minute after writing its stdout, for a test to cancel it or stop
 	// reading.
 	Sleep bool `json:"sleep"`
+	// Media names files a run writes into its --media directory, each holding its own name.
+	Media []string `json:"media"`
+	// Replay, when set, is a golden of docproc-mail's, a .jsonl file: a run writes it to stdout
+	// and the .stderr beside it to stderr, and exits with the code the .exit beside it holds, 0
+	// without one, as docproc-mail did over the fixture.
+	Replay string `json:"replay"`
 }
 
-// standin is the stand-in mail. With --version alone it prints its settings' version alone, as
-// mail does. Otherwise it writes its settings' Stdout, or standinLines, to stdout, sleeps when
-// they say to, writes their Stderr to stderr, and exits with their Exit. It reads no input.
+// standin is the stand-in docproc-mail. With --version alone it prints its settings' version, then
+// `schema 2`, or their Schema, as docproc-mail does. Otherwise it writes their Media into the
+// directory after --media, if any; then replays their Replay when it is set; or else writes their
+// Stdout, or standinLines, to stdout, sleeps when they say to, writes their Stderr to stderr, and
+// exits with their Exit. It reads no input.
 func standin(r tooltest.Run) int {
 	var s mailSettings
 	if err := r.Settings(&s); err != nil {
@@ -54,12 +68,35 @@ func standin(r tooltest.Run) int {
 	}
 	args := r.Args
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println(s.Version)
+		schema := s.Schema
+		if schema == "" {
+			schema = "2"
+		}
+		fmt.Printf("%s\nschema %s\n", s.Version, schema)
 		return 0
 	}
 	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "stand-in: no input")
+		fmt.Fprintln(os.Stderr, "docproc-mail: error: no input")
 		return 2
+	}
+	for i, arg := range args[:len(args)-1] {
+		if arg != "--media" {
+			continue
+		}
+		dir := args[i+1]
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		for _, name := range s.Media {
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 1
+			}
+		}
+	}
+	if s.Replay != "" {
+		return replayRun(s.Replay)
 	}
 	out := standinLines
 	if s.Stdout != nil {
@@ -72,23 +109,65 @@ func standin(r tooltest.Run) int {
 	if s.Sleep {
 		time.Sleep(time.Minute)
 	}
-	fmt.Fprint(os.Stderr, strings.ReplaceAll(s.Stderr, "{path}", args[len(args)-1]))
+	fmt.Fprint(os.Stderr, s.Stderr)
 	return s.Exit
 }
 
-// mailStandin is a test's stand-in mail: its link and the settings last written to it.
+// replayRun writes the golden jsonl to stdout and the .stderr beside it to stderr, and returns
+// the exit code the .exit beside it holds, 0 when there is none.
+func replayRun(jsonl string) int {
+	stem := strings.TrimSuffix(jsonl, ".jsonl")
+	stdout, err := os.ReadFile(jsonl)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	stderr, err := os.ReadFile(stem + ".stderr")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	code := 0
+	if exit, err := os.ReadFile(stem + ".exit"); err == nil {
+		if code, err = strconv.Atoi(strings.TrimSpace(string(exit))); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if _, err := os.Stdout.Write(stdout); err != nil {
+		return 1
+	}
+	_, _ = os.Stderr.Write(stderr)
+	return code
+}
+
+// dockerStandin is a stand-in docker CLI enough to build a container Tool: its daemon's version,
+// every image present, and a run that prints a docproc-mail version.
+func dockerStandin(r tooltest.Run) int {
+	switch args := r.Args; {
+	case len(args) > 0 && args[0] == "version":
+		fmt.Println("27.0.0")
+	case len(args) > 0 && args[0] == "run":
+		fmt.Printf("%s\nschema 2\n", email.MailMinimum)
+	}
+	return 0
+}
+
+// mailStandin is a test's stand-in docproc-mail: its link and the settings last written to it.
 type mailStandin struct {
 	t        testing.TB
 	link     string
 	settings mailSettings
 }
 
-// installStandin links the stand-in mail as spike-ai-pipeline-mail in a directory of its own,
-// reporting version.
-func installStandin(t *testing.T, version string) *mailStandin {
+// installStandin links the stand-in as docproc-mail in a directory of its own, reporting version.
+func installStandin(t testing.TB, version string) *mailStandin {
 	t.Helper()
 	m := &mailStandin{t: t, settings: mailSettings{Version: version}}
-	m.link = tooltest.Link(t, t.TempDir(), "spike-ai-pipeline-mail", m.settings)
+	m.link = tooltest.Link(t, t.TempDir(), "docproc-mail", m.settings)
 	return m
 }
 
@@ -132,11 +211,11 @@ func (m *mailStandin) runs() [][]string {
 	return runs
 }
 
-// standinReader builds a Reader over the stand-in mail at 0.2.0, built from MailSpec through the
-// exec runner, and returns it with the stand-in.
-func standinReader(t *testing.T) (*email.Reader, *mailStandin) {
+// standinReader builds a Reader over the stand-in docproc-mail at MailMinimum, built from
+// MailSpec through the exec runner, and returns it with the stand-in.
+func standinReader(t testing.TB) (*email.Reader, *mailStandin) {
 	t.Helper()
-	m := installStandin(t, "0.2.0")
+	m := installStandin(t, email.MailMinimum)
 	tl, err := tool.NewExec(t.Context(), m.spec())
 	if err != nil {
 		t.Fatal(err)
@@ -148,26 +227,11 @@ func standinReader(t *testing.T) (*email.Reader, *mailStandin) {
 	return r, m
 }
 
-// mustRead returns a function that returns Read's Stream, given Read's results, failing the test
-// if Read refused the request: mustRead(t)(r.Read(ctx, req)).
-func mustRead(t *testing.T) func(*email.Stream, error) *email.Stream {
-	return func(s *email.Stream, err error) *email.Stream {
-		t.Helper()
-		if err != nil {
-			t.Fatal(err)
-		}
-		return s
-	}
-}
-
-// collect ranges over s's records, returning those yielded and the error, if any, that ended
-// them. It takes Read's results as they are: err, Read's refusal, is returned at once.
-func collect(s *email.Stream, err error) ([]email.Record, error) {
-	if err != nil {
-		return nil, err
-	}
+// collect ranges over seq, returning the records yielded and the error, if any, that ended
+// them.
+func collect(seq iter.Seq2[email.Record, error]) ([]email.Record, error) {
 	var recs []email.Record
-	for rec, err := range s.Records() {
+	for rec, err := range seq {
 		if err != nil {
 			return recs, err
 		}

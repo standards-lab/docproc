@@ -2,10 +2,7 @@ package email
 
 import (
 	"cmp"
-	"encoding/binary"
 	"encoding/hex"
-	"errors"
-	"fmt"
 	"iter"
 	"mime"
 	"regexp"
@@ -39,7 +36,7 @@ type Thread struct {
 }
 
 // Threader builds a store's threads from the threading keys of its messages, fed to it one
-// record at a time as a Stream's Records yields them. It keeps each message's keys alone, never
+// record at a time as a read yields them. It keeps each message's keys alone, never
 // its bodies or attachments, so its memory follows the number of messages and the size of their
 // keys. The zero Threader is ready to use; it is used by one goroutine.
 type Threader struct {
@@ -65,7 +62,7 @@ type threadKey struct {
 	index string
 }
 
-// Threads ranges over records, a Stream's Records, and returns the threads of their messages,
+// Threads ranges over records, a read's, and returns the threads of their messages,
 // as a Threader fed each record would. It returns the error that ends records, if any, and no
 // threads.
 func Threads(records iter.Seq2[Record, error]) ([]*Thread, error) {
@@ -79,13 +76,14 @@ func Threads(records iter.Seq2[Record, error]) ([]*Thread, error) {
 	return t.Threads(), nil
 }
 
-// Add takes rec's threading keys when it is a *Message, read from the fields mail stores: its
-// store id, its sent date, its subject, its Message-ID, In-Reply-To, and References, and its
-// conversation index. Any other record is ignored, as are messages nested under a .msg's
-// attachment records, which aren't messages of the store.
+// Add takes rec's threading keys when it is a *Message, read from the fields docproc-mail writes:
+// its store id, its sent date, its subject, its Message-ID, In-Reply-To, and References, and its
+// conversation index. Any other record is ignored, as are messages nested under an attachment
+// record, which aren't messages of the store, and a message of a conversation class, which has no
+// threading fields and reads as a Conversation.
 func (t *Threader) Add(rec Record) {
 	m, ok := rec.(*Message)
-	if !ok {
+	if !ok || IsConversation(m.Class) {
 		return
 	}
 	k := threadKey{seq: len(t.keys), id: m.ID, date: m.SubmitTime}
@@ -454,134 +452,4 @@ func asciiUpper(s string) string {
 		}
 		return r
 	}, s)
-}
-
-// threaderMagic begins a saved Threader: the format's name and its version, 1.
-const threaderMagic = "email.Threader\x00\x01"
-
-// MarshalBinary saves the Threader's keys, so a read resumed with Request.After threads whole: a
-// Threader restored from them by UnmarshalBinary, then fed the resumed read's records, returns
-// the threads one fed the whole read would. The format is versioned and deterministic, the same
-// keys always giving the same bytes: threaderMagic, then the count of messages, then each
-// message's keys in the order they were added, its store id, its sent date as time.Time's
-// MarshalBinary gives it, its folded base subject, whether it is a reply or forward, its
-// Message-ID, its references, and its conversation index; each number an unsigned varint, each
-// string its length and its bytes. Its error is that of a date time.Time can't marshal.
-func (t *Threader) MarshalBinary() ([]byte, error) {
-	b := []byte(threaderMagic)
-	b = binary.AppendUvarint(b, uint64(len(t.keys)))
-	for i := range t.keys {
-		k := &t.keys[i]
-		b = binary.AppendUvarint(b, k.id)
-		date, err := k.date.MarshalBinary()
-		if err != nil {
-			return nil, fmt.Errorf("email: threader: message %d's date: %w", k.id, err)
-		}
-		b = appendString(b, string(date))
-		b = appendString(b, k.subject)
-		var replyFwd uint64
-		if k.replyFwd {
-			replyFwd = 1
-		}
-		b = binary.AppendUvarint(b, replyFwd)
-		b = appendString(b, k.messageID)
-		b = binary.AppendUvarint(b, uint64(len(k.refs)))
-		for _, ref := range k.refs {
-			b = appendString(b, ref)
-		}
-		b = appendString(b, k.index)
-	}
-	return b, nil
-}
-
-// UnmarshalBinary restores the keys MarshalBinary saved, replacing the Threader's own. It
-// refuses data of another format or version, cut short, or with bytes after its last message,
-// leaving the Threader as it was.
-func (t *Threader) UnmarshalBinary(data []byte) error {
-	r := keyReader{b: data}
-	if !strings.HasPrefix(string(data), threaderMagic) {
-		return errors.New("email: threader: not a saved Threader of version 1")
-	}
-	r.b = r.b[len(threaderMagic):]
-	n := r.uvarint()
-	// Each message takes at least seven bytes, so a count past that is no count of this data's.
-	if r.err == nil && n > uint64(len(r.b))/7 {
-		r.err = errors.New("its count of messages is past its length")
-	}
-	var keys []threadKey
-	for i := uint64(0); i < n && r.err == nil; i++ {
-		k := threadKey{seq: int(i), id: r.uvarint()}
-		if err := k.date.UnmarshalBinary([]byte(r.string())); err != nil && r.err == nil {
-			r.err = err
-		}
-		k.subject = r.string()
-		switch r.uvarint() {
-		case 0:
-		case 1:
-			k.replyFwd = true
-		default:
-			if r.err == nil {
-				r.err = errors.New("a reply flag neither 0 nor 1")
-			}
-		}
-		k.messageID = r.string()
-		refs := r.uvarint()
-		if r.err == nil && refs > uint64(len(r.b)) {
-			r.err = errors.New("its count of references is past its length")
-		}
-		for j := uint64(0); j < refs && r.err == nil; j++ {
-			k.refs = append(k.refs, r.string())
-		}
-		k.index = r.string()
-		keys = append(keys, k)
-	}
-	if r.err == nil && len(r.b) > 0 {
-		r.err = fmt.Errorf("%d bytes after its last message", len(r.b))
-	}
-	if r.err != nil {
-		return fmt.Errorf("email: threader: %w", r.err)
-	}
-	t.keys = keys
-	return nil
-}
-
-// appendString appends s to b as its length, an unsigned varint, and its bytes.
-func appendString(b []byte, s string) []byte {
-	return append(binary.AppendUvarint(b, uint64(len(s))), s...)
-}
-
-// keyReader reads a saved Threader's numbers and strings, keeping its first error, after which
-// each read returns zero.
-type keyReader struct {
-	b   []byte
-	err error
-}
-
-// uvarint reads an unsigned varint.
-func (r *keyReader) uvarint() uint64 {
-	if r.err != nil {
-		return 0
-	}
-	v, n := binary.Uvarint(r.b)
-	if n <= 0 {
-		r.err = errors.New("cut short")
-		return 0
-	}
-	r.b = r.b[n:]
-	return v
-}
-
-// string reads a string, its length and its bytes.
-func (r *keyReader) string() string {
-	n := r.uvarint()
-	if r.err != nil {
-		return ""
-	}
-	if n > uint64(len(r.b)) {
-		r.err = errors.New("cut short")
-		return ""
-	}
-	s := string(r.b[:n])
-	r.b = r.b[n:]
-	return s
 }

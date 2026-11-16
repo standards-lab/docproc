@@ -116,7 +116,7 @@ var table = []stage{
 	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, officeStage},
 	{route.VisionConverted, []string{"magick", "soffice"}, pictureStage},
 	{route.Vision, nil, func(context.Context, tools) (dispatch.Stage, error) { return dispatch.NewVisionStage(), nil }},
-	{route.Nested, []string{"spike-ai-pipeline-mail"}, emailStage},
+	{route.Nested, []string{"docproc-mail"}, emailStage},
 	{route.OneNote, []string{"spike-ai-pipeline-onenote"}, onenoteStage},
 	{route.Archive, []string{"7zz"}, archiveStage},
 	{route.Audio, []string{"ffmpeg", "ffprobe"}, audioStage},
@@ -295,7 +295,7 @@ func pictureStage(ctx context.Context, t tools) (dispatch.Stage, error) {
 
 // emailStage builds the email stage over mail.
 func emailStage(_ context.Context, t tools) (dispatch.Stage, error) {
-	mail := t["spike-ai-pipeline-mail"]
+	mail := t["docproc-mail"]
 	r, err := email.NewReader(email.Config{Mail: mail})
 	if err != nil {
 		return nil, err

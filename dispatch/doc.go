@@ -112,13 +112,14 @@
 //     AVIF whose reader its magick lacks, has no processor yet.
 //   - [VisionStage], for route.Vision: a PNG, JPEG, GIF, or BMP passed through as an image
 //     output, so every picture reaches a layer above as one.
-//   - [EmailStage], for route.Nested: mail's records, each a record output, and each
-//     attachment's file found as a part, where its message and place say. A message's
-//     attachments come first, each found part dispatched whole, then its record, then its
-//     Markdown body, which the record's Meta "markdown" says follows; an embedded message mail
-//     gives no file for is prepared inline, in its place among the attachments, its own
+//   - [EmailStage], for route.Nested: docproc-mail's records, each a record output, and each
+//     attachment's and medium's file found as a part, where its message and place say. A
+//     message's attachments and media come first, each found part dispatched whole, then its
+//     record, then its Markdown, which the record's Meta "markdown" says follows; an embedded
+//     message docproc-mail gives no file for is prepared inline, in its place among the attachments, its own
 //     attachments found below it, at any depth. A message of a conversation class is a
-//     conversation record, email's Conversation, then its transcript's Markdown, as a message is.
+//     conversation record, its email.Conversation view, then its transcript's Markdown, as a
+//     message is.
 //   - [OneNoteStage], for route.OneNote: onenote's records, a page's record followed by its
 //     Markdown, and each of its media found as a part, "page <id>, <where>"; a medium onenote
 //     wrote no content for is a record.
@@ -300,7 +301,7 @@
 // caller's loop has moved past its [NoProcessor] event: the caller had its chance, and a later
 // record naming it in the same dispatch is no processor yet again, with no file, its flags, route,
 // and reason the first's.
-// So a store's working directory holds the attachments of the messages in flight, those mail has
+// So a store's working directory holds the attachments of the messages in flight, those a tool has
 // written ahead of the dispatch among them, rather than every attachment until the store's own
 // event, whether or not a stage is registered for them. What the dispatcher doesn't settle stays
 // until then, so no record loses its content: an original whose part failed, was limited,
@@ -324,53 +325,48 @@
 // # Resuming a store
 //
 // [Input.After] resumes the input's read after a message, the id email.Request's After takes, a
-// .pst's node id or an mbox's ordinal: [EmailStage] passes it to mail as --after, mail 0.3.0 or
-// later, which writes the whole read's store and folders, then only the messages after it. Only
-// the input's own part carries it. A resumed input's entry is never recorded, its outputs being
-// the read's tail, so a later whole dispatch prepares it whole; the parts found below are
-// recorded as ever. A resumed input whose content the index holds replays its log past the item
-// whose After is the cursor, compared by equality alone, since a .pst's node ids don't ascend in
-// read order; no such item ends the dispatch with an error matching [ErrRequest], as mail
-// refuses an id that names no message. Each message's last output's event carries the cursor in
-// [Event.After].
+// .pst's node id or an mbox's ordinal: [EmailStage] passes it to docproc-mail as --after, which
+// writes the whole read's store and folders, then only the messages after it. Only the input's own
+// part carries it. A resumed input's entry is never recorded, its outputs being the read's tail, so
+// a later whole dispatch prepares it whole; the parts found below are recorded as ever. A resumed
+// input whose content the index holds replays its log past the item whose After is the cursor,
+// compared by equality alone, since a .pst's node ids don't ascend in read order; no such item
+// ends the dispatch with an error matching [ErrRequest], as docproc-mail refuses an id that names
+// no message. Each message's last output's event carries the cursor in [Event.After].
 //
-// A caller resuming a large store after a crash combines three things it keeps as it goes: a
+// A caller resuming a large store after a crash combines two things it keeps as it goes: a
 // [FileIndex] in a directory that outlives the process, which holds the entries of the parts
-// recorded before the crash, so the resumed dispatch sees each attachment already prepared;
-// the cursor, the id of the last message whose outputs it has persisted; and an email.Threader,
-// fed every message up to the cursor, saved by its MarshalBinary together with it: a checkpoint.
+// recorded before the crash, so the resumed dispatch sees each attachment already prepared; and
+// the cursor, the id of the last message whose outputs it has persisted, saved with them: a
+// checkpoint. No Threader state joins it: the message records it persisted carry the threading
+// keys, and a consumer threads them with an email.Threader fed those records.
 //
 // The store's outputs stream as the email stage reads them, so the cursor advances while the
-// store is dispatched. For each message, in mail's order, the caller has, as events: each of its
-// attachments, a found part's outputs, every part found in it, and its own event, or an inline
-// message's own attachments, record, and Markdown, or an attachment's record, in the attachment
-// table's order; then the message's record, its Meta "id" the message's store id; then its
-// Markdown, when the record's Meta "markdown" says "follows". The message's last output, its
+// store is dispatched. For each message, in docproc-mail's order, the caller has, as events: each
+// of its attachments and media, a found part's outputs, every part found in it, and its own event,
+// or an inline message's own attachments, record, and Markdown, or an attachment's record, in the
+// attachment table's order; then the message's record, its Meta "id" the message's store id; then
+// its Markdown, when the record's Meta "markdown" says "follows". The message's last output, its
 // Markdown or, with none, its record, is the last of everything the message holds, so the caller
-// persists the message's outputs as they come and feeds the Threader the message's record,
-// decoded into an email.Message; at the message's last output the message is done, and its id is
-// the cursor. A message record whose Meta has "embedded_in" is an inline message's, part of its
-// parent's, and is fed to no Threader. A conversation record, "conversation <id>", is a message's
-// for the cursor, its Meta "id" the message's store id, which mail's --after takes as any other;
-// it is fed to no Threader, since a conversation has no threading fields and the Threader takes
-// messages alone.
+// persists the message's outputs as they come; at the message's last output the message is done,
+// and its id is the cursor. A message record whose Meta has "embedded_in" is an inline message's,
+// part of its parent's, and is threaded with no store's messages. A conversation record,
+// "conversation <id>", is a message's for the cursor, its Meta "id" the message's store id, which
+// docproc-mail's --after takes as any other; it is threaded with none, since a conversation has
+// no threading fields.
 //
-// The caller saves the cursor and the Threader together every N messages, or on a timer, not at
-// every message: each save marshals every message's keys so far, so saving at every message grows
-// with the square of the store. Task onenote's finding, docs/findings/onenote.md, measured one
-// save at 3.5 ms at 25,000 messages, about 3 minutes of saving over a 50,000-message store whose
-// dispatch took 16 s. The cursor rule stays exact: a checkpoint is saved only at a message's last
-// output, its cursor that message's id and its Threader fed exactly the messages up to it. Every
-// message past the checkpoint's cursor comes again on resuming, those persisted after the
-// checkpoint and the one a crash interrupted alike, so the caller discards or overwrites what it
-// had of them and feeds the restored Threader each of their records once.
+// The cursor rule stays exact: a checkpoint is saved only at a message's last output, its cursor
+// that message's id. Every message past the checkpoint's cursor comes again on resuming, those
+// persisted after the checkpoint and the one a crash interrupted alike, so the caller discards or
+// overwrites what it had of them.
 //
-// To resume, the caller restores the Threader by UnmarshalBinary and dispatches the store, over
-// the same index directory, with After set to the checkpoint's cursor: every part prepared before
-// the crash is seen, the parts of the messages past the cursor included, and once the store's
-// event is done, the Threader's threads are the whole store's. A process that died leaves its
-// claims' temporary logs in the index's directory, which the next [NewFileIndex] over it removes,
-// its claims having died with it; a dispatch whose loop stopped, rather than died, released them.
+// To resume, the caller dispatches the store, over the same index directory, with After set to
+// the checkpoint's cursor: every part prepared before the crash is seen, the parts of the
+// messages past the cursor included, and once the store's event is done, the message records
+// persisted, read and resumed, are the whole store's, and a Threader fed them gives the whole
+// store's threads. A process that died leaves its claims' temporary logs in the index's
+// directory, which the next [NewFileIndex] over it removes, its claims having died with it; a
+// dispatch whose loop stopped, rather than died, released them.
 //
 // Its exported identifiers:
 //

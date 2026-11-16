@@ -3,18 +3,21 @@
 package email_test
 
 import (
+	"io/fs"
 	"maps"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/email"
+	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// These tests run the real mail binary, which the unit tier doesn't provide, so they run in the
+// These tests run the real docproc-mail, which the unit tier doesn't provide, so they run in the
 // integration tier.
 
-// TestRealThreads runs the real pinned mail over Tika's two stores and threads them, against
+// TestRealThreads runs the real docproc-mail over Tika's two stores and threads them, against
 // realThreads. One store is threaded through a Threader fed while reading, the other through
 // Threads.
 //
@@ -29,10 +32,10 @@ import (
 // refer to original email (2097188), and are its children by date.
 func TestRealThreads(t *testing.T) {
 	r := realReader(t)
-	root := filepath.Join(mailCopy, "fixtures", "pst", "tika")
+	root := mailFixture(t, "pst/tika")
 	t.Run("testPST.pst", func(t *testing.T) {
 		var tr email.Threader
-		for rec, err := range mustRead(t)(r.Read(t.Context(), email.Request{Input: filepath.Join(root, "testPST.pst")})).Records() {
+		for rec, err := range r.Read(t.Context(), email.Request{Input: filepath.Join(root, "testPST.pst")}) {
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -44,7 +47,7 @@ func TestRealThreads(t *testing.T) {
 		}
 	})
 	t.Run("testPST_variousBodyTypes.pst", func(t *testing.T) {
-		threads, err := email.Threads(mustRead(t)(r.Read(t.Context(), email.Request{Input: filepath.Join(root, "testPST_variousBodyTypes.pst")})).Records())
+		threads, err := email.Threads(r.Read(t.Context(), email.Request{Input: filepath.Join(root, "testPST_variousBodyTypes.pst")}))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,11 +70,11 @@ func TestRealThreads(t *testing.T) {
 // give, realThreads'.
 func TestRealThreadsIndex(t *testing.T) {
 	r := realReader(t)
-	root := filepath.Join(mailCopy, "fixtures", "pst", "tika")
+	root := mailFixture(t, "pst/tika")
 	for _, store := range []string{"testPST.pst", "testPST_variousBodyTypes.pst"} {
 		t.Run(store, func(t *testing.T) {
 			var tr email.Threader
-			for rec, err := range mustRead(t)(r.Read(t.Context(), email.Request{Input: filepath.Join(root, store)})).Records() {
+			for rec, err := range r.Read(t.Context(), email.Request{Input: filepath.Join(root, store)}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -96,8 +99,8 @@ func TestRealThreadsIndex(t *testing.T) {
 // messages is a root, by date.
 func TestRealThreadsGenerated(t *testing.T) {
 	r := realReader(t)
-	path := filepath.Join(mailCopy, "fixtures", "generated", "pst", "mailbox.pst")
-	threads, err := email.Threads(mustRead(t)(r.Read(t.Context(), email.Request{Input: path})).Records())
+	path := mailFixture(t, "generated/pst/mailbox.pst")
+	threads, err := email.Threads(r.Read(t.Context(), email.Request{Input: path}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,28 +110,28 @@ func TestRealThreadsGenerated(t *testing.T) {
 	}
 }
 
-// TestRealThreadsMIME runs the real pinned mail over every MIME input and threads it, against
+// TestRealThreadsMIME runs the real docproc-mail over every MIME input and threads it, against
 // mimeThreads. Each is threaded twice, through Threads and through a Threader fed while reading,
 // and the two agree. Each root is a message, never a placeholder, and nine.mboxrd's first root is
 // Notes on the engine, <notes-1@example.org>.
 func TestRealThreadsMIME(t *testing.T) {
 	r := realReader(t)
-	_, inputs := realInputs(t)
+	inputs := mimeInputs(t)
 	if got := slices.Sorted(maps.Keys(mimeThreads)); !slices.Equal(got, slices.Sorted(slices.Values(inputs))) {
 		t.Errorf("mimeThreads covers %q, the inputs are %q", got, inputs)
 	}
 	for _, rel := range inputs {
 		t.Run(rel, func(t *testing.T) {
-			input, err := filepath.Abs(filepath.Join("testdata", rel))
-			if err != nil {
-				t.Fatal(err)
+			input := filepath.Join("testdata", builtEML)
+			if rel != builtEML {
+				input = mailFixture(t, rel)
 			}
-			threads, err := email.Threads(mustRead(t)(r.Read(t.Context(), email.Request{Input: input})).Records())
+			threads, err := email.Threads(r.Read(t.Context(), email.Request{Input: input}))
 			if err != nil {
 				t.Fatal(err)
 			}
 			var tr email.Threader
-			for rec, err := range mustRead(t)(r.Read(t.Context(), email.Request{Input: input})).Records() {
+			for rec, err := range r.Read(t.Context(), email.Request{Input: input}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -145,15 +148,15 @@ func TestRealThreadsMIME(t *testing.T) {
 					t.Errorf("root placeholder %s", root.MessageID)
 				}
 			}
-			if rel == "mail/fixtures/mime/nine.mboxrd" && threads[0].MessageID != "<notes-1@example.org>" {
+			if rel == "mime/nine.mboxrd" && threads[0].MessageID != "<notes-1@example.org>" {
 				t.Errorf("root Message-ID %s, want <notes-1@example.org>", threads[0].MessageID)
 			}
 		})
 	}
 }
 
-// realThreads is the threads of the copied stores that have a hand truth, each by its path under
-// fixtures/, rendered: Tika's two, derived by hand from the stored fields tika-threading.json holds
+// realThreads is the threads of docproc-mail's stores that have a hand truth, each by its path
+// under its tests/fixtures, rendered: Tika's two, derived by hand from the stored fields tika-threading.json holds
 // and the dates mail's goldens give, and the generated store's, by subject alone. TestRealThreads,
 // TestRealThreadsIndex, and TestRealThreadsGenerated check them, and the findings tier scores
 // against them.
@@ -163,8 +166,8 @@ var realThreads = map[string]string{
 	"generated/pst/mailbox.pst":             "2097156 2097188 2097220 2097252 2097284 2097316 2097348 2097380",
 }
 
-// mimeThreads is the threads of the MIME inputs, each by its path under testdata/ as mimeTruth
-// keys it, rendered: derived by hand from each input's Message-ID, In-Reply-To, References,
+// mimeThreads is the threads of the MIME inputs, each by its path under docproc-mail's
+// tests/fixtures, the built .msg's source by builtEML, rendered: derived by hand from each input's Message-ID, In-Reply-To, References,
 // subject, and Date headers. An mbox message's id is its ordinal; an .eml's message has none, so
 // each .eml is one root, 0. TestRealThreadsMIME checks them.
 //
@@ -182,21 +185,49 @@ var realThreads = map[string]string{
 // refer to nothing, and no root shares a base subject with another. By date, UTC: 1 02-07 16:35,
 // 2 02-07 17:21, 3 02-07 17:36, 5 02-07 23:58.
 var mimeThreads = map[string]string{
-	"mail/fixtures/generated/eml/01-plain.eml":                    "0",
-	"mail/fixtures/generated/eml/02-reply-latin1.eml":             "0",
-	"mail/fixtures/generated/eml/03-html-inline-image.eml":        "0",
-	"mail/fixtures/generated/eml/04-attachment-cyrillic.eml":      "0",
-	"mail/fixtures/generated/eml/05-japanese.eml":                 "0",
-	"mail/fixtures/generated/eml/06-chinese.eml":                  "0",
-	"mail/fixtures/generated/eml/07-html-only-bcc.eml":            "0",
-	"mail/fixtures/generated/eml/08-forward-attached-message.eml": "0",
-	"mail/fixtures/mime/eml/09-threading.eml":                     "0",
-	"mail/fixtures/mime/nine.mboxrd":                              "1[2 9] 3 4 5 6 7 8",
-	"mail/fixtures/mime/rlug/mbox.rlug":                           "1[4] 2 3 5",
-	"mail/fixtures/mime/rlug/mbox.rlug-0":                         "0",
-	"mail/fixtures/mime/rlug/mbox.rlug-1":                         "0",
-	"mail/fixtures/mime/rlug/mbox.rlug-2":                         "0",
-	"mail/fixtures/mime/rlug/mbox.rlug-3":                         "0",
-	"mail/fixtures/mime/rlug/mbox.rlug-4":                         "0",
-	"built/" + builtEML:                                           "0",
+	"generated/eml/01-plain.eml":                    "0",
+	"generated/eml/02-reply-latin1.eml":             "0",
+	"generated/eml/03-html-inline-image.eml":        "0",
+	"generated/eml/04-attachment-cyrillic.eml":      "0",
+	"generated/eml/05-japanese.eml":                 "0",
+	"generated/eml/06-chinese.eml":                  "0",
+	"generated/eml/07-html-only-bcc.eml":            "0",
+	"generated/eml/08-forward-attached-message.eml": "0",
+	"mime/eml/09-threading.eml":                     "0",
+	"mime/nine.mboxrd":                              "1[2 9] 3 4 5 6 7 8",
+	"mime/rlug/mbox.rlug":                           "1[4] 2 3 5",
+	"mime/rlug/mbox.rlug-0":                         "0",
+	"mime/rlug/mbox.rlug-1":                         "0",
+	"mime/rlug/mbox.rlug-2":                         "0",
+	"mime/rlug/mbox.rlug-3":                         "0",
+	"mime/rlug/mbox.rlug-4":                         "0",
+	builtEML:                                        "0",
+}
+
+// builtEML is the built .msg's .eml source, under testdata/.
+const builtEML = "built/eml/office-attachments.eml"
+
+// mimeInputs returns the MIME inputs, each a path under docproc-mail's tests/fixtures: its .eml, the
+// nine-message mboxrd, mbox.rlug and its five splits; and builtEML.
+func mimeInputs(t *testing.T) []string {
+	t.Helper()
+	root := tooltest.Tools(t, fixtures)
+	var mime []string
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		if ext := filepath.Ext(path); ext == ".eml" || ext == ".mboxrd" || strings.HasPrefix(d.Name(), "mbox.") {
+			mime = append(mime, filepath.ToSlash(rel))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(mime, builtEML)
 }

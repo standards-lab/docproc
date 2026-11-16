@@ -1,65 +1,61 @@
 package email
 
 import (
-	"bufio"
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"io"
 	"iter"
 	"math"
-	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/standards-lab/docproc/internal/cli"
-	"github.com/standards-lab/docproc/internal/schema1"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// MailMinimum is the oldest mail the Reader accepts.
-const MailMinimum = "0.2.0"
+// MailMinimum is the oldest docproc-mail the Reader accepts, its first schema "2" release, which
+// resumes a read with --after too.
+const MailMinimum = "0.1.0"
 
-// MailAfterMinimum is the oldest mail that resumes a read, mail's --after: Read refuses a
-// Request with After under an older one. A Reader without After needs MailMinimum alone, so a
-// caller that never resumes may stay on mail 0.2.0.
-const MailAfterMinimum = "0.3.0"
-
-// MailSpec declares mail's spike-ai-pipeline-mail, minimum 0.2.0, for either runner's
-// constructor. mail --version prints the version alone, as "0.2.0", and the pattern takes the
-// dotted numbers, as office's does. A caller that needs another program path or a KillAfter
-// period sets them on the Spec returned.
+// MailSpec declares docproc-mail, minimum MailMinimum, for the exec runner's constructor. Its
+// --version prints the version alone, a build other than a release's appending + and its commit,
+// then `schema 2`, which internal/cli's version pattern requires, so a docproc-mail of another
+// schema is refused as the Tool is built. A caller that needs another program path or a
+// KillAfter period sets them on the Spec returned.
 func MailSpec() tool.Spec {
 	return tool.Spec{
-		Program:        "spike-ai-pipeline-mail",
+		Program:        "docproc-mail",
 		VersionArgs:    []string{"--version"},
-		VersionPattern: regexp.MustCompile(`^(\d+(?:\.\d+)*)`),
+		VersionPattern: cli.VersionPattern,
 		Minimum:        MailMinimum,
 	}
 }
 
 // Config is what a Reader is built over: the Tool the caller built.
 type Config struct {
-	// Mail is mail's spike-ai-pipeline-mail, typically built from MailSpec through the exec
-	// runner. It is required.
+	// Mail is docproc-mail, built from MailSpec through the exec runner. It is required, and a
+	// container runner's is refused.
 	Mail *tool.Tool
 }
 
-// Reader reads mail stores, .pst and .msg, through mail: an input in, its records streamed out
-// as mail writes them. It runs no inference. Its methods are safe for concurrent use; each
-// Stream is one read, used by one goroutine.
+// Reader reads mail stores and messages through docproc-mail: an input in, its records streamed
+// out as docproc-mail writes them. It runs no inference. Its methods are safe for concurrent use.
 type Reader struct {
 	mail *tool.Tool
 }
 
-// NewReader builds a Reader over cfg's Tool. A nil Mail is the caller's mistake, and panics
-// naming the field. It refuses a Mail whose version is older than MailMinimum, whatever minimum
-// the Tool's own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
+// NewReader builds a Reader over cfg's Tool. A nil Mail is the caller's mistake, and panics naming
+// the field; a Mail the container runner built is refused with an error matching ErrRequest, since
+// docproc-mail reads the input's path in place. It refuses a Mail whose version is older than
+// MailMinimum, whatever minimum the Tool's own Spec declared, with a *tool.VersionError wrapping
+// tool.ErrTooOld.
 func NewReader(cfg Config) (*Reader, error) {
 	if cfg.Mail == nil {
 		panic("email: Config.Mail is nil")
+	}
+	if _, ok := cfg.Mail.Image(); ok {
+		return nil, fmt.Errorf("email: %s runs in a container; it runs on the exec runner alone: %w", cfg.Mail.Name(), ErrRequest)
 	}
 	if err := cfg.Mail.AtLeast(MailMinimum); err != nil {
 		return nil, err
@@ -69,287 +65,262 @@ func NewReader(cfg Config) (*Reader, error) {
 
 // Request is one input's read.
 type Request struct {
-	// Input is the path of the .pst or .msg to read; mail sniffs its format from its content,
-	// never its name. Read makes it absolute, so a name that begins with "-" is never taken as an
-	// option. It is required.
+	// Input is the path of the .pst, .msg, .eml, or mbox to read, which the caller owns;
+	// docproc-mail sniffs its format from its content, never its name, and reads it in place. Read
+	// makes it absolute, so a name that begins with "-" is never taken as an option. It is
+	// required.
 	Input string
-	// Attachments is the directory mail writes each distinct attachment content into once,
-	// named by its File, created if missing; the caller owns it. Each Attachment's Path then
-	// names its file there, and Attachment.Route sniffs it. Read makes it absolute. "" writes
-	// nothing, and routes nothing by content.
-	Attachments string
+	// Media is the directory docproc-mail writes each distinct attachment content, and each data:
+	// image the Markdown links, into once, named by its media name, created if missing; the caller
+	// owns it. Each Attachment's and Medium's Path then names its file there. Read makes it
+	// absolute. "" writes nothing, and the lines name the files all the same.
+	Media string
 	// After, when not zero, resumes the read of a .pst or an mbox after the message whose
 	// Message.ID it is: in a .pst its node id, in an mbox its 1-based ordinal. The resumed read is
-	// the tail of the whole read, as mail writes it byte for byte: the store, every folder, and
-	// every folder's skipped record, then only the messages after this one, with their skipped
-	// records. It needs mail MailAfterMinimum or later, and an id from 1 to 4,294,967,295, mail's
-	// range; Read refuses either otherwise. mail refuses After with a .msg or an .eml, a single
-	// message, as a usage error, an *ExitError matching ErrUsage, and an id that names no message
-	// in the store, a folder's among them, as an *ExitError matching ErrRefused.
+	// the tail of the whole read, as docproc-mail writes it byte for byte: the store, every folder,
+	// and every folder's skipped record, then only the messages after this one, with their skipped
+	// records. It is an id from 1 to 4,294,967,295, docproc-mail's range, and Read refuses one past
+	// it. docproc-mail refuses After with a .msg or an .eml, a single message, as a usage error, a
+	// *cli.ExitError matching ErrUsage, and an id that names no message as a refusal, matching
+	// ErrRefused.
 	After uint64
 }
 
-// ErrRequest is the cause of a request Read refuses before anything runs: one with no Input,
-// whose Input or Attachments can't be made absolute, or whose After is past mail's range or
-// given a mail older than MailAfterMinimum.
+// ErrRequest is the cause of every refused request: one with no Input, whose Input or Media can't
+// be made absolute, or whose After is past docproc-mail's range; and of a Mail the container
+// runner built.
 var ErrRequest = errors.New("invalid request")
 
-// The outcomes of a mail run that exits nonzero, each its exit code's; an *ExitError matches its
-// code's through errors.Is. Each is the shared exit error of every CLI this module runs, so
-// ErrRefused matches the office package's refusal too, and office.ErrRefused mail's.
+// The outcomes of a docproc-mail run that exits nonzero, each its exit code's, internal/cli's
+// shared errors: the *cli.ExitError a read returns matches its code's.
 var (
-	// ErrNotWritten is exit code 1: mail couldn't write its output, or an attachment's content.
+	// ErrNotWritten is exit code 1: docproc-mail couldn't write stdout or its media.
 	ErrNotWritten = cli.ErrNotWritten
-	// ErrUsage is exit code 2: mail refused its arguments, a fault in this package.
+	// ErrUsage is exit code 2: docproc-mail refused its arguments, a fault in this package, or
+	// After given a single message.
 	ErrUsage = cli.ErrUsage
-	// ErrRefused is exit code 3: mail refused the input before any output, giving its reason,
-	// such as an .ost's.
+	// ErrRefused is exit code 3: docproc-mail refused the input before any output, giving its
+	// reason, such as an .ost's.
 	ErrRefused = cli.ErrRefused
-	// ErrFailed is exit code 4: a fault of mail's own.
+	// ErrFailed is exit code 4, or a death by a signal: a fault of docproc-mail's own.
 	ErrFailed = cli.ErrFailed
 )
 
-// ExitError reports a mail run that exited 1, 2, 3, or 4: its exit code and mail's message. It
-// matches the code's error, ErrNotWritten, ErrUsage, ErrRefused, or ErrFailed, through
-// errors.Is, and unwraps to the Tool's *tool.ExitError.
-type ExitError struct {
-	// Code is mail's exit code.
-	Code int
-	// Message is mail's message on stderr, its first line that isn't a warning, with mail's own
-	// prefix, its error label, and the input's path taken off: for a refusal, mail's reason.
-	Message string
-	err     error
-}
+// ErrSchema is the error of a run whose first line isn't a schema "2" store line.
+var ErrSchema = cli.ErrSchema
 
-func (e *ExitError) Error() string { return cli.ExitText("email: mail", e.Code, e.Message) }
-
-// Is reports whether target is the error of e's exit code.
-func (e *ExitError) Is(target error) bool { return cli.Is(e.Code, target) }
-
-// Unwrap returns the Tool's *tool.ExitError.
-func (e *ExitError) Unwrap() error { return e.err }
-
-// Stream is one read of an input: its records, streamed while mail runs, and mail's warnings once
-// they have all been read.
-type Stream struct {
-	mail *tool.Tool
-	ctx  context.Context
-	// input and dir are the request's Input and Attachments, made absolute; dir "" for none.
-	input string
-	dir   string
-	// after is the request's After, 0 for none.
-	after    uint64
-	started  bool
-	warnings []string
-}
-
-// Read returns the read of req's input under ctx. It refuses an invalid request at once, with an
-// error wrapping ErrRequest: an empty Input, an Input or Attachments that can't be made absolute,
-// which filepath.Abs does from the working directory, or an After past 4,294,967,295; and an
-// After given a mail older than MailAfterMinimum, with an error wrapping ErrRequest and a
-// *tool.VersionError wrapping tool.ErrTooOld. Nothing runs until the Stream's Records are ranged
-// over.
-func (r *Reader) Read(ctx context.Context, req Request) (*Stream, error) {
-	if req.Input == "" {
-		return nil, fmt.Errorf("email: %w: no input", ErrRequest)
-	}
-	if req.After > math.MaxUint32 {
-		return nil, fmt.Errorf("email: %w: after %d, past mail's last id, %d", ErrRequest, req.After, uint64(math.MaxUint32))
-	}
-	if req.After != 0 {
-		if err := r.mail.AtLeast(MailAfterMinimum); err != nil {
-			return nil, fmt.Errorf("email: %w: after needs mail %s or later: %w", ErrRequest, MailAfterMinimum, err)
-		}
-	}
-	input, err := filepath.Abs(req.Input)
-	if err != nil {
-		return nil, fmt.Errorf("email: %w: input: %w", ErrRequest, err)
-	}
-	var dir string
-	if req.Attachments != "" {
-		if dir, err = filepath.Abs(req.Attachments); err != nil {
-			return nil, fmt.Errorf("email: %w: attachments: %w", ErrRequest, err)
-		}
-	}
-	return &Stream{mail: r.mail, ctx: ctx, input: input, dir: dir, after: req.After}, nil
-}
-
-// Warnings returns mail's warnings, one per line it wrote to stderr as a warning, with mail's
-// prefix and its warning label taken off: "<where>: <what>", what it skipped among them. After a
-// read that succeeded, any other line mail wrote to stderr is taken as a warning too. A read with
-// warnings has still succeeded. They are complete once Records has ended; nil before.
-func (s *Stream) Warnings() []string { return s.warnings }
-
-// stderrLimit is the most of mail's standard error a read keeps, for its warnings and its
-// message.
-const stderrLimit = 1 << 20
-
-// Records runs mail once on the input and yields each line it writes as a Record while it runs: the
-// store first, then, for a .pst, folders, messages, and skipped records in mail's order, or, for a
-// .msg, its message and skipped records. A message of a conversation class is yielded as a
-// *Conversation in its place, as Message.Conversation reads it. mail's stdout passes through a pipe
-// and is decoded one line at a time, so memory follows the record being read, never the store; a
-// slow consumer holds mail back rather than buffering its output.
+// Read reads req's input, and yields its records as docproc-mail writes them: the Store first;
+// then, for a .pst, each Folder before its messages and they before its subfolders; for a .msg or
+// an .eml, its Message, with any embedded message nested under its attachment record; for an
+// mbox, each Message in the file's order; with a Skipped record wherever docproc-mail couldn't
+// read one, and each Warning between them. It runs docproc-mail once, on req.Input in place;
+// nothing runs until the sequence is ranged over, and stopping the range ends the run.
+// docproc-mail's stdout is decoded one line at a time as it arrives, so memory follows the record
+// being read, never the store, and a slow consumer holds docproc-mail back.
 //
-// A read that fails yields one last pair, nil and its error. A store line whose schema isn't
-// Schema is an error matching ErrSchema, naming the schema. mail's exit codes 1 to 4 are an
-// *ExitError matching the code's error. When the context Read was given ends the read, the error
-// matches that context's, as every Tool run's does. A loop that stops early stops mail too, and
-// nothing more is yielded. A Stream's records are read once: ranging over them again yields an
-// error.
-func (s *Stream) Records() iter.Seq2[Record, error] {
+// Each Attachment and Medium with a File is resolved by the envelope's media name rule, its Path
+// in req.Media when it is set, and its SHA256. A sender whose line leaves its SMTP address out
+// takes it from the message's transport headers' From. A Warning whose Where begins with a .pst
+// folder's node id names the folder by its path instead, its display names joined by "/": it is
+// yielded after the folder's line, held until that line comes, as is each warning after it, so
+// their order is kept; one whose folder's line never comes is yielded, its id kept, as the read
+// ends.
+//
+// An empty Input, an Input or Media that can't be made absolute, which filepath.Abs does from the
+// working directory, and an After past 4,294,967,295 are an error matching ErrRequest before
+// anything runs. A first line that isn't a schema "2" store line is an error matching ErrSchema.
+// docproc-mail's exit codes 1 to 4, and a death by a signal, are a *cli.ExitError, which matches
+// its code's error and names a refusal's class by its Refusal method. When ctx ends the run, the
+// error matches ctx's, as every Tool run's does. A read that fails yields one last pair, nil and
+// its error.
+func (r *Reader) Read(ctx context.Context, req Request) iter.Seq2[Record, error] {
 	return func(yield func(Record, error) bool) {
-		if s.started {
-			yield(nil, errors.New("email: the stream's records have been read"))
-			return
-		}
-		s.started = true
-		if err := s.read(yield); err != nil {
+		stopped := false
+		err := r.read(ctx, req, func(rec Record, err error) bool {
+			stopped = !yield(rec, err)
+			return !stopped
+		})
+		if err != nil && !stopped {
 			yield(nil, err)
 		}
 	}
 }
 
-// read runs mail and yields its records, returning the read's error; nil too when yield stopped
-// the loop, which then has nothing more yielded.
-func (s *Stream) read(yield func(Record, error) bool) error {
-	if err := s.ctx.Err(); err != nil {
+// read is Read's sequence: it yields each record and returns the read's error, nil when it
+// succeeded or yield stopped it.
+func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error) bool) error {
+	if req.Input == "" {
+		return fmt.Errorf("email: no input: %w", ErrRequest)
+	}
+	if req.After > math.MaxUint32 {
+		return fmt.Errorf("email: after %d, past docproc-mail's last id, %d: %w", req.After, uint64(math.MaxUint32), ErrRequest)
+	}
+	input, err := filepath.Abs(req.Input)
+	if err != nil {
+		return fmt.Errorf("email: input: %w: %w", ErrRequest, err)
+	}
+	var media string
+	if req.Media != "" {
+		if media, err = filepath.Abs(req.Media); err != nil {
+			return fmt.Errorf("email: media: %w: %w", ErrRequest, err)
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	input, dir := s.input, s.dir
 	var args []string
-	if dir != "" {
-		args = append(args, "--attachments", dir)
+	if media != "" {
+		args = append(args, "--media", media)
 	}
-	if s.after != 0 {
-		args = append(args, "--after", strconv.FormatUint(s.after, 10))
+	if req.After != 0 {
+		args = append(args, "--after", strconv.FormatUint(req.After, 10))
 	}
 	args = append(args, input)
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-	// An *os.File passes straight to mail as its stdout, so no copy sits between them that Run
-	// would wait for once mail exits; the read end holds at most the pipe's buffer.
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return fmt.Errorf("email: stdout: %w", err)
-	}
-	defer func() { _ = pr.Close() }()
-	stderr := &cli.LimitedBuffer{Limit: stderrLimit}
-	done := make(chan error, 1)
-	go func() {
-		err := s.mail.Run(ctx, tool.Invocation{Args: args, Stdout: pw, Stderr: stderr})
-		// mail has exited, and its write end with it: closing this one, the last, ends the read
-		// end at EOF.
-		_ = pw.Close()
-		done <- err
-	}()
-	// stop ends a read before mail's output does: closing the read end makes mail's next write
-	// fail, and the cancel ends it should it be writing nothing. It returns the run's error.
-	stop := func() error {
-		cancel()
-		_ = pr.Close()
-		return <-done
-	}
-
-	dec := jsontext.NewDecoder(bufio.NewReader(pr))
-	first := true
-	for {
-		if s.ctx.Err() != nil {
-			return s.ended(stop())
-		}
-		raw, err := dec.ReadValue()
-		if err == io.EOF {
-			break
-		}
+	w := warnings{folders: map[uint64]string{}, yield: yield}
+	for line, err := range cli.Read(ctx, cli.Run{Tool: r.mail, Args: args, First: "store"}) {
 		if err != nil {
-			// A line cut short is mail's output ended mid-line, so mail has exited, and its
-			// outcome, should it have failed, is the cause.
-			if errors.Is(err, io.ErrUnexpectedEOF) {
-				if runErr := <-done; runErr != nil {
-					return s.outcome(runErr, stderr.String(), input)
-				}
-			} else {
-				_ = stop()
+			if !w.flush() {
+				return nil
 			}
-			if s.ctx.Err() != nil {
-				return s.ended(nil)
-			}
-			return fmt.Errorf("email: reading mail's output: %w", err)
+			return fmt.Errorf("email: %w", err)
 		}
-		rec, err := decodeLine(raw, first)
+		if line.Warning != nil {
+			if !w.add(Warning(*line.Warning)) {
+				return nil
+			}
+			continue
+		}
+		rec, err := decodeLine(line.Kind, line.Raw)
 		if err != nil {
-			_ = stop()
+			if !w.flush() {
+				return nil
+			}
 			return err
 		}
-		first = false
-		if dir != "" {
-			switch m := rec.(type) {
-			case *Message:
-				setPaths(m.Attachments, dir)
-			case *Conversation:
-				setPaths(m.Attachments, dir)
+		if m, ok := rec.(*Message); ok {
+			if err := resolveMessage(media, m); err != nil {
+				if !w.flush() {
+					return nil
+				}
+				return err
 			}
 		}
 		if !yield(rec, nil) {
-			_ = stop()
 			return nil
 		}
+		if f, ok := rec.(*Folder); ok {
+			w.folders[f.ID] = strings.Join(f.Path, "/")
+			if !w.release() {
+				return nil
+			}
+		}
 	}
-	runErr := <-done
-	if runErr != nil {
-		return s.outcome(runErr, stderr.String(), input)
-	}
-	s.warnings, _ = mailProgram.ReadStderr(stderr.String(), input, true)
-	if first {
-		return errors.New("email: mail wrote no store line")
-	}
+	w.flush()
 	return nil
 }
 
-// setPaths sets the Path of each of attachments with a File, those of their nested messages
-// included, to the File's path in dir, the read's attachments directory. A File that isn't a
-// bare name, which mail never writes, is given no Path, so no Path leaves dir.
-func setPaths(attachments []Attachment, dir string) {
-	for i := range attachments {
-		a := &attachments[i]
-		if a.File != "" && filepath.IsLocal(a.File) && filepath.Base(a.File) == a.File {
-			a.Path = filepath.Join(dir, a.File)
+// warnings are a read's warnings on their way to its caller, each naming a .pst folder by its
+// path. docproc-mail writes a folder's line before reading what the folder holds, but writes a
+// warning about the folder's own properties before it, and its stdout is buffered while its stderr
+// isn't, so a warning naming a folder by its node id can come before the folder's line. Such a
+// warning is held until that line comes, and each warning after it with it, so their order is
+// kept; whatever a read leaves held at its end is yielded then, its id kept.
+type warnings struct {
+	// folders are the paths of the folders read so far, by id, display names joined by "/".
+	folders map[uint64]string
+	held    []Warning
+	yield   func(Record, error) bool
+}
+
+// add yields w, rewritten, unless it names a folder whose line hasn't come, or a warning is held
+// before it; then it holds it. It returns false once yield has stopped the read.
+func (ws *warnings) add(w Warning) bool {
+	ws.held = append(ws.held, w)
+	return ws.release()
+}
+
+// release yields the held warnings, in order, up to the first that names a folder whose line
+// hasn't come. It returns false once yield has stopped the read.
+func (ws *warnings) release() bool {
+	for len(ws.held) > 0 {
+		where, ok := folderPath(ws.held[0].Where, ws.folders)
+		if !ok {
+			return true
+		}
+		w := ws.held[0]
+		w.Where = where
+		ws.held = ws.held[1:]
+		if !ws.yield(&w, nil) {
+			return false
+		}
+	}
+	ws.held = nil
+	return true
+}
+
+// flush yields every held warning, in order, each folder named by its path where its line has
+// come. It returns false once yield has stopped the read.
+func (ws *warnings) flush() bool {
+	for _, w := range ws.held {
+		w.Where, _ = folderPath(w.Where, ws.folders)
+		if !ws.yield(&w, nil) {
+			return false
+		}
+	}
+	ws.held = nil
+	return true
+}
+
+// folderPath returns where, a warning's place, with its leading "folder <id>" naming the folder
+// by its path from folders, and true: "folder 32898, message 2097188" becomes "folder Top of
+// Personal Folders/Inbox, message 2097188". A where that names a folder folders doesn't hold is
+// returned as it is, with false; any other where as it is, with true.
+func folderPath(where string, folders map[uint64]string) (string, bool) {
+	rest, ok := strings.CutPrefix(where, "folder ")
+	if !ok {
+		return where, true
+	}
+	digits, tail, more := strings.Cut(rest, ",")
+	id, err := strconv.ParseUint(digits, 10, 64)
+	if err != nil {
+		return where, true
+	}
+	path, ok := folders[id]
+	switch {
+	case !ok:
+		return where, false
+	case more:
+		return "folder " + path + "," + tail, true
+	}
+	return "folder " + path, true
+}
+
+// resolveMessage resolves the files of m's attachments and media, and its nested messages', by the
+// envelope's media name rule in dir, the read's media directory, "" for none. A File the rule
+// can't have made is an error, so no Path leaves dir.
+func resolveMessage(dir string, m *Message) error {
+	for i := range m.Attachments {
+		a := &m.Attachments[i]
+		if a.File != "" {
+			resolved, err := cli.ResolveMedium(dir, a.File)
+			if err != nil {
+				return fmt.Errorf("email: attachment %d: %w", i+1, err)
+			}
+			a.Path, a.SHA256 = resolved.Path, resolved.SHA256
 		}
 		if a.Message != nil {
-			setPaths(a.Message.Attachments, dir)
+			if err := resolveMessage(dir, a.Message); err != nil {
+				return err
+			}
 		}
 	}
-}
-
-// ended returns the error of a read that its context ended: runErr, the run's, when it matches
-// the context's, else the context's own.
-func (s *Stream) ended(runErr error) error {
-	if runErr != nil && errors.Is(runErr, s.ctx.Err()) {
-		return fmt.Errorf("email: %w", runErr)
-	}
-	return fmt.Errorf("email: %w", s.ctx.Err())
-}
-
-// outcome returns the error of a run that failed, err the Tool's, and sets the Stream's warnings
-// from stderr, mail's standard error, of a run on input: an *ExitError for exit codes 1 to 4,
-// unless the context ended the run; else err with mail's message, if any.
-func (s *Stream) outcome(err error, stderr, input string) error {
-	var message string
-	s.warnings, message = mailProgram.ReadStderr(stderr, input, false)
-	if s.ctx.Err() != nil {
-		return s.ended(err)
-	}
-	if exit, ok := errors.AsType[*tool.ExitError](err); ok {
-		if cli.Outcome(exit.Code) != nil {
-			return &ExitError{Code: exit.Code, Message: message, err: err}
+	for i := range m.Media {
+		md := &m.Media[i]
+		resolved, err := cli.ResolveMedium(dir, md.File)
+		if err != nil {
+			return fmt.Errorf("email: media %d: %w", i+1, err)
 		}
+		md.Path, md.SHA256 = resolved.Path, resolved.SHA256
 	}
-	if message != "" {
-		return fmt.Errorf("email: %w: %s", err, message)
-	}
-	return fmt.Errorf("email: %w", err)
+	return nil
 }
-
-// mailProgram is mail as its stderr shows it: each line but its usage begins with its name, and
-// a failure's, for exit codes 1 to 4, with its error label.
-var mailProgram = schema1.Program{Name: "spike-ai-pipeline-mail", Labels: []string{"error"}}

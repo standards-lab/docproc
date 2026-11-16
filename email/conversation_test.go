@@ -14,7 +14,7 @@ import (
 // without regard to case, and no other: a Voice subclass, a note, and no class are messages. The
 // topic is the stored conversation topic, else the subject; the participants are the sender, when
 // there is one, then To, CC, and BCC in order; the start and end are the submit and delivery
-// times; and missed is the Missed class's.
+// times; the transcript and media are the message's; and missed is the Missed class's.
 func TestMessageConversation(t *testing.T) {
 	a := email.Address{Name: "A", Address: "a@example.com"}
 	b := email.Address{Name: "B", Address: "b@example.com", AddressType: "SMTP"}
@@ -26,7 +26,7 @@ func TestMessageConversation(t *testing.T) {
 		ID: 7, Folder: 3, Class: email.ConversationClass, Subject: "subject",
 		ConversationTopic: "topic", Sender: a, To: []email.Address{b}, CC: []email.Address{c},
 		BCC: []email.Address{d}, SubmitTime: start, DeliveryTime: end,
-		Body: email.Body{HTML: "<p>x</p>", Derived: email.Derived{Markdown: "x"}},
+		Markdown: "x", Media: []email.Medium{{File: "m.png"}},
 	}
 	tests := []struct {
 		name string
@@ -36,17 +36,17 @@ func TestMessageConversation(t *testing.T) {
 		{"conversation", func(*email.Message) {}, &email.Conversation{
 			ID: 7, Folder: 3, Class: email.ConversationClass, Topic: "topic",
 			Participants: []email.Address{a, b, c, d}, Start: start, End: end,
-			Markdown: "x", HTML: "<p>x</p>",
+			Markdown: "x", Media: []email.Medium{{File: "m.png"}},
 		}},
 		{"missed, its class in another case", func(m *email.Message) { m.Class = "ipm.note.microsoft.missed" }, &email.Conversation{
 			ID: 7, Folder: 3, Class: "ipm.note.microsoft.missed", Topic: "topic",
 			Participants: []email.Address{a, b, c, d}, Start: start, End: end, Missed: true,
-			Markdown: "x", HTML: "<p>x</p>",
+			Markdown: "x", Media: []email.Medium{{File: "m.png"}},
 		}},
 		{"no topic, no sender", func(m *email.Message) { m.ConversationTopic, m.Sender = "", email.Address{} }, &email.Conversation{
 			ID: 7, Folder: 3, Class: email.ConversationClass, Topic: "subject",
 			Participants: []email.Address{b, c, d}, Start: start, End: end,
-			Markdown: "x", HTML: "<p>x</p>",
+			Markdown: "x", Media: []email.Medium{{File: "m.png"}},
 		}},
 		{"voice", func(m *email.Message) { m.Class = email.ConversationClass + ".Voice" }, nil},
 		{"missed voice", func(m *email.Message) { m.Class = email.MissedClass + ".Voice" }, nil},

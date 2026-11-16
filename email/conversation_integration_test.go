@@ -14,19 +14,20 @@ import (
 	"github.com/standards-lab/docproc/email"
 )
 
-// These tests run the real mail binary, which the unit tier doesn't provide, so they run in the
+// These tests run the real docproc-mail, which the unit tier doesn't provide, so they run in the
 // integration tier.
 
-// TestRealConversations runs the real pinned mail over the copied conversations.pst and holds
-// each item of every folder layout.json lists items for to its hand truth in truth.json, in the
-// layout's order. An item of a conversation class reads as a Conversation equal to the one the
-// truth gives: its class, its topic the truth's subject, as the store's conversation topic is,
-// its participants the sender then the recipients, its start and end the submit and delivery
-// times, missed by its class, and its Markdown and stored HTML. An item of any other class, the
-// IPM.Note in the same folder, reads as a Message, as before: its class, subject, sender,
-// recipients, four times, stored HTML, and Markdown the truth's. The fixture holds every kind:
-// a conversation, a missed one, and a note.
+// TestRealConversations runs the real docproc-mail over its generated conversations.pst, read in
+// place, and holds each item of every folder layout.json lists items for to its hand truth in
+// truth.json, in the layout's order. An item of a conversation class is a Message whose
+// Conversation view equals the one the truth gives: its class, its topic the truth's subject, as
+// the store's conversation topic is, its participants the sender then the recipients, its start
+// and end the submit and delivery times, missed by its class, and its Markdown. An item of any
+// other class, the IPM.Note in the same folder, has no Conversation view, and its class, subject,
+// sender, recipients, four times, and Markdown are the truth's. The fixture holds every kind: a
+// conversation, a missed one, and a note.
 func TestRealConversations(t *testing.T) {
+	generated := mailFixture(t, "generated")
 	var l layout
 	readJSON(t, filepath.Join(generated, "layout.json"), &l)
 	var truth struct {
@@ -46,16 +47,14 @@ func TestRealConversations(t *testing.T) {
 		}
 		stores++
 		t.Run(store.File, func(t *testing.T) {
-			s := mustRead(t)(r.Read(t.Context(), email.Request{Input: filepath.Join(generated, store.File)}))
-			recs, err := collect(s, nil)
+			recs, err := collect(r.Read(t.Context(), email.Request{Input: filepath.Join(generated, store.File)}))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var got []email.Record
+			var got []*email.Message
 			for _, rec := range recs {
-				switch rec.(type) {
-				case *email.Message, *email.Conversation:
-					got = append(got, rec)
+				if m, ok := rec.(*email.Message); ok {
+					got = append(got, m)
 				}
 			}
 			if len(got) != len(items) {
@@ -81,11 +80,7 @@ func TestRealConversations(t *testing.T) {
 	}
 }
 
-// generated is the copy of mail's generated fixtures: the stores, their layout.json, and the hand
-// truth, truth.json.
-var generated = filepath.Join(mailCopy, "fixtures", "generated")
-
-// layout is mail's generated layout.json: each store's file and folders, each folder listing the
+// layout is docproc-mail's generated layout.json: each store's file and folders, each folder listing the
 // .eml sources of its messages, or the item sources of its items, in the store's order.
 type layout struct {
 	Stores []struct {
@@ -110,7 +105,6 @@ type itemTruth struct {
 	DeliveryTime     time.Time       `json:"delivery_time"`
 	CreationTime     time.Time       `json:"creation_time"`
 	ModificationTime time.Time       `json:"modification_time"`
-	HTML             string          `json:"html"`
 	Markdown         string          `json:"markdown"`
 }
 
@@ -126,8 +120,8 @@ func readJSON(t *testing.T, path string, v any) {
 	}
 }
 
-// bare returns addrs with each address type dropped: the hand truth gives a name and an address
-// alone, and mail gives a recipient's type as stored, SMTP.
+// bare returns addrs with each address type and SMTP address dropped: the hand truth gives a name
+// and an address alone, and docproc-mail gives a recipient's type as stored, SMTP.
 func bare(addrs []email.Address) []email.Address {
 	out := make([]email.Address, len(addrs))
 	for i, a := range addrs {
@@ -136,29 +130,28 @@ func bare(addrs []email.Address) []email.Address {
 	return out
 }
 
-// checkItem checks rec, the record read for the item source name, against want, its hand truth.
-func checkItem(t *testing.T, name string, rec email.Record, want itemTruth) {
+// checkItem checks m, the message read for the item source name, against want, its hand truth.
+func checkItem(t *testing.T, name string, m *email.Message, want itemTruth) {
 	t.Helper()
+	c, ok := m.Conversation()
 	if !email.IsConversation(want.Class) {
-		m, ok := rec.(*email.Message)
-		if !ok {
-			t.Errorf("%s: a %s record, want a message of class %s", name, rec.Line(), want.Class)
+		if ok {
+			t.Errorf("%s: a conversation, want a message of class %s", name, want.Class)
 			return
 		}
 		got := itemTruth{
 			Class: m.Class, Subject: m.Subject, Sender: m.Sender, To: bare(m.To), CC: bare(m.CC),
 			SubmitTime: m.SubmitTime, DeliveryTime: m.DeliveryTime,
 			CreationTime: m.CreationTime, ModificationTime: m.ModificationTime,
-			HTML: m.Body.HTML, Markdown: m.Body.Derived.Markdown,
+			Markdown: m.Markdown,
 		}
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: message\n%+v\nthe truth's\n%+v", name, got, want)
 		}
 		return
 	}
-	c, ok := rec.(*email.Conversation)
 	if !ok {
-		t.Errorf("%s: a %s record, want a conversation of class %s", name, rec.Line(), want.Class)
+		t.Errorf("%s: a message of class %s, want a conversation of class %s", name, m.Class, want.Class)
 		return
 	}
 	if c.ID == 0 || c.Folder == 0 {
@@ -174,7 +167,6 @@ func checkItem(t *testing.T, name string, rec email.Record, want itemTruth) {
 		End:          want.DeliveryTime,
 		Missed:       want.Class == email.MissedClass,
 		Markdown:     want.Markdown,
-		HTML:         want.HTML,
 	}
 	got := *c
 	got.Participants = bare(c.Participants)

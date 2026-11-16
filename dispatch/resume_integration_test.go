@@ -20,20 +20,21 @@ import (
 
 // storeCaller is a caller dispatching a mail store as the package doc's "Resuming a store" says:
 // it gathers each message's outputs, those named "message ...", and commits them, its cursor
-// advanced to the message's id and its Threader, fed each message record of the read's own,
-// saved with it, once the message's last output has come, its Markdown, or its record when the
-// record's Meta says none follows. It saves a checkpoint at every message, N = 1, which the
-// doc advises against for a large store: the fixtures' few messages make every message a crash
-// point the test can resume from, and test code alone uses it.
+// advanced to the message's id, once the message's last output has come, its Markdown, or its
+// record when the record's Meta says none follows; each message record of the read's own is
+// committed decoded, for a Threader to be fed. It saves a checkpoint at every message: the
+// fixtures' few messages make every message a crash point the test can resume from.
 type storeCaller struct {
-	// committed are the committed message outputs, as "kind name".
+	// committed are the committed message outputs, as "kind name", and messages the committed
+	// message records of the read's own, decoded.
 	committed []string
-	// pending are the outputs of the message whose last output hasn't come.
-	pending []string
-	// cursor is the last committed message's id, and saved the Threader saved with it.
-	cursor  uint64
-	saved   []byte
-	threads email.Threader
+	messages  []*email.Message
+	// pending are the outputs of the message whose last output hasn't come, and pendingMessage
+	// its record, decoded.
+	pending        []string
+	pendingMessage *email.Message
+	// cursor is the last committed message's id.
+	cursor uint64
 	// prepared are the SHA-256s of the parts below the input whose stage prepared them.
 	prepared []string
 	// events are the parts' own events.
@@ -60,11 +61,10 @@ func (c *storeCaller) take(t *testing.T, ev dispatch.Event) {
 		return
 	}
 	if o.Kind == dispatch.RecordOutput {
-		var m email.Message
-		if err := jsonv2.Unmarshal(o.Value, &m); err != nil {
+		c.pendingMessage = new(email.Message)
+		if err := jsonv2.Unmarshal(o.Value, c.pendingMessage); err != nil {
 			t.Fatal(err)
 		}
-		c.threads.Add(&m)
 		if o.Meta["markdown"] == "follows" {
 			return
 		}
@@ -74,11 +74,21 @@ func (c *storeCaller) take(t *testing.T, ev dispatch.Event) {
 		t.Fatal(err)
 	}
 	c.committed = append(c.committed, c.pending...)
-	c.pending = nil
+	c.messages = append(c.messages, c.pendingMessage)
+	c.pending, c.pendingMessage = nil, nil
 	c.cursor = id
-	if c.saved, err = c.threads.MarshalBinary(); err != nil {
-		t.Fatal(err)
+}
+
+// threads returns the threads of messages, a Threader fed each, as a consumer threads the
+// message records it persisted.
+func threads(messages ...[]*email.Message) []*email.Thread {
+	var tr email.Threader
+	for _, ms := range messages {
+		for _, m := range ms {
+			tr.Add(m)
+		}
 	}
+	return tr.Threads()
 }
 
 // crashing is an index that, once crashed is set, releases nothing, as a process that died
@@ -100,14 +110,14 @@ func (c *crashing) Release(ctx context.Context, key dispatch.Key, token string) 
 // message's first attachment where there is one, so that attachment is recorded, else at once.
 // The crash either stops the loop, the dispatcher releasing its claims, or leaves the claims'
 // temporary logs behind, a dead process's, which the resumed dispatch's index removes as it
-// opens. The dispatch resumed with After set to the cursor, K's id, and the Threader
-// restored from the one saved with it, commits the rest: the committed message outputs of the
-// two equal the whole dispatch's, in order, none twice; every part prepared before the crash
-// is seen; the threads are the whole read's; and no temporary log is left.
+// opens. The dispatch resumed with After set to the cursor, K's id, commits the rest: the
+// committed message outputs of the two equal the whole dispatch's, in order, none twice; every
+// part prepared before the crash is seen; the threads of the message records committed by the
+// two are the whole read's; and no temporary log is left.
 func TestStoreCrashResume(t *testing.T) {
 	stages := dispatch.Stages{route.Nested: emailStage(t), route.Vision: dispatch.NewVisionStage()}
 	for _, rel := range []string{"generated/pst/mailbox.pst", "mime/nine.mboxrd"} {
-		path := filepath.Join(mailFixtures, rel)
+		path := filepath.Join(mailFixtures(t), rel)
 		t.Run(filepath.Base(rel), func(t *testing.T) {
 			whole := &storeCaller{}
 			for ev, err := range newDispatcher(t, stages, fileIndex(t, t.TempDir())).Dispatch(t.Context(), dispatch.Input{Path: path}) {
@@ -119,7 +129,7 @@ func TestStoreCrashResume(t *testing.T) {
 			if len(whole.pending) != 0 || len(whole.committed) == 0 {
 				t.Fatalf("the whole dispatch left %q uncommitted, committed %d", whole.pending, len(whole.committed))
 			}
-			wantThreads := whole.threads.Threads()
+			wantThreads := threads(whole.messages)
 			k, attached := crashPoint(t, whole)
 
 			for _, leftBehind := range []bool{false, true} {
@@ -160,9 +170,6 @@ func TestStoreCrashResume(t *testing.T) {
 
 					resumedIdx := fileIndex(t, dir)
 					resumed := &storeCaller{}
-					if err := resumed.threads.UnmarshalBinary(crashed.saved); err != nil {
-						t.Fatal(err)
-					}
 					for ev, err := range newDispatcher(t, stages, resumedIdx).Dispatch(t.Context(), dispatch.Input{Path: path, After: k}) {
 						if err != nil {
 							t.Fatal(err)
@@ -193,7 +200,7 @@ func TestStoreCrashResume(t *testing.T) {
 					if store := resumed.events[len(resumed.events)-1]; store.Part.Depth != 0 || store.Outcome != dispatch.Prepared {
 						t.Errorf("the resumed store: %s@%d", store.Outcome, store.Part.Depth)
 					}
-					if got := resumed.threads.Threads(); !reflect.DeepEqual(got, wantThreads) {
+					if got := threads(crashed.messages, resumed.messages); !reflect.DeepEqual(got, wantThreads) {
 						t.Errorf("the resumed threads differ from the whole read's: %d roots, want %d", len(got), len(wantThreads))
 					}
 					if left, err := filepath.Glob(filepath.Join(dir, "*", ".tmp-*")); err != nil || len(left) != 0 {

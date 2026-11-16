@@ -65,8 +65,8 @@ func TestEmailStageReleases(t *testing.T) {
 		// ahead of the dispatch.
 		many bool
 	}{
-		{filepath.Join(mailFixtures, "generated", "pst", "mailbox.pst"), false},
-		{filepath.Join(mailFixtures, "pst", "tika", "testPST.pst"), false},
+		{filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), false},
+		{filepath.Join(mailFixtures(t), "pst", "tika", "testPST.pst"), false},
 		{filepath.Join("..", ".state", "findings", "plaso", "nromanoff@stark-research-labs.com.pst"), true},
 	}
 	for _, st := range stores {
