@@ -1,11 +1,11 @@
 # mise: docproc-onenote's toolchain and its check, publish, golden, currency, and upgrade tasks.
-# The toolchain is pinned here alone. tools/pack.sh will run `publish`, and docproc's root check,
-# currency, and upgrade will run this file's tasks once onenote joins its TOOLS list
-# (`mise -C tools/onenote run check`). Each task runs in this directory.
+# The toolchain is pinned here alone. docproc's root check, currency, and upgrade run this file's
+# tasks through its TOOLS list (`mise -C tools/onenote run check`), and tools/pack.sh runs
+# `publish`. Each task runs in this directory.
 [tools]
 cargo-deny = "0.20.2"
-# tools/notices.sh will run it, in this environment, for the release's third-party notices and
-# their license check. It is not in mise's registry, so it comes from its GitHub release.
+# tools/notices.sh runs it, in this environment, for the release's third-party notices and their
+# license check (about.toml). It is not in mise's registry, so it comes from its GitHub release.
 "github:EmbarkStudios/cargo-about" = "0.9.3"
 jq = "1.8.2"
 rust = { version = "1.100.0", profile = "minimal", components = "clippy,rustfmt", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" }
@@ -27,8 +27,9 @@ typed-path 0.12.4: onenote_parser 2.1.0 requires ^0.12.3; it moves only with one
 # test runs the release musl binary, overflow checks on (Cargo.toml), so no debug build is made.
 # The shared envelope crate, tools/envelope, has no lock or toolchain of its own: each Rust tool's
 # check formats, lints, and tests it with the tool's, against the tool's Cargo.lock, so it is
-# tested in every graph that links it, this one without its `markdown` feature. Its manifest is
-# formatted by path, which reads no lock and writes none.
+# tested in every graph that links it, this one without its `markdown` feature, and docproc's root
+# check reaches it through TOOLS. Its manifest is formatted by path, which reads no lock and writes
+# none.
 [tasks.check]
 description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
 dir = "{{config_root}}"
@@ -43,8 +44,8 @@ cargo test --release --locked --target "$target" -p docproc-onenote -p docproc-e
 "target/$target/release/docproc-onenote" --version
 '''
 
-# tools/pack.sh will run it to build the release binary it packs; the release workflow runs that
-# on each runner, natively.
+# tools/pack.sh runs it to build the release binary it packs; the release workflow runs that on each
+# runner, natively.
 [tasks.publish]
 description = "Build the static musl release binary for this machine from the locked crate graph; writes only target/ and .state/publish/"
 dir = "{{config_root}}"

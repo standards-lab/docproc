@@ -17,7 +17,13 @@
 # text once with the crates it covers. cargo-about checks each crate's license against the
 # accepted list in the tool's about.toml, and a license outside it fails the script: a new license
 # is a reviewed change to that file. It reads the crates from Cargo's registry cache, offline, so
-# it runs after the tool's check or publish has fetched them.
+# it runs after the tool's check or publish has fetched them. tools/notices-rust.txt follows: the
+# notices of the Rust standard library and musl libc, which every Rust tool's binary links, the
+# tool's pinned Rust version and the target written into it.
+#
+# A tool with a committed supplement, tools/<format>/notices.txt, has it appended last, verbatim:
+# the notices cargo-about or the NuGet packages can't give, such as code ported into the tool or
+# where an MPL-2.0 crate's source is.
 #
 # usage: tools/notices.sh <format> <rid>
 #   format  the tool's directory under tools/, such as ooxml
@@ -58,6 +64,14 @@ rule() {
 	printf '%80s\n' '' | tr ' ' '='
 }
 
+# supplement prints the tool's committed supplement, when it has one, after a blank line.
+supplement() {
+	if [ -f "$tool/notices.txt" ]; then
+		echo
+		cat "$tool/notices.txt"
+	fi
+}
+
 if [ "$kind" = cargo ]; then
 	case "$rid" in
 		linux-x64) target=x86_64-unknown-linux-musl ;;
@@ -76,6 +90,13 @@ if [ "$kind" = cargo ]; then
 		cargo fetch --locked --quiet >&2 &&
 			cargo-about --color never generate --format json --frozen --fail --target "$1"
 	' bash "$target") || fail "cargo-about refused $tool's crates for $target"
+	# The pinned Rust's version, the one the release binary is built by, its std and musl linked.
+	# shellcheck disable=SC2016
+	rust=$(mise -C "$tool" exec -- bash -c '
+		export PATH="$CARGO_HOME/bin:$PATH"
+		rustc --version
+	') || fail "$tool's pinned rustc did not run"
+	rust=$(cut -d' ' -f2 <<<"$rust")
 
 	echo "Third-party notices for $binary, $rid"
 	echo
@@ -83,7 +104,8 @@ if [ "$kind" = cargo ]; then
 	echo "dependency graph for $target, proc macros and their dependencies included,"
 	echo "though they run only at build time. Each entry gives the licenses its notice is given"
 	echo "under, chosen from the crate's license expression; the license texts follow, each with"
-	echo "the crates it covers."
+	echo "the crates it covers. The notices of the Rust standard library and musl libc, which the"
+	echo "binary also links, follow them."
 	echo
 	# Each crate's chosen licenses are the texts that name it. A license text cargo-about made up
 	# from the license's template, for a crate that ships none, is given once per crate, under
@@ -108,6 +130,9 @@ if [ "$kind" = cargo ]; then
 					"Copyright (c) \($owner)"))
 			end)
 	' <<<"$about" || fail "cargo-about's report for $tool could not be read"
+	echo
+	sed -e "s/@RUST_VERSION@/$rust/g" -e "s/@TARGET@/$target/g" tools/notices-rust.txt
+	supplement
 	exit 0
 fi
 
@@ -241,3 +266,4 @@ for sum in "${bundled_order[@]}"; do
 	cat "${bundled_file[$sum]}"
 	echo
 done
+supplement

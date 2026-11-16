@@ -9,6 +9,13 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+### Added
+
+- The release archive's `THIRD-PARTY-NOTICES.txt` gives the notices of the Rust standard library
+  and musl libc, which the static binary links, after its crates': the MIT License under which
+  each is given, their copyright, and where the standard library's own third-party notices and
+  musl's `COPYRIGHT` are. The binary is unchanged.
+
 ## [v0.1.0] - 2026-11-13
 
 The first release. docproc-mail was copied, in one commit, from spike-ai-pipeline-mail v0.3.1

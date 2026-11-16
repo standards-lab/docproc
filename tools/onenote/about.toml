@@ -1,0 +1,33 @@
+# cargo-about's configuration, read by tools/notices.sh to write docproc-onenote's third-party
+# notices and to check their licenses. Each crate's notice is given under licenses from the accepted
+# list, in its order, and a crate whose license expression the list can't satisfy fails the script,
+# and with it docproc's root check: adding a license is a reviewed change to this file.
+#
+# cargo-about walks the normal dependency graph for the target, proc macros and their own
+# dependencies included, though they run only at build time and the binary links none of them; it
+# has no setting to leave them out. Build and dev dependencies are left out.
+#
+# The accepted list is the Rust tools' shared one, as tools/mail/about.toml has it: Unicode-3.0 is
+# docproc-envelope's ICU4X crates' license, and BSD-3-Clause encoding_rs's WHATWG data's.
+accepted = ["MIT", "Apache-2.0", "BSD-3-Clause", "Unicode-3.0"]
+targets = ["x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"]
+ignore-build-dependencies = true
+ignore-dev-dependencies = true
+# docproc-onenote itself is unpublished and carries the repository's LICENSE.
+private = { ignore = true }
+
+# The licenses outside the shared list, each accepted for the one crate that needs it, so no other
+# crate can bring it in unreviewed.
+#
+# onenote_parser, the OneNote reader, used unmodified, and its proc macros are MPL-2.0 alone. The
+# supplement tools/onenote/notices.txt, which notices.sh appends, says where onenote_parser's
+# source is, as MPL-2.0 §3.2(a) requires of a binary that holds it.
+[onenote_parser]
+accepted = ["MPL-2.0"]
+
+[onenote_parser-macros]
+accepted = ["MPL-2.0"]
+
+# foldhash, hashbrown's hasher in the lru cache onenote_parser keeps, is Zlib alone.
+[foldhash]
+accepted = ["Zlib"]
