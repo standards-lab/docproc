@@ -10,7 +10,10 @@
     "media_names: a payload's bytes, in lowercase hex, and the name it is stored under, and the media name",
     "  they make: the bytes' lowercase hex SHA-256, then \".\" and the stored extension when that is 1 to 8",
     "  ASCII letters and digits.",
-    "literal_escape: a line of literal text and its Markdown; no case holds a line break."
+    "literal_escape: a line of literal text and its Markdown; no case holds a line break.",
+    "destinations: a link's or an image's target and the Markdown destination written for it, which",
+    "  CommonMark reads back as the target, or as reads where a case has one; a table cell's | is left to",
+    "  the cell's writer, so no case holds one."
   ],
   "exit_codes": [
     { "code": 0, "meaning": "read, skipped items included" },
@@ -49,6 +52,27 @@
     { "bytes_hex": "616263", "stored_name": "dash.jp-g", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
     { "bytes_hex": "616263", "stored_name": "accent.pngé", "name": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" },
     { "bytes_hex": "89504e470d0a", "stored_name": "", "name": "823ceb99fcef5252333ede1b2202341c3b287b6d47571963e6b0ddf393a24f82" }
+  ],
+  "destinations": [
+    { "target": "https://example.com/a/b?x=1&y=2#top", "markdown": "https://example.com/a/b?x=1&y=2#top" },
+    { "target": "abc.png", "markdown": "abc.png" },
+    { "target": "", "markdown": "" },
+    { "target": "\\\\server\\share\\plan.docx", "markdown": "\\\\\\\\server\\\\share\\\\plan.docx" },
+    { "target": "\\\\server\\Team Notes\\plan.docx", "markdown": "<\\\\\\\\server\\\\Team Notes\\\\plan.docx>" },
+    { "target": "C:\\Team Notes\\plan (v2).docx", "markdown": "<C:\\\\Team Notes\\\\plan (v2).docx>" },
+    { "target": "a\\*b\\(c\\)d\\\\", "markdown": "a\\\\*b\\\\\\(c\\\\\\)d\\\\\\\\" },
+    { "target": "a\\b", "markdown": "a\\\\b" },
+    { "target": "https://en.wikipedia.org/wiki/Moth_(disambiguation)", "markdown": "https://en.wikipedia.org/wiki/Moth_\\(disambiguation\\)" },
+    { "target": "a)b(c", "markdown": "a\\)b\\(c" },
+    { "target": "my file (1).png", "markdown": "<my file (1).png>" },
+    { "target": "a<b>c", "markdown": "<a\\<b\\>c>" },
+    { "target": "x y <z>", "markdown": "<x y \\<z\\>>" },
+    { "target": "<", "markdown": "<\\<>" },
+    { "target": "a&amp;b&#35;c&#x23;d&e;f&g", "markdown": "a\\&amp;b\\&#35;c\\&#x23;d\\&e;f&g" },
+    { "target": "a\tb", "markdown": "<a\tb>" },
+    { "target": "a\u00a0b", "markdown": "<a\u00a0b>" },
+    { "target": "a\nb\r\nc", "markdown": "<a%0Ab%0D%0Ac>", "reads": "a%0Ab%0D%0Ac" },
+    { "target": "東京 1.png", "markdown": "<東京 1.png>" }
   ],
   "literal_escape": [
     { "text": "plain text", "markdown": "plain text" },

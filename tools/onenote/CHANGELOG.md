@@ -82,7 +82,8 @@ in the spike.
 - Ink words: each drawing carries its own strokes' words, no longer every word on the page's ink
   image alone, where a paragraph's handwriting and an ink block had none.
 - Destinations are written by the shared destination writer, so one holding a space is a link,
-  no longer text; in a table cell, a `|` in a code span or an equation's LaTeX is escaped. Literal
+  no longer text, and each reads back as its target, a backslash in it escaped, so a UNC path
+  keeps both its leading backslashes; in a table cell, a `|` in a code span or an equation's LaTeX is escaped. Literal
   text is escaped by the shared literal-text escape.
 - Media are streamed, hashed while copied through a fixed buffer into a temporary file renamed to
   the hash name, no longer read whole and written to their name directly, so a killed run leaves

@@ -1467,7 +1467,8 @@ mod tests {
     }
 
     /// Destinations are the shared writer's: one holding a space is written in `<…>`, so a
-    /// spaced link and a hyperlinked image with a spaced target stay links. In a table cell, a
+    /// spaced link and a hyperlinked image with a spaced target stay links, and each `\` is
+    /// escaped, so a UNC path keeps both its leading backslashes. In a table cell, a
     /// `|` in a destination, a code span or LaTeX is escaped, so GFM keeps the cell whole.
     #[test]
     fn destinations_go_through_the_shared_writer_and_cells_escape_pipes() {
@@ -1489,7 +1490,7 @@ mod tests {
             ..Run::default()
         };
         let code = para("code", vec![text("a | b")]);
-        let link_md = "[the plan](<\\\\server\\Team Notes\\plan.docx>)";
+        let link_md = "[the plan](<\\\\\\\\server\\\\Team Notes\\\\plan.docx>)";
         let image_md = "[![pic](i.png)](<https://example.com/Team Notes/\\<plan\\>>)";
         assert_eq!(
             md(vec![element(

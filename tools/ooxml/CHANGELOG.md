@@ -9,6 +9,17 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+### Fixed
+
+- A link's or an image's destination reads back as its target. A backslash in it is escaped, so
+  `\\server\Team Notes\plan.docx` no longer reads back with one leading backslash, and so is a
+  `&` that could begin a character reference. The rule is the one docproc's Rust tools share,
+  stated by tools/envelope/cases.json: a target holding whitespace, a control character, `<`, or
+  `>` is written within angle brackets, its `<` and `>` backslash-escaped, no longer
+  percent-encoded; any other is written bare, its parentheses backslash-escaped, no longer
+  angle-bracketed for them. A line ending or a NUL, which no destination can hold, is
+  percent-encoded. A `|` is still escaped.
+
 ## [v0.1.0] - 2026-11-13
 
 The first release. docproc-ooxml was copied, in one commit, from spike-ai-pipeline-office v0.1.0
