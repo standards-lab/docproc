@@ -19,8 +19,8 @@
 //! htmd writes a text `&` as itself, so CommonMark would read a literal `&amp;` in the text back
 //! as `&`. Before htmd writes the Markdown, each `&` of the parsed text, character references
 //! decoded and attribute values aside, becomes a private-use character the body lacks, and once it
-//! is written each one becomes `\&`, or `&` within code, where no reference is read
-//! ([`from_html`]).
+//! is written each one becomes `\&` where it could begin a character reference outside code, and
+//! `&` elsewhere ([`from_html`]).
 //!
 //! Markdown made from HTML is compared with the message's source text by the content rule, the
 //! shared crate's (context/layers.md, schema "2"): the source text's sentences the Markdown lacks
@@ -33,7 +33,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::{destination, escape, title};
+use docproc_envelope::markdown::{destination, escape, reference_like, title};
 use docproc_envelope::{Fault, Media};
 use htmd::element_handler::{HandlerResult, Handlers};
 use htmd::{Element, Node};
@@ -437,7 +437,8 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
 /// Markdown from an HTML body. Images keep their sources as written. The head, styles and
 /// scripts are no part of the text: htmd would write a style's rules as text. Links and images
 /// are written by [`anchor`] and [`image`], in place of htmd's own. Each `&` of the text is
-/// written escaped, `\&`, outside code and as itself within it ([`ampersands`]).
+/// written escaped, `\&`, where it could begin a character reference outside code, and as itself
+/// elsewhere ([`ampersands`]).
 pub fn from_html(html: &str) -> Result<String, String> {
     let htmd = htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
@@ -510,10 +511,13 @@ fn mark_ampersands(tree: &Rc<Node>, sentinel: char) -> bool {
 }
 
 /// `markdown`, written by htmd from a tree [`mark_ampersands`] marked, with each `sentinel` the
-/// `&` it stands for: as itself within a code span or a code block, where CommonMark reads a
-/// character reference as written, and escaped elsewhere, where it would read one as the character
-/// it names. A sentinel can't be in a link's or an image's destination or title, which are
-/// attribute values; there `\&` would read back as `&` as well.
+/// `&` it stands for: escaped, `\&`, where CommonMark would read it as beginning a character
+/// reference, outside code and before what the envelope's [`reference_like`] matches, and as
+/// itself elsewhere, so prose such as `AT&T` keeps its `&` bare. Within a code span or a code
+/// block CommonMark reads no reference. What follows a sentinel is read as written in the
+/// Markdown, where a following sentinel, `\`, or markup ends a reference as it would for
+/// CommonMark. A sentinel can't be in a link's or an image's destination or title, which are
+/// attribute values; there the same test holds, as the envelope's rules for them apply it.
 fn ampersands(markdown: &str, sentinel: char) -> String {
     use pulldown_cmark::{Event, Options, Parser, Tag};
     let code: Vec<Range<usize>> = Parser::new_ext(markdown, Options::ENABLE_TABLES)
@@ -530,8 +534,9 @@ fn ampersands(markdown: &str, sentinel: char) -> String {
         out.push_str(&markdown[copied..at]);
         while spans.next_if(|span| span.end <= at).is_some() {}
         let in_code = spans.peek().is_some_and(|span| span.contains(&at));
-        out.push_str(if in_code { "&" } else { "\\&" });
         copied = at + sentinel.len_utf8();
+        let escaped = !in_code && reference_like(&markdown[copied..]);
+        out.push_str(if escaped { "\\&" } else { "&" });
     }
     out.push_str(&markdown[copied..]);
     out
@@ -1237,17 +1242,25 @@ mod tests {
     }
 
     /// The HTML's text reads back as written, through CommonMark: an `&` htmd would write as
-    /// itself is escaped, so a literal `&amp;` or `&#59;` is no character reference, in a
-    /// paragraph, a bare `AT&T`, a link's text, list items, and a table's cells; within a code
+    /// itself is escaped where it could begin a character reference, so a literal `&amp;` or
+    /// `&#59;` is none, and kept bare elsewhere, in a paragraph, a bare `AT&T`, text a reference
+    /// would span across elements, a link's text, list items, and a table's cells; within a code
     /// span or a code block, where CommonMark reads none, it is written as itself.
     #[test]
     fn text_reads_back_as_written() {
-        let cases: [(&str, &[&str]); 6] = [
+        let cases: [(&str, &[&str]); 7] = [
             (
                 "<p>Fish &amp;amp; chips&amp;#59; &amp;copy</p>",
                 &["Fish &amp; chips&#59; &copy"],
             ),
-            ("<p>AT&T, AT&amp;T &amp; co</p>", &["AT&T, AT&T & co"]),
+            (
+                "<p>AT&T, AT&amp;T &amp; co &amp;ampx</p>",
+                &["AT&T, AT&T & co &ampx"],
+            ),
+            (
+                "<p><span>&amp;</span>copy; and &amp;<b>#59;</b> &amp;&amp;lt;</p>",
+                &["&copy; and &#59; &&lt;"],
+            ),
             (
                 "<p>See <a href=\"https://example.net/?a&amp;b\">&amp;copy; &amp;lt;x&amp;gt;</a></p>",
                 &["See &copy; &lt;x&gt;"],
@@ -1274,6 +1287,11 @@ mod tests {
         }
         let markdown = from_html("<p>`&amp;amp;`</p>").unwrap();
         assert_eq!(blocks(&markdown), ["`&amp;`"], "{markdown}");
+        // Prose keeps its `&` bare; only one that could begin a reference is escaped.
+        assert_eq!(
+            from_html("<p>AT&amp;T &amp; co &amp;amp; &amp;#59; &amp;copy;</p>").unwrap(),
+            "AT&T & co \\&amp; \\&#59; \\&copy;"
+        );
     }
 
     /// The sentinel is the first private-use character the body holds nowhere: neither as written

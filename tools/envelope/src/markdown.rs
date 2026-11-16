@@ -115,8 +115,9 @@ pub fn title(text: &str) -> String {
 
 /// Whether what follows a `&` could make it a character reference: an optional `#`, one or more
 /// ASCII letters and digits, then `;`. Every entity and numeric reference CommonMark reads is one,
-/// and a `&` escaped that begins none still reads as itself.
-fn reference_like(rest: &str) -> bool {
+/// and a `&` escaped that begins none still reads as itself. A writer that escapes only the `&`s
+/// that could begin a reference, as docproc-mail does a text `&`, asks it of what follows each.
+pub fn reference_like(rest: &str) -> bool {
     let rest = rest.strip_prefix('#').unwrap_or(rest);
     let name = rest.bytes().take_while(u8::is_ascii_alphanumeric).count();
     name > 0 && rest.as_bytes().get(name) == Some(&b';')

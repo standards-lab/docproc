@@ -157,7 +157,7 @@
       "creation_time": "2026-03-10T14:07:48Z",
       "modification_time": "2026-03-10T14:07:48Z",
       "html": "<html><head><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><div style=\"font-family:Segoe UI;font-size:10pt\"><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(2:02 PM)</span>: <span>Hi Tomás, do you have the Q1 inventory counts for the Leeds warehouse?</span></div><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(2:03 PM)</span>: <span>Nearly. Shelving &amp; racking are done; cold storage is still being counted.</span></div><div><span style=\"color:#5f5f5f\">Priya Raman</span> <span style=\"color:#8a8a8a\">(2:05 PM)</span>: <span>No rush. Can you send them by Thursday?</span></div><div><span style=\"color:#5f5f5f\">Tomás Ferreira</span> <span style=\"color:#8a8a8a\">(2:07 PM)</span>: <span>Will do 👍</span></div></div></body></html>",
-      "markdown": "Priya Raman (2:02 PM): Hi Tomás, do you have the Q1 inventory counts for the Leeds warehouse?\n\nTomás Ferreira (2:03 PM): Nearly. Shelving \\& racking are done; cold storage is still being counted.\n\nPriya Raman (2:05 PM): No rush. Can you send them by Thursday?\n\nTomás Ferreira (2:07 PM): Will do 👍"
+      "markdown": "Priya Raman (2:02 PM): Hi Tomás, do you have the Q1 inventory counts for the Leeds warehouse?\n\nTomás Ferreira (2:03 PM): Nearly. Shelving & racking are done; cold storage is still being counted.\n\nPriya Raman (2:05 PM): No rush. Can you send them by Thursday?\n\nTomás Ferreira (2:07 PM): Will do 👍"
     },
     "02-chat-multi-party.json": {
       "class": "IPM.Note.Microsoft.Conversation",

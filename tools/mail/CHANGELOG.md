@@ -31,10 +31,11 @@ output contract: a change to them is a change here. This changelog covers docpro
   blank lines dropped.
 - The text of a message's Markdown made from HTML reads back as written: its paragraphs, link
   text, list items, and table cells. htmd wrote a text `&` as itself, so a body whose text held a
-  literal `&amp;` or `&#59;` read back as `&` or `;`. Each `&` of the HTML's text is now written
-  `\&`, as `Shelving \& racking` in conversations.pst's chat, and as itself within a code span or a
-  code block, where CommonMark reads no character reference. Each is marked, before htmd writes
-  the Markdown, by a private-use character the body doesn't hold.
+  literal `&amp;` or `&#59;` read back as `&` or `;`. A `&` of the HTML's text that could begin a
+  character reference, by the test the destination and title rules use, is now written `\&`, but
+  within a code span or a code block, where CommonMark reads none. Any other `&`, as in `AT&T`,
+  is written as itself, as before. Each is marked, before htmd writes the Markdown, by a
+  private-use character the body doesn't hold.
 
 ### Added
 
