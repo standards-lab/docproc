@@ -12,6 +12,7 @@ import (
 	"regexp"
 
 	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/internal/schema1"
 	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
@@ -357,7 +358,7 @@ func (c *Converter) convert(ctx context.Context, dir, path string, format Format
 
 // officeProgram is office as its stderr shows it: each line begins with its name, and a
 // failure's with its outcome's label, which office writes as these.
-var officeProgram = cli.Program{
+var officeProgram = schema1.Program{
 	Name:   "spike-ai-pipeline-office",
 	Labels: []string{"media not written", "usage error", "refused", "failed"},
 }

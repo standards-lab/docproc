@@ -1,25 +1,38 @@
-// Package cli holds the contract the format CLIs this module runs share, office's
-// spike-ai-pipeline-office and mail's spike-ai-pipeline-mail, OneNote's to come, and the helpers
-// the adapters that run them, and the document package's renderers, share: one definition of
-// each, so every adapter reads a CLI the same way.
+// Package cli is the envelope reader: one definition of how docproc runs the system tools,
+// docproc-ooxml, docproc-mail, and docproc-onenote, and reads the common envelope they write
+// (context/layers.md, "Common envelope"), so every reader reads a tool the same way. It also holds
+// the helpers the readers and the document package's renderers share.
 //
-// The contract: a CLI exits 0 having written its output; 1 when it couldn't write its output or
-// its media; 2 when it refused its arguments, a fault in the adapter; 3 when it refused the
-// input, giving its reason; and 4 at a fault of its own. Each line it writes to stderr begins
-// with its name and ": ", a warning's then "warning: <where>: <what>", and a failure's its label
-// and its message. Each adapter binds its exported exit errors, such as office.ErrRefused and
-// email.ErrRefused, to the shared ones here, so errors.Is matches a refusal of any CLI through
-// any adapter's error, and keeps its own ExitError type, whose Is and Error are [Is] and
-// [ExitText].
+// [Read] runs a tool with its stdout and stderr on pipes. stdout is JSON Lines: Read yields each
+// line's kind and raw JSON, the reader decoding it, and checks that the first line is the
+// reader's kind and carries [Schema]. stderr is parsed as it arrives: `<tool>: warning: <where>:
+// <what>` is split at its first three ": " and unescaped into a [Warning], yielded among
+// the lines and always before the read's final error, and the run's message is the reason of the
+// last `<tool>: error: <reason>` line. The exit codes are the envelope's: 0 read; 1 stdout or media
+// not written; 2 usage; 3 refused before any output; 4 a fault of the tool's own. A run that
+// exits nonzero, or dies by a signal, is one [*ExitError], which reuses the tool package's
+// *tool.ExitError for the run's facts. A refusal's reason maps to a stage's class by
+// [RefusalClass], the one mapping, and a line's media name resolves by [ResolveMedium], the
+// envelope's media name rule. Its tests read the envelope's shared cases,
+// tools/envelope/cases.json, in place.
 //
 // Its exported identifiers:
 //
-//   - [ErrNotWritten], [ErrUsage], [ErrRefused], and [ErrFailed] are exit codes 1 to 4.
-//   - [Outcome] returns an exit code's error.
-//   - [Is] reports whether an exit code's error is a target, for an ExitError's Is.
-//   - [ExitText] returns an ExitError's text: its adapter, its outcome, and the CLI's message.
-//   - [Program] names a CLI's stderr prefix and the labels its failures begin with;
-//     [Program.ReadStderr] reads its warnings and its message.
+//   - [Schema] is the envelope's schema, "2"; [VersionPattern] matches a schema "2" --version,
+//     for each reader's tool.Spec.
+//   - [Read] runs a tool, as a [Run] describes, yielding each [Line]; [ErrSchema] is the error of
+//     a first line of another kind or schema.
+//   - [ExitError] is a run that exited nonzero or died by a signal; [ErrNotWritten], [ErrUsage],
+//     [ErrRefused], and [ErrFailed] are exit codes 1 to 4, ErrFailed a signal's too.
+//   - [Outcome] returns an exit code's error; [Is] and [ExitText] are a reader's own ExitError's
+//     Is and text, until the readers report a run through ExitError.
+//   - [Warning] is a warning a tool wrote to stderr.
+//   - [RefusalClass] maps a refusal's reason to its [Refusal]: one beginning "encrypted" to
+//     [Encrypted], onenote's [TableOfContents] to [ReadElsewhere]; [ExitError.Refusal] gives a
+//     run's. Until slice 15 moves the stage adapters out of dispatch, internal/cli can't import
+//     dispatch, so the stage maps a Refusal to dispatch's class, and Warning stands for
+//     dispatch.Warning.
+//   - [ResolveMedium] resolves a line's media name to its [Medium], its file and SHA-256.
 //   - [LimitedBuffer] keeps the first bytes written to it, for a tool's output read only in
 //     part.
 //   - [Spool] copies an input into a file in a working directory, for a tool that reads a path.

@@ -15,6 +15,7 @@ import (
 	"strconv"
 
 	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/internal/schema1"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -351,4 +352,4 @@ func (s *Stream) outcome(err error, stderr, input string) error {
 
 // mailProgram is mail as its stderr shows it: each line but its usage begins with its name, and
 // a failure's, for exit codes 1 to 4, with its error label.
-var mailProgram = cli.Program{Name: "spike-ai-pipeline-mail", Labels: []string{"error"}}
+var mailProgram = schema1.Program{Name: "spike-ai-pipeline-mail", Labels: []string{"error"}}

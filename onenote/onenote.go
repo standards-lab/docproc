@@ -13,6 +13,7 @@ import (
 	"regexp"
 
 	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/internal/schema1"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -302,4 +303,4 @@ func (s *Stream) outcome(err error, stderr, input string) error {
 
 // onenoteProgram is onenote as its stderr shows it: each line but its usage begins with its
 // name, and a failure's, for exit codes 1 to 4, with its error label.
-var onenoteProgram = cli.Program{Name: "spike-ai-pipeline-onenote", Labels: []string{"error"}}
+var onenoteProgram = schema1.Program{Name: "spike-ai-pipeline-onenote", Labels: []string{"error"}}
