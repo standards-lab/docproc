@@ -36,6 +36,9 @@ pub struct Stroke {
     pub transparency: Option<u8>,
     /// 0 is a round ball, 1 a rectangle, as in ISF.
     pub pen_tip: Option<u8>,
+    /// The id of the recognised word the stroke belongs to; none for a stroke that is drawing,
+    /// not recognised handwriting. The SVG doesn't read it.
+    pub word: Option<u32>,
 }
 
 impl Stroke {
@@ -50,6 +53,7 @@ impl Stroke {
             color: stroke.color(),
             transparency: stroke.transparency(),
             pen_tip: stroke.pen_tip(),
+            word: stroke.recognized_word().map(|word| word.id()),
         }
     }
 }
@@ -260,6 +264,7 @@ mod tests {
             color: None,
             transparency: None,
             pen_tip: None,
+            word: None,
         }
     }
 

@@ -395,10 +395,22 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives
   79 B (8). The run text missing, 538 B, is every title's date and time paragraphs; the
-  `ocr_text` missing, 646 B, is OCR text no alt text holds, of which the content rule appends
-  566 B, the sentences of 6 images, whitespace collapsed; the tag labels missing, 30 B, are
-  "To Do", which the spike writes only as a task box. No image carries a `hyperlink`. Media
-  written over mail and onenote: 235 MB.
+  `ocr_text` missing, 646 B, is OCR text no alt text holds, all of it in 6 images with no alt
+  text; the tag labels missing, 30 B, are "To Do", which the spike writes only as a task box.
+  No image carries a `hyperlink`. Media written over mail and onenote: 235 MB.
+- **onenote's OCR text against the alt text.** docproc-onenote's content rule is measured over
+  the same 17 sections, unchanged against `~/docs`' MANIFEST.json, as docproc-onenote ships it:
+  onenote_parser 2.1.0, and the docproc-envelope crate on Rust 1.100.0, with NFC, the
+  dictionary-free UAX #29 word and sentence boundaries, and general categories from ICU4X 2.4.0
+  on Unicode 18.0.0, both texts read as plain text with no CommonMark reader, and the crate's own
+  Myers alignment. A scratch build of the tool writes each image's comparison of its `ocr_text`
+  with its `alt_text` to stderr. Of the 135 images holding OCR text (5,572 B), the sentences the
+  rule appends are 566 B, whitespace collapsed, in those 6 images: interop's
+  `FileSyncWOPI_OneNoteWithODB.one` (414 B in 40 sentences, the recognizer's reading of a scan as
+  CJK characters) and five in `LargeData.one` (30 or 31 B each, a number and "This is a testing
+  document."). The other 80 B of the 646 are the line breaks and spaces around those sentences
+  and one sentence, `',`, that holds no word, which the rule never appends. Every other image's
+  OCR text is in its alt text by the rule.
 
 ## Consumers of structured text
 

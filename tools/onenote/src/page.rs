@@ -11,14 +11,22 @@ pub struct Page {
     /// The page's own ink, every ink container's strokes in one drawing at their offsets; none
     /// when the page has no strokes.
     pub ink: Option<Ink>,
-    /// The page's recognised ink words, each its best guess, over its recognition's lines in
-    /// order.
-    pub words: Vec<String>,
+    /// The page's recognised ink words, over its recognition's lines in order.
+    pub words: Vec<Word>,
 }
 
-/// An ink drawing: its SVG's name in the media directory.
+/// A recognised ink word: its best guess, and the id its strokes name it by.
+pub struct Word {
+    /// Unique among the page's words; meaningless across pages.
+    pub id: u32,
+    pub text: String,
+}
+
+/// An ink drawing: its SVG's name in the media directory, and the ids of the recognised words
+/// its strokes belong to, each once.
 pub struct Ink {
     pub file: String,
+    pub words: Vec<u32>,
 }
 
 /// A container on a page. Offsets are from the page's origin, in half-inch units, as stored; a
@@ -83,6 +91,11 @@ pub struct Image {
     /// The name of the file it was inserted from, as stored; never used as a path.
     pub filename: Option<String>,
     pub alt_text: Option<String>,
+    /// The text OneNote recognised in the image, as stored; the Markdown adds what of it the
+    /// alt text lacks.
+    pub ocr_text: Option<String>,
+    /// The target the image links to.
+    pub hyperlink: Option<String>,
 }
 
 /// An embedded file, its file named as an image's is.

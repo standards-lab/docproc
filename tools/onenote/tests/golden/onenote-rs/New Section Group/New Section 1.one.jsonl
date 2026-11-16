@@ -1,3 +1,3 @@
 {"line":"notebook","schema":"2","input":"section","name":"New Section 1"}
 {"line":"section","id":"07e1868e-e7d0-c24e-85c6-7cbe04486764","path":["New Section 1"],"color":"#9bbbd2"}
-{"line":"page","id":"3fdc5978-8647-8e4c-85de-356300ee58ab","section":"07e1868e-e7d0-c24e-85c6-7cbe04486764","level":1,"title":"Test Page 2","creation_time":"2020-10-27T10:47:52Z","modification_time":"2020-10-27T10:52:31Z","author":"Markus Siemens","markdown":"# Test Page 2\n\nTest 1\n\nTest 2"}
+{"line":"page","id":"3fdc5978-8647-8e4c-85de-356300ee58ab","section":"07e1868e-e7d0-c24e-85c6-7cbe04486764","level":1,"title":"Test Page 2","creation_time":"2020-10-27T10:47:52Z","modification_time":"2020-10-27T10:52:31Z","author":"Markus Siemens","markdown":"# Test Page 2\n\nTuesday, 27. October 2020 11:47\n\nTest 1\n\nTest 2"}

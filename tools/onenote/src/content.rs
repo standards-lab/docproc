@@ -102,10 +102,10 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
     })
 }
 
-/// A page's recognised ink words, each its best guess, over its recognition's lines in order,
-/// and the other guesses of those that have them, each by its index among the words. A word
-/// with no guess is left out.
-fn recognition(page: &Page) -> (Vec<String>, Vec<InkAlternatives>) {
+/// A page's recognised ink words, each its best guess and its id, over its recognition's lines
+/// in order, and the other guesses of those that have them, each by its index among the words.
+/// A word with no guess is left out.
+fn recognition(page: &Page) -> (Vec<page::Word>, Vec<InkAlternatives>) {
     let mut words = Vec::new();
     let mut alternatives = Vec::new();
     let Some(recognition) = page.ink_recognition() else {
@@ -121,7 +121,10 @@ fn recognition(page: &Page) -> (Vec<String>, Vec<InkAlternatives>) {
                 alternatives: rest.to_vec(),
             });
         }
-        words.push(best.clone());
+        words.push(page::Word {
+            id: word.id(),
+            text: best.clone(),
+        });
     }
     (words, alternatives)
 }
@@ -333,6 +336,8 @@ impl Reader<'_> {
             file,
             filename,
             alt_text: text(image.alt_text()),
+            ocr_text: text(image.text()),
+            hyperlink: text(image.hyperlink_url()),
         })
     }
 
@@ -367,7 +372,8 @@ impl Reader<'_> {
     }
 
     /// A drawing of `strokes`, the third store site: its SVG stored in the media, and its
-    /// record. Strokes with no points draw nothing and have none.
+    /// record, with the recognised words its strokes belong to. Strokes with no points draw
+    /// nothing and have none, so their words are no drawing's.
     fn drawing(&mut self, strokes: &[Stroke]) -> Result<Option<page::Ink>, Fault> {
         let Some(svg) = ink::svg(strokes) else {
             return Ok(None);
@@ -381,7 +387,10 @@ impl Reader<'_> {
             extension: None,
             file_type: None,
         });
-        Ok(Some(page::Ink { file }))
+        let mut words: Vec<u32> = strokes.iter().filter_map(|stroke| stroke.word).collect();
+        words.sort_unstable();
+        words.dedup();
+        Ok(Some(page::Ink { file, words }))
     }
 
     /// A record's file: its content streamed into the media and named. Data that is missing or
