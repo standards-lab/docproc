@@ -35,8 +35,8 @@ output contract: a change to them is a change here. This changelog covers docpro
   character reference, by the test the destination and title rules use, is now written `\&`, but
   within a code span or a code block, where CommonMark reads none. Any other `&`, as in `AT&T`,
   is written as itself, as before. Each is marked, before htmd writes the Markdown, by a
-  private-use character the body doesn't hold; a body that holds every one is left without
-  Markdown, warned of as `the Markdown body can't be made into Markdown (it holds every
+  private-use character the body doesn't hold; a body with a text `&` that holds every one is
+  left without Markdown, warned of as `the Markdown body can't be made into Markdown (it holds every
   private-use character); left out`.
 
 ### Added

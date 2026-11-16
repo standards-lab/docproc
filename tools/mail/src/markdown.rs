@@ -447,15 +447,24 @@ pub fn from_html(html: &str) -> Result<String, String> {
         .build();
     let fault = |err: std::io::Error| format!("can't be made into Markdown ({err})");
     let tree = htmd.html_to_tree(html).map_err(fault)?;
+    if !has_text_ampersand(&tree) {
+        return Ok(htmd.tree_to_markdown(&tree));
+    }
     let sentinel = sentinel(html, &tree)
         .ok_or("can't be made into Markdown (it holds every private-use character)")?;
-    let marked = mark_ampersands(&tree, sentinel);
-    let markdown = htmd.tree_to_markdown(&tree);
-    Ok(if marked {
-        ampersands(&markdown, sentinel)
-    } else {
-        markdown
-    })
+    mark_ampersands(&tree, sentinel);
+    Ok(ampersands(&htmd.tree_to_markdown(&tree), sentinel))
+}
+
+/// Whether any of `tree`'s text holds a `&`, the only case that needs a sentinel.
+fn has_text_ampersand(tree: &Rc<Node>) -> bool {
+    let mut found = false;
+    each_node(tree, |node| {
+        if let NodeData::Text { contents } = &node.data {
+            found |= contents.borrow().contains('&');
+        }
+    });
+    found
 }
 
 /// Calls `visit` on each node of `tree`, the tree itself first, in document order. The walk keeps
@@ -493,9 +502,8 @@ fn sentinel(html: &str, tree: &Rc<Node>) -> Option<char> {
 /// Replaces each `&` of `tree`'s text nodes, as parsed, its character references decoded, with
 /// `sentinel`, so htmd, which writes a text `&` as itself, writes the sentinel instead. Attribute
 /// values are left alone: a link's or an image's are written by [`anchor`] and [`image`], whose
-/// rules escape a `&` already. Whether any text held one.
-fn mark_ampersands(tree: &Rc<Node>, sentinel: char) -> bool {
-    let mut marked = false;
+/// rules escape a `&` already.
+fn mark_ampersands(tree: &Rc<Node>, sentinel: char) {
     each_node(tree, |node| {
         if let NodeData::Text { contents } = &node.data {
             let mut contents = contents.borrow_mut();
@@ -503,11 +511,9 @@ fn mark_ampersands(tree: &Rc<Node>, sentinel: char) -> bool {
                 *contents = contents
                     .replace('&', sentinel.encode_utf8(&mut [0; 4]))
                     .into();
-                marked = true;
             }
         }
     });
-    marked
 }
 
 /// `markdown`, written by htmd from a tree [`mark_ampersands`] marked, with each `sentinel` the
@@ -1298,7 +1304,7 @@ mod tests {
     /// Markdown escapes, wherever the body holds it: in its text, as written or through a character
     /// reference, and in a link's or an image's destination and title, which are attribute values.
     /// A body holding every private-use character has none left to stand for its `&`s, and makes no
-    /// Markdown.
+    /// Markdown; without a text `&` it needs none, and makes its Markdown.
     #[test]
     fn private_use_characters_read_back_as_written() {
         let html = "<p>\u{E000} &amp;amp; <code>\u{E000}&amp;</code> &#xE001;&amp;#59; \
@@ -1327,6 +1333,8 @@ mod tests {
             .collect();
         let refused = from_html(&format!("<p>&amp;amp; {every}</p>")).unwrap_err();
         assert!(refused.contains("every private-use character"), "{refused}");
+        let read = from_html(&format!("<p>{every}</p>")).unwrap();
+        assert_eq!(blocks(&read), [every.as_str()]);
     }
 
     /// The `src` of a start tag, quoted either way or bare, past other attributes, a name that
