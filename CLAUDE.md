@@ -8,6 +8,8 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 - [`tools/ooxml/README.md`](tools/ooxml/README.md): docproc-ooxml, its tasks run from
   `tools/ooxml`.
 - [`tools/mail/README.md`](tools/mail/README.md): docproc-mail, its tasks run from `tools/mail`.
+- [`tools/onenote/README.md`](tools/onenote/README.md): docproc-onenote, its tasks run from
+  `tools/onenote`.
 - [`tools/envelope/src/lib.rs`](tools/envelope/src/lib.rs): docproc-envelope, the Rust tools'
   shared envelope crate, tested by each Rust tool's check.
 - `mise run check`: the check.
