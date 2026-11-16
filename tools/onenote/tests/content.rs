@@ -319,9 +319,8 @@ fn the_rest_of_the_outline_in_order() {
     }
 }
 
-/// Every field of tests/fixtures/content.json, the content expectations the finding scores
-/// (bench/findings.rs), holds in its page's read: the value at its pointer, or no value for a
-/// null.
+/// Every field of tests/fixtures/content.json, the content expectations the spike's finding
+/// scored, holds in its page's read: the value at its pointer, or no value for a null.
 #[test]
 fn every_content_expectation_holds() {
     let bytes = std::fs::read(fixture("content.json")).unwrap();

@@ -1,4 +1,4 @@
-//! spike-ai-pipeline-onenote: OneNote sections, packages, and notebooks to a JSON model.
+//! docproc-onenote: OneNote sections, packages, and notebooks to a JSON model.
 //!
 //! It reads one input, sniffed by content, and writes JSON Lines of schema "1" to stdout:
 //! nothing else goes there. Warnings and errors are single lines on stderr. Exit codes:
@@ -30,10 +30,16 @@ use jsonl::Lines;
 use media::Media;
 use sniff::Input;
 
-const NAME: &str = "spike-ai-pipeline-onenote";
+/// The binary's name, which Cargo.toml's package gives, leading every stderr line.
+const NAME: &str = env!("CARGO_BIN_NAME");
 
-const USAGE: &str = "usage: spike-ai-pipeline-onenote [--media <dir>] <input>
-       spike-ai-pipeline-onenote --version";
+const USAGE: &str = concat!(
+    "usage: ",
+    env!("CARGO_BIN_NAME"),
+    " [--media <dir>] <input>\n       ",
+    env!("CARGO_BIN_NAME"),
+    " --version"
+);
 
 /// Why a run stopped short of exit 0.
 pub enum Fault {

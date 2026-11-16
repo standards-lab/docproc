@@ -1,17 +1,20 @@
 [package]
-name = "spike-ai-pipeline-onenote"
+name = "docproc-onenote"
 version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-description = "The OneNote CLI of spike-ai-pipeline: OneNote sections, packages, and notebooks to a JSON model"
-repository = "https://github.com/JaimeStill/spike-ai-pipeline-onenote"
+description = "docproc's OneNote tool: OneNote sections, packages, and notebooks to a JSON model"
 publish = false
 
 [dependencies]
 # The OneNote reader (MPL-2.0), used unmodified: sections, notebooks, and, through onepkg,
 # packages. It brings cab 0.6 for .onepkg, and time and typed-path, which its API takes and
-# returns.
-onenote_parser = { version = "2.1.0", features = ["onepkg"] }
+# returns. Pinned exactly: the CLI works around this release's exact text and logic, so a new
+# release is a reviewed change. src/notebook.rs matches its warning for a section it can't read,
+# "failed to import section ", and follows its choice of a package's .onetoc2 and its cabinet
+# entry names' normalisation; src/section.rs matches its NotASectionFile message, "Not a section
+# file: "; src/stdout.rs keeps its dumps on malformed sections off the lines.
+onenote_parser = { version = "=2.1.0", features = ["onepkg"] }
 typed-path = "0.12.4"
 time = "0.3.55"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -34,8 +37,8 @@ time = { version = "0.3.55", features = ["macros"] }
 # An XML reader, so the tests check each ink SVG is well-formed; the CLI writes SVG itself.
 roxmltree = "0.21.2"
 
-# The findings run's scorer (scripts/findings.sh, `mise run findings`): the check compiles it
-# and never runs it.
-[[example]]
-name = "findings"
-path = "bench/findings.rs"
+# A release binary checks integer arithmetic as a debug one does: an overflow panics, a fault the
+# CLI reports, instead of wrapping silently into a wrong offset or length. The check runs every
+# test against this profile.
+[profile.release]
+overflow-checks = true

@@ -117,9 +117,14 @@ mod tests {
 
     /// A content stored twice is written once: the file removed after the first store is not
     /// written again by the second, which still names it.
+    ///
+    /// It writes under target/, as the integration tests do under CARGO_TARGET_TMPDIR; Cargo
+    /// sets that for integration tests alone, so this unit test writes beside its own
+    /// executable.
     #[test]
     fn a_repeated_content_is_written_once() {
-        let dir = std::env::temp_dir().join(format!("onenote-media-{}", std::process::id()));
+        let exe = std::env::current_exe().unwrap();
+        let dir = exe.parent().unwrap().join("media-repeated-unit");
         let _ = fs::remove_dir_all(&dir);
         let mut media = Media::new(Some(dir.join("made")));
         let first = media.store(b"abc", Some("txt")).ok().unwrap();

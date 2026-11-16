@@ -12,10 +12,10 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
-const BIN: &str = env!("CARGO_BIN_EXE_spike-ai-pipeline-onenote");
+const BIN: &str = env!("CARGO_BIN_EXE_docproc-onenote");
 
 /// The prefix of every error and warning line.
-pub const NAME: &str = "spike-ai-pipeline-onenote";
+pub const NAME: &str = "docproc-onenote";
 
 /// One run of the binary: its exit code, stdout and stderr.
 pub struct Run {

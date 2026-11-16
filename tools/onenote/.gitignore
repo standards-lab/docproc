@@ -1,9 +1,5 @@
-# marathon working files.
-.claude/plans/
-.claude/briefs/
-
 # Build output.
 target/
 
-# Untracked state: the findings run's downloads, builds and outputs.
+# Untracked state: the publish task's binary.
 .state/

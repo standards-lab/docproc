@@ -10,8 +10,8 @@ use std::path::Path;
 
 use common::{NAME, built, error, fixture, patched, run, run_to, scratch};
 
-const USAGE: &str = "usage: spike-ai-pipeline-onenote [--media <dir>] <input>
-       spike-ai-pipeline-onenote --version
+const USAGE: &str = "usage: docproc-onenote [--media <dir>] <input>
+       docproc-onenote --version
 ";
 
 /// A small section of each format: desktop (Interop's) and OneDrive (onenote.rs's).
@@ -175,8 +175,8 @@ fn a_password_protected_section_is_refused_with_the_parsers_reason() {
 }
 
 /// A parser panic is caught and refused with exit 3, never 4. The byte set here makes
-/// onenote_parser add past its integer's range; the tests run the debug binary, whose overflow
-/// checks make that a panic (a release build reads a different error there).
+/// onenote_parser add past its integer's range; the tests run the release binary, whose overflow
+/// checks (Cargo.toml's release profile) make that a panic.
 #[test]
 fn a_parser_panic_is_refused_with_exit_3() {
     let input = patched(DESKTOP, 9348, 0xFF, "panic.one");
