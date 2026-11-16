@@ -24,8 +24,7 @@
 //     a first line of another kind or schema.
 //   - [ExitError] is a run that exited nonzero or died by a signal; [ErrNotWritten], [ErrUsage],
 //     [ErrRefused], and [ErrFailed] are exit codes 1 to 4, ErrFailed a signal's too.
-//   - [Outcome] returns an exit code's error; [Is] and [ExitText] are a reader's own ExitError's
-//     Is and text, until the readers report a run through ExitError.
+//   - [Outcome] returns an exit code's error.
 //   - [Warning] is a warning a tool wrote to stderr.
 //   - [RefusalClass] maps a refusal's reason to its [Refusal]: one beginning "encrypted" to
 //     [Encrypted], onenote's [TableOfContents] to [ReadElsewhere]; [ExitError.Refusal] gives a

@@ -120,9 +120,11 @@
 //     attachments found below it, at any depth. A message of a conversation class is a
 //     conversation record, its email.Conversation view, then its transcript's Markdown, as a
 //     message is.
-//   - [OneNoteStage], for route.OneNote: onenote's records, a page's record followed by its
-//     Markdown, and each of its media found as a part, "page <id>, <where>"; a medium onenote
-//     wrote no content for is a record.
+//   - [OneNoteStage], for route.OneNote: docproc-onenote's records, a page's record followed by
+//     its Markdown, and each of its media found as a part, "page <id>, media <n>"; a medium
+//     docproc-onenote wrote no content for is a record. A password-protected section, whose
+//     refusal internal/cli classes as encrypted, ends with [ErrEncrypted], and a table of
+//     contents, refused as read elsewhere, with [ErrReadElsewhere].
 //   - [AudioStage], for route.Audio: a WAV, FLAC, MP3, Ogg, or M4A through audio's Splitter.
 //     The part's plan comes first, a record holding an [AudioPlan], then each window in plan
 //     order, an audio output holding a 16 kHz mono WAV, its Meta its index, span, cut, and seams.

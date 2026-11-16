@@ -24,9 +24,9 @@ const out = "generated"
 // password is the encrypted 7z archives' password, which no test gives.
 const password = "infected"
 
-// The onenote package's copy of onenote.rs's section group, two of whose files the cabinet
+// docproc-onenote's committed copy of onenote.rs's section group, two of whose files the cabinet
 // packages as a .onepkg would.
-const sectionGroup = "../../onenote/testdata/onenote/fixtures/onenote-rs/New Section Group"
+const sectionGroup = "../../tools/onenote/tests/fixtures/onenote-rs/New Section Group"
 
 func main() {
 	if err := run(); err != nil {

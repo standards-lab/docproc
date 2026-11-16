@@ -47,7 +47,8 @@ func (e *ExitError) Is(target error) bool {
 	if e.Signal != "" {
 		return target == ErrFailed
 	}
-	return Is(e.Code, target)
+	outcome := outcomes[e.Code]
+	return outcome != nil && outcome == target
 }
 
 // Refusal returns the class of a refusal's reason by [RefusalClass]; [Unclassed] for a run that

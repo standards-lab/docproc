@@ -104,7 +104,7 @@ What each holds:
   alone, which 7-Zip's listing reports in its Method; its content is 1 KiB of zeros, so it fails
   to decompress whole.
 - `notebook.cab`: a OneNote package's shape, an MSZIP cabinet of `Open Notebook.onetoc2` and
-  `New Section 1.one` from onenote.rs's `New Section Group` (`onenote/testdata/onenote/fixtures/
+  `New Section 1.one` from onenote.rs's `New Section Group` (`tools/onenote/tests/fixtures/
   onenote-rs/`), named .cab, so it routes to the archive stage rather than onenote. No .onepkg is
   committed anywhere to copy: onenote's tests build theirs at run time, with the `cab` crate, as
   this does.

@@ -33,26 +33,6 @@ var outcomes = map[int]error{
 // ErrFailed; nil for a code outside 1 to 4.
 func Outcome(code int) error { return outcomes[code] }
 
-// Is reports whether target is the error of exit code code; false for a code outside 1 to 4.
-func Is(code int, target error) bool {
-	outcome := outcomes[code]
-	return outcome != nil && outcome == target
-}
-
-// ExitText returns the text of an adapter's ExitError: who, the adapter and its CLI as the
-// adapter names them, such as "office" or "email: mail"; then the code's outcome, or the code
-// itself outside 1 to 4; then message, the CLI's, if any.
-func ExitText(who string, code int, message string) string {
-	msg := fmt.Sprintf("%s: exit code %d", who, code)
-	if outcome := outcomes[code]; outcome != nil {
-		msg = who + ": " + outcome.Error()
-	}
-	if message != "" {
-		msg += ": " + message
-	}
-	return msg
-}
-
 // LimitedBuffer is a writer that keeps the first Limit bytes written to it and discards the
 // rest, for a tool's output that is read only in part, such as a CLI's stderr; its writes never
 // fail.

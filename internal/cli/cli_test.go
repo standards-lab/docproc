@@ -5,55 +5,31 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 	"testing/iotest"
 
 	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/tool"
 )
 
-// TestOutcome: exit codes 1 to 4 are each their own error and match no other's; any other code
-// has none and matches nothing, nil among it.
+// TestOutcome: exit codes 1 to 4 are each their own error, and an ExitError of one matches its
+// code's error and no other; any other code has none, and its ExitError matches none.
 func TestOutcome(t *testing.T) {
 	all := []error{cli.ErrNotWritten, cli.ErrUsage, cli.ErrRefused, cli.ErrFailed}
-	for i, want := range all {
-		code := i + 1
+	for code := -1; code <= 9; code++ {
+		var want error
+		if code >= 1 && code <= 4 {
+			want = all[code-1]
+		}
 		if got := cli.Outcome(code); got != want {
 			t.Errorf("Outcome(%d) = %v, want %v", code, got, want)
 		}
+		err := error(&cli.ExitError{ExitError: &tool.ExitError{Program: "p", Code: code}})
 		for _, other := range all {
-			if cli.Is(code, other) != (other == want) {
-				t.Errorf("Is(%d, %v) = %t", code, other, other != want)
+			if errors.Is(err, other) != (other == want) {
+				t.Errorf("exit code %d matches %v: %t", code, other, other != want)
 			}
-		}
-	}
-	for _, code := range []int{0, 5, 9, -1} {
-		if got := cli.Outcome(code); got != nil {
-			t.Errorf("Outcome(%d) = %v, want nil", code, got)
-		}
-		if cli.Is(code, nil) || slices.ContainsFunc(all, func(e error) bool { return cli.Is(code, e) }) {
-			t.Errorf("Is(%d, ...) matches", code)
-		}
-	}
-}
-
-// TestExitText: the text names the adapter, the code's outcome or the code outside 1 to 4, and
-// the message when there is one.
-func TestExitText(t *testing.T) {
-	for _, c := range []struct {
-		who     string
-		code    int
-		message string
-		want    string
-	}{
-		{"office", 3, "encrypted", "office: refused: encrypted"},
-		{"email: mail", 1, "", "email: mail: not written"},
-		{"office", 9, "m", "office: exit code 9: m"},
-		{"office", 0, "", "office: exit code 0"},
-	} {
-		if got := cli.ExitText(c.who, c.code, c.message); got != c.want {
-			t.Errorf("ExitText(%q, %d, %q) = %q, want %q", c.who, c.code, c.message, got, c.want)
 		}
 	}
 }

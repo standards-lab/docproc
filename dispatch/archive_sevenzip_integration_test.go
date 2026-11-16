@@ -14,6 +14,7 @@ import (
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/inspect"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/sevenzip"
 )
@@ -101,7 +102,7 @@ func TestSevenZipStreams(t *testing.T) {
 			t.Errorf("%s: %s at %q", ev.Part.Name, ev.Part.ContentType.Route, ev.Part.Where)
 		}
 	}
-	section, err := os.ReadFile(filepath.Join("..", "onenote", "testdata", "onenote", "fixtures", "onenote-rs", "New Section Group", "New Section 1.one"))
+	section, err := os.ReadFile(filepath.Join(tooltest.Tools(t, "onenote/tests/fixtures/onenote-rs"), "New Section Group", "New Section 1.one"))
 	if err != nil {
 		t.Fatal(err)
 	}

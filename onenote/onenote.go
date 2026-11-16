@@ -1,58 +1,58 @@
 package onenote
 
 import (
-	"bufio"
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"fmt"
-	"io"
 	"iter"
-	"os"
 	"path/filepath"
-	"regexp"
 
 	"github.com/standards-lab/docproc/internal/cli"
-	"github.com/standards-lab/docproc/internal/schema1"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// OneNoteMinimum is the oldest onenote the Reader accepts.
+// OneNoteMinimum is the oldest docproc-onenote the Reader accepts, its first schema "2" release.
 const OneNoteMinimum = "0.1.0"
 
-// OneNoteSpec declares onenote's spike-ai-pipeline-onenote, minimum 0.1.0, for either runner's
-// constructor. onenote --version prints the version alone, as "0.1.0", and the pattern takes the
-// dotted numbers, as mail's does. A caller that needs another program path or a KillAfter period
-// sets them on the Spec returned.
+// OneNoteSpec declares docproc-onenote, minimum OneNoteMinimum, for the exec runner's
+// constructor. Its --version prints the version alone, a build other than a release's appending +
+// and its commit, then `schema 2`, which internal/cli's version pattern requires, so a
+// docproc-onenote of another schema is refused as the Tool is built. A caller that needs another
+// program path or a KillAfter period sets them on the Spec returned.
 func OneNoteSpec() tool.Spec {
 	return tool.Spec{
-		Program:        "spike-ai-pipeline-onenote",
+		Program:        "docproc-onenote",
 		VersionArgs:    []string{"--version"},
-		VersionPattern: regexp.MustCompile(`^(\d+(?:\.\d+)*)`),
+		VersionPattern: cli.VersionPattern,
 		Minimum:        OneNoteMinimum,
 	}
 }
 
 // Config is what a Reader is built over: the Tool the caller built.
 type Config struct {
-	// OneNote is onenote's spike-ai-pipeline-onenote, typically built from OneNoteSpec through
-	// the exec runner. It is required.
+	// OneNote is docproc-onenote, built from OneNoteSpec through the exec runner. It is required,
+	// and a container runner's is refused.
 	OneNote *tool.Tool
 }
 
-// Reader reads OneNote sections, notebooks, and packages through onenote: an input in, its
-// records streamed out as onenote writes them. It runs no inference. Its methods are safe for
-// concurrent use; each Stream is one read, used by one goroutine.
+// Reader reads OneNote sections, packages, and notebooks through docproc-onenote: an input in, its
+// records streamed out as docproc-onenote writes them. It runs no inference. Its methods are safe
+// for concurrent use.
 type Reader struct {
 	onenote *tool.Tool
 }
 
 // NewReader builds a Reader over cfg's Tool. A nil OneNote is the caller's mistake, and panics
-// naming the field. It refuses a OneNote whose version is older than OneNoteMinimum, whatever
-// minimum the Tool's own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
+// naming the field; a OneNote the container runner built is refused with an error matching
+// ErrRequest, since docproc-onenote reads the input's path in place. It refuses a OneNote whose
+// version is older than OneNoteMinimum, whatever minimum the Tool's own Spec declared, with a
+// *tool.VersionError wrapping tool.ErrTooOld.
 func NewReader(cfg Config) (*Reader, error) {
 	if cfg.OneNote == nil {
 		panic("onenote: Config.OneNote is nil")
+	}
+	if _, ok := cfg.OneNote.Image(); ok {
+		return nil, fmt.Errorf("onenote: %s runs in a container; it runs on the exec runner alone: %w", cfg.OneNote.Name(), ErrRequest)
 	}
 	if err := cfg.OneNote.AtLeast(OneNoteMinimum); err != nil {
 		return nil, err
@@ -62,245 +62,143 @@ func NewReader(cfg Config) (*Reader, error) {
 
 // Request is one input's read.
 type Request struct {
-	// Input is the path of the .one section, the .onetoc2 notebook or notebook directory, or the
-	// .onepkg package to read; onenote sniffs its kind from its content, never its name. Read
-	// makes it absolute, so a name that begins with "-" is never taken as an option. It is
-	// required.
+	// Input is the path of the .one section or the .onepkg package to read, or, an operator's
+	// read, the .onetoc2 notebook or notebook directory, which the caller owns; docproc-onenote
+	// sniffs its kind from its content, never its name, and reads it in place. Read makes it
+	// absolute, so a name that begins with "-" is never taken as an option. It is required.
 	Input string
-	// Media is the directory onenote writes each distinct image, embedded file, and ink drawing
-	// into once, named by its SHA-256, created if missing; the caller owns it. Read makes it
-	// absolute. "" writes nothing, though the records name the files all the same.
+	// Media is the directory docproc-onenote writes each distinct image, embedded file, and ink
+	// drawing into once, named by its media name, created once the input is read; the caller owns
+	// it. Each Medium's Path then names its file there. Read makes it absolute. "" writes nothing,
+	// and the lines name the files all the same.
 	Media string
+	// FileOnly passes --file-only, under which docproc-onenote refuses a table of contents, a
+	// .onetoc2 or a notebook directory, before any section is read, with its fixed reason,
+	// cli.TableOfContents, since each section is read as its own input; a section and a package
+	// read as they do without it.
+	FileOnly bool
 }
 
-// ErrRequest is the cause of a request Read refuses before anything runs: one with no Input, or
-// whose Input or Media can't be made absolute.
+// ErrRequest is the cause of every refused request, one with no Input or whose Input or Media
+// can't be made absolute, and of a OneNote the container runner built.
 var ErrRequest = errors.New("invalid request")
 
-// The outcomes of a onenote run that exits nonzero, each its exit code's; an *ExitError matches
-// its code's through errors.Is. Each is the shared exit error of every CLI this module runs, so
-// ErrRefused matches the office and email packages' refusals too, and email.ErrRefused
-// onenote's.
+// The outcomes of a docproc-onenote run that exits nonzero, each its exit code's, internal/cli's
+// shared errors: the *cli.ExitError a read returns matches its code's.
 var (
-	// ErrNotWritten is exit code 1: onenote couldn't write its output, the media directory, or a
-	// file in it.
+	// ErrNotWritten is exit code 1: docproc-onenote couldn't write stdout or its media.
 	ErrNotWritten = cli.ErrNotWritten
-	// ErrUsage is exit code 2: onenote refused its arguments, a fault in this package.
+	// ErrUsage is exit code 2: docproc-onenote refused its arguments, a fault in this package.
 	ErrUsage = cli.ErrUsage
-	// ErrRefused is exit code 3: onenote refused the input before any output, giving its reason,
-	// such as a password-protected section's.
+	// ErrRefused is exit code 3: docproc-onenote refused the input before any output, giving its
+	// reason, such as a password-protected section's or, under --file-only, a table of contents'.
 	ErrRefused = cli.ErrRefused
-	// ErrFailed is exit code 4: a fault of onenote's own.
+	// ErrFailed is exit code 4, or a death by a signal: a fault of docproc-onenote's own.
 	ErrFailed = cli.ErrFailed
 )
 
-// ExitError reports a onenote run that exited 1, 2, 3, or 4: its exit code and onenote's
-// message. It matches the code's error, ErrNotWritten, ErrUsage, ErrRefused, or ErrFailed,
-// through errors.Is, and unwraps to the Tool's *tool.ExitError.
-type ExitError struct {
-	// Code is onenote's exit code.
-	Code int
-	// Message is onenote's message on stderr, its first line that isn't a warning, with
-	// onenote's own prefix, its error label, and the input's path taken off: for a refusal,
-	// onenote's reason.
-	Message string
-	err     error
-}
+// ErrSchema is the error of a run whose first line isn't a schema "2" notebook line.
+var ErrSchema = cli.ErrSchema
 
-func (e *ExitError) Error() string { return cli.ExitText("onenote", e.Code, e.Message) }
-
-// Is reports whether target is the error of e's exit code.
-func (e *ExitError) Is(target error) bool { return cli.Is(e.Code, target) }
-
-// Unwrap returns the Tool's *tool.ExitError.
-func (e *ExitError) Unwrap() error { return e.err }
-
-// Stream is one read of an input: its records, streamed while onenote runs, and onenote's
-// warnings once they have all been read.
-type Stream struct {
-	onenote *tool.Tool
-	ctx     context.Context
-	// input and media are the request's Input and Media, made absolute; media "" for none.
-	input    string
-	media    string
-	started  bool
-	warnings []string
-}
-
-// Read returns the read of req's input under ctx. It refuses an invalid request at once, with an
-// error wrapping ErrRequest: an empty Input, or an Input or Media that can't be made absolute,
-// which filepath.Abs does from the working directory. Nothing runs until the Stream's Records
-// are ranged over.
-func (r *Reader) Read(ctx context.Context, req Request) (*Stream, error) {
-	if req.Input == "" {
-		return nil, fmt.Errorf("onenote: %w: no input", ErrRequest)
-	}
-	input, err := filepath.Abs(req.Input)
-	if err != nil {
-		return nil, fmt.Errorf("onenote: %w: input: %w", ErrRequest, err)
-	}
-	var media string
-	if req.Media != "" {
-		if media, err = filepath.Abs(req.Media); err != nil {
-			return nil, fmt.Errorf("onenote: %w: media: %w", ErrRequest, err)
-		}
-	}
-	return &Stream{onenote: r.onenote, ctx: ctx, input: input, media: media}, nil
-}
-
-// Warnings returns onenote's warnings, one per line it wrote to stderr as a warning, with
-// onenote's prefix and its warning label taken off: "<where>: <what>", where "<where>" is the
-// record's path from the notebook's root, such as "/Group/Section, page <id>", or "/" for a
-// notebook-wide one; a skipped section's and the recycle bin's among them. After a read that
-// succeeded, any other line onenote wrote to stderr is taken as a warning too. A read with
-// warnings has still succeeded. They are complete once Records has ended; nil before.
-func (s *Stream) Warnings() []string { return s.warnings }
-
-// stderrLimit is the most of onenote's standard error a read keeps, for its warnings and its
-// message.
-const stderrLimit = 1 << 20
-
-// Records runs onenote once on the input and yields each line it writes as a Record while it
-// runs: the notebook first, then the notebook's entries depth-first in its table of contents'
-// order, a section group before the entries it holds and a section before its pages, then a
-// skipped record for each section the read left out. A section input gives the notebook, its
-// section, and its pages. onenote's stdout passes through a pipe and is decoded one line at a
-// time, so memory follows the record being read, never the notebook; a slow consumer holds
-// onenote back rather than buffering its output.
+// Read reads req's input, and yields its records as docproc-onenote writes them: the Notebook
+// first, then the notebook's entries depth-first in its table of contents' order, each
+// SectionGroup before the entries it holds and each Section before its Pages, then a Skipped
+// record for each section the read left out, with each Warning between them. A section input
+// gives the notebook, its one section, and its pages. It runs docproc-onenote once, on req.Input
+// in place; nothing runs until the sequence is ranged over, and stopping the range ends the run.
+// docproc-onenote's stdout is decoded one line at a time as it arrives, so memory follows the
+// record being read, never the notebook, and a slow consumer holds docproc-onenote back.
 //
-// A read that fails yields one last pair, nil and its error. A notebook line whose schema isn't
-// Schema is an error matching ErrSchema, naming the schema. onenote's exit codes 1 to 4 are an
-// *ExitError matching the code's error. When the context Read was given ends the read, the
-// error matches that context's, as every Tool run's does. A loop that stops early stops onenote
-// too, and nothing more is yielded. A Stream's records are read once: ranging over them again
-// yields an error.
-func (s *Stream) Records() iter.Seq2[Record, error] {
+// Each Medium with a File is resolved by the envelope's media name rule, its Path in req.Media
+// when it is set, and its SHA256.
+//
+// An empty Input, or an Input or Media that can't be made absolute, which filepath.Abs does from
+// the working directory, is an error matching ErrRequest before anything runs. A first line that
+// isn't a schema "2" notebook line is an error matching ErrSchema. docproc-onenote's exit codes 1
+// to 4, and a death by a signal, are a *cli.ExitError, which matches its code's error and names a
+// refusal's class by its Refusal method: an encrypted section's is cli.Encrypted, and a table of
+// contents' under --file-only cli.ReadElsewhere. When ctx ends the run, the error matches ctx's,
+// as every Tool run's does. A read that fails yields one last pair, nil and its error.
+func (r *Reader) Read(ctx context.Context, req Request) iter.Seq2[Record, error] {
 	return func(yield func(Record, error) bool) {
-		if s.started {
-			yield(nil, errors.New("onenote: the stream's records have been read"))
-			return
-		}
-		s.started = true
-		if err := s.read(yield); err != nil {
+		stopped := false
+		err := r.read(ctx, req, func(rec Record, err error) bool {
+			stopped = !yield(rec, err)
+			return !stopped
+		})
+		if err != nil && !stopped {
 			yield(nil, err)
 		}
 	}
 }
 
-// read runs onenote and yields its records, returning the read's error; nil too when yield
-// stopped the loop, which then has nothing more yielded.
-func (s *Stream) read(yield func(Record, error) bool) error {
-	if err := s.ctx.Err(); err != nil {
+// read is Read's sequence: it yields each record and returns the read's error, nil when it
+// succeeded or yield stopped it.
+func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error) bool) error {
+	if req.Input == "" {
+		return fmt.Errorf("onenote: no input: %w", ErrRequest)
+	}
+	input, err := filepath.Abs(req.Input)
+	if err != nil {
+		return fmt.Errorf("onenote: input: %w: %w", ErrRequest, err)
+	}
+	var media string
+	if req.Media != "" {
+		if media, err = filepath.Abs(req.Media); err != nil {
+			return fmt.Errorf("onenote: media: %w: %w", ErrRequest, err)
+		}
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	input := s.input
-	args := []string{input}
-	if s.media != "" {
-		args = []string{"--media", s.media, input}
+	var args []string
+	if media != "" {
+		args = append(args, "--media", media)
 	}
-	ctx, cancel := context.WithCancel(s.ctx)
-	defer cancel()
-	// An *os.File passes straight to onenote as its stdout, so no copy sits between them that
-	// Run would wait for once onenote exits; the read end holds at most the pipe's buffer.
-	pr, pw, err := os.Pipe()
-	if err != nil {
-		return fmt.Errorf("onenote: stdout: %w", err)
+	if req.FileOnly {
+		args = append(args, "--file-only")
 	}
-	defer func() { _ = pr.Close() }()
-	stderr := &cli.LimitedBuffer{Limit: stderrLimit}
-	done := make(chan error, 1)
-	go func() {
-		err := s.onenote.Run(ctx, tool.Invocation{Args: args, Stdout: pw, Stderr: stderr})
-		// onenote has exited, and its write end with it: closing this one, the last, ends the
-		// read end at EOF.
-		_ = pw.Close()
-		done <- err
-	}()
-	// stop ends a read before onenote's output does: closing the read end makes onenote's next
-	// write fail, and the cancel ends it should it be writing nothing. It returns the run's
-	// error.
-	stop := func() error {
-		cancel()
-		_ = pr.Close()
-		return <-done
-	}
-
-	dec := jsontext.NewDecoder(bufio.NewReader(pr))
-	first := true
-	for {
-		if s.ctx.Err() != nil {
-			return s.ended(stop())
-		}
-		raw, err := dec.ReadValue()
-		if err == io.EOF {
-			break
-		}
+	args = append(args, input)
+	for line, err := range cli.Read(ctx, cli.Run{Tool: r.onenote, Args: args, First: "notebook"}) {
 		if err != nil {
-			// A line cut short is onenote's output ended mid-line, so onenote has exited, and
-			// its outcome, should it have failed, is the cause.
-			if errors.Is(err, io.ErrUnexpectedEOF) {
-				if runErr := <-done; runErr != nil {
-					return s.outcome(runErr, stderr.String(), input)
-				}
-			} else {
-				_ = stop()
-			}
-			if s.ctx.Err() != nil {
-				return s.ended(nil)
-			}
-			return fmt.Errorf("onenote: reading onenote's output: %w", err)
+			return fmt.Errorf("onenote: %w", err)
 		}
-		rec, err := decodeLine(raw, first)
+		if line.Warning != nil {
+			if !yield((*Warning)(line.Warning), nil) {
+				return nil
+			}
+			continue
+		}
+		rec, err := decodeLine(line.Kind, line.Raw)
 		if err != nil {
-			_ = stop()
 			return err
 		}
-		first = false
+		if p, ok := rec.(*Page); ok {
+			if err := resolveMedia(media, p); err != nil {
+				return err
+			}
+		}
 		if !yield(rec, nil) {
-			_ = stop()
 			return nil
 		}
-	}
-	runErr := <-done
-	if runErr != nil {
-		return s.outcome(runErr, stderr.String(), input)
-	}
-	s.warnings, _ = onenoteProgram.ReadStderr(stderr.String(), input, true)
-	if first {
-		return errors.New("onenote: onenote wrote no notebook line")
 	}
 	return nil
 }
 
-// ended returns the error of a read that its context ended: runErr, the run's, when it matches
-// the context's, else the context's own.
-func (s *Stream) ended(runErr error) error {
-	if runErr != nil && errors.Is(runErr, s.ctx.Err()) {
-		return fmt.Errorf("onenote: %w", runErr)
-	}
-	return fmt.Errorf("onenote: %w", s.ctx.Err())
-}
-
-// outcome returns the error of a run that failed, err the Tool's, and sets the Stream's warnings
-// from stderr, onenote's standard error, of a run on input: an *ExitError for exit codes 1 to 4,
-// unless the context ended the run; else err with onenote's message, if any.
-func (s *Stream) outcome(err error, stderr, input string) error {
-	var message string
-	s.warnings, message = onenoteProgram.ReadStderr(stderr, input, false)
-	if s.ctx.Err() != nil {
-		return s.ended(err)
-	}
-	if exit, ok := errors.AsType[*tool.ExitError](err); ok {
-		if cli.Outcome(exit.Code) != nil {
-			return &ExitError{Code: exit.Code, Message: message, err: err}
+// resolveMedia resolves the files of p's media by the envelope's media name rule in dir, the
+// read's media directory, "" for none. A File the rule can't have made is an error, so no Path
+// leaves dir.
+func resolveMedia(dir string, p *Page) error {
+	for i := range p.Media {
+		m := &p.Media[i]
+		if m.File == "" {
+			continue
 		}
+		resolved, err := cli.ResolveMedium(dir, m.File)
+		if err != nil {
+			return fmt.Errorf("onenote: page %s, media %d: %w", p.ID, i+1, err)
+		}
+		m.Path, m.SHA256 = resolved.Path, resolved.SHA256
 	}
-	if message != "" {
-		return fmt.Errorf("onenote: %w: %s", err, message)
-	}
-	return fmt.Errorf("onenote: %w", err)
+	return nil
 }
-
-// onenoteProgram is onenote as its stderr shows it: each line but its usage begins with its
-// name, and a failure's, for exit codes 1 to 4, with its error label.
-var onenoteProgram = schema1.Program{Name: "spike-ai-pipeline-onenote", Labels: []string{"error"}}

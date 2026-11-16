@@ -3,37 +3,28 @@ package onenote
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
-// Schema is the version of onenote's JSON Lines the package decodes. A read whose notebook line
-// gives any other schema is refused with ErrSchema, since a new schema version is a change to
-// the lines' shape.
-const Schema = "1"
-
-// ErrSchema is the cause of the error a read returns for a notebook line whose schema isn't
-// Schema; the error names the schema the line gave.
-var ErrSchema = errors.New("unsupported schema")
-
-// Record is one line of onenote's output, by its kind: *Notebook, *SectionGroup, *Section,
-// *Page, or *Skipped, and *UnknownRecord for a kind schema "1" adds later. Line returns the
-// line's "line" field.
+// Record is one item of a read, by its kind: *Notebook, *SectionGroup, *Section, *Page, or
+// *Skipped for docproc-onenote's lines of those kinds, *Warning for a warning it wrote to stderr,
+// and *UnknownRecord for a line of a kind schema "2" adds later, since the contract grows by
+// addition.
 //
-// Each record type mirrors its line: a field the line leaves out is the zero value, which means
-// none, as onenote leaves out a field with no value and an empty list. Each marshals back,
-// through encoding/json/v2, to its line's fields less "line".
+// Each line's type mirrors its line: a field the line leaves out is the zero value, which means
+// none, as the contract means it. Each marshals back, through encoding/json/v2, to its line's
+// fields less "line", but for the fields the Reader adds, which it marks as its own and never
+// marshals.
 type Record interface {
-	Line() string
 	record()
 }
 
 // Notebook is the notebook line, the first of every read.
 type Notebook struct {
-	// Schema is the lines' version, Schema for every Notebook a read yields.
+	// Schema is the envelope's schema, cli's "2" for every Notebook a read yields.
 	Schema string `json:"schema,omitzero"`
 	// Input is the input's kind, sniffed from its content: "section", "notebook" (a .onetoc2 or
 	// a directory), or "package".
@@ -54,10 +45,8 @@ type SectionGroup struct {
 	ID string `json:"id,omitzero"`
 	// Parent is the id of the group it is in; a group at the notebook's root has none.
 	Parent string `json:"parent,omitzero"`
-	// Path is the names from the notebook's root down to this group.
+	// Path is the names from the notebook's root down to this group, its own last.
 	Path []string `json:"path,omitzero"`
-	// DisplayName is the group's directory name, which OneNote shows as its name.
-	DisplayName string `json:"display_name,omitzero"`
 }
 
 // Section is a section line, which comes before its pages' lines.
@@ -67,10 +56,8 @@ type Section struct {
 	// Parent is the id of the section group it is in; a section at the notebook's root, or a
 	// section input, has none.
 	Parent string `json:"parent,omitzero"`
-	// Path is the names from the notebook's root down to this section.
+	// Path is the names from the notebook's root down to this section, its display name last.
 	Path []string `json:"path,omitzero"`
-	// DisplayName is the section's display name.
-	DisplayName string `json:"display_name,omitzero"`
 	// Color is its colour, "#rrggbb"; none when it has none.
 	Color string `json:"color,omitzero"`
 }
@@ -83,134 +70,118 @@ type Page struct {
 	Section string `json:"section,omitzero"`
 	// Level is its depth in its section's page tree: 1 for a page, 2 for its subpage, and so on.
 	Level int `json:"level,omitzero"`
-	// Title is its title text.
+	// Title is its title text; an untitled page's first line, as OneNote's page list shows it.
 	Title string `json:"title,omitzero"`
-	// CreationTime and ModificationTime are UTC, to the second.
+	// CreationTime is UTC, to the second; none when the stored time couldn't be read, which
+	// docproc-onenote warns of. ModificationTime is UTC, to the second, and always written: a page
+	// with no stored modification time gives its creation time.
 	CreationTime     time.Time `json:"creation_time,omitzero"`
 	ModificationTime time.Time `json:"modification_time,omitzero"`
 	// Author is the author, as stored.
 	Author string `json:"author,omitzero"`
-	// Content is its containers, the title area first, then the rest in stored order, typed:
-	// their outlines' items, blocks, paragraphs, runs, tables, images, embedded files, and ink,
-	// as onenote's README gives schema "1".
-	Content Containers `json:"content,omitzero"`
-	// Ink is the page's own ink, every ink container's strokes in one drawing; nil for none.
-	Ink *Ink `json:"ink,omitzero"`
-	// InkText is the page's recognised ink text: lines, each a list of words.
-	InkText [][]Word `json:"ink_text,omitzero"`
-	// Markdown is the page as Markdown, rendered by onenote from the fields above; "" when
-	// nothing on it renders.
+	// Markdown is the page as Markdown, docproc-onenote's text layer: its text, lists, tables,
+	// math, note tags, and recognised ink words, its images, embedded files, and ink drawings
+	// linked by their media names; "" when nothing on it renders.
 	Markdown string `json:"markdown,omitzero"`
+	// Media are its images, embedded files, and ink drawings, in the order docproc-onenote's
+	// reader visits them, which differs from the Markdown's by design.
+	Media []Medium `json:"media,omitzero"`
+	// InkAlternatives are the recognised ink words that have other guesses, a label the Markdown
+	// leaves out; the words themselves are in the Markdown.
+	InkAlternatives []InkAlternative `json:"ink_alternatives,omitzero"`
 }
 
-// Ink is an ink record: a drawing onenote writes as one SVG.
-type Ink struct {
-	// File is the SVG's name in the media directory: the lowercase hex SHA-256 of its bytes and
-	// ".svg".
+// MediumKind is what a Medium is: an image, an embedded file, or an ink drawing.
+type MediumKind string
+
+// The kinds of Medium, as docproc-onenote writes them.
+const (
+	// ImageMedium is an image.
+	ImageMedium MediumKind = "image"
+	// EmbeddedFileMedium is an embedded file, a recording among them.
+	EmbeddedFileMedium MediumKind = "embedded_file"
+	// InkMedium is an ink drawing, an SVG: the page's own ink, a paragraph's handwriting, or an
+	// ink block.
+	InkMedium MediumKind = "ink"
+)
+
+// Medium is one of a page's images, embedded files, and ink drawings.
+type Medium struct {
+	// Kind is what it is.
+	Kind MediumKind `json:"kind,omitzero"`
+	// File is the media name of its content's file: the lowercase hex SHA-256 of the bytes, plus
+	// "." and the stored extension when that is 1 to 8 ASCII letters and digits, "svg" for ink.
+	// "" for a record whose data is missing or invalid, which docproc-onenote warns of.
 	File string `json:"file,omitzero"`
-	// Strokes is its stroke count, written even when zero.
-	Strokes int `json:"strokes"`
-	// Bounds is the box its strokes' points span before their pens' width is added. onenote
-	// writes no ink record for strokes without points, so it has one; nil leaves it out.
-	Bounds *Bounds `json:"bounds,omitzero"`
+	// Filename is the name an image was inserted from or a file attached under, as stored; never
+	// a path to use. Ink has none.
+	Filename string `json:"filename,omitzero"`
+	// Size is its content's size in bytes; nil for ink, and for a record without a File.
+	Size *int64 `json:"size,omitzero"`
+	// Extension is an image's stored extension.
+	Extension string `json:"extension,omitzero"`
+	// Type is an embedded file's: "audio" or "video" for a recording.
+	Type string `json:"type,omitzero"`
+	// Path is the content's file in the read's media directory, which docproc-onenote writes each
+	// distinct content into before the page's line; "" for a read without one, and for a medium
+	// with no File. It is the Reader's, never marshalled.
+	Path string `json:"-"`
+	// SHA256 is the content's SHA-256, lowercase hex, as its File claims it; "" with no File. It is
+	// the Reader's, never marshalled.
+	SHA256 string `json:"-"`
 }
 
-// Bounds is a box in ink units of 0.01 mm: a page's ink, and an ink container's, in the page's
-// coordinates; ink in a paragraph or an outline in its own.
-type Bounds struct {
-	X      Float `json:"x"`
-	Y      Float `json:"y"`
-	Width  Float `json:"width"`
-	Height Float `json:"height"`
-}
-
-// Word is one recognised word of ink text.
-type Word struct {
-	// Text is the recogniser's best guess.
-	Text string `json:"text,omitzero"`
+// InkAlternative is one recognised ink word's other guesses.
+type InkAlternative struct {
+	// Word is the word's index, from 0, among the page's recognised words over the recognition's
+	// lines; written even when zero.
+	Word int `json:"word"`
 	// Alternatives are its other guesses, best first.
 	Alternatives []string `json:"alternatives,omitzero"`
-	// Language is a Windows LCID, as stored: 1031 is German, Germany; nil when none is stored.
-	Language *int `json:"language,omitzero"`
 }
 
-// Skipped is a skipped line: a section inside a notebook that onenote couldn't read, such as a
-// password-protected one, after the notebook's entries in the order the parser reported them.
+// Skipped is a skipped line: a section inside a notebook that docproc-onenote couldn't read, after
+// the notebook's entries in the order the parser reported them.
 type Skipped struct {
 	// Kind is "section".
 	Kind string `json:"kind,omitzero"`
 	// Name is its name as the notebook's table of contents gives it, a section's file name.
 	Name string `json:"name,omitzero"`
-	// Reason is why, in the parser's words.
+	// Reason is why, in the parser's words, or an encrypted section's reason, beginning
+	// "encrypted".
 	Reason string `json:"reason,omitzero"`
+	// Encrypted is whether it is a password-protected section.
+	Encrypted bool `json:"encrypted,omitzero"`
 }
 
-// UnknownRecord is a line of a kind the package doesn't know, kept with its "line" and its JSON,
-// never an error, since onenote's schema grows by adding kinds.
+// Warning is a warning docproc-onenote wrote to stderr, what it skipped or read with a loss: its
+// tool's name, where in the input, a section by its path from the notebook's root followed by its
+// page and the record on it, "/OneNote_RecycleBin" for the recycle bin, or "/" for the notebook,
+// and what. A read with warnings still succeeds.
+//
+// Interim until slice 15: onenote can't import dispatch while dispatch holds the stage adapters,
+// so Warning is internal/cli's, which stands for dispatch.Warning.
+type Warning cli.Warning
+
+// UnknownRecord is a line of a kind the package doesn't know, kept with its kind and its JSON as
+// docproc-onenote wrote it, so a later addition to the contract is never an error.
 type UnknownRecord struct {
-	// Kind is the line's "line" field.
 	Kind string
-	// Raw is the line's JSON, a copy the record owns.
-	Raw jsontext.Value
+	Raw  jsontext.Value
 }
-
-// Line returns "notebook".
-func (*Notebook) Line() string { return "notebook" }
-
-// Line returns "section_group".
-func (*SectionGroup) Line() string { return "section_group" }
-
-// Line returns "section".
-func (*Section) Line() string { return "section" }
-
-// Line returns "page".
-func (*Page) Line() string { return "page" }
-
-// Line returns "skipped".
-func (*Skipped) Line() string { return "skipped" }
-
-// Line returns the line's kind, as it gave it.
-func (r *UnknownRecord) Line() string { return r.Kind }
 
 func (*Notebook) record()      {}
 func (*SectionGroup) record()  {}
 func (*Section) record()       {}
 func (*Page) record()          {}
 func (*Skipped) record()       {}
+func (*Warning) record()       {}
 func (*UnknownRecord) record() {}
 
-// lineHead is what decodeLine reads of a line before its kind's type.
-type lineHead struct {
-	Line   *string `json:"line"`
-	Schema *string `json:"schema"`
-}
-
-// decodeLine decodes one line, raw, into its record. first says whether it is the read's first
-// line, which must be the notebook line, whose schema must be Schema. raw is the decoder's
-// buffer, valid only until its next read, so an UnknownRecord keeps a copy, as does an Unknown in
-// a Page's Content; everything else decoded is copied out of it.
-func decodeLine(raw jsontext.Value, first bool) (Record, error) {
-	var head lineHead
-	if err := json.Unmarshal(raw, &head); err != nil {
-		return nil, fmt.Errorf("onenote: decoding a line: %w", err)
-	}
-	if head.Line == nil {
-		return nil, errors.New("onenote: a line with no line field")
-	}
-	kind := *head.Line
-	if first {
-		if kind != "notebook" {
-			return nil, fmt.Errorf("onenote: the first line is a %s line, want the notebook line", kind)
-		}
-		switch {
-		case head.Schema == nil:
-			return nil, fmt.Errorf("onenote: %w: the notebook line has none, want %q", ErrSchema, Schema)
-		case *head.Schema != Schema:
-			return nil, fmt.Errorf("onenote: %w %q, want %q", ErrSchema, *head.Schema, Schema)
-		}
-	} else if kind == "notebook" {
-		return nil, errors.New("onenote: a second notebook line")
-	}
+// decodeLine decodes one of docproc-onenote's lines, of kind kind, into its Record, every time
+// UTC. The raw JSON is the reader's to keep, as cli.Read yields it, so an UnknownRecord holds it as
+// it is.
+func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 	var rec Record
 	switch kind {
 	case "notebook":
@@ -224,7 +195,7 @@ func decodeLine(raw jsontext.Value, first bool) (Record, error) {
 	case "skipped":
 		rec = new(Skipped)
 	default:
-		return &UnknownRecord{Kind: kind, Raw: raw.Clone()}, nil
+		return &UnknownRecord{Kind: kind, Raw: raw}, nil
 	}
 	if err := json.Unmarshal(raw, rec, cli.UTC); err != nil {
 		return nil, fmt.Errorf("onenote: decoding a %s line: %w", kind, err)

@@ -282,14 +282,14 @@ func TestEmailStageReal(t *testing.T) {
 // TestOneNoteStageReal: a page's ink, an SVG, reaches the picture stage and becomes a PNG.
 func TestOneNoteStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
-	events := dispatchAll(t, d, filepath.Join(onenoteFixtures, "handwriting_recognition.one"), func(ev *dispatch.Event) {
+	events := dispatchAll(t, d, filepath.Join(onenoteFixtures(t), "handwriting_recognition.one"), func(ev *dispatch.Event) {
 		if ev.Part.ContentType.Route == route.VisionConverted && ev.Output != nil {
 			wantPNG(t, *ev.Output)
 		}
 	})
 	var ink *dispatched
 	for i := range events {
-		if strings.HasSuffix(events[i].Part.Where, ", page ink") {
+		if strings.HasSuffix(events[i].Part.Name, ".svg") {
 			ink = &events[i]
 		}
 	}
@@ -361,7 +361,7 @@ func TestAdapterIdentities(t *testing.T) {
 	if p.Name != "picture" || p.Version != "none" {
 		t.Errorf("picture identity %v", p)
 	}
-	for prefix, id := range map[string]dispatch.Identity{"docproc-mail ": emailStage(t).Identity(), "spike-ai-pipeline-onenote ": onenoteStage(t).Identity()} {
+	for prefix, id := range map[string]dispatch.Identity{"docproc-mail ": emailStage(t).Identity(), "docproc-onenote ": onenoteStage(t).Identity()} {
 		if id.Config == "" || !strings.HasPrefix(id.Version, prefix) {
 			t.Errorf("%s identity %v: want its tool's name and version, %s…", id.Name, id, prefix)
 		}
@@ -744,7 +744,7 @@ func TestOneNoteStage(t *testing.T) {
 		jpg   = "d6d4898c203cbff35fe92e844bbf404064293314a71d1e6b24e907334e5bdff9.jpg"
 		inked = "95c93a747acbbbeeb6d345faf0d17e86669bc7cdd0854155b588c58a7556d194.svg"
 	)
-	events := dispatchAll(t, d, filepath.Join(onenoteFixtures, "handwriting_recognition.one"), nil)
+	events := dispatchAll(t, d, filepath.Join(onenoteFixtures(t), "handwriting_recognition.one"), nil)
 	var names []string
 	for _, ev := range events {
 		names = append(names, fmt.Sprintf("%s@%d:%s %s", filepath.Ext(ev.Part.Name), ev.Part.Depth, ev.Outcome, ev.Part.ContentType.Route))
@@ -758,7 +758,7 @@ func TestOneNoteStage(t *testing.T) {
 			t.Errorf("where %q: want the page and the medium's place", w)
 		}
 	}
-	if ink := events[1]; ink.Part.Name != inked || !strings.HasSuffix(ink.Part.Where, ", page ink") || ink.Part.ContentType.Kind != route.SVG {
+	if ink := events[1]; ink.Part.Name != inked || ink.Part.Where != page+", media 2" || ink.Part.ContentType.Kind != route.SVG {
 		t.Errorf("ink: %s at %q, %s", ink.Part.Name, ink.Part.Where, ink.Part.ContentType.Kind)
 	}
 	section := events[2]
@@ -770,7 +770,7 @@ func TestOneNoteStage(t *testing.T) {
 	}
 	recordThenMarkdown(t, section, page)
 
-	events = dispatchAll(t, d, filepath.Join(onenoteFixtures, "New Section 1.one"), nil)
+	events = dispatchAll(t, d, filepath.Join(onenoteFixtures(t), "New Section 1.one"), nil)
 	img := events[0]
 	if img.Part.SHA256+".jpg" != jpg || img.Outcome != dispatch.Seen || img.Recorded != dispatch.Prepared {
 		t.Errorf("the shared image: %s %s, recorded %s", img.Part.Name, img.Outcome, img.Recorded)
@@ -778,6 +778,13 @@ func TestOneNoteStage(t *testing.T) {
 	if last := events[len(events)-1]; last.Part.Depth != 0 || last.Outcome != dispatch.Prepared {
 		t.Errorf("the section's event: %s@%d %s", last.Part.Name, last.Part.Depth, last.Outcome)
 	}
+}
+
+// onenoteFixtures returns onenote.rs's sections among docproc-onenote's committed inputs, read in
+// place under tools/.
+func onenoteFixtures(t *testing.T) string {
+	t.Helper()
+	return tooltest.Tools(t, "onenote/tests/fixtures/onenote-rs")
 }
 
 // mailFixtures returns docproc-mail's committed inputs, read in place under tools/.
@@ -788,12 +795,11 @@ func mailFixtures(t *testing.T) string {
 
 // The format packages' fixtures the adapters' tests dispatch.
 var (
-	onenoteFixtures = filepath.Join("..", "onenote", "testdata", "onenote", "fixtures", "onenote-rs")
-	officeFixtures  = filepath.Join("..", "office", "testdata", "ooxml")
+	officeFixtures = filepath.Join("..", "office", "testdata", "ooxml")
 )
 
-// pinned builds the tool spec declares, found on PATH through the exec runner: office, mail,
-// and onenote, which the check's mise pins.
+// pinned builds the tool spec declares, found on PATH through the exec runner: docproc-ooxml,
+// docproc-mail, and docproc-onenote among them, built from tools/ in this checkout.
 func pinned(t *testing.T, spec tool.Spec) *tool.Tool {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), spec)
@@ -834,7 +840,7 @@ func emailStage(t *testing.T) *dispatch.EmailStage {
 	return s
 }
 
-// onenoteStage returns a onenote stage over the pinned onenote.
+// onenoteStage returns a onenote stage over docproc-onenote on PATH.
 func onenoteStage(t *testing.T) *dispatch.OneNoteStage {
 	t.Helper()
 	tl := pinned(t, onenote.OneNoteSpec())
