@@ -5,34 +5,23 @@ golangci-lint = "2.15.0"
 jq = "1.8.2"
 shellcheck = "0.11.0"
 
-# Space-separated list of Go module directories. Empty until the library task lands the base
-# module.
+# Space-separated list of Go module directories, each with its own go.mod, which the check:go task
+# checks in turn: the base module, github.com/standards-lab/docproc, at the root.
 [env]
-GO_MODULES = ""
+GO_MODULES = "."
 # Space-separated list of the system tools under tools/, each with its own mise.toml that pins its
 # toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
 # turn: docproc-ooxml (.NET), and docproc-mail and docproc-onenote (Rust).
 TOOLS = "ooxml mail onenote"
 
-# The one check: read-only and deterministic, stopping at the first failure.
+# The one check: read-only and deterministic, stopping at the first failure. It runs the lint, then
+# check:go, then each tool's check, so CI's lint, Go, and tool jobs run its three parts apart.
 [tasks.check]
-description = "Lint the scripts and workflows; build, vet, format, fix, tidy, test, and lint every module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
+description = "Lint the scripts and workflows; check every Go module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
 run = '''
 set -eu
 mise -C "$MISE_PROJECT_ROOT" run lint
-export GOWORK=off
-for mod in $GO_MODULES; do
-  echo "check: $mod"
-  cd "$MISE_PROJECT_ROOT/$mod"
-  go build ./...
-  go vet ./...
-  unformatted=$(gofmt -l .)
-  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
-  go fix -diff ./...
-  go mod tidy -diff
-  go test -race ./...
-  golangci-lint run ./...
-done
+mise -C "$MISE_PROJECT_ROOT" run check:go
 case "$(uname -m)" in
   x86_64) rid=linux-x64 ;;
   aarch64) rid=linux-arm64 ;;
@@ -46,6 +35,27 @@ for tool in $TOOLS; do
   "$MISE_PROJECT_ROOT/tools/notices.sh" "$tool" "$rid" >/dev/null
 done
 echo "check: ok"
+'''
+
+# The Go part of the check, which CI's Go job runs alone: each module in GO_MODULES built, vetted,
+# formatted, fixed, tidied, tested under the race detector, and linted, outside any go.work.
+[tasks."check:go"]
+description = "Build, vet, format, fix, tidy, test, and lint every Go module; writes nothing"
+run = '''
+set -eu
+export GOWORK=off
+for mod in $GO_MODULES; do
+  echo "check: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go build ./...
+  go vet ./...
+  unformatted=$(gofmt -l .)
+  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
+  go fix -diff ./...
+  go mod tidy -diff
+  go test -race ./...
+  golangci-lint run ./...
+done
 '''
 
 # actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. CI's

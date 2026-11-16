@@ -1,8 +1,9 @@
 # CI runs on every pull request into main and every push to main. Each system tool's check runs
 # once per runner, natively on x64 and arm64, followed by its third-party notices, but only when
-# the tool's directory or the wiring every tool shares changed; the lint job runs the root's
-# shellcheck and actionlint only when a script, a workflow, or the root mise.toml changed. The
-# `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
+# the tool's directory or the wiring every tool shares changed; the Go job runs the root's
+# check:go on both runners only when what the Go modules build or read changed; the lint job runs
+# the root's shellcheck and actionlint only when a script, a workflow, or the root mise.toml
+# changed. The `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
 # any job it needs failed or was cancelled, and passes when they succeeded or their paths skipped
 # them, so a skipped job never blocks a merge. Actions are pinned by their exact release tag,
 # which `mise run currency` compares with each action's latest release. A newer run on the same
@@ -30,6 +31,7 @@ jobs:
       pull-requests: read
     outputs:
       tools: ${{ steps.tools.outputs.changes }}
+      go: ${{ steps.go.outputs.go }}
       lint: ${{ steps.lint.outputs.lint }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -57,6 +59,28 @@ jobs:
               - *envelope
               - 'tools/onenote/**'
 
+      # What the Go modules build or read: their sources, go.mod and go.sum files (tools/go.mod, the
+      # boundary that keeps the tools out of the base module, among them), any testdata, the lint
+      # config, this workflow, and the root mise.toml check:go runs from; and, in the tools' trees,
+      # only what the Go tests read in place: the shared envelope cases and each tool's committed
+      # goldens and expected outputs. A change to a tool's code alone doesn't run it.
+      - id: go
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - '**/go.mod'
+              - '**/go.sum'
+              - '**/testdata/**'
+              - '.golangci.yml'
+              - '.github/workflows/ci.yml'
+              - 'mise.toml'
+              - 'tools/envelope/cases.json'
+              - 'tools/mail/tests/golden/**'
+              - 'tools/onenote/tests/golden/**'
+              - 'tools/ooxml/test/**/Expected/**'
+
       - id: lint
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -80,6 +104,36 @@ jobs:
 
       - name: mise run lint
         run: mise run lint
+
+  go:
+    name: check:go (${{ matrix.runner }})
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # check:go needs only the root's Go toolchain and golangci-lint.
+      - uses: jdx/mise-action@v5.2.9
+        with:
+          install_args: go golangci-lint
+
+      # The modules go.sum pins, as downloaded, and the build cache; both are keyed on go.sum, the
+      # build cache being only a speedup the go command checks entry by entry.
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: mise run check:go
+        run: mise run check:go
 
   tool:
     name: check (${{ matrix.tool }}, ${{ matrix.runner }})
@@ -145,7 +199,7 @@ jobs:
 
   ci:
     if: always()
-    needs: [changes, lint, tool]
+    needs: [changes, lint, go, tool]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if a needed job failed or was cancelled

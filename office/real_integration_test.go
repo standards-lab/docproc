@@ -1,4 +1,4 @@
-//go:build linux
+//go:build integration && linux
 
 package office_test
 

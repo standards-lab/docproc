@@ -1,8 +1,5 @@
 module github.com/standards-lab/docproc
 
-go 1.27.3
+go 1.27.4
 
-require (
-	github.com/JaimeStill/spike-ai-pipeline-client v0.4.0
-	golang.org/x/text v0.43.0
-)
+require golang.org/x/text v0.44.0
