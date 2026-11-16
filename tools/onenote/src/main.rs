@@ -7,9 +7,9 @@
 //! CLI's own. The envelope, those lines and codes, the lines writer, the guard, and the media
 //! directory's store, is docproc-envelope's.
 //!
-//! The read runs on a thread of its own, with a fixed stack of [`READ_STACK`]: the reader, the
-//! renderer, the math port and the parser all recurse to the file's nesting depth, and a stack
-//! overflow is a signal no handler catches.
+//! The read runs on a thread of its own, with a stack [`read_stack`] sizes from the process's
+//! address-space limit at startup: the reader, the renderer, the math port and the parser all
+//! recurse to the file's nesting depth, and a stack overflow is a signal no handler catches.
 
 mod content;
 mod encryption;
@@ -46,11 +46,15 @@ const USAGE: &str = concat!(
     " --help"
 );
 
-/// The read thread's stack, fixed, so no flag or environment changes it: 256 MiB holds outline,
-/// group, table and equation nesting far past any real page's. It is an address-space
+/// The read thread's stack with no address-space limit, and its cap under one: 256 MiB holds
+/// outline, group, table and equation nesting far past any real page's. It is an address-space
 /// reservation, its pages touched only as deep as a read goes, so it costs no resident memory
-/// beyond what the read uses; a process limit on its address space must leave room for it.
-const READ_STACK: usize = 256 << 20;
+/// beyond what the read uses.
+const STACK_CAP: usize = 256 << 20;
+
+/// The read thread's least stack under an address-space limit, however tight: below it, a
+/// thread that can start would overflow on nesting a real page has.
+const STACK_FLOOR: usize = 8 << 20;
 
 /// The reason a refused table of contents gives under `--file-only`, fixed text that docproc
 /// maps to the part being read elsewhere: through its sibling sections, each its own input.
@@ -96,20 +100,48 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
     on_read_thread(|| read(args))
 }
 
-/// Runs `read` on a thread whose stack is [`READ_STACK`], and gives its outcome. A thread that
-/// can't start, its stack's reservation refused, is a fault outside any record, exit 4; a panic
-/// on it is one too, as it would be on the main thread, the envelope's hook keeping it silent.
+/// Runs `read` on a thread whose stack [`read_stack`] sizes from the soft address-space limit,
+/// and gives its outcome. A thread that can't start, its stack's reservation refused even at
+/// that size, is a fault outside any record, exit 4; a panic on it is one too, as it would be on
+/// the main thread, the envelope's hook keeping it silent.
 fn on_read_thread(read: impl FnOnce() -> Result<(), Fault> + Send) -> Result<(), Fault> {
     thread::scope(|scope| {
         let reader = thread::Builder::new()
             .name("read".to_owned())
-            .stack_size(READ_STACK)
+            // Set explicitly, so RUST_MIN_STACK, std's default for a spawned thread, is ignored.
+            .stack_size(read_stack(address_space_limit()))
             .spawn_scoped(scope, read)
             .map_err(|_| Fault::Internal("the read thread can't start".to_owned()))?;
         reader
             .join()
             .unwrap_or_else(|payload| Err(Fault::Internal(panic_text(&*payload))))
     })
+}
+
+/// The read thread's stack under a soft address-space limit of `limit` bytes: [`STACK_CAP`] with
+/// none, RLIM_INFINITY; under one, a quarter of it, leaving the rest to the read's heap and the
+/// binary, floored at [`STACK_FLOOR`] and capped at [`STACK_CAP`]. No flag or environment
+/// changes it.
+fn read_stack(limit: libc::rlim_t) -> usize {
+    if limit == libc::RLIM_INFINITY {
+        return STACK_CAP;
+    }
+    usize::try_from(limit / 4).map_or(STACK_CAP, |quarter| quarter.clamp(STACK_FLOOR, STACK_CAP))
+}
+
+/// The process's soft address-space limit, RLIMIT_AS, read at startup; RLIM_INFINITY, as with no
+/// limit, if getrlimit fails.
+fn address_space_limit() -> libc::rlim_t {
+    let mut limit = libc::rlimit {
+        rlim_cur: libc::RLIM_INFINITY,
+        rlim_max: libc::RLIM_INFINITY,
+    };
+    // SAFETY: getrlimit writes only the rlimit it's given, which lives for the call.
+    if unsafe { libc::getrlimit(libc::RLIMIT_AS, &mut limit) } == 0 {
+        limit.rlim_cur
+    } else {
+        libc::RLIM_INFINITY
+    }
 }
 
 /// Reads the input the arguments name, on the read thread.
@@ -197,4 +229,34 @@ fn parse(args: &[OsString]) -> Result<Command, Fault> {
         media,
         file_only,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_limit_gives_the_cap() {
+        assert_eq!(read_stack(libc::RLIM_INFINITY), 256 << 20);
+    }
+
+    #[test]
+    fn a_limit_gives_a_quarter_of_it_between_the_floor_and_the_cap() {
+        assert_eq!(read_stack(64 << 20), 16 << 20);
+        assert_eq!(read_stack(512 << 20), 128 << 20);
+    }
+
+    #[test]
+    fn a_limit_under_32_mib_gives_the_floor() {
+        assert_eq!(read_stack((32 << 20) - 1), 8 << 20);
+        assert_eq!(read_stack(16 << 20), 8 << 20);
+        assert_eq!(read_stack(0), 8 << 20);
+    }
+
+    #[test]
+    fn a_limit_over_1_gib_gives_the_cap() {
+        assert_eq!(read_stack((1 << 30) + 4), 256 << 20);
+        assert_eq!(read_stack(64 << 30), 256 << 20);
+        assert_eq!(read_stack(libc::RLIM_INFINITY - 1), 256 << 20);
+    }
 }

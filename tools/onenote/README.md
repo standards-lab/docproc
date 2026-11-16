@@ -205,7 +205,7 @@ panicked: <message>`. A section that fails to parse and holds the two constants 
 [MS-ONESTORE] 2.5.19 encryption key, scanned for only after the parse fails, is
 password-protected: refused as an input, and skipped inside a notebook with `encrypted: true`,
 with a reason beginning `encrypted`. A read thread that can't start, its stack's reservation
-refused, is exit 4: `internal fault: the read thread can't start`.
+refused at the size its limit gives, is exit 4: `internal fault: the read thread can't start`.
 
 onenote_parser prints debug dumps to stdout as it fails on some malformed sections, so the tool
 writes its lines to a duplicate of stdout and points file descriptor 1 at `/dev/null` while it
@@ -236,18 +236,22 @@ crate, [`tools/envelope`](../envelope).
   the directory, or the package's map, yields; a OneDrive-format file holding more than one
   storage index or manifest is read through the first its map yields; and a section with two
   faults, its object spaces parsed in map order, reports either.
-- The read runs on a thread with a fixed 256 MiB stack, which no flag or environment changes,
-  since a stack overflow kills the process by signal with no line written. The stack is an
-  address-space reservation: its pages are touched only as deep as a read goes, so it costs no
-  resident memory beyond that, but a limit on the process's address space, docproc's memory
-  bound among them, must leave room for it, or the thread can't start (exit 4). It allows
-  outlines nested about 118,000 levels deep. That depth was measured on the x64 release musl
-  binary, under gdb, from the stack pointer at each level of `New Section 1.one`'s nested
-  outline: a level takes 2,272 bytes in the tool's reader, 1,776 in onenote_parser, 400 in the
-  Markdown renderer, and at most 64 in the drop of the parsed page, so the reader, the deepest,
-  bounds it: its first level begins 5 KiB below the stack's top. A table nested in a table cell
-  passes through more frames per level, and no fixture nests one, so its depth is unmeasured and
-  lower; arm64's frames are not measured.
+- The read runs on a thread whose stack is sized at startup from the process's soft
+  address-space limit (RLIMIT_AS), since a stack overflow kills the process by signal with no
+  line written: 256 MiB with no limit, and under one, a quarter of it, at least 8 MiB and at
+  most 256 MiB. No flag or environment changes it. The stack is an address-space reservation:
+  its pages are touched only as deep as a read goes, so it costs no resident memory beyond that,
+  and the rest of a limit, docproc's memory bound among them, is left to the read. A limit too
+  tight for even the 8 MiB stack leaves a thread that can't start (exit 4). At the 256 MiB cap
+  the stack allows outlines nested about 118,000 levels deep, and the depth scales with the
+  stack under a limit: about 7,400 levels at a 64 MiB limit's 16 MiB, about 3,700 at the 8 MiB
+  floor. That depth was measured on the x64 release musl binary, under gdb, from the stack
+  pointer at each level of `New Section 1.one`'s nested outline: a level takes 2,272 bytes in
+  the tool's reader, 1,776 in onenote_parser, 400 in the Markdown renderer, and at most 64 in
+  the drop of the parsed page, so the reader, the deepest, bounds it: its first level begins
+  5 KiB below the stack's top. A table nested in a table cell passes through more frames per
+  level, and no fixture nests one, so its depth is unmeasured and lower; arm64's frames are not
+  measured.
 - A page with no stored modification time reports its creation time as its
   `modification_time`, as the parser gives it. An untitled page's `title` is its first line, as
   the parser gives it and OneNote's page list shows it.

@@ -2135,9 +2135,10 @@ asked of onenote_parser upstream: each workaround of its gaps is the tool's own 
 - **Memory.** Media go through the shared crate's streaming store, where the spike reads each
   whole and writes the final name directly, so a killed run left a truncated file under the full
   content's name.
-- **Depth.** The read runs on a thread with a large fixed stack, which holds outline, group,
-  table, and equation nesting far past any real page's at no cost in resident memory, where the
-  spike's main thread overflows its stack and dies by signal.
+- **Depth.** The read runs on a thread with a large stack, sized from the address-space limit
+  at startup (256 MiB with none, a quarter of one from 8 MiB to 256 MiB), which holds outline,
+  group, table, and equation nesting far past any real page's at no cost in resident memory,
+  where the spike's main thread overflows its stack and dies by signal.
 - **Destinations.** Links go through the shared crate's destination writer, where the spike
   escapes parentheses only. In a table cell, `|` is written `\|` in code spans and LaTeX. Unit
   tests over built pages show a spaced link, a hyperlinked image with a spaced target, and a cell

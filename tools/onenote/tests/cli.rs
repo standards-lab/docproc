@@ -296,25 +296,26 @@ fn run_limited(limit: libc::rlim_t) -> std::process::Output {
     command.output().unwrap()
 }
 
-/// The read thread's stack is reserved as address space: under an address-space limit too small
-/// for it, the thread can't start, a fault outside any record, exit 4 with nothing on stdout.
-/// The limit, 64 MiB, leaves the static binary room to start and parse its arguments, and is a
-/// quarter of the stack it would reserve; under 384 MiB, room for the stack and the read, the
-/// same input reads. So the stack is fixed between the two, and RUST_MIN_STACK, set small for
-/// both runs, doesn't change it.
+/// The read thread's stack is sized from the address-space limit, a quarter of it floored at
+/// 8 MiB, so a modest limit reads: under 64 MiB, a 16 MiB stack and room for the read, where the
+/// 256 MiB stack of no limit would not fit. Under 6 MiB, the stack's 8 MiB floor can't be
+/// reserved, and the thread can't start, a fault outside any record, exit 4 with nothing on
+/// stdout. 6 MiB leaves the static binary room to start and parse its arguments: measured, it
+/// does from 3 MiB, and the thread starts from 11 MiB. RUST_MIN_STACK, set small for both runs,
+/// doesn't change the stack.
 #[test]
-fn a_read_thread_that_cant_start_is_exit_4() {
+fn the_read_stack_fits_the_address_space_limit_or_is_exit_4() {
     let out = run_limited(64 << 20);
+    let stderr = String::from_utf8(out.stderr).unwrap();
+    assert_eq!(out.status.code(), Some(0), "{stderr}");
+    assert_eq!(out.stdout, run(&[fixture(DESKTOP)]).stdout.into_bytes());
+    let out = run_limited(6 << 20);
     assert_eq!(out.status.code(), Some(4));
     assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
     assert_eq!(
         String::from_utf8(out.stderr).unwrap(),
         error("internal fault: the read thread can't start")
     );
-    let out = run_limited(384 << 20);
-    let stderr = String::from_utf8(out.stderr).unwrap();
-    assert_eq!(out.status.code(), Some(0), "{stderr}");
-    assert_eq!(out.stdout, run(&[fixture(DESKTOP)]).stdout.into_bytes());
 }
 
 /// A parser panic is caught by the shared guard and refused with exit 3, never 4. The byte set here makes

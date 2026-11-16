@@ -49,8 +49,10 @@ in the spike.
   page's content.
 - Warnings for a notebook read that reads no section or section group, at `/`, and for a page
   creation time the parser couldn't read.
-- The read runs on a thread with a fixed 256 MiB stack, an address-space reservation; a thread
-  that can't start is exit 4, `internal fault: the read thread can't start`.
+- The read runs on a thread whose stack, an address-space reservation, is sized from the soft
+  address-space limit at startup: 256 MiB with none, and under one, a quarter of it, floored at
+  8 MiB and capped at 256 MiB. A thread that can't start at that size is exit 4, `internal
+  fault: the read thread can't start`.
 - The common envelope, through the shared crate: stderr lines `docproc-onenote: warning: <where>:
   <what>` and `docproc-onenote: error: <reason>`, escaped, a reason never leading with the input
   path; exit codes 0 read, 1 stdout or media not written, 2 usage, 3 refused before any output, 4
@@ -86,8 +88,8 @@ in the spike.
   the hash name, no longer read whole and written to their name directly, so a killed run leaves
   no truncated file under a full content's name. The media directory is created once the input is
   read, no longer at its first file.
-- Nesting is read on the read thread's 256 MiB stack, no longer the main thread's, on which deep
-  nesting died by signal.
+- Nesting is read on the read thread's stack, up to 256 MiB, no longer the main thread's, on
+  which deep nesting died by signal.
 - An integer overflow in the parser or the tool is a panic, refused or reported, no longer
   wrapped silently, as the release binary now checks overflow.
 
@@ -101,8 +103,9 @@ in the spike.
   section parses its whole storage index (issue #48).
 - Byte identity has three edges in the parser's hash and directory order: a group's table of
   contents, a OneDrive-format file's storage index and manifest, and the order of two faults.
-- The read thread's 256 MiB stack is an address-space reservation, which an address-space limit
-  must leave room for; it allows outlines nested about 118,000 levels deep on x64.
+- The read thread's stack is a quarter of an address-space limit, from 8 MiB to 256 MiB; at the
+  256 MiB cap it allows outlines nested about 118,000 levels deep on x64, and the depth scales
+  with the stack under a limit. A limit too tight for the 8 MiB stack is exit 4.
 - A page with no stored modification time reports its creation time; an untitled page's title is
   its first line.
 - The Markdown's order differs from `media`'s by design.
