@@ -113,7 +113,7 @@ type stage struct {
 // or not at all.
 var table = []stage{
 	{route.Document, []string{"gs", "qpdf", "pdfdetach"}, documentStage},
-	{route.Office, []string{"spike-ai-pipeline-office", "soffice", "magick"}, officeStage},
+	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, officeStage},
 	{route.VisionConverted, []string{"magick", "soffice"}, pictureStage},
 	{route.Vision, nil, func(context.Context, tools) (dispatch.Stage, error) { return dispatch.NewVisionStage(), nil }},
 	{route.Nested, []string{"spike-ai-pipeline-mail"}, emailStage},
@@ -275,7 +275,7 @@ func documentStage(_ context.Context, t tools) (dispatch.Stage, error) {
 
 // officeStage builds the office stage over office, LibreOffice in its pinned image, and magick.
 func officeStage(ctx context.Context, t tools) (dispatch.Stage, error) {
-	of, lo, mg := t["spike-ai-pipeline-office"], t["soffice"], t["magick"]
+	of, lo, mg := t["docproc-ooxml"], t["soffice"], t["magick"]
 	c, err := office.NewConverter(ctx, office.Config{Office: of, LibreOffice: lo, Magick: mg})
 	if err != nil {
 		return nil, err

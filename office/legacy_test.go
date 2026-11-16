@@ -22,11 +22,11 @@ const ole2 = "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 const rtf = `{\rtf1\ansi `
 
 // TestConvertLegacy: a document with the OLE2 signature whose name has a legacy extension, in
-// any case, is spooled with that extension, lowercased, and converted by soffice to its OOXML
-// format, in the working directory, with a fresh profile and its output in a directory of its
-// own there; office then runs once on the converted document. The result records the legacy format,
-// and only the media directory is left. An RTF, by its signature, whatever its name says, is
-// spooled as .rtf and converted to docx by Writer's filter, as a .doc is, and recorded as "rtf".
+// any case, is copied into the working directory with that extension, lowercased, and converted by
+// soffice to its OOXML format, there, with a fresh profile and its output in a directory of its
+// own; docproc-ooxml then runs once on the converted document. The Document records the legacy
+// format, and only the media directory is left. An RTF, by its signature, whatever its name says,
+// is copied as .rtf and converted to docx by Writer's filter, as a .doc is, and recorded as "rtf".
 func TestConvertLegacy(t *testing.T) {
 	t.Parallel()
 	c, ins := legacyConverter(t)
@@ -50,20 +50,20 @@ func TestConvertLegacy(t *testing.T) {
 			dir := t.TempDir()
 			before := len(ins.runs())
 			doc := tc.head + "the " + tc.from + " document"
-			res, err := c.Convert(t.Context(), strings.NewReader(doc), office.Request{Dir: dir, Name: tc.name})
+			recs, err := collect(t, c, office.Request{Path: writeDocument(t, "", doc), Dir: dir, Name: tc.name})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.ConvertedFrom != tc.from {
-				t.Errorf("converted from: got %q, want %q", res.ConvertedFrom, tc.from)
+			if got := document(t, recs).ConvertedFrom; got != tc.from {
+				t.Errorf("converted from: got %q, want %q", got, tc.from)
 			}
 			all := ins.runs()[before:]
-			if len(all) != 2 || all[0].Program != "soffice" || all[1].Program != "spike-ai-pipeline-office" {
-				t.Fatalf("runs: got %+v, want soffice, then office", all)
+			if len(all) != 2 || all[0].Program != "soffice" || all[1].Program != "docproc-ooxml" {
+				t.Fatalf("runs: got %+v, want soffice, then docproc-ooxml", all)
 			}
 			ins, of := all[0], all[1]
 			if ins.Dir != dir || of.Dir != dir {
-				t.Errorf("working directories: soffice %s, office %s, want %s", ins.Dir, of.Dir, dir)
+				t.Errorf("working directories: soffice %s, docproc-ooxml %s, want %s", ins.Dir, of.Dir, dir)
 			}
 			if ins.Input != doc {
 				t.Errorf("soffice's input: got %q, want %q", ins.Input, doc)
@@ -88,13 +88,13 @@ func TestConvertLegacy(t *testing.T) {
 				t.Fatalf("soffice's input %s isn't the spooled document", ins.Args[len(ins.Args)-1])
 			}
 			outdir := ins.Args[slices.Index(ins.Args, "--outdir")+1]
-			if of.Args[0] != filepath.Join(outdir, base[1]+"."+tc.to) {
-				t.Errorf("office's input: got %s, want soffice's output %s", of.Args[0], filepath.Join(outdir, base[1]+"."+tc.to))
+			if input := of.Args[len(of.Args)-1]; input != filepath.Join(outdir, base[1]+"."+tc.to) {
+				t.Errorf("docproc-ooxml's input: got %s, want soffice's output %s", input, filepath.Join(outdir, base[1]+"."+tc.to))
 			}
 			if of.Input != convertedPrefix+doc {
-				t.Errorf("office's input: got %q, want soffice's output", of.Input)
+				t.Errorf("docproc-ooxml's input: got %q, want soffice's output", of.Input)
 			}
-			if got := entries(t, dir); !slices.Equal(got, []string{filepath.Base(res.MediaDir)}) {
+			if got := entries(t, dir); len(got) != 1 || !strings.HasPrefix(got[0], "media-") {
 				t.Errorf("working directory holds %q, want the media directory alone", got)
 			}
 		})
@@ -115,7 +115,7 @@ func matchArgs(args, want []string) bool {
 }
 
 // TestConvertLegacyNoConverter: without a LibreOffice converter, a legacy document or an RTF is
-// refused with ErrNoLibreOffice, naming the file and its format, before anything is spooled or
+// refused with ErrNoLibreOffice, naming the file and its format, before anything is copied or
 // run.
 func TestConvertLegacyNoConverter(t *testing.T) {
 	t.Parallel()
@@ -126,7 +126,7 @@ func TestConvertLegacyNoConverter(t *testing.T) {
 		{rtf + "a memo}", "", "office: the document is an RTF document: no LibreOffice converter"},
 	} {
 		dir := t.TempDir()
-		_, err := c.Convert(t.Context(), strings.NewReader(tc.doc), office.Request{Dir: dir, Name: tc.name})
+		_, err := collect(t, c, office.Request{Path: writeDocument(t, "", tc.doc), Dir: dir, Name: tc.name})
 		if !errors.Is(err, office.ErrNoLibreOffice) {
 			t.Fatalf("%q: got %v, want ErrNoLibreOffice", tc.name, err)
 		}
@@ -144,8 +144,8 @@ func TestConvertLegacyNoConverter(t *testing.T) {
 
 // TestConvertNotLegacy: an OLE2 file whose name has no legacy extension, such as an encrypted
 // OOXML package, a legacy name on a file without the signature, and an .rtf without RTF's
-// signature, go to office as they are, and soffice never runs; office refusing the OLE2 file is
-// office's refusal.
+// signature, go to docproc-ooxml as they are, read in place, and soffice never runs;
+// docproc-ooxml refusing the OLE2 file is its refusal.
 func TestConvertNotLegacy(t *testing.T) {
 	t.Parallel()
 	c, ins := legacyConverter(t)
@@ -159,34 +159,35 @@ func TestConvertNotLegacy(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			before := len(ins.runs())
-			res, err := c.Convert(t.Context(), strings.NewReader(tc.doc), office.Request{Dir: t.TempDir(), Name: tc.name})
+			path := writeDocument(t, "", tc.doc)
+			recs, err := collect(t, c, office.Request{Path: path, Dir: t.TempDir(), Name: tc.name})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.ConvertedFrom != "" {
-				t.Errorf("converted from %q", res.ConvertedFrom)
+			if got := document(t, recs).ConvertedFrom; got != "" {
+				t.Errorf("converted from %q", got)
 			}
 			all := ins.runs()[before:]
-			if len(all) != 1 || all[0].Program != "spike-ai-pipeline-office" || all[0].Input != tc.doc {
-				t.Fatalf("runs: got %+v, want office alone on the document", all)
+			if len(all) != 1 || all[0].Program != "docproc-ooxml" || all[0].Input != tc.doc {
+				t.Fatalf("runs: got %+v, want docproc-ooxml alone on the document", all)
 			}
-			if ext := filepath.Ext(all[0].Args[0]); ext != "" {
-				t.Errorf("spooled with extension %s, want none", ext)
+			if input := all[0].Args[len(all[0].Args)-1]; input != path {
+				t.Errorf("input: got %s, want the document in place, %s", input, path)
 			}
 		})
 	}
 
 	ins.set(exitKey, "3")
-	ins.set(stderrKey, "spike-ai-pipeline-office: refused: {path}: an OLE compound file\n")
-	_, err := c.Convert(t.Context(), strings.NewReader(ole2+"an encrypted package"), office.Request{Dir: t.TempDir(), Name: "secret.docx"})
+	ins.set(stderrKey, "docproc-ooxml: error: encrypted package; decrypt it first\n")
+	_, err := collect(t, c, office.Request{Path: writeDocument(t, "", ole2+"an encrypted package"), Dir: t.TempDir(), Name: "secret.docx"})
 	if !errors.Is(err, office.ErrRefused) {
-		t.Errorf("office's refusal: got %v, want ErrRefused", err)
+		t.Errorf("docproc-ooxml's refusal: got %v, want ErrRefused", err)
 	}
 }
 
 // TestConvertLegacyFails: soffice exiting nonzero, or exiting zero having written nothing, fails
-// the conversion with soffice's own error line, and office never runs; office failing on the
-// converted document is office's error. Each leaves nothing in the working directory.
+// the conversion with soffice's own error line, and docproc-ooxml never runs; docproc-ooxml
+// failing on the converted document is its error. Each leaves nothing in the working directory.
 func TestConvertLegacyFails(t *testing.T) {
 	t.Parallel()
 	c, ins := legacyConverter(t)
@@ -208,11 +209,11 @@ func TestConvertLegacyFails(t *testing.T) {
 			[]string{"soffice"},
 			func(err error) bool { return err != nil },
 			"office: libreoffice: soffice wrote no docx: Fontconfig error: No writable cache directories"},
-		{"office refuses",
-			map[string]string{exitKey: "3", stderrKey: "spike-ai-pipeline-office: refused: {path}: not a package\n", mediaKey: "a.png"},
-			[]string{"soffice", "spike-ai-pipeline-office"},
+		{"docproc-ooxml refuses",
+			map[string]string{exitKey: "3", stderrKey: "docproc-ooxml: error: not a package\n", mediaKey: mediaName("a", ".png")},
+			[]string{"soffice", "docproc-ooxml"},
 			func(err error) bool { return errors.Is(err, office.ErrRefused) },
-			"office: refused: not a package"},
+			"docproc-ooxml: refused: not a package"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			for k, v := range tc.env {
@@ -220,9 +221,9 @@ func TestConvertLegacyFails(t *testing.T) {
 			}
 			dir := t.TempDir()
 			before := len(ins.runs())
-			res, err := c.Convert(t.Context(), strings.NewReader(ole2+"a doc"), office.Request{Dir: dir, Name: "a.doc"})
-			if res != nil || !tc.check(err) {
-				t.Fatalf("got %+v, %v", res, err)
+			recs, err := collect(t, c, office.Request{Path: writeDocument(t, "", ole2+"a doc"), Dir: dir, Name: "a.doc"})
+			if len(recs) != 0 || !tc.check(err) {
+				t.Fatalf("got %d records, %v", len(recs), err)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("error %q doesn't say %q", err, tc.want)

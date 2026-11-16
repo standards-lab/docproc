@@ -1,7 +1,6 @@
 package office
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -28,39 +27,25 @@ var exportFilters = map[string]string{
 	"pptx": "Impress MS PowerPoint 2007 XML",
 }
 
-// legacyTargets are the OOXML formats the legacy extensions convert to. An RTF, found by its
-// signature, not its extension, converts to docx.
-var legacyTargets = map[string]string{
-	".doc": "docx",
-	".dot": "docx",
-	".xls": "xlsx",
-	".xlt": "xlsx",
-	".ppt": "pptx",
-	".pps": "pptx",
-	".pot": "pptx",
-}
-
-// legacyHeadLen is how much of a document legacyFormat peeks at: an OLE2 compound file's
-// signature, the legacy binary formats' and an encrypted OOXML package's, and an RTF's, which is
-// shorter.
+// legacyHeadLen is how much of a document legacyFormat reads: an OLE2 compound file's signature,
+// the legacy binary formats' and an encrypted OOXML package's, and an RTF's, which is shorter.
 const legacyHeadLen = 8
 
-// legacyFormat reports whether the document doc begins is one LibreOffice converts before office
-// runs: an RTF, as the route package identifies it by its signature, whatever its file name,
-// name, says, converted to docx as a .doc is; or an OLE2 compound file, as the route package
-// identifies it, whose name has a legacy extension, in any case. It returns the format converted
-// from, "rtf" or the legacy extension without its dot and lowercased, and the OOXML format it
-// converts to; "" for both when the document goes to office as it is. It peeks at doc's first
-// bytes without consuming them.
-func legacyFormat(doc *bufio.Reader, name string) (from, to string) {
-	head, _ := doc.Peek(legacyHeadLen)
+// legacyFormat reports whether the document whose first bytes are head is one LibreOffice
+// converts before docproc-ooxml runs: an RTF, as the route package identifies it by its signature,
+// whatever its file name, name, says, converted to docx as a .doc is; or an OLE2 compound file, as
+// the route package identifies it, whose name has a legacy extension, in any case, converted to the
+// OOXML format route.LegacyTarget gives. It returns the format converted from, "rtf" or the legacy
+// extension without its dot and lowercased, and the OOXML format it converts to; "" for both when
+// the document goes to docproc-ooxml as it is.
+func legacyFormat(head []byte, name string) (from, to string) {
 	kind := route.Identify(head)
 	if kind == route.RTF {
 		return "rtf", "docx"
 	}
-	ext := strings.ToLower(filepath.Ext(name))
-	to, ok := legacyTargets[ext]
-	if !ok || kind != route.OLE2 {
+	ext := route.Ext(name)
+	to = route.LegacyTarget(ext)
+	if to == "" || kind != route.OLE2 {
 		return "", ""
 	}
 	return strings.TrimPrefix(ext, "."), to

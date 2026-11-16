@@ -97,12 +97,18 @@ func Ext(name string) string {
 }
 
 // legacyExtensions are the legacy extensions office converts from an OLE2 compound file, its
-// own rule.
-var legacyExtensions = map[string]bool{
-	".doc": true, ".dot": true,
-	".xls": true, ".xlt": true,
-	".ppt": true, ".pps": true, ".pot": true,
+// own rule, each with the OOXML format LibreOffice converts it to.
+var legacyExtensions = map[string]string{
+	".doc": "docx", ".dot": "docx",
+	".xls": "xlsx", ".xlt": "xlsx",
+	".ppt": "pptx", ".pps": "pptx", ".pot": "pptx",
 }
+
+// LegacyTarget returns the OOXML format an OLE2 compound file named with ext, as [Ext] returns
+// it, converts to before office reads it: "docx" for .doc and .dot, "xlsx" for .xls and .xlt, and
+// "pptx" for .ppt, .pps, and .pot; "" when ext isn't a legacy extension. It is the one table of
+// them, the one byKind routes by.
+func LegacyTarget(ext string) string { return legacyExtensions[ext] }
 
 // encryptedPackageName is the directory entry name of an encrypted OOXML package's stream,
 // "EncryptedPackage", in UTF-16LE, with its terminating null, as an OLE2 directory entry begins.
@@ -315,7 +321,7 @@ func byKind(kind Kind, ext string) (Route, string) {
 		return Archive, "ZIP signature without an OOXML extension, " + contentTypesName + ", or ODF mimetype"
 	case OLE2:
 		switch {
-		case legacyExtensions[ext]:
+		case legacyExtensions[ext] != "":
 			return Office, "OLE2 signature, " + ext + " extension"
 		case ext == ".msg":
 			return Nested, "OLE2 signature, .msg extension"

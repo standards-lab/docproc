@@ -101,11 +101,11 @@
 //     found "attachment <name>", the bomb rule enforced on the bytes written, as the archive
 //     stage enforces it, its check inspect.ArchiveBomb; the media behind a Screen or
 //     Rendition annotation isn't extracted.
-//   - [OfficeStage], for route.Office: office's Markdown, and each medium office wrote, a
-//     converted picture as its PNG, found as a part, an RTF converted to docx first, as a legacy
-//     document is. ODF, WordPerfect, an Excel binary workbook, and a legacy document or an RTF
-//     without LibreOffice have no processor yet; an encrypted OOXML package, which office
-//     refuses, ends with [ErrEncrypted].
+//   - [OfficeStage], for route.Office: the Markdown of office's records, joined, and each medium
+//     docproc-ooxml wrote, a converted picture as its PNG, found as a part, an RTF converted to
+//     docx first, as a legacy document is. ODF, WordPerfect, an Excel binary workbook, and a
+//     legacy document or an RTF without LibreOffice have no processor yet; an encrypted OOXML
+//     package, whose refusal internal/cli classes as encrypted, ends with [ErrEncrypted].
 //   - [PictureStage], for route.VisionConverted: a TIFF to a PNG per page, "page N", its Meta
 //     naming the page and the count, and an EMF, WMF, SVG, HEIC, WebP, or AVIF to one PNG,
 //     through picture's Converter. A picture whose tool the Converter lacks, or a HEIC, WebP, or

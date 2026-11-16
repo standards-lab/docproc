@@ -86,20 +86,12 @@ func TestPictureConvertReal(t *testing.T) {
 				t.Errorf("the original wasn't kept: %v", err)
 			}
 
-			f, err := os.Open(filepath.Join("testdata", p.fixture))
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = f.Close() }()
-			res, err := c.Convert(t.Context(), f, office.Request{Dir: t.TempDir(), Name: p.fixture})
-			if err != nil {
-				t.Fatal(err)
-			}
-			i := slices.IndexFunc(res.Media, func(m office.MediaFile) bool { return m.Name == name })
-			if i < 0 || !res.Media[i].Converted {
+			res := convertPath(t, c, filepath.Join("testdata", p.fixture))
+			i := slices.IndexFunc(res.doc.Media, func(m office.Medium) bool { return m.File == name })
+			if i < 0 || !res.doc.Media[i].Converted {
 				t.Fatalf("Convert didn't convert %s", name)
 			}
-			within, err := os.ReadFile(res.Media[i].File)
+			within, err := os.ReadFile(res.doc.Media[i].Path)
 			if err != nil {
 				t.Fatal(err)
 			}

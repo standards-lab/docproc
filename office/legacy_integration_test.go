@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
@@ -46,11 +47,11 @@ func containerConverter(t *testing.T) *office.Converter {
 }
 
 // TestLegacyRoundTrip converts every legacy fixture through soffice in the default image, then
-// office, twice each, and asserts only that each conversion succeeds as a JSON model of the
+// docproc-ooxml, twice each, and asserts only that each conversion succeeds as a Document of the
 // OOXML format the legacy one converts to, which ConvertedFrom names. It records, in its log,
 // the image's footprint, each conversion's wall time, first run and repeat, and what the round
-// trip loses per element kind: for a generated fixture against office's model of its OOXML
-// original in testdata/ooxml, for a real one against its hand-written truth.
+// trip loses per element kind: for a generated fixture against docproc-ooxml's records of its
+// OOXML original in testdata/ooxml, for a real one against its hand-written truth.
 func TestLegacyRoundTrip(t *testing.T) {
 	c := containerConverter(t)
 	logFootprint(t)
@@ -64,9 +65,9 @@ func TestLegacyRoundTrip(t *testing.T) {
 	for _, path := range generated {
 		t.Run(filepath.Base(path), func(t *testing.T) {
 			res := convertLegacy(t, c, path)
-			original := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + "." + res.Document.Format
-			want := elements(convertFixture(t, c, original, office.JSON).Document)
-			got := elements(res.Document)
+			original := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)) + "." + res.doc.Format
+			want := elements(convertPath(t, c, filepath.Join("testdata", "ooxml", original)))
+			got := elements(res)
 			format := strings.TrimPrefix(filepath.Ext(path), ".")
 			if byFormat[format] == nil {
 				byFormat[format] = map[string]*tally{}
@@ -104,43 +105,35 @@ func TestLegacyRoundTrip(t *testing.T) {
 					want[kind] = append(want[kind], normalize(k))
 				}
 			}
-			logLoss(t, truth.File, "truth", want, elements(res.Document), nil)
+			logLoss(t, truth.File, "truth", want, elements(res), nil)
 		})
 	}
 }
 
-// convertLegacy converts the legacy fixture at path as JSON, in a working directory of its own,
-// twice, logging each run's wall time, and fails unless both succeed with a model of the OOXML
-// format its extension converts to. It returns the first result.
-func convertLegacy(t *testing.T, c *office.Converter, path string) *office.Result {
+// convertLegacy converts the legacy fixture at path, in a working directory of its own, twice,
+// logging each run's wall time, and fails unless both succeed with a Document of the OOXML format
+// its extension converts to. It returns the first conversion.
+func convertLegacy(t *testing.T, c *office.Converter, path string) converted {
 	t.Helper()
 	ext := filepath.Ext(path)
-	var first *office.Result
+	var first *converted
 	var times []time.Duration
 	for range 2 {
-		f, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
 		start := time.Now()
-		res, err := c.Convert(t.Context(), f, office.Request{Dir: t.TempDir(), Name: filepath.Base(path)})
+		res := convertPath(t, c, path)
 		times = append(times, time.Since(start))
-		_ = f.Close()
-		if err != nil {
-			t.Fatal(err)
+		if res.doc.Format != legacyTargets[ext] || res.doc.ConvertedFrom != strings.TrimPrefix(ext, ".") {
+			t.Fatalf("document %s, converted from %q; want %s from %s", res.doc.Format, res.doc.ConvertedFrom, legacyTargets[ext], ext)
 		}
-		if res.Document == nil || res.Document.Format != legacyTargets[ext] || res.ConvertedFrom != strings.TrimPrefix(ext, ".") {
-			t.Fatalf("result: document %v, converted from %q; want a %s model from %s", res.Document, res.ConvertedFrom, legacyTargets[ext], ext)
-		}
-		for _, w := range res.Warnings {
-			t.Logf("warning: %s", w)
+		for _, w := range res.warnings {
+			t.Logf("warning: %s: %s", w.Where, w.What)
 		}
 		if first == nil {
-			first = res
+			first = &res
 		}
 	}
 	t.Logf("footprint: %-34s first %5d ms  repeat %5d ms", filepath.Base(path), times[0].Milliseconds(), times[1].Milliseconds())
-	return first
+	return *first
 }
 
 // logFootprint logs the default image's size: compressed, the sum of its layers for this
@@ -259,124 +252,113 @@ func logLoss(t *testing.T, file, ref string, want, got map[string][]string, sum 
 	}
 }
 
-// elements returns doc's elements by kind, each as a key that a hand-written truth can give,
-// its whitespace collapsed: a heading as its level and text, "1:Title"; a paragraph as its text,
-// empty ones left out; a list as ordered or unordered and its item count, "unordered:3"; a table
-// as its rows and widest row's cells, "2x3", or "sheet" for a sheet's; a sheet cell as its sheet,
-// reference, and value, "Sheet1!A1=text", and its formula as a "formula" too; a chart as its type,
-// title, and series count, and each series as its name and point count; a picture as its content
-// type, or "linked"; a sheet as its name; a slide as its number; a header, footer, footnote,
-// endnote, or comment as its text; and each footnote, endnote, and comment reference.
-func elements(doc *office.Document) map[string][]string {
+// elements returns a conversion's elements by kind, each as a key that a hand-written truth can
+// give, its whitespace collapsed, read from its records: from a Sheet and its Rows, a sheet as its
+// name, its table as "sheet", and each cell as its sheet, reference, and value, "Sheet1!A1=text",
+// and its formula as a "formula" too; from the Document's Markdown, a heading as its level and
+// text, "1:Title", a pptx's "# Slide n" a slide as its number, a GFM table as its rows and widest
+// row's cells, "2x3", a top-level list as ordered or unordered and its item count, "unordered:3",
+// and any other line a paragraph, its Markdown escapes kept; and each medium as its content type,
+// or "linked". It reads the Markdown, not a model, so a key it can't read the way a truth gives
+// it is logged as lost, never failed.
+func elements(res converted) map[string][]string {
 	out := map[string][]string{}
 	add := func(kind, key string) { out[kind] = append(out[kind], normalize(key)) }
 	var sheet string
-	walkDocument(doc, func(b office.Block) {
-		switch b := b.(type) {
-		case *office.Heading:
-			add("heading", strconv.Itoa(b.Level)+":"+inlineText(b.Inlines))
-		case *office.Paragraph:
-			if text := inlineText(b.Inlines); strings.TrimSpace(text) != "" {
-				add("paragraph", text)
-			}
-		case *office.List:
-			kind := "unordered"
-			if b.Ordered {
-				kind = "ordered"
-			}
-			add("list", kind+":"+strconv.Itoa(len(b.Items)))
-		case *office.Table:
-			if sheet != "" && len(b.Rows) > 0 && b.Rows[0].Row > 0 {
+	tabled := false
+	for _, rec := range res.recs {
+		switch r := rec.(type) {
+		case *office.Sheet:
+			sheet, tabled = r.Name, false
+			add("sheet", r.Name)
+		case *office.Rows:
+			if len(r.Rows) > 0 && !tabled {
 				add("table", "sheet")
-				for _, row := range b.Rows {
-					for _, cell := range row.Cells {
-						if cell.Value != nil {
-							add("cell", sheet+"!"+cell.Ref+"="+cellValue(cell.Value))
-						}
-						if cell.Formula != "" {
-							add("formula", sheet+"!"+cell.Ref+"="+cell.Formula)
-						}
+				tabled = true
+			}
+			for _, row := range r.Rows {
+				for _, cell := range row.Cells {
+					if cell.Value != nil {
+						add("cell", sheet+"!"+cell.Ref+"="+cellValue(cell.Value))
+					}
+					if cell.Formula != "" {
+						add("formula", sheet+"!"+cell.Ref+"="+cell.Formula)
 					}
 				}
-				return
 			}
-			width := 0
-			for _, row := range b.Rows {
-				width = max(width, len(row.Cells))
-			}
-			add("table", fmt.Sprintf("%dx%d", len(b.Rows), width))
-		case *office.Chart:
-			add("chart", fmt.Sprintf("%s|%s|%d", b.ChartType, b.Title, len(b.Series)))
-			for _, s := range b.Series {
-				add("series", fmt.Sprintf("%s|%d", s.Name, len(s.Values)))
-			}
-		case *office.Media:
-			if b.Name == "" {
-				add("media", "linked")
-			} else {
-				add("media", b.ContentType)
-			}
-		case *office.Sheet:
-			sheet = b.Name
-			add("sheet", b.Name)
-		case *office.Slide:
-			add("slide", strconv.Itoa(b.Number))
-		}
-	}, func(in office.Inline) {
-		switch in.(type) {
-		case *office.FootnoteRef:
-			add("footnote-ref", "ref")
-		case *office.EndnoteRef:
-			add("endnote-ref", "ref")
-		case *office.CommentRef:
-			add("comment-ref", "ref")
-		}
-	})
-	for _, s := range doc.Sections {
-		for _, h := range s.Headers {
-			add("header", h.Kind+":"+blocksText(h.Blocks))
-		}
-		for _, f := range s.Footers {
-			add("footer", f.Kind+":"+blocksText(f.Blocks))
 		}
 	}
-	for _, n := range doc.Footnotes {
-		add("footnote", blocksText(n.Blocks))
+	for _, m := range res.doc.Media {
+		if m.File == "" {
+			add("media", "linked")
+		} else {
+			add("media", m.ContentType)
+		}
 	}
-	for _, n := range doc.Endnotes {
-		add("endnote", blocksText(n.Blocks))
-	}
-	for _, cm := range doc.Comments {
-		add("comment", cm.Author+":"+blocksText(cm.Blocks))
-	}
+	markdownElements(res.doc.Format, res.doc.Markdown, add)
 	return out
 }
 
-// inlineText returns the text of ins, its Text inlines' joined.
-func inlineText(ins []office.Inline) string {
-	var b strings.Builder
-	for _, in := range ins {
-		if tx, ok := in.(*office.Text); ok {
-			b.WriteString(tx.Text)
+// markdownElements adds the elements of md, a Document's Markdown of format, by kind through
+// add, as elements describes.
+func markdownElements(format, md string, add func(kind, key string)) {
+	var table [][]string
+	list, items := "", 0
+	flush := func() {
+		if len(table) > 0 {
+			width := 0
+			for _, row := range table {
+				width = max(width, len(row))
+			}
+			add("table", fmt.Sprintf("%dx%d", len(table), width))
+			table = nil
+		}
+		if items > 0 {
+			add("list", list+":"+strconv.Itoa(items))
+			list, items = "", 0
 		}
 	}
-	return b.String()
+	for line := range strings.Lines(md) {
+		line = strings.TrimRight(line, "\n")
+		switch {
+		case strings.HasPrefix(line, "|"):
+			if strings.HasPrefix(line, "| ---") {
+				continue
+			}
+			table = append(table, strings.Split(strings.Trim(line, "|"), " | "))
+			continue
+		case strings.HasPrefix(line, "- "), orderedItem.MatchString(line):
+			kind := "unordered"
+			if !strings.HasPrefix(line, "- ") {
+				kind = "ordered"
+			}
+			if items > 0 && kind != list {
+				flush()
+			}
+			list = kind
+			items++
+			add("paragraph", orderedItem.ReplaceAllString(strings.TrimPrefix(line, "- "), ""))
+			continue
+		case strings.HasPrefix(line, " "):
+			continue
+		}
+		flush()
+		switch {
+		case strings.TrimSpace(line) == "", strings.HasPrefix(line, "!["), strings.HasPrefix(line, "[^"):
+		case format == "pptx" && strings.HasPrefix(line, "# Slide "):
+			add("slide", strings.TrimPrefix(line, "# Slide "))
+		case strings.HasPrefix(line, "#"):
+			level := len(line) - len(strings.TrimLeft(line, "#"))
+			add("heading", strconv.Itoa(level)+":"+strings.TrimSpace(line[level:]))
+		default:
+			add("paragraph", line)
+		}
+	}
+	flush()
 }
 
-// blocksText returns the text of blocks' headings and paragraphs, nested ones included, joined
-// by spaces.
-func blocksText(blocks []office.Block) string {
-	var parts []string
-	walkDocument(&office.Document{Blocks: blocks}, func(b office.Block) {
-		switch b := b.(type) {
-		case *office.Heading:
-			parts = append(parts, inlineText(b.Inlines))
-		case *office.Paragraph:
-			parts = append(parts, inlineText(b.Inlines))
-		}
-	}, func(office.Inline) {})
-	return strings.Join(parts, " ")
-}
+// orderedItem matches an ordered list item's marker.
+var orderedItem = regexp.MustCompile(`^\d+\. `)
 
 // cellValue returns a sheet cell's value as text: a number in its shortest form, a boolean as
 // TRUE or FALSE, and text, an error, or a date as given.

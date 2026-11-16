@@ -21,29 +21,34 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// The stand-ins are the test binary, run through a link named spike-ai-pipeline-office, soffice,
-// or magick, acting on its arguments as office, LibreOffice, or ImageMagick. A test's three links
+// The stand-ins are the test binary, run through a link named docproc-ooxml, soffice, or magick,
+// acting on its arguments as docproc-ooxml, LibreOffice, or ImageMagick. A test's three links
 // share one set of settings, a string by key, which each link names: a key that isn't set is
 // unset, as an unset variable was.
 
-// The stand-in office's settings.
+// The stand-in docproc-ooxml's settings.
 const (
-	// versionKey is the version the stand-in's --version prints.
+	// versionKey is the version the stand-in's --version prints, before its schema line.
 	versionKey = "version"
+	// schemaKey, when set, is the schema the stand-in's --version prints in place of 2.
+	schemaKey = "schema"
 	// logKey names the file each run of any of the three appends its program, working directory,
 	// arguments, and input to, one JSON object per line, so the log holds their runs in order.
 	logKey = "log"
 	// exitKey, when set, is the exit code of a run, which then writes nothing to stdout.
 	exitKey = "exit"
-	// stderrKey, when set, is what a run writes to stderr, each {path} in it the input's path as
-	// the run was given it.
+	// stderrKey, when set, is what a run writes to stderr.
 	stderrKey = "stderr"
 	// stdoutKey, when set, is what a run that exits zero writes to stdout in place of
 	// standinDocument.
 	stdoutKey = "stdout"
 	// mediaKey, when set, names the files, comma-separated, a run writes to its --media
-	// directory, each holding its own name.
+	// directory, each holding its kind's signature, as standinMedium gives it, and its own name.
 	mediaKey = "media"
+	// replayKey, when set, is an expected output of docproc-ooxml's, a .jsonl file: a run writes
+	// it to stdout and its .stderr beside it to stderr, and exits with the code its .exit beside
+	// it holds, 0 without one, as docproc-ooxml did over the fixture.
+	replayKey = "replay"
 	// sleepKey, when set, makes a run sleep a minute after logging, for a test to cancel it.
 	sleepKey = "sleep"
 )
@@ -84,14 +89,35 @@ const convertedPrefix = "converted: "
 // pngSignature begins every PNG, and the stand-ins' PNG output.
 const pngSignature = "\x89PNG\r\n\x1a\n"
 
-// standinDocument is the stand-in's JSON model when stdoutKey isn't set: an empty docx.
-const standinDocument = `{"schema": "1", "format": "docx", "blocks": []}` + "\n"
+// standinDocument is the stand-in's stdout when stdoutKey isn't set: an empty docx's document
+// line.
+const standinDocument = `{"line":"document","schema":"2","format":"docx"}` + "\n"
+
+// standinMedium returns the content the stand-in docproc-ooxml writes for the medium named name:
+// the signature route.Identify names its extension's kind by, for an EMF, a WMF, a TIFF, a PNG, or
+// a JPEG, and then name; name alone for any other.
+func standinMedium(name string) string {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".emf":
+		return "\x01\x00\x00\x00" + strings.Repeat("\x00", 36) + " EMF" + name
+	case ".wmf":
+		return "\xd7\xcd\xc6\x9a" + name
+	case ".tif", ".tiff":
+		return "II*\x00" + name
+	case ".png":
+		return pngSignature + name
+	case ".jpeg", ".jpg":
+		return "\xff\xd8\xff" + name
+	}
+	return name
+}
 
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
-		"spike-ai-pipeline-office": withSettings(standin),
-		"soffice":                  withSettings(sofficeStandin),
-		"magick":                   withSettings(magickStandin),
+		"docproc-ooxml": withSettings(standin),
+		"soffice":       withSettings(sofficeStandin),
+		"magick":        withSettings(magickStandin),
+		"docker":        withSettings(dockerStandin),
 	})
 }
 
@@ -119,26 +145,33 @@ func lookupSetting(key string) (string, bool) {
 	return v, ok
 }
 
-// standin is the stand-in office. With --version alone it prints the version alone, as office
-// does. Otherwise it appends its working directory, arguments, and its input file's content to
-// the log file, sleeps when sleepKey is set, writes the media mediaKey names into the directory
-// after --media, writes stderrKey's value to stderr, and exits with exitKey's code when it is
-// set, or else writes stdoutKey's value, or standinDocument, to stdout and exits zero.
+// standin is the stand-in docproc-ooxml. With --version alone it prints the version, then
+// `schema 2`, or schemaKey's schema, as docproc-ooxml does. Otherwise it takes its arguments as `--media <dir> --
+// <input>`, appends its working directory, arguments, and its input file's content to the log
+// file, sleeps when sleepKey is set, and writes the media mediaKey names into the media
+// directory. Then it replays replayKey's expected output when it is set; or else writes
+// stderrKey's value to stderr and exits with exitKey's code when it is set, or else writes
+// stdoutKey's value, or standinDocument, to stdout and exits zero.
 func standin(args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println(setting(versionKey))
+		schema := setting(schemaKey)
+		if schema == "" {
+			schema = "2"
+		}
+		fmt.Printf("%s\nschema %s\n", setting(versionKey), schema)
 		return 0
 	}
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "stand-in: no input")
+	if len(args) != 4 || args[0] != "--media" || args[2] != "--" {
+		fmt.Fprintf(os.Stderr, "stand-in: want --media <dir> -- <input>, got %q\n", args)
 		return 2
 	}
-	input, err := os.ReadFile(args[0])
+	media, path := args[1], args[3]
+	input, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if err := appendLog(setting(logKey), "spike-ai-pipeline-office", args, string(input), ""); err != nil {
+	if err := appendLog(setting(logKey), "docproc-ooxml", args, string(input), ""); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
@@ -146,24 +179,21 @@ func standin(args []string) int {
 		time.Sleep(time.Minute)
 	}
 	if names := setting(mediaKey); names != "" {
-		dir := ""
-		for i, a := range args {
-			if a == "--media" && i+1 < len(args) {
-				dir = args[i+1]
-			}
-		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(media, 0o755); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
 		for name := range strings.SplitSeq(names, ",") {
-			if err := os.WriteFile(filepath.Join(dir, name), []byte(name), 0o644); err != nil {
+			if err := os.WriteFile(filepath.Join(media, name), []byte(standinMedium(name)), 0o644); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 2
 			}
 		}
 	}
-	fmt.Fprint(os.Stderr, strings.ReplaceAll(setting(stderrKey), "{path}", args[0]))
+	if replay := setting(replayKey); replay != "" {
+		return replayRun(replay)
+	}
+	fmt.Fprint(os.Stderr, setting(stderrKey))
 	if code := setting(exitKey); code != "" {
 		n, err := strconv.Atoi(code)
 		if err != nil {
@@ -181,6 +211,37 @@ func standin(args []string) int {
 		return 2
 	}
 	return 0
+}
+
+// replayRun writes the expected output jsonl to stdout and the .stderr beside it to stderr, and
+// returns the exit code the .exit beside it holds, 0 when there is none.
+func replayRun(jsonl string) int {
+	stem := strings.TrimSuffix(jsonl, ".jsonl")
+	stdout, err := os.ReadFile(jsonl)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	stderr, err := os.ReadFile(stem + ".stderr")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	code := 0
+	if exit, err := os.ReadFile(stem + ".exit"); err == nil {
+		if code, err = strconv.Atoi(strings.TrimSpace(string(exit))); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if _, err := os.Stdout.Write(stdout); err != nil {
+		return 1
+	}
+	_, _ = os.Stderr.Write(stderr)
+	return code
 }
 
 // sofficeStandin is the stand-in soffice. With --version alone it writes a line of noise to
@@ -367,15 +428,15 @@ type standins struct {
 	log string
 }
 
-// installStandin links the test binary as spike-ai-pipeline-office, soffice, and magick in a
-// directory of its own, the stand-in office reporting version, the stand-in soffice 26.8.1.1, and
+// installStandin links the test binary as docproc-ooxml, soffice, and magick in a directory of its
+// own, the stand-in docproc-ooxml reporting version, the stand-in soffice 26.8.1.1, and
 // the stand-in magick 7.1.2-34.
 func installStandin(t *testing.T, version string) *standins {
 	t.Helper()
 	s := &standins{t: t, links: map[string]string{}, log: filepath.Join(t.TempDir(), "runs.jsonl")}
 	s.settings = map[string]string{versionKey: version, sofficeVersionKey: "26.8.1.1", magickVersionKey: "7.1.2-34", logKey: s.log}
 	dir := t.TempDir()
-	for _, name := range []string{"spike-ai-pipeline-office", "soffice", "magick"} {
+	for _, name := range []string{"docproc-ooxml", "soffice", "magick"} {
 		s.links[name] = tooltest.Link(t, dir, name, s.settings)
 	}
 	return s
@@ -452,7 +513,7 @@ func (s *standins) runs() []standinRun {
 	return runs
 }
 
-// standinConverter builds a Converter over the stand-in office at 0.1.0, built from OfficeSpec
+// standinConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0, built from OfficeSpec
 // through the exec runner, and returns it with the stand-ins.
 func standinConverter(t *testing.T) (*office.Converter, *standins) {
 	t.Helper()
@@ -468,7 +529,7 @@ func standinConverter(t *testing.T) (*office.Converter, *standins) {
 	return c, s
 }
 
-// legacyConverter builds a Converter over the stand-in office at 0.1.0 and the stand-in soffice
+// legacyConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0 and the stand-in soffice
 // at 26.8.1.1, built from OfficeSpec and LibreOfficeSpec through the exec runner, and returns it
 // with the stand-ins.
 func legacyConverter(t *testing.T) (*office.Converter, *standins) {
@@ -501,4 +562,62 @@ func entries(t *testing.T, dir string) []string {
 		names = append(names, e.Name())
 	}
 	return names
+}
+
+// collect ranges over a conversion's records and returns them with its error, the records
+// yielded before it included.
+func collect(t *testing.T, c *office.Converter, req office.Request) ([]office.Record, error) {
+	t.Helper()
+	var recs []office.Record
+	for rec, err := range c.Convert(t.Context(), req) {
+		if err != nil {
+			return recs, err
+		}
+		recs = append(recs, rec)
+	}
+	return recs, nil
+}
+
+// document returns the Document among recs, failing the test unless it is the first record.
+func document(t *testing.T, recs []office.Record) *office.Document {
+	t.Helper()
+	if len(recs) == 0 {
+		t.Fatal("no records")
+	}
+	doc, ok := recs[0].(*office.Document)
+	if !ok {
+		t.Fatalf("the first record is %T, not the Document", recs[0])
+	}
+	return doc
+}
+
+// writeDocument writes content into a file of its own, outside any working directory, named
+// name, "document" when it is "", and returns its path.
+func writeDocument(t *testing.T, name, content string) string {
+	t.Helper()
+	if name == "" {
+		name = "document"
+	}
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// mediaName returns a media name the envelope's rule could make: 64 of the hex digit c, then ext.
+func mediaName(c, ext string) string { return strings.Repeat(c, 64) + ext }
+
+// pictureLine returns a document line of format naming each of files as a picture, with md as
+// its Markdown, and a line feed.
+func pictureLine(format, md string, files ...string) string {
+	var media []string
+	for _, f := range files {
+		media = append(media, fmt.Sprintf(`{"kind":"picture","file":%q,"part":"/word/media/%s"}`, f, f))
+	}
+	line := fmt.Sprintf(`{"line":"document","schema":"2","format":%q,"markdown":%q`, format, md)
+	if len(media) > 0 {
+		line += `,"media":[` + strings.Join(media, ",") + `]`
+	}
+	return line + "}\n"
 }

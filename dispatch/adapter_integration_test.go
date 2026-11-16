@@ -23,6 +23,7 @@ import (
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/email"
 	"github.com/standards-lab/docproc/inspect"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/media"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/onenote"
@@ -334,7 +335,7 @@ func TestAdapterIdentities(t *testing.T) {
 	}
 
 	officeTool := pinned(t, office.OfficeSpec())
-	if got, want := dispatch.Versions(officeTool, nil), "spike-ai-pipeline-office "+officeTool.Version().String(); got != want {
+	if got, want := dispatch.Versions(officeTool, nil), "docproc-ooxml "+officeTool.Version().String(); got != want {
 		t.Errorf("Versions %q, want %q", got, want)
 	}
 	o := officeStage(t).Identity()
@@ -390,13 +391,15 @@ func TestOfficeNoProcessor(t *testing.T) {
 	}
 }
 
-// TestOfficeEncrypted dispatches inspect's encrypted.xlsx, an OLE2 compound file holding an
-// EncryptedPackage stream, and the same bytes named .xlsb, through the pinned office: each is
-// routed office as an encrypted OOXML package, inspect flags it, and office's refusal ends the
-// stage with ErrEncrypted, so it is encrypted.
+// TestOfficeEncrypted dispatches docproc-ooxml's encrypted fixture, read in place, an OLE2
+// compound file holding an EncryptedPackage stream, named .xlsx and .xlsb, through the pinned
+// docproc-ooxml: each is routed office as an encrypted OOXML package, inspect flags it, and
+// docproc-ooxml's refusal, its reason beginning "encrypted", ends the stage with ErrEncrypted, so
+// it is encrypted. inspect's own encrypted.xlsx, a minimal compound file, is one docproc-ooxml
+// refuses as malformed.
 func TestOfficeEncrypted(t *testing.T) {
 	stage := officeStage(t)
-	content, err := os.ReadFile(filepath.Join("..", "inspect", "testdata", "encrypted.xlsx"))
+	content, err := os.ReadFile(tooltest.Tools(t, "ooxml/fixtures/generated/refused/encrypted.libreoffice.docx"))
 	if err != nil {
 		t.Fatal(err)
 	}

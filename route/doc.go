@@ -71,6 +71,7 @@
 //     [Unrouted].
 //   - [File] routes the file at a path, and says why; [At] routes content already open.
 //   - [Ext] reads a name's extension; [OOXMLExtension] reports whether it is an OOXML
-//     package's, the one table of them; [EncryptedPackage] reports whether an OLE2 compound
-//     file is an encrypted OOXML package.
+//     package's, the one table of them; [LegacyTarget] gives the OOXML format a legacy
+//     extension converts to, the one table of those; [EncryptedPackage] reports whether an OLE2
+//     compound file is an encrypted OOXML package.
 package route

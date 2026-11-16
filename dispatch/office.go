@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/route"
 )
@@ -27,23 +27,22 @@ type OfficeConfig struct {
 }
 
 // OfficeStage prepares an office document, route.Office's parts, through office's Converter:
-// office's Markdown as a [MarkdownOutput] named "document", its Meta naming the format a legacy
-// document or an RTF was converted from, "rtf" for an RTF, and office's warnings, a line each; and
-// each file office wrote in its media directory as a [Found] part, the dispatcher's to route and
-// inspect again: a picture converted to PNG as its PNG, any other as stored, a picture whose
-// converter the Converter wasn't given among them, so its own stage may convert it. A part's Where
-// names the medium by office's name for it, "media <SHA-256>.<ext>", and ", as PNG" for a converted
-// one.
+// the Markdown of every record office yields, concatenated in order into the document's whole
+// rendering, as a [MarkdownOutput] named "document", its Meta naming the format a legacy document
+// or an RTF was converted from, "rtf" for an RTF, and docproc-ooxml's warnings, a line each; and
+// each file the Document's media name as a [Found] part, the dispatcher's to route and inspect
+// again: a picture converted to PNG as its PNG, any other as stored, a picture whose converter
+// the Converter wasn't given among them, so its own stage may convert it. A part's Where names the
+// medium by its media name, "media <SHA-256>.<ext>", and ", as PNG" for a converted one.
 //
 // An RTF is office's to convert through LibreOffice to docx, as a .doc is. The stage has no
 // processor yet for an ODF package, a WordPerfect document, or an Excel binary workbook, which
 // LibreOffice would convert, nor for a legacy document or an RTF when the Converter has no
-// LibreOffice converter: each ends with [ErrNoProcessor], its reason naming the kind. office's
-// refusal of an encrypted package ends it with [ErrEncrypted].
+// LibreOffice converter: each ends with [ErrNoProcessor], its reason naming the kind. A refusal
+// internal/cli classes as encrypted ends it with [ErrEncrypted].
 //
-// It asks for the Markdown alone, not office's JSON model too, which would run office twice
-// over each document: the Markdown is what a model reads, and the model's structure is office's
-// to give when a caller needs it.
+// Interim until slice 15, which moves the adapters into stages: the stage joins an xlsx's sheets
+// into the one Markdown output, as before the reader streamed them.
 type OfficeStage struct {
 	converter *office.Converter
 	scale     int
@@ -57,9 +56,8 @@ func NewOfficeStage(cfg OfficeConfig) (*OfficeStage, error) {
 		panic("dispatch: OfficeConfig.Converter is nil")
 	}
 	id, err := adapterIdentity("office", cfg.Version, struct {
-		Format        string `json:"format"`
-		MetafileScale int    `json:"metafile_scale"`
-	}{office.Markdown.String(), cfg.MetafileScale})
+		MetafileScale int `json:"metafile_scale"`
+	}{cfg.MetafileScale})
 	if err != nil {
 		return nil, err
 	}
@@ -86,44 +84,51 @@ func (s *OfficeStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2
 			yield(Item{}, fmt.Errorf("office stage: %w for %s", ErrNoProcessor, what))
 			return
 		}
-		f, err := os.Open(p.Path)
-		if err != nil {
-			yield(Item{}, fmt.Errorf("office stage: %w", err))
-			return
-		}
-		defer func() { _ = f.Close() }()
-		res, err := s.converter.Convert(ctx, f, office.Request{
-			Dir: dir, Format: office.Markdown, Name: p.Name, MetafileScale: s.scale,
-		})
-		if err != nil {
-			yield(Item{}, officeError(err))
-			return
+		var doc *office.Document
+		var md strings.Builder
+		var warnings []string
+		for rec, err := range s.converter.Convert(ctx, office.Request{
+			Path: p.Path, Dir: dir, Name: p.Name, MetafileScale: s.scale,
+		}) {
+			if err != nil {
+				yield(Item{}, officeError(err))
+				return
+			}
+			switch r := rec.(type) {
+			case *office.Document:
+				doc = r
+				md.WriteString(r.Markdown)
+			case *office.Sheet:
+				md.WriteString(r.Markdown)
+			case *office.Rows:
+				md.WriteString(r.Markdown)
+			case *office.Warning:
+				warnings = append(warnings, r.Where+": "+r.What)
+			}
 		}
 		meta := map[string]string{}
-		if res.ConvertedFrom != "" {
-			meta["converted_from"] = res.ConvertedFrom
+		if doc.ConvertedFrom != "" {
+			meta["converted_from"] = doc.ConvertedFrom
 		}
-		if len(res.Warnings) > 0 {
-			meta["warnings"] = strings.Join(res.Warnings, "\n")
+		if len(warnings) > 0 {
+			meta["warnings"] = strings.Join(warnings, "\n")
 		}
-		if !yield(OutputItem(markdown("document", res.Markdown, meta)), nil) {
+		if !yield(OutputItem(markdown("document", md.String(), meta)), nil) {
 			return
 		}
-		// Two stored files of the same bytes under two extensions share one PNG: it is found once.
+		// A file named by several media, or two stored files of the same bytes under two
+		// extensions sharing one PNG, is found once.
 		found := map[string]bool{}
-		for _, m := range res.Media {
-			path, mime, where := m.File, m.ContentType, "media "+m.Name
-			switch {
-			case path == "":
-				path = filepath.Join(res.MediaDir, m.Name)
-			case m.Converted:
-				mime, where = "image/png", where+", as PNG"
-			}
-			if found[path] {
+		for _, m := range doc.Media {
+			if m.Path == "" || found[m.Path] {
 				continue
 			}
-			found[path] = true
-			if !yield(PartItem(Found{Path: path, Name: filepath.Base(path), MIME: mime, Where: where}), nil) {
+			found[m.Path] = true
+			mime, where := m.ContentType, "media "+m.File
+			if m.Converted {
+				mime, where = "image/png", where+", as PNG"
+			}
+			if !yield(PartItem(Found{Path: m.Path, Name: filepath.Base(m.Path), MIME: mime, Where: where}), nil) {
 				return
 			}
 		}
@@ -131,14 +136,16 @@ func (s *OfficeStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2
 }
 
 // officeError returns err, a conversion's, as the stage's: a legacy document or an RTF without a
-// LibreOffice converter matches ErrNoProcessor, and office's refusal of an encrypted package
+// LibreOffice converter matches ErrNoProcessor, and a refusal internal/cli classes as encrypted
 // ErrEncrypted.
+//
+// Interim until slice 15: internal/cli can't name dispatch's classes, so the stage maps its
+// cli.Refusal to them.
 func officeError(err error) error {
-	var exit *office.ExitError
-	switch {
+	switch exit, ok := errors.AsType[*cli.ExitError](err); {
 	case errors.Is(err, office.ErrNoLibreOffice):
 		return fmt.Errorf("office stage: %w: %w", ErrNoProcessor, err)
-	case errors.As(err, &exit) && errors.Is(err, office.ErrRefused) && strings.Contains(exit.Message, "encrypted"):
+	case ok && exit.Refusal() == cli.Encrypted:
 		return fmt.Errorf("office stage: %w: %w", ErrEncrypted, err)
 	}
 	return fmt.Errorf("office stage: %w", err)

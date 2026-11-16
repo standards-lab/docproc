@@ -117,4 +117,13 @@ func TestExt(t *testing.T) {
 	if !route.OOXMLExtension(".xlsb") || !route.OOXMLExtension(".docm") || route.OOXMLExtension(".doc") {
 		t.Error("OOXMLExtension: .xlsb and .docm are OOXML packages' extensions, .doc isn't")
 	}
+	for ext, want := range map[string]string{
+		".doc": "docx", ".dot": "docx", ".xls": "xlsx", ".xlt": "xlsx",
+		".ppt": "pptx", ".pps": "pptx", ".pot": "pptx",
+		".docx": "", ".rtf": "", ".DOC": "", "": "",
+	} {
+		if got := route.LegacyTarget(ext); got != want {
+			t.Errorf("LegacyTarget(%q) = %q, want %q", ext, got, want)
+		}
+	}
 }
