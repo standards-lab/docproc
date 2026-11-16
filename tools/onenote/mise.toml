@@ -25,16 +25,21 @@ typed-path 0.12.4: onenote_parser 2.1.0 requires ^0.12.3; it moves only with one
 
 # The binary is static, linked against musl, so it needs no glibc and sets no GLIBC_FLOOR. Every
 # test runs the release musl binary, overflow checks on (Cargo.toml), so no debug build is made.
+# The shared envelope crate, tools/envelope, has no lock or toolchain of its own: each Rust tool's
+# check formats, lints, and tests it with the tool's, against the tool's Cargo.lock, so it is
+# tested in every graph that links it, this one without its `markdown` feature. Its manifest is
+# formatted by path, which reads no lock and writes none.
 [tasks.check]
-description = "Format-check, lint, and test docproc-onenote against the static musl release binary, then print its version; writes only target/"
+description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
 export PATH="$CARGO_HOME/bin:$PATH"
 target="$(uname -m)-unknown-linux-musl"
 cargo fmt --check
-cargo clippy --all-targets --locked --target "$target" -- -D warnings
-cargo test --release --locked --target "$target"
+cargo fmt --check --manifest-path ../envelope/Cargo.toml
+cargo clippy --all-targets --locked --target "$target" -p docproc-onenote -p docproc-envelope -- -D warnings
+cargo test --release --locked --target "$target" -p docproc-onenote -p docproc-envelope
 "target/$target/release/docproc-onenote" --version
 '''
 
@@ -67,127 +72,19 @@ target="$(uname -m)-unknown-linux-musl"
 UPDATE_GOLDEN=1 cargo test --release --locked --target "$target"
 '''
 
-# Read-only and development-time: it reads the network, so CI never runs it, and RustSec's
-# advisories are read here, never in the check, so a newly published advisory is reported without
-# failing a build.
+# Read-only and development-time: it reads the network, so CI never runs it. tools/currency.sh
+# reports the crates, their RustSec advisories, and the mise tools, as it does for every Rust tool.
 [tasks.currency]
 description = "Report every crate behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, and every mise tool behind its latest, a held one as held; writes only cargo-deny's advisory database"
 dir = "{{config_root}}"
-run = '''
-set -euo pipefail
-export PATH="$CARGO_HOME/bin:$PATH"
-stale=0
-report() {
-  echo "tools/onenote: $1"
-  stale=1
-}
-# A held item is reported, with the hold's reason, and leaves the exit status alone.
-hold() {
-  grep -m1 "^$1 $2: " <<<"$HOLDS" | cut -d: -f2- | sed 's/^ //'
-}
-trailing() {
-  local reason
-  reason=$(hold "$2" "$3")
-  if [ -n "$reason" ]; then
-    echo "tools/onenote: $1: $2 $3 -> $4 held: $reason"
-  else
-    report "$1: $2 $3 -> $4"
-  fi
-}
+run = "../currency.sh onenote report"
 
-# Crates, direct and indirect: updates within each requirement ("Updating"), and newer releases
-# beyond it ("Unchanged ... (available: ...)"). --dry-run leaves Cargo.lock as it is.
-crates=$(cargo update --dry-run --verbose 2>&1 |
-  sed -nE 's/^ *(Updating|Unchanged) +([^ ]+) +v([^ ]+)( -> v([^ ]+)| \(available: v([^)]+)\))$/\2 \3 \5\6/p')
-while read -r name pinned latest; do
-  [ -n "$name" ] && trailing Cargo.lock "$name" "$pinned" "$latest"
-done <<<"$crates"
-
-# Crates in the locked graph with a RustSec advisory: a vulnerability, an unmaintained or unsound
-# crate, or a yanked release. cargo-deny fetches the advisory database first.
-if ! advisories=$(cargo deny --color never check advisories 2>&1); then
-  while read -r line; do
-    [ -n "$line" ] && report "Cargo.lock: $line"
-  done < <(grep -E '^(error|warning)\[' <<<"$advisories")
-fi
-
-# mise tools pinned below their latest version: this file's, Rust among them. The root's are its
-# own.
-outdated=$(mise outdated --bump --json |
-  jq -r --arg dir "$PWD" 'to_entries[] |
-    select(.value.bump != null and (.value.source.path | startswith($dir + "/mise."))) |
-    "\(.value.source.path | split("/") | last) \(.key) \(.value.requested) \(.value.bump)"')
-while read -r file name pinned latest; do
-  [ -n "$file" ] && trailing "$file" "$name" "$pinned" "$latest"
-done <<<"$outdated"
-
-exit "$stale"
-'''
-
-# Development-time, as currency is, and its counterpart: it moves every pin currency reports as
-# trailing to its latest, but a held one, so a currency run after it reports none of them but the
-# held, and an advisory only a newer release of a crate can clear. It rewrites only this
-# directory's pins, never the root's: the mise tools here, then, with them, the crates. Run it,
-# review the diff, and run the check.
+# Development-time, as currency is, and its counterpart. tools/currency.sh moves every mise tool
+# here and every crate, but a held one, raising the shared envelope crate's requirements,
+# tools/envelope/Cargo.toml, as it does for every Rust tool, then re-locking this graph. It
+# rewrites only this directory's pins and the envelope's requirements, never the root's. Run it,
+# review the diff, and run the check, and every other Rust tool's.
 [tasks.upgrade]
-description = "Bump every mise tool here and every crate to its latest, but a held one, rewriting mise.toml, Cargo.toml, and Cargo.lock"
+description = "Bump every mise tool here and every crate to its latest, but a held one, rewriting mise.toml, Cargo.toml, tools/envelope/Cargo.toml, and Cargo.lock"
 dir = "{{config_root}}"
-run = '''
-set -euo pipefail
-held() {
-  grep -q "^$1 $2: " <<<"$HOLDS"
-}
-# Each tool is rewritten in place, its version alone, as `mise use` would write rust's table as a
-# bare version. A backend-qualified name, such as "github:EmbarkStudios/cargo-about", is a quoted
-# key holding a "/", so the name is matched with its quotes optional and its regex characters
-# escaped, under a "|" delimiter.
-tools=$(mise outdated --bump --json |
-  jq -r --arg dir "$PWD" 'to_entries[] |
-    select(.value.bump != null and (.value.source.path | startswith($dir + "/mise."))) |
-    "\(.value.source.path | split("/") | last) \(.key) \(.value.requested) \(.value.bump)"')
-while read -r file name pinned latest; do
-  [ -n "$file" ] || continue
-  held "$name" "$pinned" && continue
-  key=$(sed 's/[][\\.*^$|+?(){}]/\\&/g' <<<"$name")
-  sed -i -E "s|^(\"?$key\"? = (\\{ version = )?\")$pinned\"|\\1$latest\"|" "$file"
-done <<<"$tools"
-# A new mise process, so the crates are upgraded with the toolchain just pinned.
-mise run upgrade:packages
-'''
-
-[tasks."upgrade:packages"]
-description = "Bump every crate to its latest, but a held one, rewriting Cargo.toml and Cargo.lock; upgrade runs it after the mise tools"
-hide = true
-dir = "{{config_root}}"
-run = '''
-set -euo pipefail
-export PATH="$CARGO_HOME/bin:$PATH"
-held() {
-  grep -q "^$1 $2: " <<<"$HOLDS"
-}
-# A direct dependency with a release beyond its requirement gets that release as its requirement,
-# an exact pin ("=") kept exact, in docproc-onenote's manifest, a dependency listed again under
-# [dev-dependencies] (time) in both its lines. An indirect one beyond its requirement moves only
-# when the crate that requires it does. Each line of direct is a crate's name, then the manifest
-# requiring it.
-direct=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] |
-  select(.name == "docproc-onenote") |
-  .manifest_path as $manifest | .dependencies[] | select(.path == null) | "\(.name) \($manifest)"')
-beyond=$(cargo update --dry-run --verbose 2>&1 |
-  sed -nE 's/^ *Unchanged +([^ ]+) +v([^ ]+) \(available: v([^)]+)\)$/\1 \2 \3/p')
-while read -r name pinned latest; do
-  [ -n "$name" ] || continue
-  held "$name" "$pinned" && continue
-  while read -r manifest; do
-    sed -i -E "s/^($name = (\\{ version = )?\"=?)[^\"]+\"/\\1$latest\"/" "$manifest"
-  done < <(sed -n "s/^$name //p" <<<"$direct")
-done <<<"$beyond"
-# Then every crate within its requirement to its latest, held ones left at their pins.
-within=$(cargo update --dry-run --verbose 2>&1 |
-  sed -nE 's/^ *Updating +([^ ]+) +v([^ ]+) -> v[^ ]+$/\1 \2/p')
-while read -r name pinned; do
-  [ -n "$name" ] || continue
-  held "$name" "$pinned" && continue
-  cargo update --quiet "$name@$pinned"
-done <<<"$within"
-'''
+run = "../currency.sh onenote upgrade"

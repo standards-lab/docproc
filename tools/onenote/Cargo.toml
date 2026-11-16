@@ -7,6 +7,10 @@ description = "docproc's OneNote tool: OneNote sections, packages, and notebooks
 publish = false
 
 [dependencies]
+# docproc's Rust tools' common envelope, and their one source of Unicode: the math port (src/math/)
+# sorts an equation's characters by its general-category predicates. Untagged, by path; its tests
+# run in this tool's check, against this Cargo.lock.
+docproc-envelope = { path = "../envelope" }
 # The OneNote reader (MPL-2.0), used unmodified: sections, notebooks, and, through onepkg,
 # packages. It brings cab 0.6 for .onepkg, and time and typed-path, which its API takes and
 # returns. Pinned exactly: the CLI works around this release's exact text and logic, so a new
@@ -27,9 +31,6 @@ libc = "0.2.191"
 cab = "0.6.0"
 # SHA-256, which names each media file by its content.
 sha2 = "0.11.1"
-# Unicode general categories, which the math port (src/math/), as one2html, sorts an
-# equation's characters by.
-finl_unicode = { version = "1.5.1", default-features = false, features = ["categories"] }
 
 [dev-dependencies]
 # utc_datetime!, for the unit tests' times.

@@ -38,7 +38,7 @@
 //!   spells them differently: `\sum` rather than a bare `∑`, for its limits; `\left\{` rather
 //!   than `\left{`; `\hat{x}` rather than a combining U+0302.
 
-use finl_unicode::categories::CharacterCategories;
+use docproc_envelope::category;
 
 use super::ast::{
     BoxSize, BracketSize, Equation, MatrixBrackets, NAryDisplay, NAryLimits, Op, PHANTOM_SHOW,
@@ -189,7 +189,7 @@ fn braced_or_empty(eq: Equation) -> String {
 
 /// A format character other than the function-application operator draws nothing.
 fn is_skippable_format(c: char) -> bool {
-    c.is_format() && c != '\u{2061}'
+    category::is_format(c) && c != '\u{2061}'
 }
 
 fn render_text(text: &str) -> String {

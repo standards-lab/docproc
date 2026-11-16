@@ -21,11 +21,12 @@
 // Changed from one2html: the ranges are a list, not a phf map, since none overlaps; the Unicode
 // blocks are their ranges, not unicode-blocks'; the sans bold italic Greek range ends at
 // U+1D7C9, where one2html's U+17C9 left it empty; an unknown character is an identifier without
-// a log warning; and the classification can't fail.
+// a log warning; the classification can't fail; and the general categories are
+// docproc-envelope's, over ICU4X.
 
 //! Math text's characters by kind, which decides how the renderer writes each run of them.
 
-use finl_unicode::categories::CharacterCategories;
+use docproc_envelope::category;
 
 /// The Mathematical Alphanumeric Symbols' styled ranges, and the operator and arrow blocks.
 const RANGES: [(char, char, TextType); 20] = [
@@ -85,16 +86,16 @@ impl TextType {
         if c.is_ascii_alphabetic() {
             return TextType::Normal;
         }
-        if c.is_separator_space() {
+        if category::is_space_separator(c) {
             return TextType::Space;
         }
-        if c.is_numeric() {
+        if category::is_number(c) {
             return TextType::Numeric;
         }
-        if c.is_symbol_math() {
+        if category::is_math_symbol(c) {
             return TextType::Operator;
         }
-        if c.is_format() {
+        if category::is_format(c) {
             if c == '\u{2061}' {
                 return TextType::Operator;
             }
