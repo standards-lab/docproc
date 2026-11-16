@@ -5,6 +5,7 @@ package sevenzip_test
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -20,40 +21,121 @@ func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{"7zz": sevenZip})
 }
 
-// standinSettings are the stand-in 7zz's settings: the version its banner names, and the listing
-// its l command prints.
+// standinSettings are the stand-in 7zz's settings: the version its banner names, the listing its
+// l command prints, and the items its e command writes.
 type standinSettings struct {
 	Version string `json:"version"`
 	Listing string `json:"listing"`
+	// Items are the archive's items, in its order, as e writes them.
+	Items []standinItem `json:"items"`
+	// Cut, when not zero, ends an e run that names no item after that many bytes, failing with a
+	// data error, as a damaged block does.
+	Cut int `json:"cut"`
 }
 
-// sevenZip is the stand-in 7zz: its l command prints its settings' listing, and anything else
-// prints the banner of its settings' version.
+// standinItem is one item of the stand-in's archive: its name, its content, and whether it is
+// encrypted, which e writes nothing of, failing as a wrong password does.
+type standinItem struct {
+	Name      string `json:"name"`
+	Content   string `json:"content"`
+	Encrypted bool   `json:"encrypted"`
+}
+
+// sevenZip is the stand-in 7zz. Its l command prints its settings' listing. Its e command writes
+// the content of the items an -i! switch names, or, with none, of every item no -x! switch
+// removes, in order, matching each name whole; an encrypted item fails it once the rest are
+// written. Anything else prints the banner of its settings' version.
 func sevenZip(r tooltest.Run) int {
 	var s standinSettings
 	if err := r.Settings(&s); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if len(r.Args) > 0 && r.Args[0] == "l" {
+	switch {
+	case len(r.Args) > 0 && r.Args[0] == "l":
 		fmt.Print(s.Listing)
 		return 0
+	case len(r.Args) > 0 && r.Args[0] == "e":
+		return s.extract(r.Args)
 	}
 	fmt.Printf("\n7-Zip (z) %s (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-10-21\n", s.Version)
 	return 0
+}
+
+// extract is the stand-in's e command, over args.
+func (s standinSettings) extract(args []string) int {
+	include, exclude := map[string]bool{}, map[string]bool{}
+	for _, a := range args {
+		if name, ok := strings.CutPrefix(a, "-i!"); ok {
+			include[name] = true
+		}
+		if name, ok := strings.CutPrefix(a, "-x!"); ok {
+			exclude[name] = true
+		}
+	}
+	var out []byte
+	failed := ""
+	for _, it := range s.Items {
+		switch {
+		case len(include) > 0 && !include[it.Name], len(include) == 0 && excluded(it.Name, exclude):
+			continue
+		case it.Encrypted:
+			failed = it.Name
+			continue
+		}
+		out = append(out, it.Content...)
+	}
+	if s.Cut > 0 && len(include) == 0 && s.Cut < len(out) {
+		if _, err := os.Stdout.Write(out[:s.Cut]); err != nil {
+			return 2
+		}
+		fmt.Fprintln(os.Stderr, "ERROR: Data Error : a damaged block")
+		return 2
+	}
+	if _, err := os.Stdout.Write(out); err != nil {
+		return 2
+	}
+	if failed != "" {
+		fmt.Fprintf(os.Stderr, "ERROR: Wrong password : %s\n", failed)
+		return 2
+	}
+	return 0
+}
+
+// excluded reports whether an -x! switch of exclude's names removes the item named name, as 7zz's
+// does: one names it, or a directory it lies under.
+func excluded(name string, exclude map[string]bool) bool {
+	for p := name; ; {
+		if exclude[p] {
+			return true
+		}
+		i := strings.LastIndexByte(p, '/')
+		if i < 0 {
+			return false
+		}
+		p = p[:i]
+	}
 }
 
 // standin builds a 7zz Tool over the test binary, linked as 7zz with settings, printing its
 // version's banner, its Spec's minimum lowered so the Tool is built whatever version it prints.
 func standin(t *testing.T, settings standinSettings) *tool.Tool {
 	t.Helper()
+	tl, _ := standinLinked(t, settings)
+	return tl
+}
+
+// standinLinked is standin, returning the link too, whose runs tooltest.Runs gives.
+func standinLinked(t *testing.T, settings standinSettings) (*tool.Tool, string) {
+	t.Helper()
 	spec := sevenzip.SevenZipSpec()
-	spec.Program, spec.Minimum = tooltest.Link(t, t.TempDir(), "7zz", settings), "1"
+	link := tooltest.Link(t, t.TempDir(), "7zz", settings)
+	spec.Program, spec.Minimum = link, "1"
 	tl, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tl
+	return tl, link
 }
 
 // TestNewReaderNil: a Config with no 7zz is the caller's mistake, and panics naming the field.
@@ -65,6 +147,19 @@ func TestNewReaderNil(t *testing.T) {
 		}
 	}()
 	_, _ = sevenzip.NewReader(sevenzip.Config{})
+}
+
+// TestNewReaderMinimum: a 7zz older than 24.07, whatever its Spec's minimum, is refused with a
+// *tool.VersionError wrapping tool.ErrTooOld; 24.07 is accepted.
+func TestNewReaderMinimum(t *testing.T) {
+	t.Parallel()
+	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.06"})})
+	if verr, ok := errors.AsType[*tool.VersionError](err); !ok || !errors.Is(err, tool.ErrTooOld) || verr.Found != "24.6" {
+		t.Errorf("24.06: %v, want a VersionError wrapping ErrTooOld", err)
+	}
+	if _, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.07"})}); err != nil {
+		t.Errorf("24.07: %v", err)
+	}
 }
 
 // fixture returns the path of one of the package's fixtures, under testdata.

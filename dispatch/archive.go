@@ -29,9 +29,11 @@ import (
 const archiveVersion = "2"
 
 // SevenZip is what an [ArchiveStage] reads 7-Zip's kinds through: sevenzip's Reader, which lists
-// an archive and extracts one item to a writer, through 7zz's standard output alone.
+// an archive, reads a listed archive's items whole, and extracts one item to a writer, through
+// 7zz's standard output alone.
 type SevenZip interface {
 	List(ctx context.Context, req sevenzip.ListRequest) (sevenzip.Listing, error)
+	Read(ctx context.Context, req sevenzip.ReadRequest) iter.Seq2[sevenzip.Item, error]
 	Extract(ctx context.Context, req sevenzip.ExtractRequest, w io.Writer) error
 }
 
@@ -109,11 +111,12 @@ type ArchiveConfig struct {
 // by its declared size against the archive's, before anything is extracted. The listing's flags
 // are yielded as the archive's own, and a verdict to quarantine them under the dispatcher's
 // options stops the stage, so the archive is [Quarantined] with that evidence and nothing of it
-// is extracted. Otherwise each file is extracted alone, in the listing's order, to 7zz's
-// standard output, written as a ZIP's entry is, and found "7z entry <name>" or "cabinet entry
-// <name>"; a directory is no part. The bomb rule weighs the bytes read from 7zz against the whole
-// archive's size, its check "archive-bomb", and the bytes are held to the listing's size and
-// CRC-32. A link or device is a record, as a tar's is. An encrypted 7z entry is a record, its
+// is extracted. Otherwise its files are read in the listing's order, through one 7zz run of the
+// whole archive to its standard output, an unsized or encrypted entry alone, written as a ZIP's
+// entry is, and found "7z entry <name>" or "cabinet entry <name>"; a directory is no part. The
+// bomb rule weighs the bytes read from 7zz against the whole archive's size, its check
+// "archive-bomb", and the bytes are held to the listing's size and CRC-32. A link or device is a
+// record, as a tar's is. An encrypted 7z entry is a record, its
 // check "archive-encrypted" and its outcome "encrypted", and the
 // archive [Encrypted] once its readable entries are dispatched; a 7z whose headers are encrypted,
 // so nothing of it can be listed, ends with [ErrEncrypted] at once.

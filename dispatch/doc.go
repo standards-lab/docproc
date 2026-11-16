@@ -165,9 +165,9 @@
 // one part, named by its header's name, else by the stream's own name without its .gz, or with a
 // .tgz's .tar, found "gzip content <name>" and routed again, so a .tar.gz is a gzip part holding a
 // tar part; a zstd stream, through 7zz, the same way, named by its own name without its .zst, or
-// with a .tzst's .tar, found "zstd content <name>". A 7z's and a cabinet's files are extracted one
-// at a time through 7zz, found "7z entry <name>" and "cabinet entry <name>"; 7zz writes only to
-// its standard output, never to a path.
+// with a .tzst's .tar, found "zstd content <name>". A 7z's and a cabinet's files are read through
+// one 7zz run of the whole archive, an unsized or encrypted file alone, found "7z entry <name>"
+// and "cabinet entry <name>"; 7zz writes only to its standard output, never to a path.
 //
 // Before anything of a 7z, a cabinet, or a zstd stream is extracted, 7-Zip's listing is checked
 // by inspect.CheckListing against the rules inspect holds a tar to, a traversing, absolute, or

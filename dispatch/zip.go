@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/standards-lab/docproc/inspect"
+	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/sevenzip"
 )
 
@@ -141,7 +142,7 @@ func (s *ArchiveStage) zipWrite(ctx context.Context, archive string, f *zip.File
 		fill = copyFrom(r)
 	default:
 		fill = func(w io.Writer) error {
-			return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: archive, Format: sevenzip.ZIP, Name: f.Name}, w)
+			return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: archive, Kind: route.ZIP, Name: f.Name}, w)
 		}
 	}
 	return s.extract(ctx, fill, dir, f.CompressedSize64, func(w *bombWriter, fillErr error) error {

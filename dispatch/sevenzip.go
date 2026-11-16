@@ -12,13 +12,12 @@ import (
 )
 
 // sevenZipKind is how the archive stage reads one of the kinds it reads through 7-Zip: what it
-// is, in a reason's words, the format 7-Zip is told to read it as, the words its entries are
-// found under, and the inspect checks its entries' records name.
+// is, in a reason's words, the words its entries are found under, and the inspect checks its
+// entries' records name.
 type sevenZipKind struct {
-	what   string
-	format sevenzip.Format
-	where  string
-	bomb   inspect.Check
+	what  string
+	where string
+	bomb  inspect.Check
 	// encrypted, symlink, hardlink, and device are the checks a record of such an entry names,
 	// none for a kind whose format can't carry it.
 	encrypted, symlink, hardlink, device inspect.Check
@@ -27,12 +26,12 @@ type sevenZipKind struct {
 // sevenZipKinds are the kinds the archive stage reads through 7-Zip alone.
 var sevenZipKinds = map[route.Kind]sevenZipKind{
 	route.SevenZip: {
-		what: "a 7z archive", format: sevenzip.SevenZ, where: "7z entry ", bomb: inspect.ArchiveBomb,
+		what: "a 7z archive", where: "7z entry ", bomb: inspect.ArchiveBomb,
 		encrypted: inspect.ArchiveEncrypted, symlink: inspect.ArchiveSymlink,
 		hardlink: inspect.ArchiveHardlink, device: inspect.ArchiveDevice,
 	},
-	route.MSCF: {what: "a cabinet", format: sevenzip.Cabinet, where: "cabinet entry ", bomb: inspect.ArchiveBomb},
-	route.Zstd: {what: "a zstd stream", format: sevenzip.Zstd, where: "zstd content ", bomb: inspect.ArchiveBomb},
+	route.MSCF: {what: "a cabinet", where: "cabinet entry ", bomb: inspect.ArchiveBomb},
+	route.Zstd: {what: "a zstd stream", where: "zstd content ", bomb: inspect.ArchiveBomb},
 }
 
 // listedEntry is what an entry of an archive 7-Zip reads that the stage can't write is recorded
@@ -85,10 +84,10 @@ func (s *ArchiveStage) listedChecks(p Part, entries []inspect.Listed, yield func
 	return true
 }
 
-// list lists the archive p through 7-Zip as k's format, ending the stage with ErrEncrypted when
-// its headers are encrypted.
+// list lists the archive p through 7-Zip as its kind, bounded by the options' Entries, ending the
+// stage with ErrEncrypted when its headers are encrypted.
 func (s *ArchiveStage) list(ctx context.Context, p Part, k sevenZipKind) (sevenzip.Listing, error) {
-	l, err := s.sevenZip.List(ctx, sevenzip.ListRequest{Path: p.Path, Format: k.format})
+	l, err := s.sevenZip.List(ctx, sevenzip.ListRequest{Path: p.Path, Kind: p.ContentType.Kind, Entries: s.opts.Entries})
 	switch {
 	case errors.Is(err, sevenzip.ErrEncrypted):
 		return l, fmt.Errorf("archive stage: %s whose headers are encrypted: %w: %w", k.what, ErrEncrypted, err)
@@ -99,9 +98,9 @@ func (s *ArchiveStage) list(ctx context.Context, p Part, k sevenZipKind) (sevenz
 }
 
 // listed reads the 7z archive or cabinet at p.Path through 7-Zip: its listing, checked before
-// anything is extracted, then each file, one at a time, in the listing's order, yielding each
-// one's item. An archive with an encrypted entry ends with ErrEncrypted once the rest are
-// dispatched.
+// anything is extracted, then each file, in the listing's order, through sevenzip's whole read,
+// yielding each one's item. An archive with an encrypted entry ends with ErrEncrypted once the
+// rest are dispatched.
 func (s *ArchiveStage) listed(ctx context.Context, p Part, dir string, k sevenZipKind, yield func(Item, error) bool) {
 	l, err := s.list(ctx, p, k)
 	if err != nil {
@@ -117,11 +116,12 @@ func (s *ArchiveStage) listed(ctx context.Context, p Part, dir string, k sevenZi
 		return
 	}
 	files, encrypted := 0, 0
-	for _, e := range l.Entries {
-		if err := ctx.Err(); err != nil {
-			yield(Item{}, err)
+	for read, err := range s.sevenZip.Read(ctx, sevenzip.ReadRequest{Path: p.Path, Kind: p.ContentType.Kind, Listing: l}) {
+		if err != nil {
+			yield(Item{}, fmt.Errorf("archive stage: %w", err))
 			return
 		}
+		e := read.Entry
 		if e.Folder {
 			continue
 		}
@@ -129,7 +129,7 @@ func (s *ArchiveStage) listed(ctx context.Context, p Part, dir string, k sevenZi
 		if e.Encrypted {
 			encrypted++
 		}
-		item, err := s.listedEntry(ctx, p, k, e, dir)
+		item, err := s.listedEntry(ctx, p, k, read, dir)
 		if err != nil {
 			yield(Item{}, err)
 			return
@@ -143,12 +143,13 @@ func (s *ArchiveStage) listed(ctx context.Context, p Part, dir string, k sevenZi
 	}
 }
 
-// listedEntry returns e's item, of the archive p, read through 7-Zip as k's format: its part,
+// listedEntry returns read's item, of the archive p, its content read through 7-Zip: its part,
 // written into dir by its SHA-256, or its record. The bomb rule weighs the bytes 7zz writes
 // against the whole archive's size, since a 7z's or cabinet's entries share their packed blocks,
 // and the bytes are held to the listing's size and CRC-32. An error is the stage's own, the
 // directory unwritable or ctx ending; an entry's content never fails it.
-func (s *ArchiveStage) listedEntry(ctx context.Context, p Part, k sevenZipKind, e sevenzip.Entry, dir string) (Item, error) {
+func (s *ArchiveStage) listedEntry(ctx context.Context, p Part, k sevenZipKind, read sevenzip.Item, dir string) (Item, error) {
+	e := read.Entry
 	where := k.where + e.Path
 	typ, link := listedType(e)
 	rec := listedEntry{Name: e.Path, Type: string(typ), Link: link, Method: e.Method, Declared: e.Size}
@@ -178,7 +179,8 @@ func (s *ArchiveStage) listedEntry(ctx context.Context, p Part, k sevenZipKind, 
 
 	whole := uint64(p.Size)
 	path, written, why, err := s.extract(ctx, func(w io.Writer) error {
-		return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: p.Path, Format: k.format, Name: e.Path}, w)
+		_, err := io.Copy(w, read.Content)
+		return err
 	}, dir, whole, func(w *bombWriter, fillErr error) error {
 		switch {
 		case fillErr != nil:
@@ -233,7 +235,7 @@ func (s *ArchiveStage) zstd(ctx context.Context, p Part, dir string, yield func(
 	where := k.where + name
 	compressed := uint64(p.Size)
 	path, written, why, err := s.extract(ctx, func(w io.Writer) error {
-		return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: p.Path, Format: k.format}, w)
+		return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: p.Path, Kind: route.Zstd}, w)
 	}, dir, compressed, func(w *bombWriter, fillErr error) error {
 		switch {
 		case fillErr != nil:

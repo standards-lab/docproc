@@ -53,8 +53,8 @@ CRC-32 `BA8E3BAA`, under one method.
 This repository's, Apache-2.0, written by `generate.go`: run `mise exec -- go run generate.go` in
 this directory. It writes the zstd streams and cabinets by hand, every byte fixed, and the 7z
 archives through the 7zz mise pins, from files whose content, mode, and order are fixed, with no
-times stored and one thread, so a rerun writes the same bytes, but for the two encrypted 7z
-archives, whose salt and IV 7zz draws at random: a rerun writes them anew, and their sums below
+times stored and one thread, so a rerun writes the same bytes, 7zz 26.05 and 26.06 alike, but
+for the two encrypted 7z archives, whose salt and IV 7zz draws at random: a rerun writes them anew, and their sums below
 then change. Their password is `infected`, which no test gives. `~/docs`' archives aren't
 redistributable, so none is copied; the integration tier reads `~/docs` itself when the machine
 has it.
@@ -69,6 +69,8 @@ has it.
 | `generated/bomb.7z` | `generate.go`, 7zz | Apache-2.0 | 1408 | `f8618734e9ad7848eece0a0fdd89d173f8714df1a31267351b4a98d8dbe47fa0` |
 | `generated/encrypted.7z` | `generate.go`, 7zz | Apache-2.0 | 254 | `77d4e80363d4b4892eb82c85f3e83123dfad3c7efd33090f402e58a2e6d87a00` |
 | `generated/encrypted-headers.7z` | `generate.go`, 7zz | Apache-2.0 | 238 | `00b37c48141bc578d4d73893256a6a7794a3d99d89d84a889a877f4be57024da` |
+| `generated/multiblock.7z` | `generate.go`, 7zz | Apache-2.0 | 1366 | `be7f9902e99963de26363a984c807739ea50dd61d094354a47ae73a09d8338ce` |
+| `generated/mixed.7z` | `generate.go`, 7zz | Apache-2.0 | 5316 | `da1be1183d80c3f4afa9a4e86cef3f3cca8620771c4dfa08ed401d887906763a` |
 | `generated/clean.tar.zst` | `generate.go` | Apache-2.0 | 3593 | `d6f55782a58c67086abb62835831a0c42cf6e875ea9bcf659002be3d5c986338` |
 | `generated/bomb.zst` | `generate.go` | Apache-2.0 | 262 | `aceb8add8a2dd576901a2ec13d208aabf9d7779baf18dc625a4a253b637e223c` |
 | `generated/declared-bomb.zst` | `generate.go` | Apache-2.0 | 18 | `b00abcbad0abe6830e32e14db8c8ec466b0305329373c65c783d56b2b9d4a1e5` |
@@ -76,6 +78,7 @@ has it.
 | `generated/traversal.cab` | `generate.go` | Apache-2.0 | 177 | `cf758349ae47bb0fa8959cfad9e54a09e60f7f25b924d8ecbb9f815de93d7ad3` |
 | `generated/absolute.cab` | `generate.go` | Apache-2.0 | 147 | `1b658724750d55e997e5f36cd133338dc1b54cd6388c1f8861db9d22f4814c2f` |
 | `generated/bomb.cab` | `generate.go` | Apache-2.0 | 14662 | `b70d13ed29cb6ba2317828613e5b6566445ded7d27e667fbf705306936a9787b` |
+| `generated/linebreak.cab` | `generate.go` | Apache-2.0 | 232 | `b2bbd0a9af45328e3d44196cbd687c9758ea9365b0e1c71188fb25e1430c11ea` |
 
 What each holds:
 
@@ -96,6 +99,13 @@ What each holds:
   clear.
 - `encrypted-headers.7z`: `secret.txt` with its headers encrypted too (`-mhe=on`), so nothing
   lists without the password.
+- `multiblock.7z`: twelve text files, `blocks/f01.txt` to `blocks/f12.txt`, each its own lines
+  and length, three to a solid block (`-ms=3f`): four LZMA2 blocks, so a whole read crosses a
+  block three times.
+- `mixed.7z`: a block of each of five methods, LZMA2, PPMd, BZip2, Deflate, and Copy (two
+  blocks, Copy being unsolid), each method's two files added to the archive in turn with
+  `-m0=<method>`, so six blocks of mixed methods; beside the LZMA2 files, `empty.txt`, an empty
+  file, and `passwd`, a symbolic link stored as one (`-snl`), which a whole read excludes.
 - `clean.tar.zst`: inspect's `clean.tar` (`inspect/testdata/`) as one zstd frame of raw blocks,
   declaring no content size.
 - `bomb.zst`: 8 MiB of zeros in RLE blocks, about 32,000:1, declaring no content size: past the
@@ -113,3 +123,7 @@ What each holds:
   `C:/evil.txt`.
 - `bomb.cab`: 8 MiB of zeros in one entry, MSZIP, about 570:1: under both default thresholds, so
   a test lowers both to see the rule fire.
+- `linebreak.cab`: `before.txt`, `line` and `break.txt` joined by a line break, `return` ending
+  in a carriage return, and `after.txt`, written by hand since 7zz replaces a line break with
+  `_` when it adds a file or renames one. 7zz lists the line break as `_`, `line_break.txt`, and
+  the carriage return as stored.

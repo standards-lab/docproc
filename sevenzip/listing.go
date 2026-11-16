@@ -1,7 +1,6 @@
 package sevenzip
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -10,30 +9,11 @@ import (
 	"strings"
 )
 
-// Format names the archive format 7-Zip is told to read, its -t switch, so it never guesses one
-// from the content or the name.
-type Format string
-
-// The formats the package reads.
-const (
-	// SevenZ is a 7z archive.
-	SevenZ Format = "7z"
-	// Zstd is a zstd stream: one item, its decompressed content, unnamed.
-	Zstd Format = "zstd"
-	// Cabinet is a Microsoft cabinet, the container a OneNote package is.
-	Cabinet Format = "cab"
-	// ZIP is a ZIP, read through 7-Zip for an entry whose method archive/zip doesn't read.
-	ZIP Format = "zip"
-)
-
-// formats are the formats a request may name.
-var formats = map[Format]bool{SevenZ: true, Zstd: true, Cabinet: true, ZIP: true}
-
 // Entry is one item of an archive as 7-Zip's technical listing, -slt, gives it: each field its
 // property's value, and a property the format doesn't carry left zero.
 type Entry struct {
-	// Path is the item's stored name, as 7-Zip lists it. It is only ever a name: nothing is
-	// written to it. A zstd stream's one item has none.
+	// Path is the item's listed name: its stored name, but for a line break, which 7-Zip lists
+	// as "_". It is only ever a name: nothing is written to it. A zstd stream's one item has none.
 	Path string
 	// Folder is a directory: its Folder property is "+", or its attributes mark a directory.
 	Folder bool
@@ -41,9 +21,6 @@ type Entry struct {
 	// unless its frame header carries its content size.
 	Size  uint64
 	Sized bool
-	// Packed is the item's packed size, when the archive declares one for it; a 7z declares one
-	// only for the first item of each solid block.
-	Packed uint64
 	// CRC is the CRC-32 the archive declares for the item's content, when HasCRC.
 	CRC    uint32
 	HasCRC bool
@@ -70,13 +47,8 @@ func (e Entry) IsDevice() bool {
 	return e.Mode&(fs.ModeDevice|fs.ModeCharDevice|fs.ModeNamedPipe|fs.ModeSocket) != 0
 }
 
-// Listing is an archive as 7-Zip lists it: its type, its physical size, and its items, in the
-// archive's order.
+// Listing is an archive as 7-Zip lists it: its method and its items, in the archive's order.
 type Listing struct {
-	// Type is the archive's type, as 7-Zip names it, such as "7z" or "Cab".
-	Type string
-	// PhysicalSize is the archive's size as 7-Zip read it, when it reports one.
-	PhysicalSize uint64
 	// Method is the archive's Method property, as 7-Zip gives it: the methods a 7z's blocks
 	// use, or what 7-Zip read of a zstd frame's header, such as
 	// "header-open-only: ... content-size-total:4294967296".
@@ -85,97 +57,138 @@ type Listing struct {
 	Entries []Entry
 }
 
-// ErrListing is the cause of a listing the package can't parse.
-var ErrListing = errors.New("unparsable listing")
+var (
+	// ErrListing is the cause of a listing the package can't parse.
+	ErrListing = errors.New("unparsable listing")
+	// ErrEntries is the cause of a listing that holds more items than the request's Entries
+	// allow: its parsing stopped, and 7zz with it, at the item past them.
+	ErrEntries = errors.New("past the entries bound")
+)
 
 // separator divides a technical listing's archive properties from its items' properties.
 const separator = "----------"
 
-// parseListing parses 7-Zip's technical listing, -slt: a banner, the archive's properties after
-// a "--" line, then a "----------" line and each item's properties, a blank line ending each. A
-// property is "Name = value"; a value runs to the end of its line, so a name with a line break in
-// it isn't read whole.
-func parseListing(out []byte) (Listing, error) {
-	var l Listing
-	sc := bufio.NewScanner(bytes.NewReader(out))
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	// section is where the scan is: 0 before the archive's properties, 1 among them, 2 among
+// lineLimit is the longest line the parser takes: a property's line past it is no listing 7zz
+// writes for a name the archive formats it reads can hold.
+const lineLimit = 1 << 20
+
+// listingParser parses 7-Zip's technical listing, -slt, as 7zz writes it: it is the run's
+// standard output, splitting what it is given into lines at "\n" alone, so a carriage return is
+// part of a value, and parsing each. It holds no more of the listing than its current line and
+// item, beside the entries parsed, and fails the write that completes the item past limit, its
+// bound when not zero, which stops 7zz. The listing's form is the package doc's.
+type listingParser struct {
+	limit   int
+	listing Listing
+	// section is where the parse is: 0 before the archive's properties, 1 among them, 2 among
 	// the items'.
-	section := 0
-	var cur map[string]string
-	flush := func() error {
-		if cur == nil {
-			return nil
-		}
-		e, err := entry(cur)
-		if err != nil {
-			return err
-		}
-		l.Entries = append(l.Entries, e)
-		cur = nil
-		return nil
-	}
-	for sc.Scan() {
-		line := sc.Text()
-		switch {
-		case section == 0:
-			if line == "--" {
-				section = 1
-			}
-			continue
-		case line == separator:
-			section = 2
-			continue
-		}
-		name, value, ok := strings.Cut(line, " = ")
-		if !ok {
-			// "Name =" with no value has no space after its "=".
-			name, ok = strings.CutSuffix(line, " =")
-		}
-		if section == 1 {
-			if ok {
-				archiveProperty(&l, name, value)
-			}
-			continue
-		}
-		if line == "" {
-			if err := flush(); err != nil {
-				return Listing{}, err
-			}
-			continue
-		}
-		if !ok {
-			return Listing{}, fmt.Errorf("%w: line %q", ErrListing, line)
-		}
-		if cur == nil {
-			cur = map[string]string{}
-		}
-		cur[name] = value
-	}
-	if err := sc.Err(); err != nil {
-		return Listing{}, fmt.Errorf("%w: %w", ErrListing, err)
-	}
-	if err := flush(); err != nil {
-		return Listing{}, err
-	}
-	if section != 2 {
-		return Listing{}, fmt.Errorf("%w: no items section", ErrListing)
-	}
-	return l, nil
+	section int
+	// cur is the current item's properties, nil between items.
+	cur map[string]string
+	// partial is the current line's start, the rest not yet written.
+	partial []byte
+	// err is the parse's failure, which every later write returns.
+	err error
 }
 
-// archiveProperty sets the archive's property name to value, of those the Listing keeps.
-func archiveProperty(l *Listing, name, value string) {
-	switch name {
-	case "Type":
-		l.Type = value
-	case "Physical Size":
-		if n, err := strconv.ParseUint(value, 10, 64); err == nil {
-			l.PhysicalSize = n
-		}
-	case "Method":
-		l.Method = value
+// Write parses the lines p completes, keeping an unfinished one for the next write.
+func (lp *listingParser) Write(p []byte) (int, error) {
+	if lp.err != nil {
+		return 0, lp.err
 	}
+	n := len(p)
+	for len(p) > 0 {
+		before, after, found := bytes.Cut(p, []byte("\n"))
+		if len(lp.partial)+len(before) > lineLimit {
+			lp.err = fmt.Errorf("%w: a line past %d bytes", ErrListing, lineLimit)
+			return 0, lp.err
+		}
+		lp.partial = append(lp.partial, before...)
+		if !found {
+			break
+		}
+		line := string(lp.partial)
+		lp.partial = lp.partial[:0]
+		if err := lp.line(line); err != nil {
+			lp.err = err
+			return 0, err
+		}
+		p = after
+	}
+	return n, nil
+}
+
+// line parses one line of the listing.
+func (lp *listingParser) line(line string) error {
+	switch {
+	case lp.section == 0:
+		if line == "--" {
+			lp.section = 1
+		}
+		return nil
+	case line == separator:
+		lp.section = 2
+		return nil
+	}
+	name, value, ok := strings.Cut(line, " = ")
+	if !ok {
+		// "Name =" with no value has no space after its "=".
+		name, ok = strings.CutSuffix(line, " =")
+	}
+	if lp.section == 1 {
+		if ok && name == "Method" {
+			lp.listing.Method = value
+		}
+		return nil
+	}
+	if line == "" {
+		return lp.flush()
+	}
+	if !ok {
+		return fmt.Errorf("%w: line %q", ErrListing, line)
+	}
+	if lp.cur == nil {
+		lp.cur = map[string]string{}
+	}
+	lp.cur[name] = value
+	return nil
+}
+
+// flush ends the current item, if any, adding it to the listing, and refuses it past the bound.
+func (lp *listingParser) flush() error {
+	if lp.cur == nil {
+		return nil
+	}
+	if lp.limit > 0 && len(lp.listing.Entries) == lp.limit {
+		return fmt.Errorf("%w: an item past %d", ErrEntries, lp.limit)
+	}
+	e, err := entry(lp.cur)
+	if err != nil {
+		return err
+	}
+	lp.listing.Entries = append(lp.listing.Entries, e)
+	lp.cur = nil
+	return nil
+}
+
+// end ends the parse once 7zz has exited, parsing an unfinished last line, and returns the
+// listing, or the parse's failure.
+func (lp *listingParser) end() (Listing, error) {
+	if lp.err != nil {
+		return Listing{}, lp.err
+	}
+	if len(lp.partial) > 0 {
+		if err := lp.line(string(lp.partial)); err != nil {
+			return Listing{}, err
+		}
+	}
+	if err := lp.flush(); err != nil {
+		return Listing{}, err
+	}
+	if lp.section != 2 {
+		return Listing{}, fmt.Errorf("%w: no items section", ErrListing)
+	}
+	return lp.listing, nil
 }
 
 // contentSizeTotal is the word in a zstd stream's Method property that gives the content size its
@@ -210,9 +223,6 @@ func entry(props map[string]string) (Entry, error) {
 	}
 	var err error
 	if e.Size, e.Sized, err = number(props, "Size"); err != nil {
-		return Entry{}, err
-	}
-	if e.Packed, _, err = number(props, "Packed Size"); err != nil {
 		return Entry{}, err
 	}
 	if v := props["CRC"]; v != "" {

@@ -74,6 +74,14 @@ func run() error {
 		// bomb.cab holds 8 MiB of zeros, about 570:1: under the default ratio and size, so a test
 		// lowers both to see the rule fire.
 		"bomb.cab": cabOf(cabFile{"zeros.bin", zeros}),
+		// linebreak.cab holds a name with a line break, which 7zz lists as "_", between two
+		// ordinary entries, and a name ending in a carriage return, which it lists as stored.
+		"linebreak.cab": cabOf(
+			cabFile{"before.txt", []byte("the entry before\n")},
+			cabFile{"line\nbreak.txt", []byte("a name with a line break\n")},
+			cabFile{"return\r", []byte("a name ending in a carriage return\n")},
+			cabFile{"after.txt", []byte("the entry after\n")},
+		),
 	}
 	for name, b := range files {
 		if err := os.WriteFile(filepath.Join(out, name), b, 0o644); err != nil {
@@ -216,6 +224,7 @@ func sevenZips(zeros []byte) error {
 		"drive.txt":      []byte("a drive letter\n"),
 		"secret.txt":     []byte("encrypted with the fixtures' password\n"),
 		"zeros.bin":      zeros,
+		"empty.txt":      nil,
 	} {
 		if err := write(name, body); err != nil {
 			return err
@@ -226,6 +235,20 @@ func sevenZips(zeros []byte) error {
 	}
 	if err := os.Symlink("/etc/passwd", filepath.Join(src, "passwd")); err != nil {
 		return err
+	}
+	// The multi-block and mixed-method archives' files: each its own text, of its own length.
+	for i := range 12 {
+		if err := write(fmt.Sprintf("blocks/f%02d.txt", i+1), lines(fmt.Sprintf("multi-block file %02d", i+1), 40+i*7)); err != nil {
+			return err
+		}
+	}
+	for _, method := range []string{"lzma2", "ppmd", "bzip2", "deflate", "copy"} {
+		for _, n := range []string{"a", "b"} {
+			name := fmt.Sprintf("%s/%s.txt", method, n)
+			if err := write(name, lines("mixed-method file "+name, 30+len(method)*5+len(n))); err != nil {
+				return err
+			}
+		}
 	}
 	if err := mkfifo(filepath.Join(src, "pipe")); err != nil {
 		return err
@@ -269,6 +292,15 @@ func sevenZips(zeros []byte) error {
 		append(append([]string{}, add...), "-p"+password, filepath.Join(outAbs, "encrypted.7z"), "secret.txt"),
 		// encrypted-headers.7z: secret.txt with its headers encrypted too, so nothing lists.
 		append(append([]string{}, add...), "-p"+password, "-mhe=on", archive("encrypted-headers.7z"), "secret.txt"),
+		// multiblock.7z: twelve files, three to a solid block (-ms=3f), so four LZMA2 blocks.
+		append(append([]string{}, add...), "-ms=3f", archive("multiblock.7z"), "blocks"),
+		// mixed.7z: a block of each method, each added to the archive in turn, with an empty file
+		// and a symbolic link beside the first.
+		append(append([]string{}, add...), "-snl", "-m0=LZMA2", archive("mixed.7z"), "lzma2", "empty.txt", "passwd"),
+		append(append([]string{}, add...), "-m0=PPMd", filepath.Join(outAbs, "mixed.7z"), "ppmd"),
+		append(append([]string{}, add...), "-m0=BZip2", filepath.Join(outAbs, "mixed.7z"), "bzip2"),
+		append(append([]string{}, add...), "-m0=Deflate", filepath.Join(outAbs, "mixed.7z"), "deflate"),
+		append(append([]string{}, add...), "-m0=Copy", filepath.Join(outAbs, "mixed.7z"), "copy"),
 	}
 	for _, args := range steps {
 		if err := sz(args...); err != nil {
@@ -276,6 +308,15 @@ func sevenZips(zeros []byte) error {
 		}
 	}
 	return nil
+}
+
+// lines returns n numbered lines of a file's text, each naming the file.
+func lines(file string, n int) []byte {
+	var b bytes.Buffer
+	for i := range n {
+		fmt.Fprintf(&b, "%s, line %03d\n", file, i+1)
+	}
+	return b.Bytes()
 }
 
 // mkfifo makes a FIFO at path, through mkfifo(1), so the generator needs no syscall package.

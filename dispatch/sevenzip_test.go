@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"iter"
 	"slices"
 	"strings"
 	"sync"
@@ -17,8 +18,10 @@ import (
 // sevenZipSignature begins a 7z archive, so a test input routes to the archive stage as a 7z.
 const sevenZipSignature = "7z\xbc\xaf\x27\x1c\x00\x04"
 
-// fakeSevenZip stands in for sevenzip's Reader: List returns its listing, or its listErr, and
-// Extract writes the content its contents hold for the name asked, recording each name.
+// fakeSevenZip stands in for sevenzip's Reader: List returns its listing, or its listErr; Read
+// yields its listing's items, each one's content the content its contents hold for its name; and
+// Extract writes that content for the name asked. A name is recorded as extracted when its
+// content is first read, or Extract writes it.
 type fakeSevenZip struct {
 	listing   sevenzip.Listing
 	listErr   error
@@ -31,12 +34,42 @@ func (f *fakeSevenZip) List(context.Context, sevenzip.ListRequest) (sevenzip.Lis
 	return f.listing, f.listErr
 }
 
+func (f *fakeSevenZip) Read(_ context.Context, req sevenzip.ReadRequest) iter.Seq2[sevenzip.Item, error] {
+	return func(yield func(sevenzip.Item, error) bool) {
+		for _, e := range req.Listing.Entries {
+			if !yield(sevenzip.Item{Entry: e, Content: &fakeContent{f: f, name: e.Path}}, nil) {
+				return
+			}
+		}
+	}
+}
+
 func (f *fakeSevenZip) Extract(_ context.Context, req sevenzip.ExtractRequest, w io.Writer) error {
-	f.mu.Lock()
-	f.extracted = append(f.extracted, req.Name)
-	f.mu.Unlock()
+	f.note(req.Name)
 	_, err := io.WriteString(w, f.contents[req.Name])
 	return err
+}
+
+// note records name as extracted.
+func (f *fakeSevenZip) note(name string) {
+	f.mu.Lock()
+	f.extracted = append(f.extracted, name)
+	f.mu.Unlock()
+}
+
+// fakeContent is an item's content as fakeSevenZip's Read yields it, noted at its first read.
+type fakeContent struct {
+	f    *fakeSevenZip
+	name string
+	r    *strings.Reader
+}
+
+func (c *fakeContent) Read(p []byte) (int, error) {
+	if c.r == nil {
+		c.f.note(c.name)
+		c.r = strings.NewReader(c.f.contents[c.name])
+	}
+	return c.r.Read(p)
 }
 
 // fakeEntries returns a listing's file entries of contents' names, in names' order, each sized.
@@ -57,7 +90,7 @@ func TestListingQuarantine(t *testing.T) {
 	contents := map[string]string{"notes.txt": "an ordinary entry\n", "docs/../../evil.txt": "evil\n"}
 	fake := func() *fakeSevenZip {
 		return &fakeSevenZip{
-			listing:  sevenzip.Listing{Type: "7z", Entries: fakeEntries(contents, "notes.txt", "docs/../../evil.txt")},
+			listing:  sevenzip.Listing{Entries: fakeEntries(contents, "notes.txt", "docs/../../evil.txt")},
 			contents: contents,
 		}
 	}

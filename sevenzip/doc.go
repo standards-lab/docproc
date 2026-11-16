@@ -1,46 +1,61 @@
-// Package sevenzip lists and extracts archives through 7-Zip's 7zz: a 7z archive, a zstd stream,
-// a Microsoft cabinet, and a ZIP's entries of methods archive/zip doesn't read, such as
-// Deflate64, implode, LZMA, xz, zstd, and PPMd. It provides pre-inference preparation only: the
-// dispatch package's archive stage reads these kinds through it. It builds on every platform: its
-// types on the standard library alone, its Reader on this module's tool package, and the program
-// it runs is a tool.Tool the caller built: 7-Zip's 7zz,
-// SevenZipSpec declaring it, minimum 24.01, the first release whose zstd decoder reads a zstd
-// stream and a ZIP's zstd entries.
+// Package sevenzip lists and reads archives through 7-Zip's 7zz: a 7z archive, a zstd stream, a
+// Microsoft cabinet, and a ZIP's entries of methods archive/zip doesn't read, such as Deflate64,
+// implode, LZMA, xz, zstd, and PPMd, each named by the route.Kind route identified it as. It
+// provides pre-inference preparation only: the dispatch package's archive stage reads these
+// kinds through it. It builds on every platform: its types on the standard library and route
+// alone, its Reader on this module's tool package, and the program it runs is a tool.Tool the
+// caller built: 7-Zip's 7zz, SevenZipSpec declaring it, minimum 24.07, the oldest release with
+// no known defect in a decoder the package uses, its zstd decoder fixed of CVE-2024-11477.
 //
-// A Reader, built over a Config of the Tool, runs 7zz for two things, each one run under the
+// A Reader, built over a Config of the Tool, runs 7zz for three things, each run under the
 // caller's context. List reads an archive's headers through 7zz's technical listing, -slt, and
-// returns its Listing: its type and each item, a directory among them, as an Entry, its stored
-// name, its declared size and CRC-32, whether it is encrypted, its method, the Unix mode its
-// attributes carry, and a link's target, in the archive's order. Extract writes one item's
-// content to the caller's writer, 7zz writing to its standard output alone, -so: 7zz is never
-// given a path to write to, so an item's stored name, a traversing or absolute one included, is
-// only ever a name. The item is named by its stored name, matched whole: -spd keeps it from being
-// a wildcard, and -i! from being a list file. The caller holds what it reads to the listing's size
-// and CRC-32, and enforces any limit on it as it reads: a write that fails stops 7zz. A zstd
-// stream's one item has no name, and is extracted with none.
+// returns its Listing: each item, a directory among them, as an Entry, its listed name, its
+// declared size and CRC-32, whether it is encrypted, its method, the Unix mode its attributes
+// carry, and a link's target, in the archive's order. The listing is parsed as 7zz writes it,
+// and parsing stops, and 7zz with it, at an item past the request's Entries, the caller's
+// inspect.Options.Entries. Read yields every item of a listed archive with its content: one
+// 7zz run writes the content of the items it holds, split by the listing's sizes in its order,
+// each held to its size and CRC-32, and an item that is unsized, encrypted, or not a plain file
+// falls back to the one-item run. Extract is that one-item run, writing one item's content to
+// the caller's writer. A solid 7z block decodes from its start, so items read one at a time each
+// cost a decode of their block's start, which the whole run pays once.
 //
-// Every run is told its archive's format, -t, so 7zz never guesses one, and given an empty
-// password, -p, so it never prompts for one: an archive whose headers are encrypted fails to
-// list, and an encrypted item to extract, with ErrEncrypted, which a caller reports as encrypted.
-// A file 7zz can't open as the format named fails with ErrNotArchive. A run 7zz ends with a
-// warning, exit code 1, has succeeded. Any other failure names 7zz's own error lines, and wraps
-// the run's *tool.ExitError.
+// 7zz writes only to its standard output, -so: it is never given a path to write to, so an
+// item's stored name, a traversing or absolute one included, is only ever a name. An item is
+// named by its listed name, matched whole: -spd keeps it from being a wildcard, and -i! (or, for
+// the whole run's exclusions, -x!) from being a list file. Every run is told its archive's
+// format, -t, so 7zz never guesses one, and given an empty password, -p, so it never prompts for
+// one: an archive whose headers are encrypted fails to list, and an encrypted item to read, with
+// ErrEncrypted. A file 7zz can't open as the format named fails with ErrNotArchive. A run 7zz
+// ends with a warning, exit code 1, has succeeded. Any other failure names 7zz's own error
+// lines, and wraps the run's *tool.ExitError.
 //
-// The listing is parsed line by line, each property's value running to its line's end, so a
-// stored name with a line break in it isn't read whole; the item then fails to match, and the
-// caller's size check records it. Extracting one item of a solid 7z block decodes the block from
-// its start, so an archive's items read one at a time cost more than one extraction of them all.
+// # The listing
+//
+// The reader relies on this form of 7zz's technical listing, l -slt, in UTF-8 (-sccUTF-8), as
+// 24.07 through 26.06 write it: a banner and the archive's name, ignored; a line "--", then the
+// archive's properties; a line of ten "-", then each item's properties, a blank line ending each
+// item. A property is one line, "Name = value", or "Name =" with an empty value, which is no
+// value. Lines end in "\n" alone, and a value runs to it, so a carriage return in a stored name
+// is part of the name. 7zz lists a line break in a stored name as "_": the listing never breaks
+// within a value, but the listed name is no longer the stored one, and naming it to 7zz matches
+// nothing, so such an item read alone fails its size check, and an excluded name holding a "_"
+// can't be trusted to exclude. Of the archive's properties, Method alone is read. Of an item's,
+// Path, Size, CRC (hexadecimal), Encrypted ("+"), Method, Attributes (Windows letters, then a
+// Unix mode such as "drwxr-xr-x", when it carries one), Folder ("+"), Symbolic Link, and Hard
+// Link are read; others are ignored. A line of an item that isn't a property fails the listing,
+// with ErrListing, as does a listing with no items section.
 //
 // Its exported identifiers:
 //
 //   - [SevenZipSpec] declares 7-Zip's 7zz for either runner's constructor.
-//   - [SevenZipMinimum] is the oldest 7zz the package accepts, 24.01.
+//   - [SevenZipMinimum] is the oldest 7zz the package accepts, 24.07.
 //   - [Config] is the Tool a Reader is built over.
-//   - [Reader] lists and extracts through 7zz; [NewReader] builds one.
+//   - [Reader] lists and reads through 7zz; [NewReader] builds one.
 //   - [Reader.List] lists an archive, given a [ListRequest], into a [Listing] of [Entry] items.
+//   - [Reader.Read] yields each [Item] of an archive, given a [ReadRequest], with its content.
 //   - [Reader.Extract] writes one item's content, given an [ExtractRequest], to a writer.
 //   - [Entry.IsSymlink] and [Entry.IsDevice] report what an item's mode or link makes it.
-//   - [Format] names the format 7zz reads: [SevenZ], [Zstd], [Cabinet], or [ZIP].
-//   - [ErrEncrypted], [ErrNotArchive], [ErrRequest], and [ErrListing] are the
-//     causes of a refusal or a failure.
+//   - [ErrEncrypted], [ErrNotArchive], [ErrRequest], [ErrListing], [ErrEntries], and
+//     [ErrContent] are the causes of a refusal or a failure.
 package sevenzip
