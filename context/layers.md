@@ -46,7 +46,15 @@ text" states and applies field by field.
   ``\ * _ ` [ ] | ~ & $``, and before `<` when what follows could open an HTML tag, comment, or
   instruction (a letter, `/` then a letter or nothing, `!`, `?`, or the text's end); at a line's
   start, before a first `-`, `=`, `+`, `#`, or `>`, and before the `.` or `)` after one to nine
-  digits.
+  digits. A link's or an image's destination and title read back as written under CommonMark,
+  by the rules docproc-envelope's `destination` and `title` write and docproc-ooxml's
+  `MarkdownRenderer` matches. Both escape each `\`, and each `&` that could begin a character
+  reference (an optional `#`, ASCII letters and digits, then `;`: the envelope's
+  `reference_like`). A destination holding whitespace, a control character, `<`, or `>` is
+  written `<…>`, its `<` and `>` escaped; any other is written bare, its `(` and `)` escaped. A
+  title also escapes `"`. A destination percent-encodes a line feed, a carriage return, or a NUL
+  (`%0A`, `%0D`, `%00`), which no destination can hold; a title writes them as `&#10;`, `&#13;`,
+  and U+FFFD. A `|` is left to a table cell's writer.
 - **Media.** With `--media <dir>`, each distinct payload (picture, embedded file, OLE payload,
   attachment, ink SVG) is written once into `<dir>`, created if missing, as stored, before the
   line that names it. Its name is the lowercase hex SHA-256 of its bytes plus `.` and the stored
@@ -71,9 +79,11 @@ text" states and applies field by field.
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
 - **Cases.** One committed table, `tools/envelope/cases.json`, holds the envelope's cases: the
   warning escape, a stderr line and the `where` and `what` it splits to, a payload's bytes and
-  stored name and the media name they make, the exit codes' meanings, and the literal-text
-  escape; docproc-ooxml's tests, docproc-envelope's, and docproc's `internal/cli`'s read it
-  in place, so no language restates a case.
+  stored name and the media name they make, the exit codes' meanings, the literal-text escape,
+  and the destinations and titles a target and a title make; docproc-ooxml's tests,
+  docproc-envelope's, and docproc's `internal/cli`'s read it in place, so no language restates a
+  case. docproc-envelope's tests also read each destination and title back through
+  pulldown-cmark.
 - **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
   docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
 
@@ -166,6 +176,15 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   line breaks, `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and
   `\'hh` decoded in the `\ansicpg` code page; nothing separates a table's cells. An RTF that
   encapsulates HTML (`\fromhtml`) has that HTML's text.
+- In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
+  and alt text, read back as the HTML holds them. The tool writes links and images with its own
+  htmd handlers, which write what htmd 0.5.6 does but through the envelope's destination and
+  title rules, an alt text's lines through the literal-text escape. htmd writes a text `&` as
+  itself, so before htmd writes, the tool replaces each `&` of the HTML's text with a
+  private-use character the body doesn't hold, and afterwards writes each one as `\&` where it
+  could begin a character reference outside a code span or block, and as `&` elsewhere. A body
+  whose text holds a `&` and which holds every private-use character is left without Markdown,
+  with a warning.
 - The content rule compares a source text with a Markdown text by standards alone, so no
   fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in the
   docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail and

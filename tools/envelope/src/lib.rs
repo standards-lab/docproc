@@ -8,7 +8,8 @@
 //! - [`Lines`]: the JSON Lines writer of stdout.
 //! - [`guarded`]: a reader's error, or its panic, as a reason.
 //! - [`Media`]: the media store, streaming each medium to its hash name.
-//! - [`markdown`]: the literal-text escape and the destination writer.
+//! - [`markdown`]: the literal-text escape, the destination and title writers, and the test for a
+//!   `&` that could begin a character reference.
 //! - [`content`]: the content rule, the sentences of a source text that a target text lacks.
 //! - [`category`]: Unicode general-category predicates, on the content rule's Unicode version.
 //!

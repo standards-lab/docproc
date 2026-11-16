@@ -16,7 +16,7 @@ boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) 
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
 disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
-each artifact's first tag and the task that releases it.
+each artifact's tags and the task that releases each.
 
 ## Capability map
 
@@ -40,5 +40,5 @@ each artifact's first tag and the task that releases it.
   (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested
   modules"; `design.md`, "cmd/docproc").
-- **Releases**: each artifact's first tag and the task that tags it, the tools on linux-x64 and
+- **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
   linux-arm64 (`design.md`, "Releases").

@@ -191,7 +191,8 @@ license, and the rule that nothing is asked of the parser upstream.
   destination escaped parentheses only, where htmd wraps one holding a space in `<…>`, so a link
   to `\\server\Team Notes\plan.docx` was text, not a link, and no URL reached the content
   rule; in a table cell, a code span and an equation's LaTeX left `|`, which GFM reads as a cell
-  boundary even in a code span.
+  boundary even in a code span. The shared destination rule settles it, and also escapes a `\`
+  and a `&` that could begin a character reference (`layers.md`, "Common envelope").
 - **ON-9 · Five workarounds stood on onenote_parser's behaviour, under a caret requirement.** The
   parser is current and maintained, by one person; the tool works around (a) its private error
   kind, told by message prefix, (b) a `println!` that costs `libc`, an `unsafe` `dup2`, and
@@ -758,6 +759,8 @@ library's readers take their first schema "2" tags as their minimums.
 tools/ooxml/v0.1.0     docproc-ooxml     ooxml      from spike-ai-pipeline-office v0.1.0
 tools/mail/v0.1.0      docproc-mail      mail       from spike-ai-pipeline-mail v0.3.1
 tools/onenote/v0.1.0   docproc-onenote   onenote    from spike-ai-pipeline-onenote v0.1.0
+tools/mail/v0.1.1      docproc-mail      onenote    fix: its Markdown reads back as written
+tools/ooxml/v0.1.1     docproc-ooxml     onenote    fix: its Markdown reads back as written
 v0.1.0                 docproc           library    from spike-ai-pipeline-processing v0.9.0
 storage/v0.1.0         docproc/storage   library    new
 postgres/v0.1.0        docproc/postgres  library    new
