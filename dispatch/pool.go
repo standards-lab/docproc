@@ -41,11 +41,11 @@ type poolItem struct {
 // takes no more inputs, its dispatches stop, and it yields ctx's error alone, last, in place of
 // each dispatch's own. A loop that stops early stops every dispatch, as Dispatch's does, and the
 // pool returns once every worker has, its claims released and its files removed. workers under 1
-// is an error, yielded alone.
+// is an error wrapping ErrRequest, yielded alone.
 func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers int) iter.Seq2[PoolEvent, error] {
 	return func(yield func(PoolEvent, error) bool) {
 		if workers < 1 {
-			yield(PoolEvent{}, fmt.Errorf("dispatch: pool: %d workers, want at least 1", workers))
+			yield(PoolEvent{}, fmt.Errorf("dispatch: pool: %d workers, want at least 1: %w", workers, ErrRequest))
 			return
 		}
 		// pctx ends the dispatches when the loop stops early; stop tells the feeder and the

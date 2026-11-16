@@ -165,8 +165,8 @@ func TestPoolErrors(t *testing.T) {
 
 	var errs []error
 	for pe, err := range f.d.Pool(t.Context(), slices.Values(inputs), 0) {
-		if err == nil {
-			t.Errorf("an event with no workers: %+v", pe)
+		if !errors.Is(err, dispatch.ErrRequest) {
+			t.Errorf("no workers: %+v, %v, want an error matching ErrRequest", pe, err)
 		}
 		errs = append(errs, err)
 	}

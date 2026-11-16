@@ -40,10 +40,11 @@ type PictureStage struct {
 	id        Identity
 }
 
-// NewPictureStage builds a PictureStage over cfg, refusing one with no Converter or Version.
+// NewPictureStage builds a PictureStage over cfg, panicking naming Converter when it is nil, the
+// caller's mistake, and refusing one with no Version.
 func NewPictureStage(cfg PictureConfig) (*PictureStage, error) {
 	if cfg.Converter == nil {
-		return nil, errors.New("dispatch: picture stage: no converter")
+		panic("dispatch: PictureConfig.Converter is nil")
 	}
 	id, err := adapterIdentity("picture", cfg.Version, struct {
 		MetafileScale int `json:"metafile_scale"`

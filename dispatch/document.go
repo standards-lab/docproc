@@ -99,11 +99,12 @@ type DocumentStage struct {
 	id       Identity
 }
 
-// NewDocumentStage builds a DocumentStage over cfg, refusing one with no Preparer or Version, and
-// bomb thresholds the archive stage would refuse.
+// NewDocumentStage builds a DocumentStage over cfg, panicking naming Preparer when it is nil, the
+// caller's mistake, and refusing one with no Version, and bomb thresholds the archive stage would
+// refuse.
 func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 	if cfg.Preparer == nil {
-		return nil, errors.New("dispatch: document stage: no preparer")
+		panic("dispatch: DocumentConfig.Preparer is nil")
 	}
 	ratio, size, err := bombRule("document stage", cfg.Inspect)
 	if err != nil {

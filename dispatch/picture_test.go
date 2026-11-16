@@ -6,29 +6,28 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// The picture stage's hermetic tests run its Converter over a stand-in magick: the test binary,
-// re-executed through a link named magick, acting on its arguments as ImageMagick would, as the
-// picture package's own tests do.
-const (
-	// pictureStandinEnv marks a process as the stand-in.
-	pictureStandinEnv = "DISPATCH_PICTURE_STANDIN"
-	// pictureFormatsEnv is the format listing the stand-in's -list format prints.
-	pictureFormatsEnv = "DISPATCH_PICTURE_FORMATS"
-	// picturePagesEnv is how many pages the stand-in's pages run writes.
-	picturePagesEnv = "DISPATCH_PICTURE_PAGES"
-)
+// The picture stage's hermetic tests run its Converter over a stand-in magick, internal/tooltest's
+// link named magick, acting on its arguments as ImageMagick would, as the picture package's own
+// tests do.
+
+// pictureSettings are the stand-in magick's settings: the format listing its -list format prints,
+// and how many pages its pages run writes.
+type pictureSettings struct {
+	Formats string `json:"formats"`
+	Pages   int    `json:"pages"`
+}
 
 // pictureListing is a format listing whose HEIC, WebP, and AVIF readers magick has, in the form
 // ImageMagick 7.1.2-34 prints it.
@@ -47,24 +46,24 @@ const (
 	pictureAVIF = "\x00\x00\x00\x18ftypavif\x00\x00\x00\x00mif1avif"
 )
 
-func init() {
-	if os.Getenv(pictureStandinEnv) == "1" {
-		os.Exit(pictureStandin(os.Args[1:]))
-	}
-}
-
 // pictureStandin is the stand-in magick. With -version alone it prints its version, 7.1.2-34, and
-// with -list format pictureFormatsEnv's listing. Otherwise its last argument names its output,
-// "png:path": a pages run, one with +adjoin, writes picturePagesEnv's count of PNGs, each to the
+// with -list format its settings' listing. Otherwise its last argument names its output,
+// "png:path": a pages run, one with +adjoin, writes its settings' count of PNGs, each to the
 // path with %d put for its index from 0, holding PNG's signature and "page N"; any other run
 // writes one, holding PNG's signature and its first argument, the input it read.
-func pictureStandin(args []string) int {
+func pictureStandin(r tooltest.Run) int {
+	var settings pictureSettings
+	if err := r.Settings(&settings); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	args := r.Args
 	switch {
 	case len(args) == 1 && args[0] == "-version":
 		fmt.Println("Version: ImageMagick 7.1.2-34 Q16-HDRI x86_64 https://imagemagick.org")
 		return 0
 	case len(args) == 2 && args[0] == "-list" && args[1] == "format":
-		fmt.Print(os.Getenv(pictureFormatsEnv))
+		fmt.Print(settings.Formats)
 		return 0
 	case len(args) < 2:
 		fmt.Fprintf(os.Stderr, "stand-in: unexpected arguments %q\n", args)
@@ -78,12 +77,7 @@ func pictureStandin(args []string) int {
 		}
 		return 0
 	}
-	n, err := strconv.Atoi(os.Getenv(picturePagesEnv))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	for i := range n {
+	for i := range settings.Pages {
 		if err := os.WriteFile(fmt.Sprintf(out, i), []byte(fmt.Sprintf("%spage %d", route.PNGSignature, i+1)), 0o644); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
@@ -96,21 +90,9 @@ func pictureStandin(args []string) int {
 // with listing as its format listing and pages as the pages its pages run writes.
 func standinPictureStage(t *testing.T, listing string, pages int) *dispatch.PictureStage {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	if err := os.Symlink(exe, filepath.Join(dir, "magick")); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-	t.Setenv(pictureStandinEnv, "1")
-	// Under -race, GORACE's atexit_sleep_ms keeps a stand-in from sleeping a second as it exits.
-	t.Setenv("GORACE", "atexit_sleep_ms=0")
-	t.Setenv(pictureFormatsEnv, listing)
-	t.Setenv(picturePagesEnv, strconv.Itoa(pages))
-	mg, err := tool.NewExec(t.Context(), picture.MagickSpec())
+	spec := picture.MagickSpec()
+	spec.Program = tooltest.Link(t, t.TempDir(), "magick", pictureSettings{Formats: listing, Pages: pages})
+	mg, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +110,7 @@ func standinPictureStage(t *testing.T, listing string, pages int) *dispatch.Pict
 // TestPictureStageTIFFPages: a TIFF of three pages is prepared as three image outputs, in page
 // order, each a PNG named "page N", its Meta naming the kind, its page, and the page count.
 func TestPictureStageTIFFPages(t *testing.T) {
+	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 3)}, dispatch.NewMemoryIndex())
 	var held []string
 	events := dispatchAll(t, d, input(t, "scan.tif", pictureTIFF), func(ev *dispatch.Event) {
@@ -159,6 +142,7 @@ func TestPictureStageTIFFPages(t *testing.T) {
 // TestPictureStageRasters: a HEIC, a WebP, and an AVIF are each prepared as one image output, a
 // PNG named "picture", its Meta naming the kind, its first image read through its kind's coder.
 func TestPictureStageRasters(t *testing.T) {
+	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 0)}, dispatch.NewMemoryIndex())
 	for name, c := range map[string]struct {
 		content string
@@ -192,6 +176,7 @@ func TestPictureStageRasters(t *testing.T) {
 // TestPictureNoReader: a HEIC, a WebP, and an AVIF whose readers magick's listing doesn't mark
 // have no processor yet, each reason naming the missing reader.
 func TestPictureNoReader(t *testing.T) {
+	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, "", 0)}, dispatch.NewMemoryIndex())
 	for name, c := range map[string]struct{ content, what string }{
 		"x.heic": {pictureHEIC, "a HEIC"},

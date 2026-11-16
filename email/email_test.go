@@ -19,12 +19,14 @@ import (
 )
 
 // TestNewReader: a stand-in at the minimum, or a build past it, is accepted; an older one fails at
-// construction, whether the Tool's Spec or NewReader refuses it; a nil Tool is refused.
+// construction, whether the Tool's Spec or NewReader refuses it; a nil Tool panics, naming the
+// field.
 func TestNewReader(t *testing.T) {
 	for _, version := range []string{"0.2.0", "0.2.0+0b6b5a4", "0.3.0"} {
 		t.Run(version, func(t *testing.T) {
-			installStandin(t, version)
-			tl, err := tool.NewExec(t.Context(), email.MailSpec())
+			t.Parallel()
+			mail := installStandin(t, version)
+			tl, err := tool.NewExec(t.Context(), mail.spec())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -34,12 +36,13 @@ func TestNewReader(t *testing.T) {
 		})
 	}
 	t.Run("older", func(t *testing.T) {
-		installStandin(t, "0.1.0")
-		_, err := tool.NewExec(t.Context(), email.MailSpec())
+		t.Parallel()
+		mail := installStandin(t, "0.1.0")
+		_, err := tool.NewExec(t.Context(), mail.spec())
 		if !errors.Is(err, tool.ErrTooOld) {
 			t.Fatalf("spec's own minimum: got %v, want ErrTooOld", err)
 		}
-		spec := email.MailSpec()
+		spec := mail.spec()
 		spec.Minimum = "0.0.1"
 		tl, err := tool.NewExec(t.Context(), spec)
 		if err != nil {
@@ -52,9 +55,14 @@ func TestNewReader(t *testing.T) {
 		}
 	})
 	t.Run("nil", func(t *testing.T) {
-		if _, err := email.NewReader(email.Config{}); err == nil {
-			t.Fatal("want an error")
-		}
+		t.Parallel()
+		defer func() {
+			if r := recover(); r != "email: Config.Mail is nil" {
+				t.Errorf("recovered %v, want the panic naming Config.Mail", r)
+			}
+		}()
+		_, _ = email.NewReader(email.Config{})
+		t.Error("NewReader returned")
 	})
 }
 
@@ -72,8 +80,8 @@ const fullLines = `{"line":"store","schema":"1","format":"pst","encoding":"unico
 // every field of schema "1" set; a line of an unknown kind is kept with its JSON. mail runs once,
 // on the input made absolute.
 func TestRead(t *testing.T) {
-	r, runs := standinReader(t)
-	t.Setenv(stdoutEnv, fullLines)
+	r, mail := standinReader(t)
+	mail.stdout(fullLines)
 	t.Chdir(t.TempDir())
 	recs, err := collect(r.Read(t.Context(), email.Request{Input: "-store.pst"}))
 	if err != nil {
@@ -145,7 +153,7 @@ func TestRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := runs(), [][]string{{filepath.Join(dir, "-store.pst")}}; !reflect.DeepEqual(got, want) {
+	if got, want := mail.runs(), [][]string{{filepath.Join(dir, "-store.pst")}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("runs %q, want %q", got, want)
 	}
 }
@@ -154,6 +162,7 @@ func TestRead(t *testing.T) {
 // gives, decode as mail writes them: an .eml's skipped attachment names no message, an mbox's
 // names its message's ordinal, and an mbox's skipped message has its ordinal for its id.
 func TestReadMIMESkipped(t *testing.T) {
+	t.Parallel()
 	one, two, three := uint64(1), uint64(2), uint64(3)
 	cases := []struct {
 		name, lines string
@@ -180,8 +189,9 @@ func TestReadMIMESkipped(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, c.lines)
+			t.Parallel()
+			r, mail := standinReader(t)
+			mail.stdout(c.lines)
 			recs, err := collect(r.Read(t.Context(), email.Request{Input: "mail." + c.name}))
 			if err != nil {
 				t.Fatal(err)
@@ -196,11 +206,12 @@ func TestReadMIMESkipped(t *testing.T) {
 // TestReadWarnings: a read whose stderr holds warnings, with records skipped, succeeds; each
 // warning line is one warning, mail's prefix taken off, in order.
 func TestReadWarnings(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, `{"line":"store","schema":"1","format":"pst"}
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.stdout(`{"line":"store","schema":"1","format":"pst"}
 {"line":"skipped","kind":"message","folder":32898,"id":2097188,"reason":"Missing Sub-Node Tree on message"}
 `)
-	t.Setenv(stderrEnv, "spike-ai-pipeline-mail: warning: /Top/Contacts, message 2097188: skipped: Missing Sub-Node Tree on message\n"+
+	mail.stderr("spike-ai-pipeline-mail: warning: /Top/Contacts, message 2097188: skipped: Missing Sub-Node Tree on message\n" +
 		"spike-ai-pipeline-mail: warning: message, attachment 2: an embedded message\n")
 	s := mustRead(t)(r.Read(t.Context(), email.Request{Input: "store.pst"}))
 	recs, err := collect(s, nil)
@@ -223,6 +234,7 @@ func TestReadWarnings(t *testing.T) {
 // message without its prefix, label, and the input's path, the usage after a usage error's message left out, and
 // unwrapping to the Tool's *tool.ExitError; a warning before the error is still a warning.
 func TestReadExit(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		code   int
 		want   error
@@ -236,10 +248,11 @@ func TestReadExit(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(strconv.Itoa(c.code), func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, "")
-			t.Setenv(stderrEnv, c.stderr)
-			t.Setenv(exitEnv, strconv.Itoa(c.code))
+			t.Parallel()
+			r, mail := standinReader(t)
+			mail.stdout("")
+			mail.stderr(c.stderr)
+			mail.exit(c.code)
 			s := mustRead(t)(r.Read(t.Context(), email.Request{Input: "in.pst"}))
 			recs, err := collect(s, nil)
 			if len(recs) != 0 {
@@ -268,10 +281,11 @@ func TestReadExit(t *testing.T) {
 // TestReadExitOther: an exit code outside 1 to 4 is no *ExitError of the package's, but carries
 // mail's message.
 func TestReadExitOther(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, "")
-	t.Setenv(stderrEnv, "spike-ai-pipeline-mail: error: odd\n")
-	t.Setenv(exitEnv, "9")
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.stdout("")
+	mail.stderr("spike-ai-pipeline-mail: error: odd\n")
+	mail.exit(9)
 	_, err := collect(r.Read(t.Context(), email.Request{Input: "in.pst"}))
 	var exit *email.ExitError
 	var toolExit *tool.ExitError
@@ -283,6 +297,7 @@ func TestReadExitOther(t *testing.T) {
 // TestReadSchema: a store line of another schema, or of none, is refused with ErrSchema naming
 // it, and nothing is yielded; so is output that doesn't begin with the store line.
 func TestReadSchema(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, stdout, want string
 	}{
@@ -291,8 +306,9 @@ func TestReadSchema(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, c.stdout)
+			t.Parallel()
+			r, mail := standinReader(t)
+			mail.stdout(c.stdout)
 			recs, err := collect(r.Read(t.Context(), email.Request{Input: "in.pst"}))
 			if !errors.Is(err, email.ErrSchema) || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want ErrSchema naming %s", err, c.want)
@@ -306,6 +322,7 @@ func TestReadSchema(t *testing.T) {
 
 // TestReadMalformed: output that isn't mail's lines is an error, whatever was yielded before it.
 func TestReadMalformed(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"empty":        "",
 		"not store":    `{"line":"folder","id":1}` + "\n",
@@ -317,8 +334,9 @@ func TestReadMalformed(t *testing.T) {
 	}
 	for name, stdout := range cases {
 		t.Run(name, func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, stdout)
+			t.Parallel()
+			r, mail := standinReader(t)
+			mail.stdout(stdout)
 			if _, err := collect(r.Read(t.Context(), email.Request{Input: "in.pst"})); err == nil {
 				t.Fatal("want an error")
 			}
@@ -328,10 +346,11 @@ func TestReadMalformed(t *testing.T) {
 
 // TestReadCutShortExit: output cut short by a mail that then failed is mail's exit error.
 func TestReadCutShortExit(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, `{"line":"store","schema":"1"}`+"\n"+`{"line":"folder",`)
-	t.Setenv(stderrEnv, "spike-ai-pipeline-mail: error: panicked\n")
-	t.Setenv(exitEnv, "4")
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.stdout(`{"line":"store","schema":"1"}` + "\n" + `{"line":"folder",`)
+	mail.stderr("spike-ai-pipeline-mail: error: panicked\n")
+	mail.exit(4)
 	recs, err := collect(r.Read(t.Context(), email.Request{Input: "in.pst"}))
 	if !errors.Is(err, email.ErrFailed) || len(recs) != 1 {
 		t.Fatalf("got %v after %d records, want ErrFailed after the store", err, len(recs))
@@ -342,8 +361,9 @@ func TestReadCutShortExit(t *testing.T) {
 // while mail runs stops it and returns an error matching context.Canceled, never an ExitError,
 // well before mail would have exited.
 func TestReadCancel(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.sleep()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	start := time.Now()
@@ -374,8 +394,9 @@ func TestReadCancel(t *testing.T) {
 // TestReadDeadline: a read whose deadline passes while mail runs returns an error matching
 // context.DeadlineExceeded.
 func TestReadDeadline(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.sleep()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	recs, err := collect(r.Read(ctx, email.Request{Input: "in.msg"}))
@@ -390,8 +411,9 @@ func TestReadDeadline(t *testing.T) {
 // TestReadStop: a loop that stops early stops mail, without waiting for it to exit, and nothing
 // more is yielded.
 func TestReadStop(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.sleep()
 	start := time.Now()
 	n := 0
 	for _, err := range mustRead(t)(r.Read(t.Context(), email.Request{Input: "in.msg"})).Records() {
@@ -412,7 +434,8 @@ func TestReadStop(t *testing.T) {
 // TestReadOnce: a Stream's records are read once; ranging again yields an error and runs nothing.
 // A cancelled context runs nothing.
 func TestReadOnce(t *testing.T) {
-	r, runs := standinReader(t)
+	t.Parallel()
+	r, mail := standinReader(t)
 	s := mustRead(t)(r.Read(t.Context(), email.Request{Input: "in.msg"}))
 	if _, err := collect(s, nil); err != nil {
 		t.Fatal(err)
@@ -425,7 +448,7 @@ func TestReadOnce(t *testing.T) {
 	if _, err := collect(r.Read(ctx, email.Request{Input: "in.msg"})); !errors.Is(err, context.Canceled) {
 		t.Errorf("cancelled: got %v", err)
 	}
-	if got := len(runs()); got != 1 {
+	if got := len(mail.runs()); got != 1 {
 		t.Errorf("%d runs, want 1", got)
 	}
 }
@@ -435,7 +458,7 @@ func TestReadOnce(t *testing.T) {
 // Input or Attachments, which can't be made absolute. mail never runs; an absolute Input with no
 // Attachments is still read from there.
 func TestReadRefused(t *testing.T) {
-	r, runs := standinReader(t)
+	r, mail := standinReader(t)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 	if err := os.Remove(cwd); err != nil {
@@ -455,10 +478,27 @@ func TestReadRefused(t *testing.T) {
 			}
 		})
 	}
-	if got := runs(); len(got) != 0 {
+	if got := mail.runs(); len(got) != 0 {
 		t.Errorf("runs %q, want none", got)
 	}
 	if _, err := collect(r.Read(t.Context(), email.Request{Input: abs})); err != nil {
 		t.Errorf("absolute input: %v", err)
+	}
+}
+
+// TestReadUTC: a time mail writes with an offset is decoded as the same instant in UTC.
+func TestReadUTC(t *testing.T) {
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.stdout(`{"line":"store","schema":"1","format":"msg"}
+{"line":"message","subject":"Offset","submit_time":"2026-01-12T19:45:00+05:30"}
+`)
+	recs, err := collect(r.Read(t.Context(), email.Request{Input: "in.msg"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := recs[1].(*email.Message).SubmitTime
+	if want := time.Date(2026, 1, 12, 14, 15, 0, 0, time.UTC); !got.Equal(want) || got.Location() != time.UTC {
+		t.Errorf("submit time %v, want %v in UTC", got, want)
 	}
 }

@@ -3,177 +3,141 @@
 package email_test
 
 import (
-	"bufio"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/standards-lab/docproc/email"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinEnv marks a process as a stand-in: the test binary, re-executed through a link named
-// spike-ai-pipeline-mail, acting on its arguments as mail instead of running the tests, or
-// through one named magick, acting as the magick the picture package's Converter is built over.
-const standinEnv = "MAIL_TEST_STANDIN"
-
-// The stand-in's settings, which it reads from the environment it inherits.
-const (
-	// versionEnv is the version the stand-in's --version prints.
-	versionEnv = "MAIL_TEST_STANDIN_VERSION"
-	// logEnv names the file each run appends its arguments to, one JSON array per line.
-	logEnv = "MAIL_TEST_STANDIN_LOG"
-	// stdoutEnv, when set, is what a run writes to stdout in place of standinLines.
-	stdoutEnv = "MAIL_TEST_STANDIN_STDOUT"
-	// stderrEnv, when set, is what a run writes to stderr, after its stdout, each {path} in it the
-	// input's path, its last argument, as the run was given it.
-	stderrEnv = "MAIL_TEST_STANDIN_STDERR"
-	// exitEnv, when set, is the exit code of a run.
-	exitEnv = "MAIL_TEST_STANDIN_EXIT"
-	// sleepEnv, when set, makes a run sleep a minute after writing its stdout, for a test to
-	// cancel it or stop reading.
-	sleepEnv = "MAIL_TEST_STANDIN_SLEEP"
-)
-
-// standinLines is the stand-in's output when stdoutEnv isn't set: a .msg's store line and its
-// message.
+// standinLines is the stand-in mail's output when its settings give no Stdout: a .msg's store line
+// and its message.
 const standinLines = `{"line":"store","schema":"1","format":"msg"}
 {"line":"message","class":"IPM.Note","subject":"Hello"}
 `
 
 func TestMain(m *testing.M) {
-	if os.Getenv(standinEnv) == "1" {
-		switch name := filepath.Base(os.Args[0]); name {
-		case "spike-ai-pipeline-mail":
-			os.Exit(standin(os.Args[1:]))
-		case "magick":
-			os.Exit(pictureStandin(name, os.Args[1:]))
-		default:
-			fmt.Fprintf(os.Stderr, "stand-in: no tool named %s\n", name)
-			os.Exit(2)
-		}
-	}
-	// The stand-in inherits the environment. Under -race, GORACE's atexit_sleep_ms keeps it from
-	// sleeping a second as it exits.
-	for key, value := range map[string]string{standinEnv: "1", "GORACE": "atexit_sleep_ms=0"} {
-		if err := os.Setenv(key, value); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-	}
-	os.Exit(m.Run())
+	tooltest.Main(m, map[string]tooltest.Program{
+		"spike-ai-pipeline-mail": standin,
+		"magick":                 pictureStandin,
+	})
 }
 
-// standin is the stand-in mail. With --version alone it prints the version alone, as mail does.
-// Otherwise it appends its arguments to the log file, writes stdoutEnv's value, or standinLines,
-// to stdout, sleeps when sleepEnv is set, writes stderrEnv's value to stderr, and exits with
-// exitEnv's code when it is set, else zero. It reads no input.
-func standin(args []string) int {
+// mailSettings are the stand-in mail's settings, which its link names.
+type mailSettings struct {
+	// Version is what its --version prints.
+	Version string `json:"version"`
+	// Stdout, when not nil, is what a run writes to stdout in place of standinLines.
+	Stdout *string `json:"stdout"`
+	// Stderr is what a run writes to stderr, after its stdout, each {path} in it the input's
+	// path, its last argument, as the run was given it.
+	Stderr string `json:"stderr"`
+	// Exit is a run's exit code.
+	Exit int `json:"exit"`
+	// Sleep makes a run sleep a minute after writing its stdout, for a test to cancel it or stop
+	// reading.
+	Sleep bool `json:"sleep"`
+}
+
+// standin is the stand-in mail. With --version alone it prints its settings' version alone, as
+// mail does. Otherwise it writes its settings' Stdout, or standinLines, to stdout, sleeps when
+// they say to, writes their Stderr to stderr, and exits with their Exit. It reads no input.
+func standin(r tooltest.Run) int {
+	var s mailSettings
+	if err := r.Settings(&s); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	args := r.Args
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println(os.Getenv(versionEnv))
+		fmt.Println(s.Version)
 		return 0
 	}
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "stand-in: no input")
 		return 2
 	}
-	if err := appendLog(os.Getenv(logEnv), args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	out, set := os.LookupEnv(stdoutEnv)
-	if !set {
-		out = standinLines
+	out := standinLines
+	if s.Stdout != nil {
+		out = *s.Stdout
 	}
 	if _, err := os.Stdout.WriteString(out); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	if os.Getenv(sleepEnv) != "" {
+	if s.Sleep {
 		time.Sleep(time.Minute)
 	}
-	fmt.Fprint(os.Stderr, strings.ReplaceAll(os.Getenv(stderrEnv), "{path}", args[len(args)-1]))
-	if code := os.Getenv(exitEnv); code != "" {
-		n, err := strconv.Atoi(code)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-		return n
-	}
-	return 0
+	fmt.Fprint(os.Stderr, strings.ReplaceAll(s.Stderr, "{path}", args[len(args)-1]))
+	return s.Exit
 }
 
-// appendLog appends args to file as one JSON array and a newline.
-func appendLog(file string, args []string) error {
-	line, err := json.Marshal(args)
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(append(line, '\n'))
-	return errors.Join(err, f.Close())
+// mailStandin is a test's stand-in mail: its link and the settings last written to it.
+type mailStandin struct {
+	t        testing.TB
+	link     string
+	settings mailSettings
 }
 
-// installStandin links the test binary as spike-ai-pipeline-mail in a directory of its own, makes
-// that directory the whole PATH, and has the stand-in report version. It returns a function that
-// returns the arguments of every run since, in order, the version commands left out.
-func installStandin(t *testing.T, version string) func() [][]string {
+// installStandin links the stand-in mail as spike-ai-pipeline-mail in a directory of its own,
+// reporting version.
+func installStandin(t *testing.T, version string) *mailStandin {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
+	m := &mailStandin{t: t, settings: mailSettings{Version: version}}
+	m.link = tooltest.Link(t, t.TempDir(), "spike-ai-pipeline-mail", m.settings)
+	return m
+}
+
+// spec returns MailSpec with the stand-in's link as its program.
+func (m *mailStandin) spec() tool.Spec {
+	spec := email.MailSpec()
+	spec.Program = m.link
+	return spec
+}
+
+// set changes the stand-in's settings through f.
+func (m *mailStandin) set(f func(*mailSettings)) {
+	m.t.Helper()
+	f(&m.settings)
+	tooltest.Set(m.t, m.link, m.settings)
+}
+
+// stdout sets what a run writes to stdout.
+func (m *mailStandin) stdout(s string) { m.set(func(ms *mailSettings) { ms.Stdout = &s }) }
+
+// stderr sets what a run writes to stderr.
+func (m *mailStandin) stderr(s string) { m.set(func(ms *mailSettings) { ms.Stderr = s }) }
+
+// exit sets a run's exit code.
+func (m *mailStandin) exit(code int) { m.set(func(ms *mailSettings) { ms.Exit = code }) }
+
+// sleep makes a run sleep a minute after its stdout.
+func (m *mailStandin) sleep() { m.set(func(ms *mailSettings) { ms.Sleep = true }) }
+
+// runs returns the arguments of every run of the stand-in, in order, the version commands left
+// out.
+func (m *mailStandin) runs() [][]string {
+	m.t.Helper()
+	var runs [][]string
+	for _, r := range tooltest.Runs(m.t, m.link) {
+		if len(r.Args) == 1 && r.Args[0] == "--version" {
+			continue
+		}
+		runs = append(runs, r.Args)
 	}
-	dir := t.TempDir()
-	if err := os.Symlink(exe, filepath.Join(dir, "spike-ai-pipeline-mail")); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-	t.Setenv(versionEnv, version)
-	log := filepath.Join(t.TempDir(), "runs.jsonl")
-	t.Setenv(logEnv, log)
-	return func() [][]string {
-		t.Helper()
-		f, err := os.Open(log)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = f.Close() }()
-		var runs [][]string
-		lines := bufio.NewScanner(f)
-		for lines.Scan() {
-			var args []string
-			if err := json.Unmarshal(lines.Bytes(), &args); err != nil {
-				t.Fatal(err)
-			}
-			runs = append(runs, args)
-		}
-		if err := lines.Err(); err != nil {
-			t.Fatal(err)
-		}
-		return runs
-	}
+	return runs
 }
 
 // standinReader builds a Reader over the stand-in mail at 0.2.0, built from MailSpec through the
-// exec runner, and returns it with the stand-in's run log.
-func standinReader(t *testing.T) (*email.Reader, func() [][]string) {
+// exec runner, and returns it with the stand-in.
+func standinReader(t *testing.T) (*email.Reader, *mailStandin) {
 	t.Helper()
-	runs := installStandin(t, "0.2.0")
-	tl, err := tool.NewExec(t.Context(), email.MailSpec())
+	m := installStandin(t, "0.2.0")
+	tl, err := tool.NewExec(t.Context(), m.spec())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +145,7 @@ func standinReader(t *testing.T) (*email.Reader, func() [][]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return r, runs
+	return r, m
 }
 
 // mustRead returns a function that returns Read's Stream, given Read's results, failing the test

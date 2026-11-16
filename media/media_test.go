@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -68,19 +67,13 @@ func source(t *testing.T) string {
 
 // setStandin sets what the stand-ins report and write: probe's streams, the PCM of gainWAV, and
 // frames.
-func setStandin(t *testing.T, probe string, frames []mediatest.Frame) {
+func setStandin(t *testing.T, st *standins, probe string, frames []mediatest.Frame) {
 	t.Helper()
-	t.Setenv(probeEnv, probe)
 	pcm, err := filepath.Abs(gainWAV)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(pcmEnv, pcm)
-	b, err := json.Marshal(frames)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(framesEnv, string(b))
+	st.set(func(c *settings) { c.Probe, c.PCM, c.Frames = probe, pcm, frames })
 }
 
 // collect ranges over a stream to its end, failing the test on any error.
@@ -223,15 +216,25 @@ func expectedOf(t *testing.T, pcm []byte, req audio.Request) ([]audio.Window, []
 	return plan.Windows, wavs, thresholds
 }
 
-// TestNewStreamer refuses a missing tool and one older than 9.0.
+// TestNewStreamer: a nil Tool panics naming its field, and one older than 9.0 is refused.
 func TestNewStreamer(t *testing.T) {
-	installStandins(t, "8.1")
-	cfg := standinConfig(t)
-	if _, err := media.NewStreamer(media.Config{FFprobe: cfg.FFprobe}); err == nil {
-		t.Error("no ffmpeg: no error")
-	}
-	if _, err := media.NewStreamer(media.Config{FFmpeg: cfg.FFmpeg}); err == nil {
-		t.Error("no ffprobe: no error")
+	t.Parallel()
+	cfg := installStandins(t, "8.1").config()
+	for _, c := range []struct {
+		cfg  media.Config
+		want string
+	}{
+		{media.Config{FFprobe: cfg.FFprobe}, "media: Config.FFmpeg is nil"},
+		{media.Config{FFmpeg: cfg.FFmpeg}, "media: Config.FFprobe is nil"},
+	} {
+		func() {
+			defer func() {
+				if r := recover(); r != c.want {
+					t.Errorf("panic %v, want %q", r, c.want)
+				}
+			}()
+			_, _ = media.NewStreamer(c.cfg)
+		}()
 	}
 	var verr *tool.VersionError
 	if _, err := media.NewStreamer(cfg); !errors.As(err, &verr) || !errors.Is(err, tool.ErrTooOld) {
@@ -241,8 +244,9 @@ func TestNewStreamer(t *testing.T) {
 
 // TestEventsRefused refuses each invalid request with ErrRequest, once, before anything runs.
 func TestEventsRefused(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeBoth, sceneFrames)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeBoth, sceneFrames)
 	path := source(t)
 	dir := t.TempDir()
 	file := filepath.Join(dir, "file")
@@ -305,7 +309,7 @@ func TestEventsRefused(t *testing.T) {
 			}
 		})
 	}
-	if r := runs(t); len(r) != 0 {
+	if r := st.runs(); len(r) != 0 {
 		t.Errorf("runs %v, want none", r)
 	}
 }
@@ -313,8 +317,9 @@ func TestEventsRefused(t *testing.T) {
 // TestEventsNoMedia refuses a source whose only video is an attached picture with ErrNoMedia,
 // after its probe and before ffmpeg runs.
 func TestEventsNoMedia(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probePicture, nil)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probePicture, nil)
 	var errs []error
 	for _, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir()}) {
 		errs = append(errs, err)
@@ -322,7 +327,7 @@ func TestEventsNoMedia(t *testing.T) {
 	if len(errs) != 1 || !errors.Is(errs[0], media.ErrNoMedia) {
 		t.Errorf("errors %v, want ErrNoMedia once", errs)
 	}
-	if r := runs(t); len(r) != 1 || r[0].Program != "ffprobe" {
+	if r := st.runs(); len(r) != 1 || r[0].Program != "ffprobe" {
 		t.Errorf("runs %v, want the probe alone", r)
 	}
 }
@@ -333,14 +338,15 @@ func TestEventsNoMedia(t *testing.T) {
 // bytes, with its seams and the threshold it was cut under; ffmpeg's one run and its arguments;
 // and a media directory holding exactly the events' files, the run's directory of frames gone.
 func TestEventsStandin(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeBoth, sceneFrames)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeBoth, sceneFrames)
 	wantWindows, wavs, wantThresholds := expectedThresholds(t, audio.Request{})
 	for _, paced := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unpaced", true: "paced"}[paced], func(t *testing.T) {
 			path := source(t)
 			dir := t.TempDir()
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			st.mark()
 			events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: path, Paced: paced}, Dir: dir}))
 			ws, fs := split(events)
 			if len(ws)+len(fs) != len(events) {
@@ -363,8 +369,8 @@ func TestEventsStandin(t *testing.T) {
 				if filepath.Base(f.Path) != f.SHA256+".png" || sum(b) != f.SHA256 || filepath.Dir(f.Path) != dir {
 					t.Errorf("frame %d's file %s isn't named by its SHA-256 in the media directory", i, f.Path)
 				}
-				if e.Arrived.IsZero() {
-					t.Errorf("frame %d has no arrival time", i)
+				if e.Arrived.IsZero() || e.Arrived.Location() != time.UTC {
+					t.Errorf("frame %d arrived at %v, want a time in UTC", i, e.Arrived)
 				}
 			}
 			if len(ws) != len(wantWindows) {
@@ -402,7 +408,7 @@ func TestEventsStandin(t *testing.T) {
 			}
 			checkDir(t, dir, events)
 			checkNoScratch(t, filepath.Dir(path))
-			r := runs(t)
+			r := st.runs()
 			if len(r) != 2 || r[0].Program != "ffprobe" || r[1].Program != "ffmpeg" {
 				t.Fatalf("runs %v, want the probe and one ffmpeg run", r)
 			}
@@ -428,8 +434,9 @@ func TestEventsStandin(t *testing.T) {
 
 // TestEventsFixedThreshold streams the audio with a fixed threshold: every window names it.
 func TestEventsFixedThreshold(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeAudio, nil)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeAudio, nil)
 	wantWindows, _ := expectedWindows(t, audio.Request{Threshold: -45})
 	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir(), Threshold: -45}))
 	if len(events) != len(wantWindows) {
@@ -446,8 +453,9 @@ func TestEventsFixedThreshold(t *testing.T) {
 // window: each window cut at the limit names the rolling threshold its last sample's frame was
 // decided against, and the last the one in force at the end, which the gain step moves.
 func TestEventsLimitThreshold(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeAudio, nil)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeAudio, nil)
 	const minSilence = 20 * time.Second
 	wantWindows, _, wantThresholds := expectedThresholds(t, audio.Request{MinSilence: minSilence})
 	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir(), MinSilence: minSilence}))
@@ -473,8 +481,9 @@ func TestEventsLimitThreshold(t *testing.T) {
 // reach. The first is cut at the silence's middle up to its limit, under the threshold it opened
 // at, and the next two, which start inside it, at their limits; the windows are the plan's.
 func TestEventsOpenSilence(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeAudio, nil)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeAudio, nil)
 	data, err := os.ReadFile(gainWAV)
 	if err != nil {
 		t.Fatal(err)
@@ -486,7 +495,7 @@ func TestEventsOpenSilence(t *testing.T) {
 	if err := os.WriteFile(wav, audio.WAV(pcm), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(pcmEnv, wav)
+	st.set(func(c *settings) { c.PCM = wav })
 	wantWindows, wavs, wantThresholds := expectedOf(t, pcm, audio.Request{})
 	gateDir := t.TempDir()
 	var gates []standinGate
@@ -502,11 +511,7 @@ func TestEventsOpenSilence(t *testing.T) {
 	if len(gates) != 3 || wantWindows[0].Cut != audio.CutSilence || wantWindows[1].Cut != audio.CutLimit || wantWindows[2].Cut != audio.CutLimit {
 		t.Fatalf("windows %v; want the first cut at the silence and the next two at their limits inside it", wantWindows)
 	}
-	b, err := json.Marshal(gates)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(gatesEnv, string(b))
+	st.set(func(c *settings) { c.Gates = gates })
 	var ws []media.Event
 	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir()}) {
 		if err != nil {
@@ -534,14 +539,15 @@ func TestEventsOpenSilence(t *testing.T) {
 // TestEventsOneStream streams a source with audio only, which yields windows only and runs no
 // video output, and one with video only, which yields frames only and runs no audio output.
 func TestEventsOneStream(t *testing.T) {
-	s := standinStreamer(t)
+	t.Parallel()
+	s, st := standinStreamer(t)
 	for _, c := range []struct {
 		name, probe string
 		windows     bool
 	}{{"audio", probeAudio, true}, {"video", probeVideo, false}} {
 		t.Run(c.name, func(t *testing.T) {
-			setStandin(t, c.probe, sceneFrames)
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			setStandin(t, st, c.probe, sceneFrames)
+			st.mark()
 			dir := t.TempDir()
 			events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: dir}))
 			ws, fs := split(events)
@@ -549,7 +555,7 @@ func TestEventsOneStream(t *testing.T) {
 				t.Errorf("%d windows and %d frames", len(ws), len(fs))
 			}
 			checkDir(t, dir, events)
-			r := runs(t)
+			r := st.runs()
 			if len(r) != 2 {
 				t.Fatalf("runs %v, want the probe and one ffmpeg run", r)
 			}
@@ -564,9 +570,9 @@ func TestEventsOneStream(t *testing.T) {
 // TestEventsBreak stops the loop after the first event: the run stops, and the media directory
 // holds that event's file alone.
 func TestEventsBreak(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeBoth, sceneFrames)
-	t.Setenv(holdEnv, "60000")
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeBoth, sceneFrames)
+	st.set(func(c *settings) { c.Hold = 60000 })
 	path := source(t)
 	dir := t.TempDir()
 	start := time.Now()
@@ -589,9 +595,9 @@ func TestEventsBreak(t *testing.T) {
 // open: the stream yields the context's error once and ends, and the media directory holds the
 // one event's file.
 func TestEventsCancel(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeBoth, sceneFrames)
-	t.Setenv(holdEnv, "60000")
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeBoth, sceneFrames)
+	st.set(func(c *settings) { c.Hold = 60000 })
 	path := source(t)
 	dir := t.TempDir()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -621,9 +627,10 @@ func TestEventsCancel(t *testing.T) {
 // frame it wrote and the windows already fixed, and then the run's error, carrying ffmpeg's last
 // line; the window still open when it failed isn't yielded.
 func TestEventsFail(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeBoth, sceneFrames)
-	t.Setenv(failEnv, "[in#0/matroska] Error during demuxing: Invalid data found")
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeBoth, sceneFrames)
+	st.set(func(c *settings) { c.Fail = "[in#0/matroska] Error during demuxing: Invalid data found" })
 	wantWindows, _ := expectedWindows(t, audio.Request{})
 	dir := t.TempDir()
 	var events []media.Event
@@ -652,9 +659,10 @@ func TestEventsFail(t *testing.T) {
 // TestEventsNoPNG streams a run that reports frames and writes no PNG for them: the stream ends
 // with an error naming the first.
 func TestEventsNoPNG(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probeVideo, sceneFrames)
-	t.Setenv(noPNGEnv, "1")
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probeVideo, sceneFrames)
+	st.set(func(c *settings) { c.NoPNG = true })
 	dir := t.TempDir()
 	var errs []error
 	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: dir}) {
@@ -672,6 +680,7 @@ func TestEventsNoPNG(t *testing.T) {
 
 // TestReasonString names each reason.
 func TestReasonString(t *testing.T) {
+	t.Parallel()
 	for r, want := range map[media.Reason]string{
 		media.ReasonFirst: "first", media.ReasonScene: "scene", media.ReasonInterval: "interval", media.Reason(9): "Reason(9)",
 	} {

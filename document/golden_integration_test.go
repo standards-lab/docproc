@@ -27,10 +27,7 @@ const goldenCorrections = "testdata/golden/corrections.sha256"
 func TestGoldenCorrections(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	c, _ := hostCorrector(t)
-	p, err := document.NewPreparer(g, c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := document.NewPreparer(document.Config{Renderer: g, Corrector: c})
 	got := map[string]string{}
 	for _, set := range []string{"clean", "degraded", "scanned"} {
 		req := document.ImagesRequest{Dir: t.TempDir(), Corrections: all, Concurrency: 4}

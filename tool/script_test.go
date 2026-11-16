@@ -22,10 +22,11 @@ import (
 // interpreterPattern captures the version the stand-in interpreter prints.
 var interpreterPattern = regexp.MustCompile(`standin-sh version (\d+(?:\.\d+)*)`)
 
-// interpreterSpec declares the stand-in interpreter, printing version, with minimum.
-func interpreterSpec(version, minimum string) tool.Spec {
+// interpreterSpec declares the stand-in interpreter linked beside link, the stand-in tool's,
+// printing version, with minimum.
+func interpreterSpec(link, version, minimum string) tool.Spec {
 	return tool.Spec{
-		Program:        "standin-sh",
+		Program:        filepath.Join(filepath.Dir(link), interpreterName),
 		VersionArgs:    []string{"--version", version},
 		VersionPattern: interpreterPattern,
 		Minimum:        minimum,
@@ -33,12 +34,12 @@ func interpreterSpec(version, minimum string) tool.Spec {
 }
 
 func TestNewScriptRunsThroughInterpreter(t *testing.T) {
-	installStandin(t)
+	link := installStandin(t)
 	scriptDir := t.TempDir()
 	script := writeScript(t, scriptDir, "args.sh", `printf '%s\n' "$0" "$@"; pwd`)
 	// A relative script names the same file whatever the invocation's Dir.
 	t.Chdir(scriptDir)
-	tl, err := tool.NewScript(t.Context(), interpreterSpec("5.2", "5"), "args.sh")
+	tl, err := tool.NewScript(t.Context(), interpreterSpec(link, "5.2", "5"), "args.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,11 +62,12 @@ func TestNewScriptRunsThroughInterpreter(t *testing.T) {
 }
 
 func TestNewScriptMissing(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	missing := filepath.Join(t.TempDir(), "missing.sh")
 	for _, script := range []string{missing, t.TempDir()} {
 		t.Run(filepath.Base(script), func(t *testing.T) {
-			_, err := tool.NewScript(t.Context(), interpreterSpec("5.2", "5"), script)
+			_, err := tool.NewScript(t.Context(), interpreterSpec(link, "5.2", "5"), script)
 			if err == nil {
 				t.Fatal("NewScript succeeded, want an error")
 			}
@@ -77,10 +79,11 @@ func TestNewScriptMissing(t *testing.T) {
 }
 
 func TestNewScriptChecksInterpreter(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	script := writeScript(t, t.TempDir(), "ok.sh", "exit 0")
 	t.Run("not found", func(t *testing.T) {
-		spec := interpreterSpec("5.2", "5")
+		spec := interpreterSpec(link, "5.2", "5")
 		spec.Program = "missing-sh"
 		_, err := tool.NewScript(t.Context(), spec, script)
 		if err == nil || !strings.Contains(err.Error(), "missing-sh") {
@@ -88,7 +91,7 @@ func TestNewScriptChecksInterpreter(t *testing.T) {
 		}
 	})
 	t.Run("bad spec before lookup", func(t *testing.T) {
-		spec := interpreterSpec("5.2", "v5")
+		spec := interpreterSpec(link, "5.2", "v5")
 		spec.Program = "missing-sh"
 		_, err := tool.NewScript(t.Context(), spec, script)
 		if err == nil || !strings.Contains(err.Error(), `minimum: version "v5"`) {
@@ -96,7 +99,7 @@ func TestNewScriptChecksInterpreter(t *testing.T) {
 		}
 	})
 	t.Run("too old", func(t *testing.T) {
-		_, err := tool.NewScript(t.Context(), interpreterSpec("4.9", "5"), script)
+		_, err := tool.NewScript(t.Context(), interpreterSpec(link, "4.9", "5"), script)
 		if !errors.Is(err, tool.ErrTooOld) {
 			t.Fatalf("NewScript error = %v, want ErrTooOld", err)
 		}
@@ -105,9 +108,10 @@ func TestNewScriptChecksInterpreter(t *testing.T) {
 }
 
 func TestScriptExitError(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	script := writeScript(t, t.TempDir(), "fail.sh", `echo "it broke" >&2; exit 3`)
-	tl, err := tool.NewScript(t.Context(), interpreterSpec("5.2", "5"), script)
+	tl, err := tool.NewScript(t.Context(), interpreterSpec(link, "5.2", "5"), script)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,12 +126,13 @@ func TestScriptExitError(t *testing.T) {
 }
 
 func TestCancelScriptEndsChild(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	// The background child ignores SIGTERM before it writes its pid, so only the group's SIGKILL
 	// ends it.
 	script := writeScript(t, t.TempDir(), "spawn.sh", `standin stubborn 1m "$1" >/dev/null 2>&1 &
 wait`)
-	tl, err := tool.NewScript(t.Context(), interpreterSpec("5.2", "5"), script)
+	tl, err := tool.NewScript(t.Context(), interpreterSpec(link, "5.2", "5"), script)
 	if err != nil {
 		t.Fatal(err)
 	}

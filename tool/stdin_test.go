@@ -26,8 +26,8 @@ type runnerCase func(t *testing.T, killAfter time.Duration) (*tool.Tool, func(t 
 // runner on the stand-in docker.
 var runnerCases = map[string]runnerCase{
 	"exec": func(t *testing.T, killAfter time.Duration) (*tool.Tool, func(t *testing.T)) {
-		installStandin(t)
-		spec := standinSpec("standin", "1.0", "1.0")
+		link := installStandin(t)
+		spec := standinSpec(link, "1.0", "1.0")
 		spec.KillAfter = killAfter
 		tl, err := tool.NewExec(t.Context(), spec)
 		if err != nil {
@@ -40,7 +40,7 @@ var runnerCases = map[string]runnerCase{
 		addImage(t, dir, testRef)
 		spec := standinSpec("standin", "1.2.3", "1.0")
 		spec.KillAfter = killAfter
-		tl, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, spec)
+		tl, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, spec)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,6 +70,7 @@ func awaitRun(t *testing.T, done <-chan error, start time.Time, within time.Dura
 // though its stdin is a reader, not an *os.File, that the caller holds open, so a Read of it
 // never returns; and that nothing the run started outlives it.
 func TestCancelHeldReaderStdin(t *testing.T) {
+	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			tl, assertNothingRunning := build(t, 0) // the default KillAfter period, 10 s
@@ -109,6 +110,7 @@ func TestCancelHeldReaderStdin(t *testing.T) {
 // TestRunUnreadHeldReaderStdin checks that a program that exits without reading its stdin, a
 // reader the caller holds open, ends its run within the bound on the copy, with no error.
 func TestRunUnreadHeldReaderStdin(t *testing.T) {
+	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			tl, assertNothingRunning := build(t, 200*time.Millisecond)
@@ -137,6 +139,7 @@ func TestRunUnreadHeldReaderStdin(t *testing.T) {
 // TestRunUnreadLargeStdin checks that a program that exits without reading a stdin larger than
 // a pipe holds ends its run promptly, with no error.
 func TestRunUnreadLargeStdin(t *testing.T) {
+	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			tl, assertNothingRunning := build(t, 0) // the default KillAfter period, 10 s
@@ -157,6 +160,7 @@ func TestRunUnreadLargeStdin(t *testing.T) {
 // TestRunLargeStdin checks that a stdin larger than a pipe holds, from a reader that isn't an
 // *os.File, reaches the program whole.
 func TestRunLargeStdin(t *testing.T) {
+	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			tl, _ := build(t, 0)
@@ -194,6 +198,7 @@ func (f *failingReader) Read(p []byte) (int, error) {
 // TestRunStdinReadError checks that a stdin whose Read fails ends the program's stdin there, and
 // that the failure is Run's error when the program otherwise succeeds.
 func TestRunStdinReadError(t *testing.T) {
+	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			tl, _ := build(t, 0)

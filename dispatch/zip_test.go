@@ -9,7 +9,6 @@ import (
 	"hash/crc32"
 	"io/fs"
 	"iter"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -394,105 +393,4 @@ func TestArchiveIdentity(t *testing.T) {
 			t.Errorf("an archive stage with %s was built", name)
 		}
 	}
-}
-
-// docsArchive returns the path of name under ~/docs/archive, skipping the test on a machine
-// without it.
-func docsArchive(t *testing.T, name string) string {
-	t.Helper()
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home directory")
-	}
-	path := filepath.Join(home, "docs", "archive", name)
-	if _, err := os.Stat(path); err != nil {
-		t.Skipf("no ~/docs/archive/%s on this machine", name)
-	}
-	return path
-}
-
-// TestZipDocs dispatches ~/docs' ZIPs, read only, when this machine has them: zip-in-zip.zip's
-// inner ZIP is prepared, its entries below it; unicode-filenames.zip's entry keeps its name;
-// password-protected.zip's entries are each a record, and it is encrypted; and mixed-bundle.zip's
-// entries are each routed by their names, its directories no parts.
-func TestZipDocs(t *testing.T) {
-	t.Run("zip-in-zip", func(t *testing.T) {
-		d, _, work := archiveDispatcher(t, inspect.Options{})
-		events := dispatchAll(t, d, docsArchive(t, "zip-in-zip.zip"), nil)
-		inner := byName(t, events, "inner.zip")
-		if inner.Outcome != dispatch.Prepared || inner.Part.Depth != 1 || inner.Children != 6 {
-			t.Errorf("inner.zip: %s at depth %d, %d children", inner.Outcome, inner.Part.Depth, inner.Children)
-		}
-		if ev := byName(t, events, "docs/shapes.png"); ev.Part.Depth != 2 || ev.Outcome != dispatch.Prepared {
-			t.Errorf("the inner ZIP's picture: %s at depth %d", ev.Outcome, ev.Part.Depth)
-		}
-		if ev := byName(t, events, "speech.pdf"); ev.Part.Route != route.Document || ev.Part.Where != "zip entry speech.pdf" {
-			t.Errorf("speech.pdf: %s at %q", ev.Part.Route, ev.Part.Where)
-		}
-		wantEmpty(t, work)
-	})
-	t.Run("unicode-filenames", func(t *testing.T) {
-		d, _, _ := archiveDispatcher(t, inspect.Options{})
-		events := dispatchAll(t, d, docsArchive(t, "unicode-filenames.zip"), nil)
-		wantSteps(t, events, []step{{"résumé 日本 שלום.txt", 1, dispatch.NoProcessor}, {"unicode-filenames.zip", 0, dispatch.Prepared}})
-	})
-	t.Run("password-protected", func(t *testing.T) {
-		d, _, _ := archiveDispatcher(t, inspect.Options{})
-		events := dispatchAll(t, d, docsArchive(t, "password-protected.zip"), nil)
-		wantSteps(t, events, []step{{"password-protected.zip", 0, dispatch.Encrypted}})
-		for _, name := range []string{"meeting-notes.txt", "docs/mgrs-field-report.pdf"} {
-			if m := outputNamed(t, events[0], dispatch.RecordOutput, "zip entry "+name).Meta; m["check"] != string(inspect.ZIPEncrypted) {
-				t.Errorf("%s's record meta %v", name, m)
-			}
-		}
-		if !strings.Contains(events[0].Reason, "2 of 2 entries") {
-			t.Errorf("reason %q", events[0].Reason)
-		}
-	})
-	t.Run("mixed-bundle", func(t *testing.T) {
-		d, _, work := archiveDispatcher(t, inspect.Options{})
-		events := dispatchAll(t, d, docsArchive(t, "mixed-bundle.zip"), nil)
-		got := map[string]route.Route{}
-		for _, ev := range events[:len(events)-1] {
-			got[ev.Part.Name] = ev.Part.Route
-		}
-		want := map[string]route.Route{
-			"meeting-notes.txt": route.Text, "mail/04-attachment-cyrillic.eml": route.Nested,
-			"docs/shapes.png": route.Vision, "docs/mgrs-field-report.pdf": route.Document,
-			"docs/SampleSS.xls": route.Office, "docs/word-tables.docx": route.Office,
-		}
-		if !maps.Equal(got, want) {
-			t.Errorf("entries' routes:\n got %v\nwant %v", got, want)
-		}
-		if last := events[len(events)-1]; last.Outcome != dispatch.Prepared || last.Children != len(want) {
-			t.Errorf("mixed-bundle.zip: %s, %d children", last.Outcome, last.Children)
-		}
-		wantEmpty(t, work)
-	})
-}
-
-// TestZipDocsBomb dispatches ~/docs' high-ratio-200mb.zip, 200 MB of zeros at about 1,030:1:
-// under a size lowered to 100 MiB inspect quarantines it by its declared sizes; at the defaults
-// it is prepared, its entry's 200 MB written, then removed once the caller is done with it.
-func TestZipDocsBomb(t *testing.T) {
-	path := docsArchive(t, "high-ratio-200mb.zip")
-	d, zs, _ := archiveDispatcher(t, inspect.Options{BombSize: 100 << 20})
-	if ev := dispatchAll(t, d, path, nil)[0]; ev.Outcome != dispatch.Quarantined || zs.calls.Load() != 0 {
-		t.Errorf("at 100 MiB: %s, the stage called %d times", ev.Outcome, zs.calls.Load())
-	}
-
-	d, _, work := archiveDispatcher(t, inspect.Options{})
-	var written int64
-	events := dispatchAll(t, d, path, func(ev *dispatch.Event) {
-		if ev.Part.Name == "zeros.bin" {
-			if info, err := os.Stat(ev.Part.Path); err == nil {
-				written = info.Size()
-			}
-		}
-	})
-	wantSteps(t, events, []step{{"zeros.bin", 1, dispatch.NoProcessor}, {"high-ratio-200mb.zip", 0, dispatch.Prepared}})
-	if written != 200_000_000 {
-		t.Errorf("zeros.bin: %d bytes written, want 200000000", written)
-	}
-	wantEmpty(t, work)
 }

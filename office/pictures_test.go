@@ -19,22 +19,22 @@ import (
 
 // pictureConverter builds a Converter over the stand-in office at 0.1.0 and, when asked, the
 // stand-in soffice and the stand-in magick, each built from its Spec through the exec runner, and
-// returns it with the stand-ins' run log.
-func pictureConverter(t *testing.T, libreoffice, magick bool) (*office.Converter, func() []standinRun) {
+// returns it with the stand-ins.
+func pictureConverter(t *testing.T, libreoffice, magick bool) (*office.Converter, *standins) {
 	t.Helper()
-	runs := installStandin(t, "0.1.0")
+	ins := installStandin(t, "0.1.0")
 	var cfg office.Config
 	var err error
-	if cfg.Office, err = tool.NewExec(t.Context(), office.OfficeSpec()); err != nil {
+	if cfg.Office, err = tool.NewExec(t.Context(), ins.spec(office.OfficeSpec())); err != nil {
 		t.Fatal(err)
 	}
 	if libreoffice {
-		if cfg.LibreOffice, err = tool.NewExec(t.Context(), picture.LibreOfficeSpec()); err != nil {
+		if cfg.LibreOffice, err = tool.NewExec(t.Context(), ins.spec(picture.LibreOfficeSpec())); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if magick {
-		if cfg.Magick, err = tool.NewExec(t.Context(), picture.MagickSpec()); err != nil {
+		if cfg.Magick, err = tool.NewExec(t.Context(), ins.spec(picture.MagickSpec())); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -42,7 +42,7 @@ func pictureConverter(t *testing.T, libreoffice, magick bool) (*office.Converter
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, runs
+	return c, ins
 }
 
 // programs returns the programs of runs, in order.
@@ -64,8 +64,9 @@ func programs(runs []standinRun) []string {
 // and is its entry's File, Converted; PNG, JPEG, GIF, and BMP, and a kind the standard names no
 // converter for, are handed on as stored. Only the media directory is left.
 func TestConvertPictures(t *testing.T) {
-	c, runs := pictureConverter(t, true, true)
-	t.Setenv(mediaEnv, "a1.emf,b2.WMF,c3.tiff,d4.png,e5.jpeg,f6.gif,g7.bmp,h8.TIF,i9.svg,j0.emf")
+	t.Parallel()
+	c, ins := pictureConverter(t, true, true)
+	ins.set(mediaKey, "a1.emf,b2.WMF,c3.tiff,d4.png,e5.jpeg,f6.gif,g7.bmp,h8.TIF,i9.svg,j0.emf")
 	dir := t.TempDir()
 	res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: dir})
 	if err != nil {
@@ -107,7 +108,7 @@ func TestConvertPictures(t *testing.T) {
 		t.Errorf("working directory holds %q, want the media directory alone", got)
 	}
 
-	all := runs()
+	all := ins.runs()
 	if got, want := programs(all), []string{"spike-ai-pipeline-office", "magick", "magick", "soffice", "magick", "magick", "magick"}; !slices.Equal(got, want) {
 		t.Fatalf("runs: got %q, want %q", got, want)
 	}
@@ -126,9 +127,9 @@ func TestConvertPictures(t *testing.T) {
 			t.Errorf("magick's working directory: got %s, want %s", mg.Dir, dir)
 		}
 	}
-	so := all[3]
-	if so.Dir != dir {
-		t.Errorf("soffice's working directory: got %s, want %s", so.Dir, dir)
+	sr := all[3]
+	if sr.Dir != dir {
+		t.Errorf("soffice's working directory: got %s, want %s", sr.Dir, dir)
 	}
 	work := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+`
 	wantArgs := []string{
@@ -138,11 +139,11 @@ func TestConvertPictures(t *testing.T) {
 		`--outdir`, work + `/out`,
 		own(0, "a1.emf"), own(1, "b2.wmf"), own(4, "j0.emf"),
 	}
-	if !matchArgs(so.Args, wantArgs) {
-		t.Errorf("soffice's arguments: got %q, want %q", so.Args, wantArgs)
+	if !matchArgs(sr.Args, wantArgs) {
+		t.Errorf("soffice's arguments: got %q, want %q", sr.Args, wantArgs)
 	}
-	if !strings.Contains(so.Registry, `<item oor:path="/org.openoffice.Setup/L10N"><prop oor:name="ooSetupSystemLocale" oor:op="fuse"><value>en-GB</value></prop></item>`) {
-		t.Errorf("soffice's profile started with %q, want the en-GB locale", so.Registry)
+	if !strings.Contains(sr.Registry, `<item oor:path="/org.openoffice.Setup/L10N"><prop oor:name="ooSetupSystemLocale" oor:op="fuse"><value>en-GB</value></prop></item>`) {
+		t.Errorf("soffice's profile started with %q, want the en-GB locale", sr.Registry)
 	}
 	for i, stem := range []string{"a1", "b2", "j0"} {
 		mg := all[4+i]
@@ -167,6 +168,7 @@ func drawFilter(width, height int) string {
 // a metafile at, the scale times A4 at 96 dpi, 794x1123: the default, 3, when zero, and up to 8.
 // A negative scale, or one above 8, is refused before anything runs.
 func TestConvertPicturesScale(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		scale         int
 		width, height int
@@ -177,12 +179,12 @@ func TestConvertPicturesScale(t *testing.T) {
 		{picture.MaxMetafileScale, 6352, 8984},
 	} {
 		t.Run(fmt.Sprint(tc.scale), func(t *testing.T) {
-			c, runs := pictureConverter(t, true, true)
-			t.Setenv(mediaEnv, "a1.emf")
+			c, ins := pictureConverter(t, true, true)
+			ins.set(mediaKey, "a1.emf")
 			if _, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir(), MetafileScale: tc.scale}); err != nil {
 				t.Fatal(err)
 			}
-			all := runs()
+			all := ins.runs()
 			if got := programs(all); !slices.Equal(got, []string{"spike-ai-pipeline-office", "soffice", "magick"}) {
 				t.Fatalf("runs: got %q, want office, soffice, and magick", got)
 			}
@@ -193,15 +195,15 @@ func TestConvertPicturesScale(t *testing.T) {
 	}
 	for _, scale := range []int{-1, picture.MaxMetafileScale + 1} {
 		t.Run(fmt.Sprint(scale), func(t *testing.T) {
-			c, runs := pictureConverter(t, true, true)
-			t.Setenv(mediaEnv, "a1.emf")
+			c, ins := pictureConverter(t, true, true)
+			ins.set(mediaKey, "a1.emf")
 			dir := t.TempDir()
 			res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: dir, MetafileScale: scale})
 			want := fmt.Sprintf("office: picture: metafile scale %d isn't from 1 to 8", scale)
-			if res != nil || !errors.Is(err, picture.ErrScale) || !strings.HasPrefix(err.Error(), want) {
-				t.Fatalf("got %+v, %v; want %q, matching picture.ErrScale", res, err, want)
+			if res != nil || !errors.Is(err, office.ErrRequest) || !strings.HasPrefix(err.Error(), want) {
+				t.Fatalf("got %+v, %v; want %q, matching ErrRequest", res, err, want)
 			}
-			if got := runs(); len(got) != 0 {
+			if got := ins.runs(); len(got) != 0 {
 				t.Errorf("runs: got %q, want none", programs(got))
 			}
 			if got := entries(t, dir); len(got) != 0 {
@@ -216,6 +218,7 @@ func TestConvertPicturesScale(t *testing.T) {
 // succeeds; nothing runs for it, and its links in a Markdown result stay as office wrote them. A
 // converter given converts its own kinds.
 func TestConvertPicturesNoConverter(t *testing.T) {
+	t.Parallel()
 	md := "![m](a1.emf) ![w](b2.wmf) ![t](c3.tiff) ![p](d4.png)\n"
 	for _, tc := range []struct {
 		desc                string
@@ -234,9 +237,9 @@ func TestConvertPicturesNoConverter(t *testing.T) {
 			"![m](a1.png) ![w](b2.png) ![t](c3.png) ![p](d4.png)\n"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := pictureConverter(t, tc.libreoffice, tc.magick)
-			t.Setenv(mediaEnv, "a1.emf,b2.wmf,c3.tiff,d4.png")
-			t.Setenv(stdoutEnv, md)
+			c, ins := pictureConverter(t, tc.libreoffice, tc.magick)
+			ins.set(mediaKey, "a1.emf,b2.wmf,c3.tiff,d4.png")
+			ins.set(stdoutKey, md)
 			res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir(), Format: office.Markdown})
 			if err != nil {
 				t.Fatal(err)
@@ -260,7 +263,7 @@ func TestConvertPicturesNoConverter(t *testing.T) {
 					}
 				}
 			}
-			if got := programs(runs()); !slices.Equal(got, tc.programs) {
+			if got := programs(ins.runs()); !slices.Equal(got, tc.programs) {
 				t.Errorf("runs: got %q, want %q", got, tc.programs)
 			}
 			if res.Markdown != tc.markdown {
@@ -275,6 +278,7 @@ func TestConvertPicturesNoConverter(t *testing.T) {
 // conversion or a metafile's trim, each fail the conversion, with the converter's own message or
 // the picture's name, and leave nothing in the working directory.
 func TestConvertPicturesFails(t *testing.T) {
+	t.Parallel()
 	noise := "(process:22): dconf-CRITICAL **: unable to create directory '/.cache/dconf'\nFontconfig error: No writable cache directories\n"
 	all := "a1.emf,b2.wmf,c3.tiff,d4.png"
 	metafiles := "a1.emf,b2.wmf,d4.png"
@@ -285,29 +289,29 @@ func TestConvertPicturesFails(t *testing.T) {
 		want  string
 	}{
 		{"soffice exits 1", all,
-			map[string]string{sofficeExitEnv: "1", sofficeOutputEnv: noise + "Error: Please verify input parameters... (SfxBaseModel::impl_store failed)\n"},
+			map[string]string{sofficeExitKey: "1", sofficeOutputKey: noise + "Error: Please verify input parameters... (SfxBaseModel::impl_store failed)\n"},
 			"office: picture: libreoffice: tool: soffice: exit code 1: Error: Please verify input parameters... (SfxBaseModel::impl_store failed)"},
 		{"soffice skips a picture", all,
-			map[string]string{sofficeSkipEnv: "b2.wmf", sofficeOutputEnv: noise},
+			map[string]string{sofficeSkipKey: "b2.wmf", sofficeOutputKey: noise},
 			"office: picture: libreoffice: b2.wmf: no PNG written: Fontconfig error: No writable cache directories"},
 		{"magick exits 1", all,
-			map[string]string{magickExitEnv: "1", magickOutputEnv: "magick: improper image header `c3.tiff' @ error/tiff.c/TIFFErrors/608.\n"},
+			map[string]string{magickExitKey: "1", magickOutputKey: "magick: improper image header `c3.tiff' @ error/tiff.c/TIFFErrors/608.\n"},
 			"office: picture: magick: c3.tiff: tool: magick: exit code 1: magick: improper image header `c3.tiff' @ error/tiff.c/TIFFErrors/608."},
 		{"magick writes no PNG", all,
-			map[string]string{magickRawEnv: "1"},
+			map[string]string{magickRawKey: "1"},
 			"office: picture: magick: c3.tiff: c3.png isn't a PNG"},
 		{"the trim exits 1", metafiles,
-			map[string]string{magickExitEnv: "1", magickOutputEnv: "magick: insufficient image data in file `a1.png' @ error/png.c/ReadPNGImage/4361.\n"},
+			map[string]string{magickExitKey: "1", magickOutputKey: "magick: insufficient image data in file `a1.png' @ error/png.c/ReadPNGImage/4361.\n"},
 			"office: picture: magick: a1.emf: tool: magick: exit code 1: magick: insufficient image data in file `a1.png' @ error/png.c/ReadPNGImage/4361."},
 		{"the trim writes no PNG", metafiles,
-			map[string]string{magickRawEnv: "1"},
+			map[string]string{magickRawKey: "1"},
 			"office: picture: magick: a1.emf: a1.png isn't a PNG"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, _ := pictureConverter(t, true, true)
-			t.Setenv(mediaEnv, tc.media)
+			c, ins := pictureConverter(t, true, true)
+			ins.set(mediaKey, tc.media)
 			for k, v := range tc.env {
-				t.Setenv(k, v)
+				ins.set(k, v)
 			}
 			dir := t.TempDir()
 			res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: dir, Format: office.Markdown})
@@ -330,11 +334,12 @@ func TestConvertPicturesFails(t *testing.T) {
 // once and each swapped whole, the longer name never read as the shorter and a suffix. A JSON
 // result's model keeps office's names.
 func TestConvertRewritesLinks(t *testing.T) {
-	c, runs := pictureConverter(t, true, true)
-	t.Setenv(mediaEnv, "a1.emf,c3.tif,c3.tiff,d4.png")
+	t.Parallel()
+	c, ins := pictureConverter(t, true, true)
+	ins.set(mediaKey, "a1.emf,c3.tif,c3.tiff,d4.png")
 	md := "# Pictures\n\n![a1.emf](a1.emf)\n\nagain ![](a1.emf), and ![](a1.emf)\n\n" +
 		"![t](c3.tiff) ![t](c3.tif)\n\n![p](d4.png) ![p](d4.png)\n"
-	t.Setenv(stdoutEnv, md)
+	ins.set(stdoutKey, md)
 	res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir(), Format: office.Markdown})
 	if err != nil {
 		t.Fatal(err)
@@ -344,7 +349,7 @@ func TestConvertRewritesLinks(t *testing.T) {
 	if res.Markdown != want {
 		t.Errorf("Markdown:\ngot  %q\nwant %q", res.Markdown, want)
 	}
-	if got := programs(runs()); !slices.Equal(got, []string{"spike-ai-pipeline-office", "magick", "soffice", "magick"}) {
+	if got := programs(ins.runs()); !slices.Equal(got, []string{"spike-ai-pipeline-office", "magick", "soffice", "magick"}) {
 		t.Errorf("runs: got %q, want office, one magick, soffice, and its trim", got)
 	}
 	png := filepath.Join(res.MediaDir, "c3.png")
@@ -354,7 +359,7 @@ func TestConvertRewritesLinks(t *testing.T) {
 		}
 	}
 
-	t.Setenv(stdoutEnv, `{"schema": "1", "format": "docx", "blocks": [`+
+	ins.set(stdoutKey, `{"schema": "1", "format": "docx", "blocks": [`+
 		`{"type": "media", "name": "a1.emf", "contentType": "image/x-emf"}]}`)
 	res, err = c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir()})
 	if err != nil {
@@ -369,12 +374,13 @@ func TestConvertRewritesLinks(t *testing.T) {
 // the Tool's construction; the constructor refuses one a laxer Spec built, whatever minimum the
 // Tool's own Spec declared.
 func TestNewConverterMagick(t *testing.T) {
-	installStandin(t, "0.1.0")
-	o, err := tool.NewExec(t.Context(), office.OfficeSpec())
+	t.Parallel()
+	ins := installStandin(t, "0.1.0")
+	o, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	mg, err := tool.NewExec(t.Context(), picture.MagickSpec())
+	mg, err := tool.NewExec(t.Context(), ins.spec(picture.MagickSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,11 +388,11 @@ func TestNewConverterMagick(t *testing.T) {
 		t.Errorf("version: got %s, want 7.1.2", got)
 	}
 
-	t.Setenv(magickVersionEnv, "6.9.13-17")
-	if _, err := tool.NewExec(t.Context(), picture.MagickSpec()); !errors.Is(err, tool.ErrTooOld) {
+	ins.set(magickVersionKey, "6.9.13-17")
+	if _, err := tool.NewExec(t.Context(), ins.spec(picture.MagickSpec())); !errors.Is(err, tool.ErrTooOld) {
 		t.Errorf("NewExec over 6.9.13: got %v, want ErrTooOld", err)
 	}
-	lax := picture.MagickSpec()
+	lax := ins.spec(picture.MagickSpec())
 	lax.Minimum = "6.0"
 	old, err := tool.NewExec(t.Context(), lax)
 	if err != nil {

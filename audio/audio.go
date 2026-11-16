@@ -52,15 +52,15 @@ type Splitter struct {
 	ffprobe *tool.Tool
 }
 
-// NewSplitter builds a Splitter over cfg's Tools. It refuses a nil FFmpeg or FFprobe, and either
-// older than FFmpegMinimum, whatever minimum the Tool's own Spec declared, with a
-// *tool.VersionError wrapping tool.ErrTooOld.
+// NewSplitter builds a Splitter over cfg's Tools. A nil FFmpeg or FFprobe is the caller's mistake,
+// and panics naming the field. It refuses either older than FFmpegMinimum, whatever minimum the
+// Tool's own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
 func NewSplitter(cfg Config) (*Splitter, error) {
 	if cfg.FFmpeg == nil {
-		return nil, errors.New("audio: no ffmpeg tool")
+		panic("audio: Config.FFmpeg is nil")
 	}
 	if cfg.FFprobe == nil {
-		return nil, errors.New("audio: no ffprobe tool")
+		panic("audio: Config.FFprobe is nil")
 	}
 	for _, t := range []*tool.Tool{cfg.FFmpeg, cfg.FFprobe} {
 		if err := atLeast(t, FFmpegMinimum); err != nil {

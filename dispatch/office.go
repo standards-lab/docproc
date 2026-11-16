@@ -52,10 +52,11 @@ type OfficeStage struct {
 	id        Identity
 }
 
-// NewOfficeStage builds an OfficeStage over cfg, refusing one with no Converter or Version.
+// NewOfficeStage builds an OfficeStage over cfg, panicking naming Converter when it is nil, the
+// caller's mistake, and refusing one with no Version.
 func NewOfficeStage(cfg OfficeConfig) (*OfficeStage, error) {
 	if cfg.Converter == nil {
-		return nil, errors.New("dispatch: office stage: no converter")
+		panic("dispatch: OfficeConfig.Converter is nil")
 	}
 	id, err := adapterIdentity("office", cfg.Version, struct {
 		Format        string `json:"format"`

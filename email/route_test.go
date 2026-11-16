@@ -108,8 +108,8 @@ const attachmentLines = `{"line":"store","schema":"1","format":"msg"}
 // before the input, and each attachment with a bare File, nested ones included, is given its
 // Path there; without a directory none is passed and no attachment has a Path.
 func TestReadAttachments(t *testing.T) {
-	r, runs := standinReader(t)
-	t.Setenv(stdoutEnv, attachmentLines)
+	r, mail := standinReader(t)
+	mail.stdout(attachmentLines)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 	dir, input := filepath.Join(cwd, "att"), filepath.Join(cwd, "in.msg")
@@ -135,7 +135,7 @@ func TestReadAttachments(t *testing.T) {
 	}
 
 	wantRuns := [][]string{{"--attachments", dir, input}, {input}}
-	if all := runs(); !reflect.DeepEqual(all, wantRuns) {
+	if all := mail.runs(); !reflect.DeepEqual(all, wantRuns) {
 		t.Errorf("runs %q, want %q", all, wantRuns)
 	}
 }

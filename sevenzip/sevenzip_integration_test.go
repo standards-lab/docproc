@@ -19,18 +19,23 @@ import (
 // These tests run the real 7zz, which the unit tier doesn't provide, so they run in the
 // integration tier.
 
-// TestNewReader: a Config with no 7zz is refused with ErrNoSevenZip, and a 7zz older than 24.01,
+// TestNewReader: a Config with no 7zz panics naming the field, and a 7zz older than 24.01,
 // whatever its Spec's minimum, with a *tool.VersionError wrapping tool.ErrTooOld; 24.01 is
 // accepted. The pinned 7zz's banner gives its version.
 func TestNewReader(t *testing.T) {
-	if _, err := sevenzip.NewReader(sevenzip.Config{}); !errors.Is(err, sevenzip.ErrNoSevenZip) {
-		t.Errorf("no 7zz: %v, want ErrNoSevenZip", err)
-	}
-	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, "23.01")})
+	func() {
+		defer func() {
+			if r := recover(); r != "sevenzip: Config.SevenZip is nil" {
+				t.Errorf("no 7zz: recovered %v, want the nil field named", r)
+			}
+		}()
+		_, _ = sevenzip.NewReader(sevenzip.Config{})
+	}()
+	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "23.01"})})
 	if verr, ok := errors.AsType[*tool.VersionError](err); !ok || !errors.Is(err, tool.ErrTooOld) || verr.Found != "23.1" {
 		t.Errorf("23.01: %v, want a VersionError wrapping ErrTooOld", err)
 	}
-	if _, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, "24.01")}); err != nil {
+	if _, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.01"})}); err != nil {
 		t.Errorf("24.01: %v", err)
 	}
 	tl, err := tool.NewExec(t.Context(), sevenzip.SevenZipSpec())

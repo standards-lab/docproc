@@ -25,7 +25,9 @@
 // and the optional TextExtractor interface names it; HasText is the rule for a page having a text
 // layer, its text not empty once whitespace is trimmed. Text keeps gs's physical layout, so a
 // multi-column page or a form reads out of reading order. NewGhostscript takes a gs Tool built
-// through either runner, GhostscriptSpec declaring it, and refuses one older than 10.0.
+// through either runner, GhostscriptSpec declaring it, in a Config, and refuses one older than
+// 10.0. Each constructor panics naming a required Config field that is nil, the caller's
+// mistake, and returns an error only for the environment's fault, a tool too old.
 // Ghostscript is AGPL-licensed, and the package runs it as a separate program, never linked.
 //
 // The corrections stage is the picture package's Corrector, over ImageMagick's magick: a request
@@ -64,7 +66,7 @@
 //   - [Renderer] counts a PDF's pages and renders one page as PNG at a DPI.
 //   - [CheckRender] makes a Renderer's refusals of a DPI and a page.
 //   - [Ghostscript] is the released Renderer, over Ghostscript's gs.
-//   - [NewGhostscript] builds the released renderer over a gs Tool.
+//   - [NewGhostscript] builds the released renderer over a Config's gs Tool.
 //   - [Ghostscript.Count] counts a PDF's pages with gs.
 //   - [Ghostscript.Render] renders one page as PNG with gs.
 //   - [Ghostscript.RenderRegion] renders a region of one page as PNG with gs.
@@ -74,13 +76,15 @@
 //   - [HasText] is the rule for a page having a text layer.
 //   - [Region] is a band of a page in fractions of the page.
 //   - [CheckRegion] refuses a Region out of range.
-//   - [ErrRegion] is a refused Region's cause.
 //   - [GhostscriptSpec] declares Ghostscript's gs for either runner's constructor.
 //   - [GhostscriptMinimum] is the oldest gs the renderer accepts, 10.0.
-//   - [ErrDPI] and [ErrPageRange] are the refusals' causes: a DPI of zero or less, and a page
-//     below 1, or past the last for Text and for a caller that holds the count.
+//   - [ErrRequest] is every refusal's cause: a DPI of zero or less, a page below 1, or past the
+//     last for Text and for a caller that holds the count, a Region out of range, and an
+//     ImagesRequest a Preparer can't run.
+//   - [Config] is what the constructors are built over: the Tools, a Preparer's Renderer, and
+//     its optional Corrector.
 //   - [Preparer] prepares a PDF's pages for a model's vision.
-//   - [NewPreparer] builds a Preparer over a Renderer and an optional picture.Corrector.
+//   - [NewPreparer] builds a Preparer over a Config's Renderer and optional Corrector.
 //   - [ImagesRequest] is one PDF's run through Images: its working directory, DPI, corrections,
 //     concurrency, text layers, and region.
 //   - [PageImage] is one prepared page's number, the page count, its PNG, and its text layer.

@@ -48,12 +48,12 @@ type Reader struct {
 	onenote *tool.Tool
 }
 
-// NewReader builds a Reader over cfg's Tool. It refuses a nil OneNote, and a OneNote whose
-// version is older than OneNoteMinimum, whatever minimum the Tool's own Spec declared, with a
-// *tool.VersionError wrapping tool.ErrTooOld.
+// NewReader builds a Reader over cfg's Tool. A nil OneNote is the caller's mistake, and panics
+// naming the field. It refuses a OneNote whose version is older than OneNoteMinimum, whatever
+// minimum the Tool's own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
 func NewReader(cfg Config) (*Reader, error) {
 	if cfg.OneNote == nil {
-		return nil, errors.New("onenote: no onenote tool")
+		panic("onenote: Config.OneNote is nil")
 	}
 	m, err := tool.ParseVersion(OneNoteMinimum)
 	if err != nil {

@@ -15,10 +15,10 @@ import (
 )
 
 // ffmpegRuns returns the log's runs of ffmpeg, docker's included, and fails the test on any probe.
-func ffmpegRuns(t *testing.T) []run {
+func ffmpegRuns(t *testing.T, st *standins) []run {
 	t.Helper()
 	var out []run
-	for _, r := range runs(t) {
+	for _, r := range st.runs() {
 		if r.Program == "ffprobe" {
 			t.Errorf("a probe, %q, of a source that can't be probed", r.Args)
 			continue
@@ -56,8 +56,9 @@ func checkStream(t *testing.T, dir string, events []media.Event) {
 // decodes its video in slice threads and reads at the source's own pace, and works in a hidden
 // directory of its own in the media directory, which holds only the events' files at the end.
 func TestEventsURL(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probePicture, sceneFrames)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probePicture, sceneFrames)
 	for _, c := range []struct{ url, protocols string }{
 		{"srt://127.0.0.1:9000?latency=200000", "srt"},
 		{"rtmp://127.0.0.1:1935/live/stream", "rtmp,tcp"},
@@ -68,11 +69,11 @@ func TestEventsURL(t *testing.T) {
 		{"udp://@:9000", "udp"},
 	} {
 		t.Run(c.url, func(t *testing.T) {
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			st.mark()
 			dir := t.TempDir()
 			events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{URL: c.url}, Dir: dir}))
 			checkStream(t, dir, events)
-			r := ffmpegRuns(t)
+			r := ffmpegRuns(t, st)
 			if len(r) != 1 || r[0].Program != "ffmpeg" {
 				t.Fatalf("runs %v, want one ffmpeg run", r)
 			}
@@ -97,8 +98,9 @@ func TestEventsURL(t *testing.T) {
 // TestEventsReader streams a reader through the stand-in: ffmpeg reads it whole from its stdin,
 // allowed only its pipe, with no probe, and the stream is the same as a URL's.
 func TestEventsReader(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, probePicture, sceneFrames)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, probePicture, sceneFrames)
 	data, err := os.ReadFile(gainWAV)
 	if err != nil {
 		t.Fatal(err)
@@ -106,12 +108,12 @@ func TestEventsReader(t *testing.T) {
 	dir := t.TempDir()
 	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{Reader: strings.NewReader(string(data))}, Dir: dir}))
 	checkStream(t, dir, events)
-	r := ffmpegRuns(t)
+	r := ffmpegRuns(t, st)
 	if len(r) != 1 {
 		t.Fatalf("runs %v, want one ffmpeg run", r)
 	}
-	if r[0].Stdin != sum(data) {
-		t.Errorf("ffmpeg read %q from its stdin, want the reader's %d bytes, %s", r[0].Stdin, len(data), sum(data))
+	if in := st.stdins(); len(in) != 1 || in[0] != sum(data) {
+		t.Errorf("ffmpeg read %q from its stdin, want the reader's %d bytes, %s", in, len(data), sum(data))
 	}
 	if args := strings.Join(r[0].Args, " "); !strings.Contains(args, "-thread_type:v slice -flags:a +bitexact -flags:v +bitexact -protocol_whitelist pipe -i pipe:0 ") {
 		t.Errorf("ffmpeg's arguments %q", args)
@@ -122,7 +124,8 @@ func TestEventsReader(t *testing.T) {
 // the index its probe found; a file without a stream its tracks require is refused with
 // ErrNoMedia after its probe, before ffmpeg runs.
 func TestEventsTracks(t *testing.T) {
-	s := standinStreamer(t)
+	t.Parallel()
+	s, st := standinStreamer(t)
 	for _, c := range []struct {
 		name   string
 		source media.Source
@@ -138,15 +141,15 @@ func TestEventsTracks(t *testing.T) {
 		{"file auto", media.Source{}, probeAudio, []string{"0:0"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			setStandin(t, c.probe, sceneFrames)
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			setStandin(t, st, c.probe, sceneFrames)
+			st.mark()
 			src := c.source
 			if src.URL == "" {
 				src.File = source(t)
 			}
 			collect(t, s.Events(t.Context(), media.Request{Source: src, Dir: t.TempDir()}))
 			var maps []string
-			for _, r := range runs(t) {
+			for _, r := range st.runs() {
 				for i, a := range r.Args {
 					if a == "-map" && r.Program == "ffmpeg" {
 						maps = append(maps, r.Args[i+1])
@@ -169,8 +172,8 @@ func TestEventsTracks(t *testing.T) {
 		{"auto of a picture", media.TracksAuto, probePicture},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			setStandin(t, c.probe, sceneFrames)
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			setStandin(t, st, c.probe, sceneFrames)
+			st.mark()
 			var errs []error
 			for _, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t), Tracks: c.tracks}, Dir: t.TempDir()}) {
 				errs = append(errs, err)
@@ -178,7 +181,7 @@ func TestEventsTracks(t *testing.T) {
 			if len(errs) != 1 || !errors.Is(errs[0], media.ErrNoMedia) {
 				t.Errorf("errors %v, want ErrNoMedia once", errs)
 			}
-			if r := runs(t); len(r) != 1 || r[0].Program != "ffprobe" {
+			if r := st.runs(); len(r) != 1 || r[0].Program != "ffprobe" {
 				t.Errorf("runs %v, want the probe alone", r)
 			}
 		})
@@ -189,12 +192,13 @@ func TestEventsTracks(t *testing.T) {
 // takes: ffmpeg refuses its map, and the stream yields ErrNoMedia once, naming the stream, and no
 // event.
 func TestEventsMissingStream(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, "", sceneFrames)
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, "", sceneFrames)
 	for kind, name := range map[string]string{"a": "audio", "V": "video"} {
 		for _, src := range []media.Source{{URL: "srt://127.0.0.1:9000"}, {Reader: strings.NewReader("x")}} {
 			t.Run(name, func(t *testing.T) {
-				t.Setenv(missingEnv, kind)
+				st.set(func(c *settings) { c.Missing = kind })
 				dir := t.TempDir()
 				var errs []error
 				for e, err := range s.Events(t.Context(), media.Request{Source: src, Dir: dir}) {
@@ -219,13 +223,14 @@ func TestEventsMissingStream(t *testing.T) {
 // run's own directory, the one mounted, and allows only its scheme's protocols; and a file and a
 // reader need no network.
 func TestEventsNetwork(t *testing.T) {
-	installStandins(t, "9.0.2")
-	setStandin(t, probeBoth, sceneFrames)
+	t.Parallel()
+	st := installStandins(t, "9.0.2")
+	setStandin(t, st, probeBoth, sceneFrames)
 	url := "rtmp://sender:1935/live/stream"
 	for _, network := range []string{"", "none"} {
 		t.Run("refused "+network, func(t *testing.T) {
-			s := containerStreamer(t, network)
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			s := st.containerStreamer(network)
+			st.mark()
 			var errs []error
 			for _, err := range s.Events(t.Context(), media.Request{Source: media.Source{URL: url}, Dir: t.TempDir()}) {
 				errs = append(errs, err)
@@ -233,18 +238,18 @@ func TestEventsNetwork(t *testing.T) {
 			if len(errs) != 1 || !errors.Is(errs[0], media.ErrRequest) || !strings.Contains(errs[0].Error(), "docker network") {
 				t.Errorf("errors %v, want the refusal once", errs)
 			}
-			if r := runs(t); len(r) != 0 {
+			if r := st.runs(); len(r) != 0 {
 				t.Errorf("runs %v, want none", r)
 			}
 		})
 	}
 	t.Run("joined", func(t *testing.T) {
-		s := containerStreamer(t, "media-test")
-		t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+		s := st.containerStreamer("media-test")
+		st.mark()
 		dir := t.TempDir()
 		events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{URL: url}, Dir: dir}))
 		checkStream(t, dir, events)
-		r := ffmpegRuns(t)
+		r := ffmpegRuns(t, st)
 		if len(r) != 2 || r[0].Program != "docker" || r[1].Program != "ffmpeg" {
 			t.Fatalf("runs %v, want docker's run of ffmpeg", r)
 		}
@@ -262,7 +267,7 @@ func TestEventsNetwork(t *testing.T) {
 		}
 	})
 	t.Run("file and reader", func(t *testing.T) {
-		s := containerStreamer(t, "")
+		s := st.containerStreamer("")
 		for _, src := range []media.Source{{File: source(t)}, {Reader: strings.NewReader("x")}} {
 			dir := t.TempDir()
 			checkStream(t, dir, collect(t, s.Events(t.Context(), media.Request{Source: src, Dir: dir})))
@@ -284,10 +289,13 @@ func flagValue(args []string, flag string) string {
 // doesn't hold, as a playlist's segment's: the stream's error names the refusal, lines before
 // ffmpeg's last, and the last.
 func TestEventsRefusedProtocol(t *testing.T) {
-	s := standinStreamer(t)
-	setStandin(t, "", nil)
-	t.Setenv(failEnv, "[https @ 0x55d0c0de] Protocol 'https' not on whitelist 'http,tcp,crypto'!\n"+
-		"[in#0 @ 0x55d0c0de] Error when loading first segment 'https://example.test/0.ts'\nError opening input files: Invalid data found when processing input")
+	t.Parallel()
+	s, st := standinStreamer(t)
+	setStandin(t, st, "", nil)
+	st.set(func(c *settings) {
+		c.Fail = "[https @ 0x55d0c0de] Protocol 'https' not on whitelist 'http,tcp,crypto'!\n" +
+			"[in#0 @ 0x55d0c0de] Error when loading first segment 'https://example.test/0.ts'\nError opening input files: Invalid data found when processing input"
+	})
 	var errs []error
 	for _, err := range s.Events(t.Context(), media.Request{Source: media.Source{URL: "http://127.0.0.1:8080/live.m3u8", Tracks: media.TracksAudio}, Dir: t.TempDir()}) {
 		if err != nil {

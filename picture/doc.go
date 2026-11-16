@@ -45,7 +45,7 @@
 // pictures through it. A picture whose converter the Converter wasn't given is refused before
 // anything runs, an EMF or WMF without LibreOffice with ErrNoLibreOffice, any picture without
 // magick with ErrNoMagick, and a HEIC, WebP, or AVIF whose reader magick lacks with ErrNoReader, as
-// is a scale out of range, with ErrScale, which CheckMetafileScale makes; a conversion that fails
+// is a scale out of range, with ErrRequest, which CheckMetafileScale makes; a conversion that fails
 // leaves no PNG.
 //
 // The corrections stage, a Corrector, runs a page image through ImageMagick's operators for the
@@ -53,7 +53,8 @@
 // (-contrast-stretch 0.5%x0.5%), Unsharp (-unsharp 0x1), and Grayscale (-colorspace Gray), always
 // in that order, however the caller lists them. A page is one magick run, PNG on stdin to PNG on
 // stdout, and no corrections runs nothing. NewCorrector takes a magick Tool built through either
-// runner and refuses one older than 7.1. The stage works on any page image, rendered or not: the
+// runner, a Config's Magick, panics naming the field when it is nil, and refuses one older than
+// 7.1. The stage works on any page image, rendered or not: the
 // document package's Preparer runs it on its pages. Corrections lists them in that order, each
 // with its name, String, and its one-line Description for a prompt, and ParseCorrection reads a
 // name back, without regard to case. Assess measures a page image for the defects the
@@ -83,7 +84,8 @@
 //   - [DefaultMetafileScale] is the scale EMF and WMF are rendered at by default, 3.
 //   - [MaxMetafileScale] is the largest scale they may be rendered at, 8.
 //   - [CheckMetafileScale] returns the scale a request asks for, or refuses it.
-//   - [ErrScale] is a refused scale's cause.
+//   - [ErrRequest] is a refused request's cause: a scale out of range, an empty working
+//     directory, a kind it doesn't convert, two PNGs of one name, or an unknown correction.
 //   - [SVGDensity] is the density an SVG is rendered at, 150 dpi.
 //   - [ErrNoMagick] and [ErrNoLibreOffice] are the causes of a picture's refusal without the
 //     converter it needs, and [ErrNoReader] of a HEIC's, WebP's, or AVIF's without magick's reader.
@@ -94,7 +96,7 @@
 //   - [Corrections] lists every correction in the fixed order.
 //   - [ParseCorrection] returns the correction a name names, without regard to case.
 //   - [Corrector] is the corrections stage.
-//   - [NewCorrector] builds the corrections stage over a magick Tool.
+//   - [NewCorrector] builds the corrections stage over a Config's magick Tool.
 //   - [Corrector.Correct] runs a page image through the corrections a request names.
 //   - [Corrector.Assess] measures a page image for the defects the corrections fix.
 //   - [Assessment] is a page image's measures: size, skew, contrast, noise, sharpness, and color.

@@ -125,11 +125,11 @@ type Dispatcher struct {
 	cfg Config
 }
 
-// New returns a Dispatcher over cfg, refusing one with no index or working directory, or a
-// stage that is nil.
+// New returns a Dispatcher over cfg. A nil Index is the caller's mistake, and panics naming the
+// field. It refuses a Config with no working directory, or a stage that is nil.
 func New(cfg Config) (*Dispatcher, error) {
 	if cfg.Index == nil {
-		return nil, errors.New("dispatch: no index")
+		panic("dispatch: Config.Index is nil")
 	}
 	if cfg.Dir == "" {
 		return nil, errors.New("dispatch: no working directory")

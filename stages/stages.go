@@ -133,15 +133,18 @@ func Routes() []route.Route {
 	return routes
 }
 
+// ErrRequest is the cause of a refused request: a route ParseRoutes doesn't know.
+var ErrRequest = errors.New("invalid request")
+
 // ParseRoutes returns the routes names name, in order, refusing a name that isn't one of
-// [Routes].
+// [Routes] with an error wrapping ErrRequest.
 func ParseRoutes(names []string) ([]route.Route, error) {
 	known := Routes()
 	routes := make([]route.Route, 0, len(names))
 	for _, name := range names {
 		r := route.Route(name)
 		if !slices.Contains(known, r) {
-			return nil, fmt.Errorf("unknown route %q; the routes are %s", name, joinRoutes(known))
+			return nil, fmt.Errorf("stages: unknown route %q; the routes are %s: %w", name, joinRoutes(known), ErrRequest)
 		}
 		routes = append(routes, r)
 	}
@@ -249,19 +252,18 @@ func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string,
 // for a password and reads the AcroForm, and pdfdetach saves the embedded files.
 func documentStage(_ context.Context, t tools) (dispatch.Stage, error) {
 	gs, qt, dt := t["gs"], t["qpdf"], t["pdfdetach"]
-	render, err := document.NewGhostscript(gs)
+	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt}
+	render, err := document.NewGhostscript(cfg)
 	if err != nil {
 		return nil, err
 	}
-	prep, err := document.NewPreparer(render, nil)
+	cfg.Renderer = render
+	prep := document.NewPreparer(cfg)
+	q, err := document.NewQPDF(cfg)
 	if err != nil {
 		return nil, err
 	}
-	q, err := document.NewQPDF(qt)
-	if err != nil {
-		return nil, err
-	}
-	detach, err := document.NewDetacher(dt)
+	detach, err := document.NewDetacher(cfg)
 	if err != nil {
 		return nil, err
 	}

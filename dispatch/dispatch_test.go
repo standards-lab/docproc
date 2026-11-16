@@ -436,13 +436,14 @@ func TestInputErrors(t *testing.T) {
 	}
 }
 
-// TestNew: a config with no index, no working directory, a missing one, a nil stage, or a
-// negative limit is refused.
+// TestNew: a config with no working directory, a missing one, a nil stage, or a negative limit
+// is refused; one with no index panics, naming the field.
 func TestNew(t *testing.T) {
+	t.Parallel()
 	index := dispatch.NewMemoryIndex()
 	dir := t.TempDir()
+	wantPanic(t, "dispatch: Config.Index is nil", func() { _, _ = dispatch.New(dispatch.Config{Dir: dir}) })
 	for name, cfg := range map[string]dispatch.Config{
-		"no index":     {Dir: dir},
 		"no dir":       {Index: index},
 		"missing dir":  {Index: index, Dir: filepath.Join(dir, "missing")},
 		"nil stage":    {Index: index, Dir: dir, Stages: dispatch.Stages{route.Text: nil}},
@@ -451,6 +452,23 @@ func TestNew(t *testing.T) {
 		if _, err := dispatch.New(cfg); err == nil {
 			t.Errorf("%s: no error", name)
 		}
+	}
+}
+
+// TestStagesPanic: each stage constructor panics on a config whose required field is nil, naming
+// the field, the caller's mistake.
+func TestStagesPanic(t *testing.T) {
+	t.Parallel()
+	for want, build := range map[string]func(){
+		"dispatch: DocumentConfig.Preparer is nil": func() { _, _ = dispatch.NewDocumentStage(dispatch.DocumentConfig{Version: "gs 10.5"}) },
+		"dispatch: OfficeConfig.Converter is nil":  func() { _, _ = dispatch.NewOfficeStage(dispatch.OfficeConfig{Version: "x"}) },
+		"dispatch: PictureConfig.Converter is nil": func() { _, _ = dispatch.NewPictureStage(dispatch.PictureConfig{Version: "x"}) },
+		"dispatch: EmailConfig.Reader is nil":      func() { _, _ = dispatch.NewEmailStage(dispatch.EmailConfig{Version: "x"}) },
+		"dispatch: OneNoteConfig.Reader is nil":    func() { _, _ = dispatch.NewOneNoteStage(dispatch.OneNoteConfig{Version: "x"}) },
+		"dispatch: AudioConfig.Splitter is nil":    func() { _, _ = dispatch.NewAudioStage(dispatch.AudioConfig{Version: "x"}) },
+		"dispatch: VideoConfig.Streamer is nil":    func() { _, _ = dispatch.NewVideoStage(dispatch.VideoConfig{Version: "x"}) },
+	} {
+		wantPanic(t, want, build)
 	}
 }
 

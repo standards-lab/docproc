@@ -23,4 +23,5 @@
 //   - [LimitedBuffer] keeps the first bytes written to it, for a tool's output read only in
 //     part.
 //   - [Spool] copies an input into a file in a working directory, for a tool that reads a path.
+//   - [UTC] is the decoding option that makes every time a reader decodes UTC.
 package cli

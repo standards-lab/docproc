@@ -78,10 +78,7 @@ func (r *pages) Text(_ context.Context, _ string, page int) (string, error) {
 // documentStage returns a document stage over render, reading the pages' text.
 func documentStage(t *testing.T, render document.Renderer) *dispatch.DocumentStage {
 	t.Helper()
-	prep, err := document.NewPreparer(render, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: render})
 	s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{
 		Preparer: prep, Version: "pages 1", Request: document.ImagesRequest{Text: true},
 	})

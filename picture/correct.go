@@ -4,7 +4,6 @@ package picture
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -91,7 +90,7 @@ func ParseCorrection(name string) (Correction, error) {
 			return c, nil
 		}
 	}
-	return 0, fmt.Errorf("picture: unknown correction %q", name)
+	return 0, fmt.Errorf("picture: unknown correction %q: %w", name, ErrRequest)
 }
 
 // Corrector is the corrections stage: it runs a page image through the ImageMagick operators of
@@ -100,18 +99,19 @@ type Corrector struct {
 	magick *tool.Tool
 }
 
-// NewCorrector builds the corrections stage over magick, which the caller built through either
-// runner, typically from MagickSpec. It refuses a nil Tool, and a Tool whose version is older
-// than MagickMinimum, whatever minimum its own Spec declared, with a *tool.VersionError wrapping
+// NewCorrector builds the corrections stage over cfg's Magick, which the caller built through
+// either runner, typically from MagickSpec; it reads no other field. A nil Magick is the caller's
+// mistake, and panics naming the field. It refuses a Magick whose version is older than
+// MagickMinimum, whatever minimum its own Spec declared, with a *tool.VersionError wrapping
 // tool.ErrTooOld.
-func NewCorrector(magick *tool.Tool) (*Corrector, error) {
-	if magick == nil {
-		return nil, errors.New("picture: corrector: no magick tool")
+func NewCorrector(cfg Config) (*Corrector, error) {
+	if cfg.Magick == nil {
+		panic("picture: Config.Magick is nil")
 	}
-	if err := atLeast(magick, MagickMinimum); err != nil {
+	if err := atLeast(cfg.Magick, MagickMinimum); err != nil {
 		return nil, err
 	}
-	return &Corrector{magick: magick}, nil
+	return &Corrector{magick: cfg.Magick}, nil
 }
 
 // Correct writes the page image read from in to out with corrections applied, for any page
@@ -123,7 +123,7 @@ func NewCorrector(magick *tool.Tool) (*Corrector, error) {
 func (c *Corrector) Correct(ctx context.Context, corrections []Correction, in io.Reader, out io.Writer) error {
 	for _, corr := range corrections {
 		if _, ok := known[corr]; !ok {
-			return fmt.Errorf("picture: unknown correction %v", corr)
+			return fmt.Errorf("picture: unknown correction %v: %w", corr, ErrRequest)
 		}
 	}
 	if len(corrections) == 0 {

@@ -41,21 +41,28 @@ const volumeLog = `[Parsed_volumedetect_0 @ 0x55d15edee600] n_samples: 0
 [Parsed_volumedetect_0 @ 0x7f9254003c80] max_volume: -7.3 dB
 `
 
+// TestNewSplitterRefuses: a nil Tool panics naming its field, and a Tool older than the minimum,
+// whatever its Spec's, is refused.
 func TestNewSplitterRefuses(t *testing.T) {
-	installStandins(t, "9.0.2")
-	ffmpeg, ffprobe := standinTools(t)
-	for name, cfg := range map[string]audio.Config{
-		"no ffmpeg":  {FFprobe: ffprobe},
-		"no ffprobe": {FFmpeg: ffmpeg},
+	t.Parallel()
+	ffmpeg, ffprobe := installStandins(t, "9.0.2").tools()
+	for name, tt := range map[string]struct {
+		cfg  audio.Config
+		want string
+	}{
+		"no ffmpeg":  {audio.Config{FFprobe: ffprobe}, "audio: Config.FFmpeg is nil"},
+		"no ffprobe": {audio.Config{FFmpeg: ffmpeg}, "audio: Config.FFprobe is nil"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := audio.NewSplitter(cfg); err == nil {
-				t.Error("NewSplitter succeeded")
-			}
+			defer func() {
+				if r := recover(); r != tt.want {
+					t.Errorf("panic %v, want %q", r, tt.want)
+				}
+			}()
+			_, _ = audio.NewSplitter(tt.cfg)
 		})
 	}
-	t.Setenv(versionEnv, "8.1")
-	old, oldProbe := standinTools(t)
+	old, oldProbe := installStandins(t, "8.1").tools()
 	for name, cfg := range map[string]audio.Config{
 		"ffmpeg 8.1":  {FFmpeg: old, FFprobe: ffprobe},
 		"ffprobe 8.1": {FFmpeg: ffmpeg, FFprobe: oldProbe},
@@ -74,6 +81,7 @@ func TestNewSplitterRefuses(t *testing.T) {
 }
 
 func TestSpecsMatchTheirVersions(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct {
 		spec       tool.Spec
 		host, wrap string
@@ -92,11 +100,13 @@ func TestSpecsMatchTheirVersions(t *testing.T) {
 // TestSpecsRefuseOld builds the stand-ins through the exec runner from the Specs as the package
 // returns them: 9.0.2 passes, and the runner itself refuses 8.1, below the Specs' minimum.
 func TestSpecsRefuseOld(t *testing.T) {
+	t.Parallel()
 	for version, ok := range map[string]bool{"9.0.2": true, "8.1": false} {
 		t.Run(version, func(t *testing.T) {
-			installStandins(t, version)
+			t.Parallel()
+			st := installStandins(t, version)
 			for _, spec := range []tool.Spec{audio.FFmpegSpec(), audio.FFprobeSpec()} {
-				tl, err := tool.NewExec(t.Context(), spec)
+				tl, err := tool.NewExec(t.Context(), st.spec(spec))
 				switch {
 				case ok && (err != nil || tl.Version().String() != version):
 					t.Errorf("NewExec(%s) over %s = %v, %v; want %s", spec.Program, version, tl, err, version)
@@ -109,8 +119,9 @@ func TestSpecsRefuseOld(t *testing.T) {
 }
 
 func TestProbe(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, flacProbe)
+	t.Parallel()
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) { c.Probe = flacProbe })
 	src, err := s.Probe(t.Context(), "speech.flac")
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +130,7 @@ func TestProbe(t *testing.T) {
 	if src != want {
 		t.Errorf("Probe = %+v, want %+v", src, want)
 	}
-	rs := runs(t)
+	rs := st.runs()
 	if len(rs) != 1 || rs[0].Program != "ffprobe" {
 		t.Fatalf("runs %+v, want one of ffprobe", rs)
 	}
@@ -133,20 +144,21 @@ func TestProbe(t *testing.T) {
 }
 
 func TestDetectRefusesNoAudioBeforeFFmpeg(t *testing.T) {
-	s := standinSplitter(t)
+	t.Parallel()
 	for name, report := range map[string]string{
 		"no audio stream": `{"streams":[{"index":0,"codec_name":"h264","codec_type":"video"}],"format":{"duration":"5.0"}}`,
 		"no streams":      `{"streams":[],"format":{}}`,
 		"no duration":     `{"streams":[{"index":0,"codec_name":"flac","codec_type":"audio","sample_rate":"16000","channels":1}],"format":{}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
-			t.Setenv(probeEnv, report)
+			t.Parallel()
+			s, st := standinSplitter(t)
+			st.set(func(c *settings) { c.Probe = report })
 			_, err := s.Detect(t.Context(), audio.Request{Path: "video.mp4"})
 			if !errors.Is(err, audio.ErrNoAudio) {
 				t.Errorf("err %v, want ErrNoAudio", err)
 			}
-			for _, r := range runs(t) {
+			for _, r := range st.runs() {
 				if r.Program != "ffprobe" {
 					t.Errorf("%s ran: %q", r.Program, r.Args)
 				}
@@ -156,10 +168,9 @@ func TestDetectRefusesNoAudioBeforeFFmpeg(t *testing.T) {
 }
 
 func TestDetectRelative(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, flacProbe)
-	t.Setenv(volumeEnv, volumeLog)
-	t.Setenv(silenceEnv, silenceLog)
+	t.Parallel()
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) { c.Probe, c.Volume, c.Silence = flacProbe, volumeLog, silenceLog })
 	det, err := s.Detect(t.Context(), audio.Request{Path: "speech.flac"})
 	if err != nil {
 		t.Fatal(err)
@@ -172,7 +183,7 @@ func TestDetectRelative(t *testing.T) {
 	if !reflect.DeepEqual(det.Silences, want) {
 		t.Errorf("silences %v, want %v", det.Silences, want)
 	}
-	rs := runs(t)
+	rs := st.runs()
 	if got := programs(rs); !slices.Equal(got, []string{"ffprobe", "ffmpeg", "ffmpeg"}) {
 		t.Fatalf("runs %q, want ffprobe, then ffmpeg twice", got)
 	}
@@ -190,9 +201,7 @@ func TestDetectRelative(t *testing.T) {
 }
 
 func TestDetectRequestFields(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, flacProbe)
-	t.Setenv(volumeEnv, volumeLog)
+	t.Parallel()
 	tests := []struct {
 		name   string
 		req    audio.Request
@@ -204,13 +213,15 @@ func TestDetectRequestFields(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			t.Parallel()
+			s, st := standinSplitter(t)
+			st.set(func(c *settings) { c.Probe, c.Volume = flacProbe, volumeLog })
 			tt.req.Path = "speech.flac"
 			det, err := s.Detect(t.Context(), tt.req)
 			if err != nil {
 				t.Fatal(err)
 			}
-			rs := runs(t)
+			rs := st.runs()
 			if len(rs) != tt.runs {
 				t.Fatalf("runs %q, want %d", programs(rs), tt.runs)
 			}
@@ -225,7 +236,7 @@ func TestDetectRequestFields(t *testing.T) {
 }
 
 func TestRequestRefusedBeforeRuns(t *testing.T) {
-	s := standinSplitter(t)
+	t.Parallel()
 	for name, req := range map[string]audio.Request{
 		"no path":                            {},
 		"negative minimum":                   {Path: "a.flac", MinSilence: -time.Second},
@@ -243,11 +254,13 @@ func TestRequestRefusedBeforeRuns(t *testing.T) {
 		"the tracker with no path":           {Detector: audio.DetectorTracker},
 	} {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			s, st := standinSplitter(t)
 			_, err := s.Plan(t.Context(), req)
 			if !errors.Is(err, audio.ErrRequest) {
 				t.Errorf("err %v, want ErrRequest", err)
 			}
-			if rs := runs(t); len(rs) != 0 {
+			if rs := st.runs(); len(rs) != 0 {
 				t.Errorf("runs %q, want none", programs(rs))
 			}
 		})
@@ -255,9 +268,11 @@ func TestRequestRefusedBeforeRuns(t *testing.T) {
 }
 
 func TestDetectFFmpegFails(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, flacProbe)
-	t.Setenv(failEnv, "noise\n[in#0] Error opening input: Invalid data found when processing input\n")
+	t.Parallel()
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) {
+		c.Probe, c.Fail = flacProbe, "noise\n[in#0] Error opening input: Invalid data found when processing input\n"
+	})
 	_, err := s.Detect(t.Context(), audio.Request{Path: "speech.flac"})
 	var exit *tool.ExitError
 	if !errors.As(err, &exit) || exit.Code != 1 {
@@ -278,9 +293,11 @@ const gainProbe = `{"streams":[` +
 // the incremental path's over the same samples, a Tracker and a Planner fed them as a stream, as
 // it is PlanWindows' of the silences Detect reports. Each silence reports its threshold.
 func TestPlanTracker(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, gainProbe)
-	t.Setenv(decodeEnv, filepath.Join("testdata", "speech-gain.wav"))
+	t.Parallel()
+	decode, err := filepath.Abs(filepath.Join("testdata", "speech-gain.wav"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	pcm := samplesOf(t, "speech-gain.wav")
 	for name, req := range map[string]audio.Request{
 		"defaults": {},
@@ -288,7 +305,9 @@ func TestPlanTracker(t *testing.T) {
 		"fixed":    {Threshold: -46.2},
 	} {
 		t.Run(name, func(t *testing.T) {
-			t.Setenv(logEnv, filepath.Join(t.TempDir(), "runs.log"))
+			t.Parallel()
+			s, st := standinSplitter(t)
+			st.set(func(c *settings) { c.Probe, c.Decode = gainProbe, decode })
 			req.Path, req.Detector = "speech-gain.wav", audio.DetectorTracker
 			plan, err := s.Plan(t.Context(), req)
 			if err != nil {
@@ -298,7 +317,7 @@ func TestPlanTracker(t *testing.T) {
 			if want := streamPlan(t, pcm, req, 1<<15, duration); !reflect.DeepEqual(plan.Windows, want) {
 				t.Errorf("windows %v, the incremental path's %v", plan.Windows, want)
 			}
-			rs := runs(t)
+			rs := st.runs()
 			if got := programs(rs); !slices.Equal(got, []string{"ffprobe", "ffmpeg"}) {
 				t.Fatalf("runs %q, want ffprobe, then ffmpeg once", got)
 			}
@@ -339,10 +358,9 @@ func TestPlanTracker(t *testing.T) {
 }
 
 func TestPlanStandin(t *testing.T) {
-	s := standinSplitter(t)
-	t.Setenv(probeEnv, flacProbe)
-	t.Setenv(volumeEnv, volumeLog)
-	t.Setenv(silenceEnv, silenceLog)
+	t.Parallel()
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) { c.Probe, c.Volume, c.Silence = flacProbe, volumeLog, silenceLog })
 	plan, err := s.Plan(t.Context(), audio.Request{Path: "speech.flac"})
 	if err != nil {
 		t.Fatal(err)

@@ -13,9 +13,9 @@ import (
 
 // convertJSON converts through the stand-in office, which prints model as its JSON model, and
 // returns the result's document and the error.
-func convertJSON(t *testing.T, c *office.Converter, model string) (*office.Document, error) {
+func convertJSON(t *testing.T, c *office.Converter, ins *standins, model string) (*office.Document, error) {
 	t.Helper()
-	t.Setenv(stdoutEnv, model)
+	ins.set(stdoutKey, model)
 	res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir()})
 	if err != nil {
 		return nil, err
@@ -27,12 +27,13 @@ func convertJSON(t *testing.T, c *office.Converter, model string) (*office.Docum
 // ErrSchema that names the schema it found, whatever the model's shape; a schema "1" model with
 // a block or inline that isn't an object with a type is a decoding error, not ErrSchema.
 func TestModelSchema(t *testing.T) {
-	c, _ := standinConverter(t)
+	t.Parallel()
+	c, ins := standinConverter(t)
 	for model, want := range map[string]string{
 		`{"schema": "2", "format": "docx", "blocks": {"reshaped": true}}`: `"2"`,
 		`{"format": "docx", "blocks": []}`:                                "none",
 	} {
-		_, err := convertJSON(t, c, model)
+		_, err := convertJSON(t, c, ins, model)
 		if !errors.Is(err, office.ErrSchema) || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: got %v, want ErrSchema naming %s", model, err, want)
 		}
@@ -42,7 +43,7 @@ func TestModelSchema(t *testing.T) {
 		`{"schema": "1", "format": "docx", "blocks": [3]}`:                                                 "a block is number, not an object",
 		`{"schema": "1", "format": "docx", "blocks": [{"type": "paragraph", "inlines": [{"text": "x"}]}]}`: "an inline has no type",
 	} {
-		_, err := convertJSON(t, c, model)
+		_, err := convertJSON(t, c, ins, model)
 		if err == nil || errors.Is(err, office.ErrSchema) || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: got %v, want a decoding error saying %s", model, err, want)
 		}
@@ -108,8 +109,9 @@ const modelEveryKind = `{
 // kept with its type and JSON, a left-out property is none, and an array keeps its nulls in
 // place.
 func TestModel(t *testing.T) {
-	c, _ := standinConverter(t)
-	doc, err := convertJSON(t, c, modelEveryKind)
+	t.Parallel()
+	c, ins := standinConverter(t)
+	doc, err := convertJSON(t, c, ins, modelEveryKind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,8 +248,9 @@ func TestModel(t *testing.T) {
 // TestModelLeftOut: an xlsx model with only its required properties has no sections, notes, or
 // comments.
 func TestModelLeftOut(t *testing.T) {
-	c, _ := standinConverter(t)
-	doc, err := convertJSON(t, c, `{"schema": "1", "format": "xlsx", "blocks": [{"type": "sheet", "name": "S", "hidden": false, "blocks": []}]}`)
+	t.Parallel()
+	c, ins := standinConverter(t)
+	doc, err := convertJSON(t, c, ins, `{"schema": "1", "format": "xlsx", "blocks": [{"type": "sheet", "name": "S", "hidden": false, "blocks": []}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}

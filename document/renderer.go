@@ -24,24 +24,20 @@ type Renderer interface {
 	Render(ctx context.Context, pdf string, page, dpi int, w io.Writer) error
 }
 
-var (
-	// ErrPageRange is the cause of a refused page: below 1, or past the PDF's last for a caller
-	// that holds the count.
-	ErrPageRange = errors.New("page out of range")
-	// ErrDPI is the cause of a refused DPI: zero or less.
-	ErrDPI = errors.New("DPI must be positive")
-)
+// ErrRequest is the cause of every refused request: a DPI of zero or less, a page below 1 or past
+// the PDF's last, a Region out of range, and an ImagesRequest a Preparer can't run.
+var ErrRequest = errors.New("invalid request")
 
 // CheckRender makes a Renderer's refusals, and a Render calls it before any tool runs. It refuses
-// a DPI of zero or less, wrapping ErrDPI, and a page below 1, wrapping ErrPageRange. It runs no
+// a DPI of zero or less and a page below 1, wrapping ErrRequest. It runs no
 // tool, so it has no upper bound for the page: that needs the count, which a caller walking the
 // pages holds already, and a direct Render past the last fails in its rendering tool.
 func CheckRender(page, dpi int) error {
 	if dpi <= 0 {
-		return fmt.Errorf("document: %d dpi: %w", dpi, ErrDPI)
+		return fmt.Errorf("document: %d dpi isn't positive: %w", dpi, ErrRequest)
 	}
 	if page < 1 {
-		return fmt.Errorf("document: page %d: %w", page, ErrPageRange)
+		return fmt.Errorf("document: page %d is below 1: %w", page, ErrRequest)
 	}
 	return nil
 }
@@ -80,23 +76,20 @@ type Region struct {
 	Top, Bottom, Left, Right float64
 }
 
-// ErrRegion is the cause of a refused Region.
-var ErrRegion = errors.New("region out of range")
-
-// CheckRegion refuses a Region a RegionRenderer can't render, wrapping ErrRegion: a fraction
+// CheckRegion refuses a Region a RegionRenderer can't render, wrapping ErrRequest: a fraction
 // outside 0 to 1, or that isn't a number, a Top not above its Bottom, or a Left not left of its
 // Right.
 func CheckRegion(r Region) error {
 	for _, f := range []float64{r.Top, r.Bottom, r.Left, r.Right} {
 		if !(f >= 0 && f <= 1) {
-			return fmt.Errorf("document: region %+v: fraction %v not in 0 to 1: %w", r, f, ErrRegion)
+			return fmt.Errorf("document: region %+v: fraction %v not in 0 to 1: %w", r, f, ErrRequest)
 		}
 	}
 	if r.Top >= r.Bottom {
-		return fmt.Errorf("document: region %+v: top isn't above bottom: %w", r, ErrRegion)
+		return fmt.Errorf("document: region %+v: top isn't above bottom: %w", r, ErrRequest)
 	}
 	if r.Left >= r.Right {
-		return fmt.Errorf("document: region %+v: left isn't left of right: %w", r, ErrRegion)
+		return fmt.Errorf("document: region %+v: left isn't left of right: %w", r, ErrRequest)
 	}
 	return nil
 }

@@ -235,7 +235,7 @@ func childrenName(key Key, token string) string {
 	return keyName(key) + "-" + token + ".children.jsonl"
 }
 
-// claimFile is a claim's content: its token and when it was made, by the index's clock.
+// claimFile is a claim's content: its token and when it was made, by the index's clock, in UTC.
 type claimFile struct {
 	Token string    `json:"token"`
 	Time  time.Time `json:"time"`
@@ -257,7 +257,7 @@ func (f *FileIndex) Claim(ctx context.Context, key Key) (string, bool, error) {
 		token := rand.Text()
 		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 		if err == nil {
-			b, _ := json.Marshal(claimFile{Token: token, Time: f.now()})
+			b, _ := json.Marshal(claimFile{Token: token, Time: f.now().UTC()})
 			_, werr := file.Write(b)
 			if cerr := file.Close(); werr == nil {
 				werr = cerr

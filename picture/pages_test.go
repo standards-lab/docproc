@@ -40,6 +40,7 @@ func pageNames(content string, n int) []string {
 // TIFF's SHA-256, "-page", and its number from 1, returned in page order; a TIFF of one page
 // gives one. The original is kept, and the copy's directory removed.
 func TestConvertPagesTIFF(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc, content, name string
 		pages               int
@@ -48,8 +49,9 @@ func TestConvertPagesTIFF(t *testing.T) {
 		{"one page, named otherwise", tiffBE, "scan.dat", 1},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, false, true)
-			t.Setenv(pagesEnv, fmt.Sprint(tc.pages))
+			t.Parallel()
+			c, st := standinConverter(t, false, true)
+			st.set(func(s *settings) { s.Pages = tc.pages })
 			path := writePicture(t, tc.content, tc.name, "")
 			dir := t.TempDir()
 			pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path})
@@ -74,7 +76,7 @@ func TestConvertPagesTIFF(t *testing.T) {
 			if got := entries(t, dir); !slices.Equal(got, names) {
 				t.Errorf("working directory holds %q, want the pages alone", got)
 			}
-			all := runs()
+			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"magick"}) {
 				t.Fatalf("runs: got %q, want magick alone", got)
 			}
@@ -93,7 +95,8 @@ func TestConvertPagesTIFF(t *testing.T) {
 // TestConvertPagesOne: a picture of any other kind gives the one PNG Convert gives, through the
 // same run.
 func TestConvertPagesOne(t *testing.T) {
-	c, runs := standinConverter(t, false, true)
+	t.Parallel()
+	c, st := standinConverter(t, false, true)
 	path := writePicture(t, svgData, "", "")
 	dir := t.TempDir()
 	pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path})
@@ -103,7 +106,7 @@ func TestConvertPagesOne(t *testing.T) {
 	if want := []string{filepath.Join(dir, sha(svgData)+".png")}; !slices.Equal(pngs, want) {
 		t.Errorf("PNGs: got %q, want %q", pngs, want)
 	}
-	if all := runs(); len(all) != 1 || !slices.Contains(all[0].Args, "-density") {
+	if all := st.runs(); len(all) != 1 || !slices.Contains(all[0].Args, "-density") {
 		t.Errorf("runs: got %v, want the SVG's one", all)
 	}
 }
@@ -112,24 +115,24 @@ func TestConvertPagesOne(t *testing.T) {
 // an error naming the TIFF's copy, and leaves nothing in the working directory; a TIFF without
 // magick is refused with ErrNoMagick before anything runs.
 func TestConvertPagesFails(t *testing.T) {
+	t.Parallel()
 	copied := sha(tiffLE) + ".tiff"
 	for _, tc := range []struct {
 		desc string
-		env  map[string]string
+		set  func(*settings)
 		want string
 	}{
-		{"magick exits 1", map[string]string{failEnv: "magick: improper image header\n"},
+		{"magick exits 1", func(s *settings) { s.Fail = "magick: improper image header\n" },
 			"picture: magick: " + copied + ": tool: magick: exit code 1: magick: improper image header"},
-		{"magick writes no PNG", map[string]string{rawEnv: "1"},
+		{"magick writes no PNG", func(s *settings) { s.Raw = true },
 			"picture: magick: " + copied + ": " + sha(tiffLE) + "-0.png isn't a PNG"},
-		{"a page left out", map[string]string{pagesEnv: "3", gapEnv: "1"},
+		{"a page left out", func(s *settings) { s.Pages, s.Gap = 3, true },
 			"picture: magick: " + copied + ": wrote 2 pages without page 2"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, _ := standinConverter(t, false, true)
-			for k, v := range tc.env {
-				t.Setenv(k, v)
-			}
+			t.Parallel()
+			c, st := standinConverter(t, false, true)
+			st.set(tc.set)
 			path := writePicture(t, tiffLE, "", "")
 			dir := t.TempDir()
 			pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path})
@@ -143,13 +146,14 @@ func TestConvertPagesFails(t *testing.T) {
 		})
 	}
 	t.Run("no magick", func(t *testing.T) {
-		c, runs := standinConverter(t, false, false)
+		t.Parallel()
+		c, st := standinConverter(t, false, false)
 		dir := t.TempDir()
 		pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: writePicture(t, tiffLE, "", "")})
 		if pngs != nil || !errors.Is(err, picture.ErrNoMagick) {
 			t.Fatalf("got %q, %v; want ErrNoMagick", pngs, err)
 		}
-		if got := runs(); len(got) != 0 || len(entries(t, dir)) != 0 {
+		if got := st.runs(); len(got) != 0 || len(entries(t, dir)) != 0 {
 			t.Errorf("runs %q, working directory %q; want neither", programs(got), entries(t, dir))
 		}
 	})
@@ -161,6 +165,7 @@ func TestConvertPagesFails(t *testing.T) {
 // stored orientation, and written as PNG without the run's time, named by its SHA-256 and .png.
 // ConvertPages gives the same one PNG.
 func TestConvertRaster(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		content, coder, ext string
 	}{
@@ -169,7 +174,8 @@ func TestConvertRaster(t *testing.T) {
 		{avifData, "avif", ".avif"},
 	} {
 		t.Run(tc.coder, func(t *testing.T) {
-			c, runs := standinConverter(t, false, true)
+			t.Parallel()
+			c, st := standinConverter(t, false, true)
 			path := writePicture(t, tc.content, "photo.bin", "")
 			for _, pages := range []bool{false, true} {
 				dir := t.TempDir()
@@ -196,7 +202,7 @@ func TestConvertRaster(t *testing.T) {
 				if got := entries(t, dir); !slices.Equal(got, []string{stem + ".png"}) {
 					t.Errorf("working directory holds %q, want the PNG alone", got)
 				}
-				all := runs()
+				all := st.runs()
 				last := all[len(all)-1]
 				want := []string{tc.coder + `:` + own(dir) + stem + regexp.QuoteMeta(tc.ext) + `\[0\]`, `-auto-orient`, `-define`, `png:exclude-chunks=date,time`, `png:` + own(dir) + stem + `\.png`}
 				if !matchArgs(last.Args, want) {
@@ -206,7 +212,7 @@ func TestConvertRaster(t *testing.T) {
 					t.Errorf("magick ran in %s on %q; want in %s on the picture", last.Dir, last.Input, dir)
 				}
 			}
-			if got := programs(runs()); !slices.Equal(got, []string{"magick", "magick"}) {
+			if got := programs(st.runs()); !slices.Equal(got, []string{"magick", "magick"}) {
 				t.Errorf("runs: got %q, want one magick run each", got)
 			}
 			unchanged(t, path, tc.content)
@@ -219,12 +225,13 @@ func TestConvertRaster(t *testing.T) {
 // Convert and ConvertBatch alike, and the readable kinds still convert. The listing is read once,
 // when the Converter is built.
 func TestConvertNoReader(t *testing.T) {
-	t.Setenv(formatsEnv, "   Format  Module    Mode  Description\n"+
-		"     HEIC  HEIC      -w+   High Efficiency Image Format (1.23.6)\n"+
-		"     WEBP* WEBP      rw+   WebP Image Format (libwebp 1.6.0 [0210])\n")
-	c, runs := standinConverter(t, false, true)
+	t.Parallel()
+	listing := "   Format  Module    Mode  Description\n" +
+		"     HEIC  HEIC      -w+   High Efficiency Image Format (1.23.6)\n" +
+		"     WEBP* WEBP      rw+   WebP Image Format (libwebp 1.6.0 [0210])\n"
+	c, st := standinConverter(t, false, true, func(s *settings) { s.Formats = &listing })
 	// The Converter has read its listing; a listing changed since isn't read again.
-	t.Setenv(formatsEnv, fullListing)
+	st.set(func(s *settings) { s.Formats = nil })
 	for _, tc := range []struct{ content, want string }{
 		{heicData, "is a HEIC picture: no magick reader"},
 		{avifData, "is an AVIF picture: no magick reader"},
@@ -245,7 +252,7 @@ func TestConvertNoReader(t *testing.T) {
 			t.Errorf("working directory holds %q, want nothing", got)
 		}
 	}
-	if got := runs(); len(got) != 0 {
+	if got := st.runs(); len(got) != 0 {
 		t.Errorf("runs: got %q, want none", programs(got))
 	}
 	if _, err := c.Convert(t.Context(), picture.Request{Dir: t.TempDir(), Path: writePicture(t, webpData, "", "")}); err != nil {
@@ -256,8 +263,8 @@ func TestConvertNoReader(t *testing.T) {
 // TestNewConverterListFails: a format listing that fails is NewConverter's error, with magick's
 // message; without magick nothing is listed.
 func TestNewConverterListFails(t *testing.T) {
-	t.Setenv(listFailEnv, "magick: unable to open module file\n")
-	mg, _ := standinMagick(t, "7.1.2-34", picture.MagickSpec())
+	t.Parallel()
+	mg, _ := standinMagick(t, "7.1.2-34", picture.MagickSpec(), func(s *settings) { s.ListFail = "magick: unable to open module file\n" })
 	c, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg})
 	if c != nil || err == nil || !strings.Contains(err.Error(), "picture: magick's format listing: tool: magick: exit code 1: magick: unable to open module file") {
 		t.Errorf("got %v, %v; want the listing's error", c, err)

@@ -13,21 +13,23 @@ import (
 // TestCheckRender checks CheckRender's refusals. It runs no tool and has no count, so a page of
 // any size past 1 passes.
 func TestCheckRender(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name      string
 		page, dpi int
 		want      error
 	}{
-		{"dpi zero", 1, 0, document.ErrDPI},
-		{"dpi negative", 1, -150, document.ErrDPI},
-		{"dpi zero before page zero", 0, 0, document.ErrDPI},
-		{"page zero", 0, 150, document.ErrPageRange},
-		{"page negative", -1, 150, document.ErrPageRange},
+		{"dpi zero", 1, 0, document.ErrRequest},
+		{"dpi negative", 1, -150, document.ErrRequest},
+		{"dpi zero before page zero", 0, 0, document.ErrRequest},
+		{"page zero", 0, 150, document.ErrRequest},
+		{"page negative", -1, 150, document.ErrRequest},
 		{"first page", 1, 150, nil},
 		{"a page no count bounds", 1 << 20, 72, nil},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := document.CheckRender(tc.page, tc.dpi)
 			if !errors.Is(err, tc.want) || (tc.want == nil) != (err == nil) {
 				t.Fatalf("CheckRender(page %d, %d dpi) returned %v, want %v", tc.page, tc.dpi, err, tc.want)
@@ -39,6 +41,7 @@ func TestCheckRender(t *testing.T) {
 // TestCheckRegion checks CheckRegion's refusals: a fraction outside 0 to 1 or not a number, a
 // top not above its bottom, a left not left of its right, and the zero Region.
 func TestCheckRegion(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name string
 		r    document.Region
@@ -61,12 +64,13 @@ func TestCheckRegion(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			err := document.CheckRegion(tc.r)
 			if tc.ok && err != nil {
 				t.Errorf("CheckRegion(%+v) returned %v, want nil", tc.r, err)
 			}
-			if !tc.ok && !errors.Is(err, document.ErrRegion) {
-				t.Errorf("CheckRegion(%+v) returned %v, want document.ErrRegion", tc.r, err)
+			if !tc.ok && !errors.Is(err, document.ErrRequest) {
+				t.Errorf("CheckRegion(%+v) returned %v, want document.ErrRequest", tc.r, err)
 			}
 		})
 	}
@@ -75,6 +79,7 @@ func TestCheckRegion(t *testing.T) {
 // TestHasText checks the rule for a page having a text layer: its text not empty once whitespace
 // is trimmed.
 func TestHasText(t *testing.T) {
+	t.Parallel()
 	for text, want := range map[string]bool{
 		"":                        false,
 		" \n\t \r\n":              false,

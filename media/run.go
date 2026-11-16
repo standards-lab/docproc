@@ -558,7 +558,7 @@ func (w *audioWriter) cut(windows []audio.Window) {
 			w.stop(fmt.Errorf("window %d, %v: %w", w.index, win.Span, err))
 			return
 		}
-		if !w.r.send(item{event: Event{Window: ev, Time: win.Start, Arrived: arrived}, tmp: tmp}) {
+		if !w.r.send(item{event: Event{Window: ev, Time: win.Start, Arrived: arrived.UTC()}, tmp: tmp}) {
 			w.done = true
 			return
 		}
@@ -833,7 +833,7 @@ func (f *frameWatcher) handOver(a announced, b []byte) bool {
 		return false
 	}
 	fr := &Frame{Index: a.index, Reason: a.reason, Width: width, Height: height, SHA256: hex.EncodeToString(sum[:])}
-	return f.r.send(item{event: Event{Frame: fr, Time: a.time, Arrived: a.arrived}, tmp: tmp})
+	return f.r.send(item{event: Event{Frame: fr, Time: a.time, Arrived: a.arrived.UTC()}, tmp: tmp})
 }
 
 // pngSignature begins every PNG.

@@ -43,17 +43,17 @@ type QPDF struct {
 	qpdf *tool.Tool
 }
 
-// NewQPDF builds a QPDF over qpdf, which the caller built through either runner, typically from
-// QPDFSpec. It refuses a nil Tool, and one older than QPDFMinimum, whatever minimum its own Spec
-// declared, with a *tool.VersionError wrapping tool.ErrTooOld.
-func NewQPDF(qpdf *tool.Tool) (*QPDF, error) {
-	if qpdf == nil {
-		return nil, errors.New("document: qpdf: no qpdf tool")
+// NewQPDF builds a QPDF over cfg's QPDF; it reads no other field. A nil QPDF is the caller's
+// mistake, and panics naming the field. It refuses one older than QPDFMinimum, whatever minimum
+// its own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
+func NewQPDF(cfg Config) (*QPDF, error) {
+	if cfg.QPDF == nil {
+		panic("document: Config.QPDF is nil")
 	}
-	if err := atLeast(qpdf, QPDFMinimum); err != nil {
+	if err := atLeast(cfg.QPDF, QPDFMinimum); err != nil {
 		return nil, err
 	}
-	return &QPDF{qpdf: qpdf}, nil
+	return &QPDF{qpdf: cfg.QPDF}, nil
 }
 
 // atLeast refuses t when its version is older than minimum, with a *tool.VersionError wrapping

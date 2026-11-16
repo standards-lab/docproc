@@ -14,34 +14,19 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// standinEnv marks a process as the stand-in tool: the test binary, re-executed through a link
-// named standin, acting on its arguments instead of running the tests.
-const standinEnv = "TOOL_TEST_STANDIN"
-
 func TestMain(m *testing.M) {
-	if os.Getenv(standinEnv) == "1" {
-		switch filepath.Base(os.Args[0]) {
-		case interpreterName:
-			os.Exit(interpreter(os.Args[1:]))
-		case "docker":
-			os.Exit(dockerStandin(os.Args[1:]))
-		}
-		os.Exit(standin(os.Args[1:]))
-	}
-	// The stand-ins inherit the environment. Under -race, GORACE's atexit_sleep_ms keeps each
-	// one from sleeping a second as it exits.
-	for key, value := range map[string]string{standinEnv: "1", "GORACE": "atexit_sleep_ms=0"} {
-		if err := os.Setenv(key, value); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
-		}
-	}
-	os.Exit(m.Run())
+	tooltest.Main(m, map[string]tooltest.Program{
+		"standin":       func(r tooltest.Run) int { return standin(r.Link, r.Args) },
+		interpreterName: func(r tooltest.Run) int { return interpreter(r.Link, r.Args) },
+		"docker":        dockerStandin,
+	})
 }
 
-// standin is the stand-in tool. Its first argument picks what it does:
+// standin is the stand-in tool, run through link. Its first argument picks what it does:
 //
 //	print TEXT        writes TEXT and a newline to stdout
 //	exit CODE [TEXT]  writes TEXT to stderr, then exits with CODE
@@ -55,7 +40,7 @@ func TestMain(m *testing.M) {
 //	                  sleep 1m; the child has no streams, or with held, holds stdout and stderr
 //	spin CMD...       spins until it has spent spinCPU of user CPU time, then does CMD as the
 //	                  stand-in would
-func standin(args []string) int {
+func standin(link string, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "standin: no command")
 		return 2
@@ -102,13 +87,13 @@ func standin(args []string) int {
 		time.Sleep(duration(args[1]))
 		return 1
 	case "spawn":
-		return spawn(args[1], len(args) > 2 && args[2] == "held")
+		return spawn(link, args[1], len(args) > 2 && args[2] == "held")
 	case "spin":
 		if err := spin(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
-		return standin(args[1:])
+		return standin(link, args[1:])
 	}
 	fmt.Fprintf(os.Stderr, "standin: unknown command %q\n", args[0])
 	return 2
@@ -151,16 +136,11 @@ func sleep(d string) int {
 	}
 }
 
-// spawn starts a stubborn stand-in as a child, in the stand-in's process group, which writes its
-// pid to file once it ignores SIGTERM; then it sleeps as sleep does. The child holds none of the
-// stand-in's streams, or, when held, its stdout and stderr.
-func spawn(file string, held bool) int {
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	child := exec.Command(exe, "stubborn", "1m", file)
+// spawn starts a stubborn stand-in as a child, through link, in the stand-in's process group,
+// which writes its pid to file once it ignores SIGTERM; then it sleeps as sleep does. The child
+// holds none of the stand-in's streams, or, when held, its stdout and stderr.
+func spawn(link, file string, held bool) int {
+	child := exec.Command(link, "stubborn", "1m", file)
 	if held {
 		child.Stdout, child.Stderr = os.Stdout, os.Stderr
 	}
@@ -185,15 +165,17 @@ func writePid(file string) error {
 // acts as a sh with a version command.
 const interpreterName = "standin-sh"
 
-// interpreter is the stand-in interpreter. With --version V it writes "standin-sh version V" to
-// stdout; otherwise it replaces itself with /bin/sh on the same arguments, so a script runs in a
-// real shell with the stand-in's pid and process group.
-func interpreter(args []string) int {
+// interpreter is the stand-in interpreter, run through link. With --version V it writes
+// "standin-sh version V" to stdout; otherwise it replaces itself with /bin/sh on the same
+// arguments, so a script runs in a real shell with the stand-in's pid and process group, its
+// PATH led by link's directory, so a script runs the stand-in as standin.
+func interpreter(link string, args []string) int {
 	if len(args) == 2 && args[0] == "--version" {
 		fmt.Println(interpreterName + " version " + args[1])
 		return 0
 	}
-	err := syscall.Exec("/bin/sh", append([]string{"sh"}, args...), os.Environ())
+	env := append(os.Environ(), "PATH="+filepath.Dir(link)+string(filepath.ListSeparator)+os.Getenv("PATH"))
+	err := syscall.Exec("/bin/sh", append([]string{"sh"}, args...), env)
 	fmt.Fprintln(os.Stderr, err)
 	return 2
 }
@@ -233,21 +215,13 @@ func atoi(s string) int {
 }
 
 // installStandin links the stand-in tool as standin, the stand-in interpreter as standin-sh, and
-// the stand-in docker CLI as docker, in a directory of its own, makes that directory the whole
-// PATH, and returns standin's path.
+// the stand-in docker CLI as docker, in a directory of their own, its daemon one docker can't
+// reach, and returns standin's path. The directory is the stand-in docker's state directory too.
 func installStandin(t *testing.T) string {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := t.TempDir()
-	link := filepath.Join(dir, "standin")
-	for _, name := range []string{"standin", interpreterName, "docker"} {
-		if err := os.Symlink(exe, filepath.Join(dir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", dir)
+	link := tooltest.Link(t, dir, "standin", nil)
+	tooltest.Link(t, dir, interpreterName, nil)
+	tooltest.Link(t, dir, "docker", dockerSettings{})
 	return link
 }

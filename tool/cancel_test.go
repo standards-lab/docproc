@@ -18,7 +18,7 @@ import (
 )
 
 func TestCancelTerminates(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t) // the default KillAfter period, 10 s
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -35,9 +35,10 @@ func TestCancelTerminates(t *testing.T) {
 }
 
 func TestCancelKillsAfterKillAfter(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	const killAfter = 200 * time.Millisecond
-	spec := standinSpec("standin", "1.0", "1.0")
+	spec := standinSpec(link, "1.0", "1.0")
 	spec.KillAfter = killAfter
 	tl, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
@@ -62,7 +63,7 @@ func TestCancelKillsAfterKillAfter(t *testing.T) {
 }
 
 func TestCancelEndsChild(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -81,7 +82,7 @@ func TestCancelEndsChild(t *testing.T) {
 }
 
 func TestCancelEndsChildHoldingOutput(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t) // the default KillAfter period, 10 s
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -100,7 +101,7 @@ func TestCancelEndsChildHoldingOutput(t *testing.T) {
 }
 
 func TestDeadlineExceeded(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
@@ -109,7 +110,7 @@ func TestDeadlineExceeded(t *testing.T) {
 }
 
 func TestRunContextAlreadyDone(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -124,6 +125,7 @@ func TestRunContextAlreadyDone(t *testing.T) {
 // repeat. The stand-in ignores SIGTERM, so the KillAfter period's SIGKILL ends it: the exec
 // runner's program is killed by signal, and the container's CLI exits 137 for it.
 func TestCancelErrorNamesContextOnce(t *testing.T) {
+	t.Parallel()
 	want := map[string]string{
 		"exec":      "tool: standin: context canceled (signal: killed)",
 		"container": "tool: standin: context canceled (exit status 137)",

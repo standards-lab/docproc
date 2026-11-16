@@ -64,10 +64,11 @@ type EmailStage struct {
 	id     Identity
 }
 
-// NewEmailStage builds an EmailStage over cfg, refusing one with no Reader or Version.
+// NewEmailStage builds an EmailStage over cfg, panicking naming Reader when it is nil, the caller's
+// mistake, and refusing one with no Version.
 func NewEmailStage(cfg EmailConfig) (*EmailStage, error) {
 	if cfg.Reader == nil {
-		return nil, errors.New("dispatch: email stage: no reader")
+		panic("dispatch: EmailConfig.Reader is nil")
 	}
 	id, err := adapterIdentity("email", cfg.Version, struct {
 		Schema string `json:"schema"`

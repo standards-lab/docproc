@@ -34,16 +34,19 @@ const MaxMetafileScale = 8
 // is 625 pixels wide as PNG.
 const SVGDensity = 150
 
-// ErrScale is the cause of a refused MetafileScale: below zero, or above MaxMetafileScale.
-var ErrScale = errors.New("metafile scale out of range")
+// ErrRequest is the cause of every refused request: a MetafileScale below zero or above
+// MaxMetafileScale, an empty working directory, a picture of a kind the package doesn't convert,
+// two pictures of a batch whose PNGs share a name, and an unknown correction.
+var ErrRequest = errors.New("invalid request")
 
 // CheckMetafileScale returns the scale a request's MetafileScale asks for, DefaultMetafileScale
-// when it is zero, or an error wrapping ErrScale when it is below zero or above MaxMetafileScale.
+// when it is zero, or an error wrapping ErrRequest when it is below zero or above
+// MaxMetafileScale.
 // A caller that validates a request before anything runs, as office's Convert does, calls it.
 func CheckMetafileScale(scale int) (int, error) {
 	s := cmp.Or(scale, DefaultMetafileScale)
 	if s < 1 || s > MaxMetafileScale {
-		return 0, fmt.Errorf("picture: metafile scale %d isn't from 1 to %d: %w", scale, MaxMetafileScale, ErrScale)
+		return 0, fmt.Errorf("picture: metafile scale %d isn't from 1 to %d: %w", scale, MaxMetafileScale, ErrRequest)
 	}
 	return s, nil
 }
@@ -152,7 +155,7 @@ func metafile(kind route.Kind) bool { return kind == route.EMF || kind == route.
 // the Converter wasn't given: an EMF or WMF without LibreOffice matches ErrNoLibreOffice, any
 // picture without magick ErrNoMagick, and a HEIC, WebP, or AVIF whose reader magick lacks
 // ErrNoReader. A MetafileScale below zero or above MaxMetafileScale is an error matching
-// ErrScale. A conversion that fails is ConvertBatch's error, and leaves no PNG.
+// ErrRequest. A conversion that fails is ConvertBatch's error, and leaves no PNG.
 func (c *Converter) Convert(ctx context.Context, req Request) (string, error) {
 	r, err := c.request(ctx, req)
 	if err != nil {
@@ -213,7 +216,7 @@ func (c *Converter) request(ctx context.Context, req Request) (request, error) {
 	}
 	name := filepath.Base(req.Path)
 	if _, ok := kinds[kind]; !ok {
-		return request{}, fmt.Errorf("picture: %s isn't a TIFF, EMF, WMF, SVG, HEIC, WebP, or AVIF picture", name)
+		return request{}, fmt.Errorf("picture: %s isn't a TIFF, EMF, WMF, SVG, HEIC, WebP, or AVIF picture: %w", name, ErrRequest)
 	}
 	return request{dir: dir, path: req.Path, name: name, sum: sum, kind: kind, scale: scale}, nil
 }
@@ -236,7 +239,7 @@ func (c *Converter) convertOne(ctx context.Context, r request) (string, error) {
 // one.
 func workingDir(dir string) (string, error) {
 	if dir == "" {
-		return "", errors.New("picture: no working directory")
+		return "", fmt.Errorf("picture: no working directory: %w", ErrRequest)
 	}
 	abs, err := filepath.Abs(dir)
 	if err != nil {
@@ -336,7 +339,7 @@ func (c *Converter) ConvertBatch(ctx context.Context, b Batch) error {
 		k, ok := kinds[p.Kind]
 		switch {
 		case !ok:
-			return fmt.Errorf("picture: %s: no converter for kind %q", name, p.Kind)
+			return fmt.Errorf("picture: %s: no converter for kind %q: %w", name, p.Kind, ErrRequest)
 		case metafile(p.Kind) && c.libreoffice == nil:
 			return fmt.Errorf("picture: %s is %s picture: %w", name, k.name, ErrNoLibreOffice)
 		case c.magick == nil:
@@ -346,7 +349,7 @@ func (c *Converter) ConvertBatch(ctx context.Context, b Batch) error {
 		}
 		stem := pngStem(p.PNG)
 		if stems[stem] {
-			return fmt.Errorf("picture: two pictures' PNGs are named %s", filepath.Base(p.PNG))
+			return fmt.Errorf("picture: two pictures' PNGs are named %s: %w", filepath.Base(p.PNG), ErrRequest)
 		}
 		stems[stem] = true
 	}

@@ -21,13 +21,14 @@ import (
 )
 
 // TestNewReader: a stand-in at the minimum, or a build past it, is accepted; an older one fails
-// at construction, whether the Tool's Spec or NewReader refuses it; a nil Tool is refused, and so
-// is a missing program, by the Tool's construction.
+// at construction, whether the Tool's Spec or NewReader refuses it; a nil Tool panics, naming the
+// field; and a missing program is refused by the Tool's construction.
 func TestNewReader(t *testing.T) {
 	for _, version := range []string{"0.1.0", "0.1.0+8ea6b2d", "0.2.0"} {
 		t.Run(version, func(t *testing.T) {
-			installStandin(t, version)
-			tl, err := tool.NewExec(t.Context(), onenote.OneNoteSpec())
+			t.Parallel()
+			note := installStandin(t, version)
+			tl, err := tool.NewExec(t.Context(), note.spec())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -37,12 +38,13 @@ func TestNewReader(t *testing.T) {
 		})
 	}
 	t.Run("older", func(t *testing.T) {
-		installStandin(t, "0.0.9")
-		_, err := tool.NewExec(t.Context(), onenote.OneNoteSpec())
+		t.Parallel()
+		note := installStandin(t, "0.0.9")
+		_, err := tool.NewExec(t.Context(), note.spec())
 		if !errors.Is(err, tool.ErrTooOld) {
 			t.Fatalf("spec's own minimum: got %v, want ErrTooOld", err)
 		}
-		spec := onenote.OneNoteSpec()
+		spec := note.spec()
 		spec.Minimum = "0.0.1"
 		tl, err := tool.NewExec(t.Context(), spec)
 		if err != nil {
@@ -55,14 +57,21 @@ func TestNewReader(t *testing.T) {
 		}
 	})
 	t.Run("nil", func(t *testing.T) {
-		if _, err := onenote.NewReader(onenote.Config{}); err == nil {
-			t.Fatal("want an error")
-		}
+		t.Parallel()
+		defer func() {
+			if r := recover(); r != "onenote: Config.OneNote is nil" {
+				t.Errorf("recovered %v, want the panic naming Config.OneNote", r)
+			}
+		}()
+		_, _ = onenote.NewReader(onenote.Config{})
+		t.Error("NewReader returned")
 	})
 	t.Run("missing", func(t *testing.T) {
-		t.Setenv("PATH", t.TempDir())
-		if _, err := tool.NewExec(t.Context(), onenote.OneNoteSpec()); err == nil {
-			t.Fatal("want an error for a onenote not on PATH")
+		t.Parallel()
+		spec := onenote.OneNoteSpec()
+		spec.Program = filepath.Join(t.TempDir(), "spike-ai-pipeline-onenote")
+		if _, err := tool.NewExec(t.Context(), spec); err == nil {
+			t.Fatal("want an error for a onenote that isn't there")
 		}
 	})
 }
@@ -82,8 +91,8 @@ const fullLines = `{"line":"notebook","schema":"1","input":"notebook","name":"Wo
 // every top-level field of schema "1" set, a page's content into its typed containers; a line
 // of an unknown kind is kept with its JSON. onenote runs once, on the input made absolute.
 func TestRead(t *testing.T) {
-	r, runs := standinReader(t)
-	t.Setenv(stdoutEnv, fullLines)
+	r, note := standinReader(t)
+	note.stdout(fullLines)
 	t.Chdir(t.TempDir())
 	recs, err := collect(r.Read(t.Context(), onenote.Request{Input: "-Work.onetoc2"}))
 	if err != nil {
@@ -148,14 +157,14 @@ func TestRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := runs(), [][]string{{filepath.Join(dir, "-Work.onetoc2")}}; !reflect.DeepEqual(got, want) {
+	if got, want := note.runs(), [][]string{{filepath.Join(dir, "-Work.onetoc2")}}; !reflect.DeepEqual(got, want) {
 		t.Errorf("runs %q, want %q", got, want)
 	}
 }
 
 // TestReadMedia: a Request's Media, made absolute, is passed as --media before the input.
 func TestReadMedia(t *testing.T) {
-	r, runs := standinReader(t)
+	r, note := standinReader(t)
 	t.Chdir(t.TempDir())
 	if _, err := collect(r.Read(t.Context(), onenote.Request{Input: "Notes.one", Media: "media"})); err != nil {
 		t.Fatal(err)
@@ -165,7 +174,7 @@ func TestReadMedia(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := [][]string{{"--media", filepath.Join(dir, "media"), filepath.Join(dir, "Notes.one")}}
-	if got := runs(); !reflect.DeepEqual(got, want) {
+	if got := note.runs(); !reflect.DeepEqual(got, want) {
 		t.Errorf("runs %q, want %q", got, want)
 	}
 }
@@ -173,11 +182,12 @@ func TestReadMedia(t *testing.T) {
 // TestReadWarnings: a read whose stderr holds warnings, with a section skipped, succeeds; each
 // warning line is one warning, onenote's prefix taken off, in order.
 func TestReadWarnings(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, `{"line":"notebook","schema":"1","input":"notebook","name":"SUT"}
+	t.Parallel()
+	r, note := standinReader(t)
+	note.stdout(`{"line":"notebook","schema":"1","input":"notebook","name":"SUT"}
 {"line":"skipped","kind":"section","name":"Encryption.one","reason":"Unexpected end of file"}
 `)
-	t.Setenv(stderrEnv, "spike-ai-pipeline-onenote: warning: /Encryption.one: the section is skipped: Unexpected end of file\n"+
+	note.stderr("spike-ai-pipeline-onenote: warning: /Encryption.one: the section is skipped: Unexpected end of file\n" +
 		"spike-ai-pipeline-onenote: warning: /Group/Section, page 5eaf76b1-8dde-8745-a8a7-1a9865cc478a, image 2: its data is missing\n")
 	s := mustRead(t)(r.Read(t.Context(), onenote.Request{Input: "SUT"}))
 	recs, err := collect(s, nil)
@@ -202,6 +212,7 @@ func TestReadWarnings(t *testing.T) {
 // message left out, and unwraps to the Tool's *tool.ExitError; a warning before the error is
 // still a warning.
 func TestReadExit(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		code   int
 		want   error
@@ -216,10 +227,11 @@ func TestReadExit(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(strconv.Itoa(c.code), func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, "")
-			t.Setenv(stderrEnv, c.stderr)
-			t.Setenv(exitEnv, strconv.Itoa(c.code))
+			t.Parallel()
+			r, note := standinReader(t)
+			note.stdout("")
+			note.stderr(c.stderr)
+			note.exit(c.code)
 			s := mustRead(t)(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
 			recs, err := collect(s, nil)
 			if len(recs) != 0 {
@@ -253,10 +265,11 @@ func TestReadExit(t *testing.T) {
 // TestReadExitOther: an exit code outside 1 to 4 is no *ExitError of the package's, but carries
 // onenote's message.
 func TestReadExitOther(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, "")
-	t.Setenv(stderrEnv, "spike-ai-pipeline-onenote: error: odd\n")
-	t.Setenv(exitEnv, "9")
+	t.Parallel()
+	r, note := standinReader(t)
+	note.stdout("")
+	note.stderr("spike-ai-pipeline-onenote: error: odd\n")
+	note.exit(9)
 	_, err := collect(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
 	_, isExit := errors.AsType[*onenote.ExitError](err)
 	toolExit, isTool := errors.AsType[*tool.ExitError](err)
@@ -268,6 +281,7 @@ func TestReadExitOther(t *testing.T) {
 // TestReadSchema: a notebook line of another schema, or of none, is refused with ErrSchema naming
 // it, and nothing is yielded.
 func TestReadSchema(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, stdout, want string
 	}{
@@ -276,8 +290,9 @@ func TestReadSchema(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, c.stdout)
+			t.Parallel()
+			r, note := standinReader(t)
+			note.stdout(c.stdout)
 			recs, err := collect(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
 			if !errors.Is(err, onenote.ErrSchema) || !strings.Contains(err.Error(), c.want) {
 				t.Fatalf("got %v, want ErrSchema naming %s", err, c.want)
@@ -292,6 +307,7 @@ func TestReadSchema(t *testing.T) {
 // TestReadMalformed: output that isn't onenote's lines is an error, whatever was yielded before
 // it.
 func TestReadMalformed(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"empty":           "",
 		"not notebook":    `{"line":"section","id":"x"}` + "\n",
@@ -303,8 +319,9 @@ func TestReadMalformed(t *testing.T) {
 	}
 	for name, stdout := range cases {
 		t.Run(name, func(t *testing.T) {
-			r, _ := standinReader(t)
-			t.Setenv(stdoutEnv, stdout)
+			t.Parallel()
+			r, note := standinReader(t)
+			note.stdout(stdout)
 			if _, err := collect(r.Read(t.Context(), onenote.Request{Input: "in.one"})); err == nil {
 				t.Fatal("want an error")
 			}
@@ -314,10 +331,11 @@ func TestReadMalformed(t *testing.T) {
 
 // TestReadCutShortExit: output cut short by a onenote that then failed is onenote's exit error.
 func TestReadCutShortExit(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, `{"line":"notebook","schema":"1"}`+"\n"+`{"line":"section",`)
-	t.Setenv(stderrEnv, "spike-ai-pipeline-onenote: error: panicked\n")
-	t.Setenv(exitEnv, "4")
+	t.Parallel()
+	r, note := standinReader(t)
+	note.stdout(`{"line":"notebook","schema":"1"}` + "\n" + `{"line":"section",`)
+	note.stderr("spike-ai-pipeline-onenote: error: panicked\n")
+	note.exit(4)
 	recs, err := collect(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
 	if !errors.Is(err, onenote.ErrFailed) || len(recs) != 1 {
 		t.Fatalf("got %v after %d records, want ErrFailed after the notebook", err, len(recs))
@@ -328,8 +346,9 @@ func TestReadCutShortExit(t *testing.T) {
 // while onenote runs stops it and returns an error matching context.Canceled, never an
 // ExitError, well before onenote would have exited.
 func TestReadCancel(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, note := standinReader(t)
+	note.sleep()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	start := time.Now()
@@ -359,8 +378,9 @@ func TestReadCancel(t *testing.T) {
 // TestReadDeadline: a read whose deadline passes while onenote runs returns an error matching
 // context.DeadlineExceeded.
 func TestReadDeadline(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, note := standinReader(t)
+	note.sleep()
 	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
 	defer cancel()
 	recs, err := collect(r.Read(ctx, onenote.Request{Input: "in.one"}))
@@ -375,8 +395,9 @@ func TestReadDeadline(t *testing.T) {
 // TestReadStop: a loop that stops early stops onenote, without waiting for it to exit, and
 // nothing more is yielded.
 func TestReadStop(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	r, note := standinReader(t)
+	note.sleep()
 	start := time.Now()
 	n := 0
 	for _, err := range mustRead(t)(r.Read(t.Context(), onenote.Request{Input: "in.one"})).Records() {
@@ -397,7 +418,8 @@ func TestReadStop(t *testing.T) {
 // TestReadOnce: a Stream's records are read once; ranging again yields an error and runs
 // nothing. A cancelled context runs nothing.
 func TestReadOnce(t *testing.T) {
-	r, runs := standinReader(t)
+	t.Parallel()
+	r, note := standinReader(t)
 	s := mustRead(t)(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
 	if _, err := collect(s, nil); err != nil {
 		t.Fatal(err)
@@ -410,7 +432,7 @@ func TestReadOnce(t *testing.T) {
 	if _, err := collect(r.Read(ctx, onenote.Request{Input: "in.one"})); !errors.Is(err, context.Canceled) {
 		t.Errorf("cancelled: got %v", err)
 	}
-	if got := len(runs()); got != 1 {
+	if got := len(note.runs()); got != 1 {
 		t.Errorf("%d runs, want 1", got)
 	}
 }
@@ -420,7 +442,7 @@ func TestReadOnce(t *testing.T) {
 // Input or Media, which can't be made absolute. onenote never runs; an absolute Input with no
 // Media is still read from there.
 func TestReadRefused(t *testing.T) {
-	r, runs := standinReader(t)
+	r, note := standinReader(t)
 	cwd := t.TempDir()
 	t.Chdir(cwd)
 	if err := os.Remove(cwd); err != nil {
@@ -440,10 +462,27 @@ func TestReadRefused(t *testing.T) {
 			}
 		})
 	}
-	if got := runs(); len(got) != 0 {
+	if got := note.runs(); len(got) != 0 {
 		t.Errorf("runs %q, want none", got)
 	}
 	if _, err := collect(r.Read(t.Context(), onenote.Request{Input: abs})); err != nil {
 		t.Errorf("absolute input: %v", err)
+	}
+}
+
+// TestReadUTC: a time onenote writes with an offset is decoded as the same instant in UTC.
+func TestReadUTC(t *testing.T) {
+	t.Parallel()
+	r, note := standinReader(t)
+	note.stdout(`{"line":"notebook","schema":"1","input":"section","name":"Notes"}
+{"line":"page","id":"p","title":"Offset","creation_time":"2020-10-27T16:32:23+05:45"}
+`)
+	recs, err := collect(r.Read(t.Context(), onenote.Request{Input: "in.one"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := recs[1].(*onenote.Page).CreationTime
+	if want := time.Date(2020, 10, 27, 10, 47, 23, 0, time.UTC); !got.Equal(want) || got.Location() != time.UTC {
+		t.Errorf("creation time %v, want %v in UTC", got, want)
 	}
 }

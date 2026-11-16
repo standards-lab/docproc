@@ -48,17 +48,17 @@ type Detacher struct {
 	pdfdetach *tool.Tool
 }
 
-// NewDetacher builds a Detacher over pdfdetach, which the caller built through either runner,
-// typically from PDFDetachSpec. It refuses a nil Tool, and one older than PDFDetachMinimum,
+// NewDetacher builds a Detacher over cfg's PDFDetach; it reads no other field. A nil PDFDetach is
+// the caller's mistake, and panics naming the field. It refuses one older than PDFDetachMinimum,
 // whatever minimum its own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
-func NewDetacher(pdfdetach *tool.Tool) (*Detacher, error) {
-	if pdfdetach == nil {
-		return nil, errors.New("document: pdfdetach: no pdfdetach tool")
+func NewDetacher(cfg Config) (*Detacher, error) {
+	if cfg.PDFDetach == nil {
+		panic("document: Config.PDFDetach is nil")
 	}
-	if err := atLeast(pdfdetach, PDFDetachMinimum); err != nil {
+	if err := atLeast(cfg.PDFDetach, PDFDetachMinimum); err != nil {
 		return nil, err
 	}
-	return &Detacher{pdfdetach: pdfdetach}, nil
+	return &Detacher{pdfdetach: cfg.PDFDetach}, nil
 }
 
 // Attachment is one embedded file of a PDF, as pdfdetach lists it: its number, 1-based, which

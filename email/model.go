@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/standards-lab/docproc/internal/cli"
 )
 
 // Schema is the version of mail's JSON Lines the package decodes. A read whose store line gives
@@ -350,7 +352,7 @@ func decodeLine(raw jsontext.Value, first bool) (Record, error) {
 	default:
 		return &UnknownRecord{Kind: kind, Raw: raw.Clone()}, nil
 	}
-	if err := json.Unmarshal(raw, rec); err != nil {
+	if err := json.Unmarshal(raw, rec, cli.UTC); err != nil {
 		return nil, fmt.Errorf("email: decoding a %s line: %w", kind, err)
 	}
 	if m, ok := rec.(*Message); ok {

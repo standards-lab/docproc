@@ -20,7 +20,7 @@ func assertUsage(t *testing.T, u tool.Usage) {
 }
 
 func TestRunUsage(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	var u tool.Usage
 	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"spin", "print", "done"}, Usage: &u})
@@ -31,7 +31,7 @@ func TestRunUsage(t *testing.T) {
 }
 
 func TestRunUsageOnExitError(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	var u tool.Usage
 	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"spin", "exit", "3"}, Usage: &u})
@@ -42,7 +42,7 @@ func TestRunUsageOnExitError(t *testing.T) {
 }
 
 func TestRunUsageOnCancel(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -59,10 +59,11 @@ func TestRunUsageOnCancel(t *testing.T) {
 // a script whose shell runs the spinning stand-in and reaps it before exiting. The echo after it
 // keeps the shell from exec'ing the stand-in in its own place, so the stand-in is a child.
 func TestRunUsageCountsReapedChildren(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	dir := t.TempDir()
 	script := writeScript(t, dir, "spin.sh", "standin spin print done\necho reaped")
-	tl, err := tool.NewScript(t.Context(), interpreterSpec("1.0", "1.0"), script)
+	tl, err := tool.NewScript(t.Context(), interpreterSpec(link, "1.0", "1.0"), script)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +75,7 @@ func TestRunUsageCountsReapedChildren(t *testing.T) {
 }
 
 func TestRunNilUsage(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"print", "done"}}); err != nil {
 		t.Fatal(err)
@@ -85,9 +86,10 @@ func TestRunNilUsage(t *testing.T) {
 // the caller left in it: the stand-in docker CLI reaps the spinning stand-in itself, so a CLI
 // rusage passed through would hold its CPU time.
 func TestContainerUsageZero(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	u := tool.Usage{UserCPU: 1, SystemCPU: 1}
 	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"spin", "print", "done"}, Usage: &u}); err != nil {
 		t.Fatal(err)

@@ -331,7 +331,7 @@
 //     directory, its [Limits], and its inspect.Options. [Dispatcher.Dispatch] dispatches an
 //     [Input], its After resuming a store, yielding [Event]s, each a [Part] and an [Output] or the
 //     part's [Outcome]; [Event.Keep] keeps its files. [Dispatcher.Pool] dispatches many over
-//     workers, yielding [PoolEvent]s.
+//     workers, yielding [PoolEvent]s; [ErrRequest] is a refused request's cause.
 //   - [Stage], its [Identity], and [HashConfig] for an identity's configuration hash; a stage
 //     yields [Item]s, made by [OutputItem] and [PartItem], each an [Output] of an [OutputKind],
 //     [TextOutput], [MarkdownOutput], [ImageOutput], [RecordOutput], or [AudioOutput], or a

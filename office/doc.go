@@ -113,6 +113,7 @@
 //     to 4.
 //   - [Schema] is the version of office's JSON model the package decodes, "1".
 //   - [ErrSchema] is the cause of a model of another schema.
+//   - [ErrRequest] is the cause of a refused request, picture's own.
 //   - [Document] is office's JSON model of a document.
 //   - [Section], [HeaderFooter], [Note], [Comment], and [CommentReply] are a docx document's
 //     sections, notes, and comments.

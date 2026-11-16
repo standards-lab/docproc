@@ -41,6 +41,6 @@
 //   - [Reader.Extract] writes one item's content, given an [ExtractRequest], to a writer.
 //   - [Entry.IsSymlink] and [Entry.IsDevice] report what an item's mode or link makes it.
 //   - [Format] names the format 7zz reads: [SevenZ], [Zstd], [Cabinet], or [ZIP].
-//   - [ErrNoSevenZip], [ErrEncrypted], [ErrNotArchive], [ErrRequest], and [ErrListing] are the
+//   - [ErrEncrypted], [ErrNotArchive], [ErrRequest], and [ErrListing] are the
 //     causes of a refusal or a failure.
 package sevenzip

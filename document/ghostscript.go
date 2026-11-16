@@ -49,22 +49,18 @@ var (
 	_ TextExtractor  = (*Ghostscript)(nil)
 )
 
-// NewGhostscript builds the released renderer over gs, which the caller built through either
-// runner, typically from GhostscriptSpec. It refuses a nil Tool, and a Tool whose version is
-// older than GhostscriptMinimum, whatever minimum its own Spec declared, with a
+// NewGhostscript builds the released renderer over cfg's Ghostscript; it reads no other field. A
+// nil Ghostscript is the caller's mistake, and panics naming the field. It refuses one whose
+// version is older than GhostscriptMinimum, whatever minimum its own Spec declared, with a
 // *tool.VersionError wrapping tool.ErrTooOld.
-func NewGhostscript(gs *tool.Tool) (*Ghostscript, error) {
-	if gs == nil {
-		return nil, errors.New("document: ghostscript: no gs tool")
+func NewGhostscript(cfg Config) (*Ghostscript, error) {
+	if cfg.Ghostscript == nil {
+		panic("document: Config.Ghostscript is nil")
 	}
-	minimum, err := tool.ParseVersion(GhostscriptMinimum)
-	if err != nil {
+	if err := atLeast(cfg.Ghostscript, GhostscriptMinimum); err != nil {
 		return nil, err
 	}
-	if v := gs.Version(); v.Compare(minimum) < 0 {
-		return nil, &tool.VersionError{Program: gs.Name(), Found: v.String(), Minimum: GhostscriptMinimum, Err: tool.ErrTooOld}
-	}
-	return &Ghostscript{gs: gs}, nil
+	return &Ghostscript{gs: cfg.Ghostscript}, nil
 }
 
 // Count returns the number of pages in the PDF at pdf, as gs's own PDF interpreter counts them
@@ -167,10 +163,10 @@ const textStderrLimit = 4 << 10
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the text
 // alone. A page past the last prints gs's message there, "Requested FirstPage is greater than
 // the number of pages in the file", and exits zero; Text returns it as an error wrapping
-// ErrPageRange.
+// ErrRequest.
 func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, error) {
 	if page < 1 {
-		return "", fmt.Errorf("document: page %d: %w", page, ErrPageRange)
+		return "", fmt.Errorf("document: page %d is below 1: %w", page, ErrRequest)
 	}
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
@@ -187,7 +183,7 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 		return "", err
 	}
 	if msg := strings.TrimSpace(stderr.String()); strings.Contains(msg, pastLast) {
-		return "", fmt.Errorf("document: ghostscript: page %d of %s: %s: %w", page, abs, msg, ErrPageRange)
+		return "", fmt.Errorf("document: ghostscript: page %d of %s: %s: %w", page, abs, msg, ErrRequest)
 	}
 	return out.String(), nil
 }

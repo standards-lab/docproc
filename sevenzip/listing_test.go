@@ -12,11 +12,10 @@ import (
 // listing is one no fixture gives.
 func listed(t *testing.T, format sevenzip.Format, out string) (sevenzip.Listing, error) {
 	t.Helper()
-	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, "26.05")})
+	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05", Listing: out})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(standinListingEnv, out)
 	return r.List(t.Context(), sevenzip.ListRequest{Path: "t." + string(format), Format: format})
 }
 
@@ -92,6 +91,7 @@ Method = MSZip
 // encryption, method, and Unix mode, a directory by its attributes, are read; an item with no
 // Unix mode has none, and an empty value is no value.
 func TestListParses(t *testing.T) {
+	t.Parallel()
 	l, err := listed(t, sevenzip.SevenZ, slt)
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +120,7 @@ func TestListParses(t *testing.T) {
 // TestListParseErrors: a listing with no items section, an item line that isn't a property,
 // and a size that isn't a number are refused, with sevenzip.ErrListing.
 func TestListParseErrors(t *testing.T) {
+	t.Parallel()
 	for name, out := range map[string]string{
 		"no items":    "--\nPath = a.7z\nType = 7z\n",
 		"not a pair":  "--\nType = 7z\n----------\nPath = a\nnot a property\n",
@@ -136,6 +137,7 @@ func TestListParseErrors(t *testing.T) {
 // TestListZstdSize: a zstd stream's unsized item takes the content size its Method reports, and an
 // item with a size, or a Method with none, is left as it is.
 func TestListZstdSize(t *testing.T) {
+	t.Parallel()
 	zstd := func(method, size string) sevenzip.Entry {
 		t.Helper()
 		out := "--\nPath = t.zst\nType = zstd\nMethod = " + method + "\n----------\nPath = t\nSize = " + size + "\n"

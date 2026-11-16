@@ -11,52 +11,60 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/sevenzip"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinEnv marks a process as the stand-in: the test binary, re-executed through a link named
-// 7zz, printing the banner of the version standinVersionEnv names instead of running the tests,
-// or, for a listing, its l command, the listing standinListingEnv holds.
-const (
-	standinEnv        = "SEVENZIP_TEST_STANDIN"
-	standinVersionEnv = "SEVENZIP_TEST_STANDIN_VERSION"
-	standinListingEnv = "SEVENZIP_TEST_STANDIN_LISTING"
-)
-
 func TestMain(m *testing.M) {
-	if os.Getenv(standinEnv) == "1" && filepath.Base(os.Args[0]) == "7zz" {
-		if len(os.Args) > 1 && os.Args[1] == "l" {
-			fmt.Print(os.Getenv(standinListingEnv))
-			os.Exit(0)
-		}
-		fmt.Printf("\n7-Zip (z) %s (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-10-21\n", os.Getenv(standinVersionEnv))
-		os.Exit(0)
-	}
-	os.Exit(m.Run())
+	tooltest.Main(m, map[string]tooltest.Program{"7zz": sevenZip})
 }
 
-// standin builds a 7zz Tool over the test binary, linked as 7zz, printing version's banner, its
-// Spec's minimum lowered so the Tool is built whatever version it prints.
-func standin(t *testing.T, version string) *tool.Tool {
+// standinSettings are the stand-in 7zz's settings: the version its banner names, and the listing
+// its l command prints.
+type standinSettings struct {
+	Version string `json:"version"`
+	Listing string `json:"listing"`
+}
+
+// sevenZip is the stand-in 7zz: its l command prints its settings' listing, and anything else
+// prints the banner of its settings' version.
+func sevenZip(r tooltest.Run) int {
+	var s standinSettings
+	if err := r.Settings(&s); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if len(r.Args) > 0 && r.Args[0] == "l" {
+		fmt.Print(s.Listing)
+		return 0
+	}
+	fmt.Printf("\n7-Zip (z) %s (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-10-21\n", s.Version)
+	return 0
+}
+
+// standin builds a 7zz Tool over the test binary, linked as 7zz with settings, printing its
+// version's banner, its Spec's minimum lowered so the Tool is built whatever version it prints.
+func standin(t *testing.T, settings standinSettings) *tool.Tool {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(t.TempDir(), "7zz")
-	if err := os.Symlink(exe, link); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(standinEnv, "1")
-	t.Setenv(standinVersionEnv, version)
 	spec := sevenzip.SevenZipSpec()
-	spec.Program, spec.Minimum = link, "1"
+	spec.Program, spec.Minimum = tooltest.Link(t, t.TempDir(), "7zz", settings), "1"
 	tl, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return tl
+}
+
+// TestNewReaderNil: a Config with no 7zz is the caller's mistake, and panics naming the field.
+func TestNewReaderNil(t *testing.T) {
+	t.Parallel()
+	defer func() {
+		if r := recover(); r != "sevenzip: Config.SevenZip is nil" {
+			t.Errorf("recovered %v, want the nil field named", r)
+		}
+	}()
+	_, _ = sevenzip.NewReader(sevenzip.Config{})
 }
 
 // fixture returns the path of one of the package's fixtures, under testdata.

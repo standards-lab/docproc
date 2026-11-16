@@ -2,9 +2,7 @@ package dispatch_test
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -173,64 +171,4 @@ func TestTextDispatch(t *testing.T) {
 		}
 	}
 	wantEmpty(t, work)
-}
-
-// TestTextDocs prepares ~/docs' encodings, read only, when this machine has them, and holds each
-// to encodings.truth.json: the stage decides by a byte order mark, else UTF-8, else windows-1252,
-// so its text is the truth for UTF-8 with or without a mark, UTF-16LE with one, windows-1252,
-// with CRLF line endings too, and ISO-8859-1, whose printable text windows-1252 decodes alike;
-// and garbled, the stage's known limit, since it detects no encoding, for UTF-16BE without a
-// mark and for KOI8-R, EUC-JP, Shift_JIS, and windows-1256, each decoded as windows-1252.
-func TestTextDocs(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Skip("no home directory")
-	}
-	dir := filepath.Join(home, "docs", "text", "encodings")
-	b, err := os.ReadFile(filepath.Join(dir, "encodings.truth.json"))
-	if err != nil {
-		t.Skip("no ~/docs/text/encodings on this machine")
-	}
-	var truth map[string]struct {
-		Encoding string `json:"encoding"`
-		Text     string `json:"text"`
-	}
-	if err := json.Unmarshal(b, &truth); err != nil {
-		t.Fatal(err)
-	}
-	const fallback = "windows-1252 (fallback)"
-	want := map[string]struct {
-		encoding string
-		correct  bool
-	}{
-		"utf8-nobom.txt":          {"utf-8", true},
-		"utf8-bom.txt":            {"utf-8 (byte order mark)", true},
-		"utf16le-bom.txt":         {"utf-16le (byte order mark)", true},
-		"windows-1252.txt":        {fallback, true},
-		"crlf-windows-1252.txt":   {fallback, true},
-		"iso-8859-1.txt":          {fallback, true},
-		"koi8-r.txt":              {fallback, false},
-		"euc-jp.txt":              {fallback, false},
-		"shift-jis.txt":           {fallback, false},
-		"windows-1256-arabic.txt": {fallback, false},
-		"utf16be-nobom.txt":       {fallback, false},
-	}
-	if got := slices.Sorted(maps.Keys(truth)); !slices.Equal(got, slices.Sorted(maps.Keys(want))) {
-		t.Fatalf("truth's files %q, want %q", got, slices.Sorted(maps.Keys(want)))
-	}
-	for _, name := range slices.Sorted(maps.Keys(truth)) {
-		content, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil {
-			t.Fatal(err)
-		}
-		o, got, _, err := prepareText(t, t.Context(), name, content)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		correct := got == truth[name].Text
-		t.Logf("%s (truth %s): decided %q, correct %t, warnings %q", name, truth[name].Encoding, o.Meta["encoding"], correct, o.Meta["warnings"])
-		if w := want[name]; o.Meta["encoding"] != w.encoding || correct != w.correct {
-			t.Errorf("%s: decided %q, correct %t; want %q, %t", name, o.Meta["encoding"], correct, w.encoding, w.correct)
-		}
-	}
 }

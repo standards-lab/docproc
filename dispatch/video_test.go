@@ -24,73 +24,51 @@ import (
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/mediatest"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/media"
 	"github.com/standards-lab/docproc/route"
 )
 
 // The video stage's hermetic tests run media's Streamer over the audio tests' stand-ins, whose
 // ffmpeg, given media's run, acts as mediaStandin says.
-const (
-	// videoPCMEnv is how many milliseconds of PCM the stand-in writes to its stdout when the run
-	// has an audio output, each sample its index modulo 30011.
-	videoPCMEnv = "DISPATCH_VIDEO_PCM_MS"
-	// videoFramesEnv is a JSON array of the frames the stand-in takes when the run has a video
-	// output, each a mediatest.Frame.
-	videoFramesEnv = "DISPATCH_VIDEO_FRAMES"
-	// videoFailEnv, when set, makes the stand-in, once it has written its output, write its value
-	// to stderr and exit 1.
-	videoFailEnv = "DISPATCH_VIDEO_FAIL"
-	// videoHoldEnv, when set, is how many milliseconds the stand-in sleeps once it has written
-	// its first frame.
-	videoHoldEnv = "DISPATCH_VIDEO_HOLD"
-	// videoArgsEnv names the file the stand-in appends its run's input and frame pattern to, a
-	// line each.
-	videoArgsEnv = "DISPATCH_VIDEO_ARGS"
-)
 
-// mediaStandin is the stand-in ffmpeg's run for media: it records its input and frame pattern, then
-// writes videoPCMEnv's PCM to its stdout, when its arguments have an audio output, half a second
-// at a time, and videoFramesEnv's frames, when they have a video output, its last argument the
-// image2 pattern, each reported on stderr as the metadata filter does and written before the PCM
-// from its time on.
-func mediaStandin(args []string) int {
-	if err := mediaStandinRun(args); err != nil {
+// mediaStandin is the stand-in ffmpeg's run for media: it writes its settings' PCM to its stdout,
+// when its arguments have an audio output, half a second at a time, and its settings' frames,
+// when they have a video output, its last argument the image2 pattern, each reported on stderr as
+// the metadata filter does and written before the PCM from its time on.
+func mediaStandin(args []string, settings ffSettings) int {
+	if err := mediaStandinRun(args, settings); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if msg := os.Getenv(videoFailEnv); msg != "" {
-		fmt.Fprintln(os.Stderr, msg)
+	if settings.Fail != "" {
+		fmt.Fprintln(os.Stderr, settings.Fail)
 		return 1
 	}
 	return 0
 }
 
-// mediaStandinRun is mediaStandin's output.
-func mediaStandinRun(args []string) error {
-	pattern := ""
+// mediaPattern returns the image2 pattern of media's run's args, "" when it has no video output.
+func mediaPattern(args []string) string {
 	if slices.Contains(args, "image2") {
-		pattern = args[len(args)-1]
+		return args[len(args)-1]
 	}
-	if f, err := os.OpenFile(os.Getenv(videoArgsEnv), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		_, _ = fmt.Fprintf(f, "%s\n%s\n", args[slices.Index(args, "-i")+1], pattern)
-		_ = f.Close()
-	}
+	return ""
+}
+
+// mediaStandinRun is mediaStandin's output.
+func mediaStandinRun(args []string, settings ffSettings) error {
+	pattern := mediaPattern(args)
 	var pcm []byte
 	if slices.Contains(args, "pipe:1") {
-		ms, err := strconv.Atoi(os.Getenv(videoPCMEnv))
-		if err != nil {
-			return err
-		}
-		n := ms * audio.SampleRate / 1000
+		n := settings.PCMMS * audio.SampleRate / 1000
 		for i := range n {
 			pcm = binary.LittleEndian.AppendUint16(pcm, uint16(i%30011))
 		}
 	}
 	var frames []mediatest.Frame
 	if pattern != "" {
-		if err := json.Unmarshal([]byte(os.Getenv(videoFramesEnv)), &frames); err != nil {
-			return err
-		}
+		frames = settings.Frames
 	}
 	return mediatest.Stream(pcm, frames,
 		func(at, end int) error {
@@ -102,9 +80,8 @@ func mediaStandinRun(args []string) error {
 			if err := mediatest.WritePNG(pattern, i, frames[i]); err != nil {
 				return err
 			}
-			if v := os.Getenv(videoHoldEnv); v != "" && i == 0 {
-				hold, _ := strconv.Atoi(v)
-				time.Sleep(time.Duration(hold) * time.Millisecond)
+			if i == 0 {
+				time.Sleep(time.Duration(settings.HoldMS) * time.Millisecond)
 			}
 			return nil
 		})
@@ -136,18 +113,12 @@ var videoFrames = []mediatest.Frame{
 	{MS: 11200, Score: 0.05, Width: 32, Height: 18},
 }
 
-// videoStage installs the stand-ins, ffprobe reporting probe, ffmpeg writing 3 s of PCM and
-// videoFrames, and returns a video stage over them under req.
-func videoStage(t *testing.T, probe string, req media.Request) *dispatch.VideoStage {
+// videoStage links the stand-ins, ffprobe reporting probe, ffmpeg writing 3 s of PCM and
+// videoFrames, and returns a video stage over them under req, and the stand-ins.
+func videoStage(t *testing.T, probe string, req media.Request) (*dispatch.VideoStage, *ffStandins) {
 	t.Helper()
-	ffmpeg, ffprobe := standinTools(t, probe)
-	frames, err := json.Marshal(videoFrames)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv(videoPCMEnv, "3000")
-	t.Setenv(videoFramesEnv, string(frames))
-	t.Setenv(videoArgsEnv, filepath.Join(t.TempDir(), "args"))
+	ffmpeg, ffprobe, standins := standinTools(t, probe)
+	standins.set(t, func(s *ffSettings) { s.PCMMS, s.Frames = 3000, videoFrames })
 	s, err := media.NewStreamer(media.Config{FFmpeg: ffmpeg, FFprobe: ffprobe})
 	if err != nil {
 		t.Fatal(err)
@@ -156,20 +127,19 @@ func videoStage(t *testing.T, probe string, req media.Request) *dispatch.VideoSt
 	if err != nil {
 		t.Fatal(err)
 	}
-	return st
+	return st, standins
 }
 
-// videoArgs returns each media run's input and frame pattern, as the stand-in recorded them.
-func videoArgs(t *testing.T) []string {
+// videoArgs returns each media run's input and frame pattern, in turn, as ffmpeg's log holds them.
+func videoArgs(t *testing.T, standins *ffStandins) []string {
 	t.Helper()
-	b, err := os.ReadFile(os.Getenv(videoArgsEnv))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+	var out []string
+	for _, r := range tooltest.Runs(t, standins.ffmpeg) {
+		if slices.Contains(r.Args, "-protocol_whitelist") {
+			out = append(out, r.Args[slices.Index(r.Args, "-i")+1], mediaPattern(r.Args))
+		}
 	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.Split(strings.TrimSuffix(string(b), "\n"), "\n")
+	return out
 }
 
 // videoDispatch dispatches the file at path through a dispatcher over stages in a working
@@ -246,7 +216,8 @@ func kinds(outs []dispatch.Output) []string {
 // ffmpeg reads a link to the input in the part's directory and writes its frames there, never
 // beside the input, and the working directory is empty once the dispatch is done.
 func TestVideoStage(t *testing.T) {
-	stage := videoStage(t, videoProbeBoth, media.Request{})
+	t.Parallel()
+	stage, standins := videoStage(t, videoProbeBoth, media.Request{})
 	path := writeInput(t, "talk.mkv", mkvBytes)
 	events, work := videoDispatch(t, dispatch.Stages{route.Video: stage}, path)
 	wantSteps(t, events, []step{{"talk.mkv", 0, dispatch.Prepared}})
@@ -303,7 +274,7 @@ func TestVideoStage(t *testing.T) {
 		}
 	}
 
-	args := videoArgs(t)
+	args := videoArgs(t, standins)
 	if len(args) != 2 {
 		t.Fatalf("the runs' input and pattern %q, want one run's", args)
 	}
@@ -320,7 +291,8 @@ func TestVideoStage(t *testing.T) {
 // TestVideoStageRoutes: an MP4, a Matroska, a WebM, and an AVI file are each routed video and
 // prepared by the video stage.
 func TestVideoStageRoutes(t *testing.T) {
-	stage := videoStage(t, videoProbeBoth, media.Request{})
+	t.Parallel()
+	stage, _ := videoStage(t, videoProbeBoth, media.Request{})
 	for _, in := range []struct{ name, content string }{
 		{"a.mp4", mp4Bytes}, {"a.mkv", mkvBytes}, {"a.webm", webmBytes}, {"a.avi", aviBytes},
 	} {
@@ -336,6 +308,7 @@ func TestVideoStageRoutes(t *testing.T) {
 // writing no PCM; one with no video stream, such as an MP4 holding audio alone, its plan and
 // windows only.
 func TestVideoStageTracks(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, probe string
 		want        []string
@@ -344,7 +317,8 @@ func TestVideoStageTracks(t *testing.T) {
 		{"audio only", videoProbeAudio, []string{"record plan", "audio window 0"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			stage := videoStage(t, tc.probe, media.Request{})
+			t.Parallel()
+			stage, _ := videoStage(t, tc.probe, media.Request{})
 			path := writeInput(t, "clip.mp4", mp4Bytes)
 			events, work := videoDispatch(t, dispatch.Stages{route.Video: stage}, path)
 			wantSteps(t, events, []step{{"clip.mp4", 0, dispatch.Prepared}})
@@ -359,15 +333,17 @@ func TestVideoStageTracks(t *testing.T) {
 // TestVideoNoStream: a video file holding neither an audio nor a video stream fails, its error
 // wrapping media.ErrNoMedia, after ffprobe alone ran: it has no outputs, the plan among them.
 func TestVideoNoStream(t *testing.T) {
+	t.Parallel()
 	index := dispatch.NewMemoryIndex()
-	d := newDispatcher(t, dispatch.Stages{route.Video: videoStage(t, videoProbeNone, media.Request{})}, index)
+	stage, standins := videoStage(t, videoProbeNone, media.Request{})
+	d := newDispatcher(t, dispatch.Stages{route.Video: stage}, index)
 	events := dispatchAll(t, d, writeInput(t, "subtitles.mkv", mkvBytes), nil)
 	wantSteps(t, events, []step{{"subtitles.mkv", 0, dispatch.Failed}})
 	ev := events[0]
 	if !errors.Is(ev.Err, media.ErrNoMedia) || len(ev.Outputs) != 0 {
 		t.Errorf("err %v, %d outputs; want media.ErrNoMedia, none", ev.Err, len(ev.Outputs))
 	}
-	if runs := audioRuns(t); !slices.Equal(runs, []string{"ffprobe"}) {
+	if runs := standins.runs(t); !slices.Equal(runs, []string{"ffprobe"}) {
 		t.Errorf("runs %q, want ffprobe alone", runs)
 	}
 	if _, ok, err := index.Lookup(t.Context(), dispatch.Key{SHA256: ev.Part.SHA256, Stage: ev.Stage}); err != nil || ok {
@@ -378,8 +354,9 @@ func TestVideoNoStream(t *testing.T) {
 // TestVideoFailedRun: a run that fails ends the part failed, its error ffmpeg's last line, after
 // the plan and the frames and window it completed, and leaves nothing behind.
 func TestVideoFailedRun(t *testing.T) {
-	stage := videoStage(t, videoProbeBoth, media.Request{})
-	t.Setenv(videoFailEnv, "[vist#0:0/mpeg4] Error while decoding stream: Invalid data found")
+	t.Parallel()
+	stage, standins := videoStage(t, videoProbeBoth, media.Request{})
+	standins.set(t, func(s *ffSettings) { s.Fail = "[vist#0:0/mpeg4] Error while decoding stream: Invalid data found" })
 	path := writeInput(t, "broken.mkv", mkvBytes)
 	events, work := videoDispatch(t, dispatch.Stages{route.Video: stage}, path)
 	wantSteps(t, events, []step{{"broken.mkv", 0, dispatch.Failed}})
@@ -393,8 +370,9 @@ func TestVideoFailedRun(t *testing.T) {
 // TestVideoCancel: a context that ends while the run is held stops ffmpeg; the dispatch yields
 // the context's error last, and nothing is left behind.
 func TestVideoCancel(t *testing.T) {
-	stage := videoStage(t, videoProbeBoth, media.Request{})
-	t.Setenv(videoHoldEnv, "30000")
+	t.Parallel()
+	stage, standins := videoStage(t, videoProbeBoth, media.Request{})
+	standins.set(t, func(s *ffSettings) { s.HoldMS = 30000 })
 	path := writeInput(t, "held.mkv", mkvBytes)
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Video: stage}, Index: dispatch.NewMemoryIndex(), Dir: work})
@@ -430,11 +408,13 @@ func TestVideoCancel(t *testing.T) {
 // TestVideoStageInArchive: an AVI in a ZIP is found by the archive stage and prepared by the video
 // stage, as any part is; ffmpeg reads a link to the entry in the AVI's own directory.
 func TestVideoStageInArchive(t *testing.T) {
+	t.Parallel()
 	zs, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stages := dispatch.Stages{route.Video: videoStage(t, videoProbeBoth, media.Request{}), route.Archive: zs}
+	stage, _ := videoStage(t, videoProbeBoth, media.Request{})
+	stages := dispatch.Stages{route.Video: stage, route.Archive: zs}
 	path := writeInput(t, "clips.zip", zipBytes(t, zent{name: "clips/a.avi", body: aviBytes}))
 	events, work := videoDispatch(t, stages, path)
 	wantSteps(t, events, []step{{"clips/a.avi", 1, dispatch.Prepared}, {"clips.zip", 0, dispatch.Prepared}})
@@ -447,23 +427,25 @@ func TestVideoStageInArchive(t *testing.T) {
 // TestVideoNoProcessor: with no video stage, as a caller with no ffmpeg and ffprobe registers, a
 // video part is no processor yet, and nothing runs.
 func TestVideoNoProcessor(t *testing.T) {
-	videoStage(t, videoProbeBoth, media.Request{})
+	t.Parallel()
+	_, standins := videoStage(t, videoProbeBoth, media.Request{})
 	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex())
 	events := dispatchAll(t, d, writeInput(t, "talk.webm", webmBytes), nil)
 	wantSteps(t, events, []step{{"talk.webm", 0, dispatch.NoProcessor}})
 	if ev := events[0]; ev.Part.Route != route.Video || ev.Reason != "no stage for route video" {
 		t.Errorf("route %s, reason %q", ev.Part.Route, ev.Reason)
 	}
-	if runs := audioRuns(t); len(runs) != 0 {
+	if runs := standins.runs(t); len(runs) != 0 {
 		t.Errorf("the video part ran %q", runs)
 	}
 }
 
 // TestVideoStageIdentity: the video stage hashes its windows' and frames' settings, defaults
-// applied, and not its Source or Dir; it refuses no streamer, no version, and a windowing field
-// audio refuses.
+// applied, and not its Source or Dir; it panics on no streamer, naming the field, and refuses no
+// version and a windowing field audio refuses.
 func TestVideoStageIdentity(t *testing.T) {
-	ffmpeg, ffprobe := standinTools(t, videoProbeBoth)
+	t.Parallel()
+	ffmpeg, ffprobe, _ := standinTools(t, videoProbeBoth)
 	s, err := media.NewStreamer(media.Config{FFmpeg: ffmpeg, FFprobe: ffprobe})
 	if err != nil {
 		t.Fatal(err)
@@ -505,8 +487,10 @@ func TestVideoStageIdentity(t *testing.T) {
 			t.Errorf("%s left the video identity's config unchanged", name)
 		}
 	}
+	wantPanic(t, "dispatch: VideoConfig.Streamer is nil", func() {
+		_, _ = dispatch.NewVideoStage(dispatch.VideoConfig{Version: version})
+	})
 	for name, cfg := range map[string]dispatch.VideoConfig{
-		"no streamer":            {Version: version},
 		"no version":             {Streamer: s},
 		"overlap of the limit":   {Streamer: s, Version: version, Request: media.Request{Overlap: audio.WindowLimit / 2}},
 		"threshold and a margin": {Streamer: s, Version: version, Request: media.Request{Threshold: -40, Margin: 6}},

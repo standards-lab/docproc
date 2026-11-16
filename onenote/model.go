@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/standards-lab/docproc/internal/cli"
 )
 
 // Schema is the version of onenote's JSON Lines the package decodes. A read whose notebook line
@@ -226,7 +228,7 @@ func decodeLine(raw jsontext.Value, first bool) (Record, error) {
 	default:
 		return &UnknownRecord{Kind: kind, Raw: raw.Clone()}, nil
 	}
-	if err := json.Unmarshal(raw, rec); err != nil {
+	if err := json.Unmarshal(raw, rec, cli.UTC); err != nil {
 		return nil, fmt.Errorf("onenote: decoding a %s line: %w", kind, err)
 	}
 	return rec, nil

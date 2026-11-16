@@ -128,6 +128,7 @@ func parseFirstPass(out string) (fp firstPass, corrections []picture.Correction,
 // TestFirstPassInstructions checks the first pass's instructions list every correction of the
 // catalog, with its description, in the catalog's order.
 func TestFirstPassInstructions(t *testing.T) {
+	t.Parallel()
 	got := firstPassInstructions()
 	last := -1
 	for _, c := range picture.Corrections() {
@@ -147,6 +148,7 @@ func TestFirstPassInstructions(t *testing.T) {
 // TestFirstPassSchema checks the schema is strict structured output's: an object of the four
 // fields, all required and no others, its corrections the catalog's names.
 func TestFirstPassSchema(t *testing.T) {
+	t.Parallel()
 	var schema struct {
 		Type       string `json:"type"`
 		Properties map[string]struct {
@@ -181,6 +183,7 @@ func TestFirstPassSchema(t *testing.T) {
 
 // TestFigures checks the figures carry each measure of the Assessment.
 func TestFigures(t *testing.T) {
+	t.Parallel()
 	got := figures(picture.Assessment{Width: 1275, Height: 1650, Skew: -2.5, Contrast: 0.3125, Noise: 0.0123,
 		Sharpness: 0.0512, Colored: 0.0002, Grayscale: true})
 	for _, want := range []string{"1275 x 1650", "skew -2.50", "contrast 0.3125", "noise 0.0123", "sharpness 0.0512", "colored 0.0002", "grayscale: yes"} {
@@ -194,6 +197,7 @@ func TestFigures(t *testing.T) {
 // to case, each once in the stage's order, the names that are none counted and dropped; and that
 // output that isn't the schema's object is an error.
 func TestParseFirstPass(t *testing.T) {
+	t.Parallel()
 	fp, corrections, unknown, err := parseFirstPass(`{"transcription":"SECRET\nNOFORN","quality":"poor",` +
 		`"reason":"The foot is faded.","corrections":["unsharp","Deskew","Sharpen","UNSHARP"]}`)
 	if err != nil {

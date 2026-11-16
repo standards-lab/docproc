@@ -61,15 +61,16 @@ type Streamer struct {
 	ffprobe *tool.Tool
 }
 
-// NewStreamer builds a Streamer over cfg's Tools. It refuses a nil FFmpeg or FFprobe, and either
-// older than audio.FFmpegMinimum, whatever minimum the Tool's own Spec declared, with a
-// *tool.VersionError wrapping tool.ErrTooOld.
+// NewStreamer builds a Streamer over cfg's Tools. A nil FFmpeg or FFprobe is the caller's
+// mistake, and panics naming the field. It refuses either older than audio.FFmpegMinimum,
+// whatever minimum the Tool's own Spec declared, with a *tool.VersionError wrapping
+// tool.ErrTooOld.
 func NewStreamer(cfg Config) (*Streamer, error) {
 	if cfg.FFmpeg == nil {
-		return nil, errors.New("media: no ffmpeg tool")
+		panic("media: Config.FFmpeg is nil")
 	}
 	if cfg.FFprobe == nil {
-		return nil, errors.New("media: no ffprobe tool")
+		panic("media: Config.FFprobe is nil")
 	}
 	m, err := tool.ParseVersion(audio.FFmpegMinimum)
 	if err != nil {
@@ -420,9 +421,10 @@ type Event struct {
 	// Time is the event's source time, an offset from the source's start: a window's start, its
 	// Span's Start, or a frame's presentation time.
 	Time time.Duration
-	// Arrived is the wall-clock time the event's last sample or frame arrived from ffmpeg: for a
-	// window, when the stream's bytes holding its last sample were read from ffmpeg's stdout; for
-	// a frame, when ffmpeg's report of it, after its selection, was read from its stderr.
+	// Arrived is the wall-clock time, in UTC, the event's last sample or frame arrived from
+	// ffmpeg: for a window, when the stream's bytes holding its last sample were read from
+	// ffmpeg's stdout; for a frame, when ffmpeg's report of it, after its selection, was read
+	// from its stderr.
 	Arrived time.Time
 }
 

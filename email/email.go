@@ -55,12 +55,12 @@ type Reader struct {
 	mail *tool.Tool
 }
 
-// NewReader builds a Reader over cfg's Tool. It refuses a nil Mail, and a Mail whose version is
-// older than MailMinimum, whatever minimum the Tool's own Spec declared, with a
-// *tool.VersionError wrapping tool.ErrTooOld.
+// NewReader builds a Reader over cfg's Tool. A nil Mail is the caller's mistake, and panics
+// naming the field. It refuses a Mail whose version is older than MailMinimum, whatever minimum
+// the Tool's own Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
 func NewReader(cfg Config) (*Reader, error) {
 	if cfg.Mail == nil {
-		return nil, errors.New("email: no mail tool")
+		panic("email: Config.Mail is nil")
 	}
 	m, err := tool.ParseVersion(MailMinimum)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 )
 
 func TestVersionCompare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		v, w string
 		want int
@@ -38,6 +39,7 @@ func TestVersionCompare(t *testing.T) {
 }
 
 func TestVersionString(t *testing.T) {
+	t.Parallel()
 	for given, want := range map[string]string{"9.0.2": "9.0.2", "10.08.0": "10.8.0", "007": "7"} {
 		if got := mustParse(t, given).String(); got != want {
 			t.Errorf("ParseVersion(%q).String() = %q, want %q", given, got, want)
@@ -46,6 +48,7 @@ func TestVersionString(t *testing.T) {
 }
 
 func TestParseVersionRefuses(t *testing.T) {
+	t.Parallel()
 	for _, s := range []string{"", "n9.0.2", "7.1.2-34", "1..2", "1.", ".1", "+1", "1.-2", "99999999999999999999"} {
 		if v, err := tool.ParseVersion(s); err == nil {
 			t.Errorf("ParseVersion(%q) = %s, want an error", s, v)

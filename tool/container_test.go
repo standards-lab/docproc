@@ -27,10 +27,11 @@ const testRef = "registry.example:5000/team/standin:1.0@sha256:" +
 // containerNamePattern matches a run's container name: the runner's prefix and its random suffix.
 var containerNamePattern = regexp.MustCompile(`^tool-[a-z2-7]{26}$`)
 
-// newContainer builds the stand-in tool, version 1.2.3, in image, through the stand-in docker.
-func newContainer(t *testing.T, image tool.Image) *tool.Tool {
+// newContainer builds the stand-in tool, version 1.2.3, in image, through the stand-in docker in
+// dir, the directory installDocker returned.
+func newContainer(t *testing.T, dir string, image tool.Image) *tool.Tool {
 	t.Helper()
-	tl, err := tool.NewContainer(t.Context(), "", image, standinSpec("standin", "1.2.3", "1.0"))
+	tl, err := tool.NewContainer(t.Context(), dockerLink(dir), image, standinSpec("standin", "1.2.3", "1.0"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,9 +39,10 @@ func newContainer(t *testing.T, image tool.Image) *tool.Tool {
 }
 
 func TestNewContainer(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	if got := tl.Name(); got != "standin" {
 		t.Errorf("Name() = %q, want standin", got)
 	}
@@ -60,18 +62,23 @@ func TestNewContainer(t *testing.T) {
 	}
 }
 
-func TestNewContainerTakesDockerPathAsGiven(t *testing.T) {
+// TestNewContainerFindsDockerOnPath: an empty docker path looks docker up on PATH. It sets PATH,
+// so it runs alone; every other test names its stand-in docker by path.
+func TestNewContainerFindsDockerOnPath(t *testing.T) {
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	docker := filepath.Join(filepath.SplitList(os.Getenv("PATH"))[0], "docker")
-	t.Setenv("PATH", t.TempDir()) // docker is no longer on PATH
-	_, err := tool.NewContainer(t.Context(), docker, tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
+	t.Setenv("PATH", dir)
+	_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := dockerCalls(t, dir, "version"); len(got) != 1 {
+		t.Errorf("version calls = %q, want the stand-in docker's one", got)
 	}
 }
 
 func TestNewContainerDockerNotFound(t *testing.T) {
+	t.Parallel()
 	installDocker(t, "29.0.1")
 	_, err := tool.NewContainer(t.Context(), "missing-docker", tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
 	if err == nil || !strings.Contains(err.Error(), "missing-docker") {
@@ -82,6 +89,7 @@ func TestNewContainerDockerNotFound(t *testing.T) {
 // TestNewContainerRefusesRef checks that a reference without a digest and its tag is refused
 // before docker runs at all.
 func TestNewContainerRefusesRef(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	digest := "@sha256:" + strings.Repeat("ab", 32)
 	for _, ref := range []string{
@@ -94,7 +102,7 @@ func TestNewContainerRefusesRef(t *testing.T) {
 		"",
 	} {
 		t.Run(ref, func(t *testing.T) {
-			_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: ref}, standinSpec("standin", "1.2.3", "1.0"))
+			_, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: ref}, standinSpec("standin", "1.2.3", "1.0"))
 			if err == nil || !strings.Contains(err.Error(), "sha256") {
 				t.Fatalf("NewContainer error = %v, want a refused reference", err)
 			}
@@ -106,8 +114,9 @@ func TestNewContainerRefusesRef(t *testing.T) {
 }
 
 func TestNewContainerDaemonUnreachable(t *testing.T) {
-	installDocker(t, "")
-	_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
+	t.Parallel()
+	dir := installDocker(t, "")
+	_, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
 	if _, ok := errors.AsType[*tool.VersionError](err); !ok {
 		t.Fatalf("NewContainer error = %v, want a *tool.VersionError", err)
 	}
@@ -118,6 +127,7 @@ func TestNewContainerDaemonUnreachable(t *testing.T) {
 }
 
 func TestNewContainerDockerVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		server string
 		ok     bool
@@ -132,7 +142,7 @@ func TestNewContainerDockerVersion(t *testing.T) {
 		t.Run(tt.server, func(t *testing.T) {
 			dir := installDocker(t, tt.server)
 			addImage(t, dir, testRef)
-			_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
+			_, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.0"))
 			if tt.ok {
 				if err != nil {
 					t.Fatalf("NewContainer: %v", err)
@@ -148,8 +158,9 @@ func TestNewContainerDockerVersion(t *testing.T) {
 }
 
 func TestNewContainerPullsAbsentImage(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
-	newContainer(t, tool.Image{Ref: testRef})
+	newContainer(t, dir, tool.Image{Ref: testRef})
 	want := [][]string{{"pull", testRef}}
 	if got := dockerCalls(t, dir, "pull"); !slices.EqualFunc(got, want, slices.Equal) {
 		t.Errorf("pull calls = %q, want %q", got, want)
@@ -161,17 +172,18 @@ func TestNewContainerPullsAbsentImage(t *testing.T) {
 }
 
 func TestNewContainerVersionInImage(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
 	t.Run("too old", func(t *testing.T) {
-		_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.3"))
+		_, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, standinSpec("standin", "1.2.3", "1.3"))
 		if !errors.Is(err, tool.ErrTooOld) {
 			t.Fatalf("NewContainer error = %v, want ErrTooOld", err)
 		}
 		assertNames(t, err, "standin", "1.2.3", "1.3")
 	})
 	t.Run("wrong entrypoint", func(t *testing.T) {
-		_, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, standinSpec("not-in-image", "1.2.3", "1.0"))
+		_, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, standinSpec("not-in-image", "1.2.3", "1.0"))
 		if _, ok := errors.AsType[*tool.VersionError](err); !ok {
 			t.Fatalf("NewContainer error = %v, want a *tool.VersionError", err)
 		}
@@ -186,9 +198,10 @@ func TestNewContainerVersionInImage(t *testing.T) {
 
 // TestContainerRunArgs checks each run's arguments, the lockdown whole, with and without stdin.
 func TestContainerRunArgs(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	work := t.TempDir()
 	user := strconv.Itoa(os.Getuid()) + ":" + strconv.Itoa(os.Getgid())
 	tests := map[string]struct {
@@ -246,11 +259,11 @@ func TestContainerRunArgs(t *testing.T) {
 
 // TestContainerRunDir checks that an empty Dir is the process's working directory and a
 // relative one is made absolute, and that a colon, which docker's --volume can't take, is
-// refused.
+// refused. It changes the working directory, so it runs alone.
 func TestContainerRunDir(t *testing.T) {
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	work := t.TempDir()
 	if err := os.Mkdir(filepath.Join(work, "sub"), 0o700); err != nil {
 		t.Fatal(err)
@@ -280,9 +293,10 @@ func TestContainerRunDir(t *testing.T) {
 }
 
 func TestContainerRelaxations(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef, Network: "bridge", CapAdd: []string{"NET_RAW", "CHOWN"}})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef, Network: "bridge", CapAdd: []string{"NET_RAW", "CHOWN"}})
 	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"print", "x"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -301,10 +315,11 @@ func TestContainerRelaxations(t *testing.T) {
 // TestToolImage reports a container tool's image, its relaxations included, and none for an exec
 // tool; the image returned is a copy, so changing it changes no run.
 func TestToolImage(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
 	want := tool.Image{Ref: testRef, Network: "bridge", CapAdd: []string{"NET_RAW"}}
-	tl := newContainer(t, want)
+	tl := newContainer(t, dir, want)
 	got, ok := tl.Image()
 	if !ok || got.Ref != want.Ref || got.Network != want.Network || !slices.Equal(got.CapAdd, want.CapAdd) {
 		t.Errorf("Image() = %+v, %v; want %+v, true", got, ok, want)
@@ -319,9 +334,10 @@ func TestToolImage(t *testing.T) {
 }
 
 func TestContainerExitError(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"exit", "3", "it broke"}})
 	exitErr, ok := errors.AsType[*tool.ExitError](err)
 	if !ok {
@@ -336,6 +352,7 @@ func TestContainerExitError(t *testing.T) {
 // KillAfter period rounded up to whole seconds, and returns the context's error. The stand-in CLI
 // ignores SIGTERM, so only docker stop ends the container.
 func TestContainerCancel(t *testing.T) {
+	t.Parallel()
 	tests := map[string]struct {
 		killAfter time.Duration
 		command   string
@@ -352,7 +369,7 @@ func TestContainerCancel(t *testing.T) {
 			addImage(t, dir, testRef)
 			spec := standinSpec("standin", "1.2.3", "1.0")
 			spec.KillAfter = tt.killAfter
-			tl, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: testRef}, spec)
+			tl, err := tool.NewContainer(t.Context(), dockerLink(dir), tool.Image{Ref: testRef}, spec)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -388,9 +405,10 @@ func TestContainerCancel(t *testing.T) {
 // TestContainerCancelHeldStdin checks that a cancelled run returns though the caller holds its
 // stdin, a pipe, open.
 func TestContainerCancelHeldStdin(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	stdin, held, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
@@ -415,9 +433,10 @@ func TestContainerCancelHeldStdin(t *testing.T) {
 }
 
 func TestContainerDeadlineExceeded(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
 	defer cancel()
 	err := tl.Run(ctx, tool.Invocation{Args: []string{"sleep", "1m"}})
@@ -430,9 +449,10 @@ func TestContainerDeadlineExceeded(t *testing.T) {
 // TestContainerRunContextAlreadyDone checks that a run whose context has ended never starts a
 // container.
 func TestContainerRunContextAlreadyDone(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	before := len(dockerCalls(t, dir, "run"))
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -449,9 +469,10 @@ func TestContainerRunContextAlreadyDone(t *testing.T) {
 // starts the CLI and before the CLI exits, so the runner sees the CLI's exit and only then ctx's
 // end: no stop is issued, and the order needs no timing.
 func TestContainerExitAsContextEnds(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	ctx := newEndOnLook(t.Context())
 	defer ctx.cancel()
 	stderr := &armingWriter{ctx: ctx}
@@ -467,9 +488,10 @@ func TestContainerExitAsContextEnds(t *testing.T) {
 
 // TestContainerSuccessAsContextEnds checks that a run that succeeds as ctx ends is a success.
 func TestContainerSuccessAsContextEnds(t *testing.T) {
+	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
-	tl := newContainer(t, tool.Image{Ref: testRef})
+	tl := newContainer(t, dir, tool.Image{Ref: testRef})
 	ctx := newEndOnLook(t.Context())
 	defer ctx.cancel()
 	stdout := &armingWriter{ctx: ctx}

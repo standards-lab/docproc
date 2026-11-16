@@ -33,8 +33,6 @@ func SevenZipSpec() tool.Spec {
 }
 
 var (
-	// ErrNoSevenZip is the cause of NewReader's refusal of a Config with no 7zz Tool.
-	ErrNoSevenZip = errors.New("no 7zz")
 	// ErrEncrypted is the cause of a listing whose headers are encrypted, so its items can't be
 	// listed without the password, and of an extraction that needs a password: the package
 	// gives none.
@@ -57,12 +55,12 @@ type Reader struct {
 	sevenZip *tool.Tool
 }
 
-// NewReader builds a Reader over cfg's Tool. It refuses a missing one, with ErrNoSevenZip, and one
-// older than SevenZipMinimum, whatever minimum the Tool's own Spec declared, with a
-// *tool.VersionError wrapping tool.ErrTooOld.
+// NewReader builds a Reader over cfg's Tool. A nil SevenZip is the caller's mistake, and panics
+// naming the field. It refuses one older than SevenZipMinimum, whatever minimum the Tool's own
+// Spec declared, with a *tool.VersionError wrapping tool.ErrTooOld.
 func NewReader(cfg Config) (*Reader, error) {
 	if cfg.SevenZip == nil {
-		return nil, fmt.Errorf("sevenzip: %w", ErrNoSevenZip)
+		panic("sevenzip: Config.SevenZip is nil")
 	}
 	m, err := tool.ParseVersion(SevenZipMinimum)
 	if err != nil {

@@ -24,7 +24,7 @@ func hostQPDF(t *testing.T) *document.QPDF {
 	if err != nil {
 		t.Fatal(err)
 	}
-	q, err := document.NewQPDF(tl)
+	q, err := document.NewQPDF(document.Config{QPDF: tl})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func hostDetacher(t *testing.T) *document.Detacher {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := document.NewDetacher(tl)
+	d, err := document.NewDetacher(document.Config{PDFDetach: tl})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -71,10 +71,7 @@ func (d *fakeDetach) Save(_ context.Context, _ string, number int, w io.Writer) 
 // given qpdf and pdfdetach as q and d, either nil, and the bomb thresholds of opts.
 func formsDocumentStage(t *testing.T, q dispatch.QPDF, d dispatch.PDFDetach, opts inspect.Options) *dispatch.DocumentStage {
 	t.Helper()
-	prep, err := document.NewPreparer(&pages{n: 3}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 3}})
 	cfg := dispatch.DocumentConfig{
 		Preparer: prep, Version: "pages 1", Request: document.ImagesRequest{Text: true}, Inspect: opts,
 	}
@@ -199,10 +196,7 @@ func TestDocumentStageAttachments(t *testing.T) {
 		"broken.bin", "fail",
 	}}
 	q := &fakeQPDF{form: document.Form{Fields: []document.FormField{{Name: "f", Type: document.TextField, Value: "v"}}}}
-	prep, err := document.NewPreparer(&pages{n: 3}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 3}})
 	s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{
 		Preparer: prep, Version: "pages 1", Request: document.ImagesRequest{Text: true}, QPDF: q, PDFDetach: detach,
 	})
@@ -302,10 +296,7 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 // TestDocumentIdentity: bomb thresholds leave the identity of a stage with no pdfdetach alone;
 // qpdf changes it, and pdfdetach, and pdfdetach's thresholds.
 func TestDocumentIdentity(t *testing.T) {
-	prep, err := document.NewPreparer(&pages{n: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 1}})
 	id := func(cfg dispatch.DocumentConfig) string {
 		t.Helper()
 		cfg.Preparer, cfg.Version = prep, "gs 10.5"

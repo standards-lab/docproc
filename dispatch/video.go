@@ -5,7 +5,6 @@ package dispatch
 import (
 	"cmp"
 	"context"
-	"errors"
 	"fmt"
 	"iter"
 	"os"
@@ -116,11 +115,12 @@ type VideoSampling struct {
 	MaxSide        int     `json:"max_side"`
 }
 
-// NewVideoStage builds a VideoStage over cfg, refusing one with no Streamer or Version, or with a
-// windowing field audio's Planner or Tracker refuses.
+// NewVideoStage builds a VideoStage over cfg, panicking naming Streamer when it is nil, the
+// caller's mistake, and refusing one with no Version, or with a windowing field audio's Planner or
+// Tracker refuses.
 func NewVideoStage(cfg VideoConfig) (*VideoStage, error) {
 	if cfg.Streamer == nil {
-		return nil, errors.New("dispatch: video stage: no streamer")
+		panic("dispatch: VideoConfig.Streamer is nil")
 	}
 	req := cfg.Request
 	// media validates its windowing fields through audio's Planner and Tracker, under the tracker

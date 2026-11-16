@@ -15,65 +15,66 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinEnv marks a process as a stand-in: the test binary, re-executed through a link named
-// spike-ai-pipeline-office, soffice, or magick, acting on its arguments as office, LibreOffice,
-// or ImageMagick instead of running the tests.
-const standinEnv = "OFFICE_TEST_STANDIN"
+// The stand-ins are the test binary, run through a link named spike-ai-pipeline-office, soffice,
+// or magick, acting on its arguments as office, LibreOffice, or ImageMagick. A test's three links
+// share one set of settings, a string by key, which each link names: a key that isn't set is
+// unset, as an unset variable was.
 
-// The stand-in's settings, which it reads from the environment it inherits.
+// The stand-in office's settings.
 const (
-	// versionEnv is the version the stand-in's --version prints.
-	versionEnv = "OFFICE_TEST_STANDIN_VERSION"
-	// logEnv names the file each run appends its working directory, arguments, and input to, one
-	// JSON object per line.
-	logEnv = "OFFICE_TEST_STANDIN_LOG"
-	// exitEnv, when set, is the exit code of a run, which then writes nothing to stdout.
-	exitEnv = "OFFICE_TEST_STANDIN_EXIT"
-	// stderrEnv, when set, is what a run writes to stderr, each {path} in it the input's path as
+	// versionKey is the version the stand-in's --version prints.
+	versionKey = "version"
+	// logKey names the file each run of any of the three appends its program, working directory,
+	// arguments, and input to, one JSON object per line, so the log holds their runs in order.
+	logKey = "log"
+	// exitKey, when set, is the exit code of a run, which then writes nothing to stdout.
+	exitKey = "exit"
+	// stderrKey, when set, is what a run writes to stderr, each {path} in it the input's path as
 	// the run was given it.
-	stderrEnv = "OFFICE_TEST_STANDIN_STDERR"
-	// stdoutEnv, when set, is what a run that exits zero writes to stdout in place of
+	stderrKey = "stderr"
+	// stdoutKey, when set, is what a run that exits zero writes to stdout in place of
 	// standinDocument.
-	stdoutEnv = "OFFICE_TEST_STANDIN_STDOUT"
-	// mediaEnv, when set, names the files, comma-separated, a run writes to its --media
+	stdoutKey = "stdout"
+	// mediaKey, when set, names the files, comma-separated, a run writes to its --media
 	// directory, each holding its own name.
-	mediaEnv = "OFFICE_TEST_STANDIN_MEDIA"
-	// sleepEnv, when set, makes a run sleep a minute after logging, for a test to cancel it.
-	sleepEnv = "OFFICE_TEST_STANDIN_SLEEP"
+	mediaKey = "media"
+	// sleepKey, when set, makes a run sleep a minute after logging, for a test to cancel it.
+	sleepKey = "sleep"
 )
 
-// The stand-in soffice's settings; it logs to logEnv's file too.
+// The stand-in soffice's settings; it logs to logKey's file too.
 const (
-	// sofficeVersionEnv is the version the stand-in soffice's --version prints, after the line
+	// sofficeVersionKey is the version the stand-in soffice's --version prints, after the line
 	// of desktop-library noise the real one writes to stderr in a container.
-	sofficeVersionEnv = "OFFICE_TEST_SOFFICE_VERSION"
-	// sofficeExitEnv, when set, is the exit code of a conversion, which then writes nothing.
-	sofficeExitEnv = "OFFICE_TEST_SOFFICE_EXIT"
-	// sofficeOutputEnv, when set, is what a conversion writes to stderr.
-	sofficeOutputEnv = "OFFICE_TEST_SOFFICE_OUTPUT"
-	// sofficeNothingEnv, when set, makes a conversion exit zero having written nothing, as
+	sofficeVersionKey = "soffice-version"
+	// sofficeExitKey, when set, is the exit code of a conversion, which then writes nothing.
+	sofficeExitKey = "soffice-exit"
+	// sofficeOutputKey, when set, is what a conversion writes to stderr.
+	sofficeOutputKey = "soffice-output"
+	// sofficeNothingKey, when set, makes a conversion exit zero having written nothing, as
 	// soffice does when it can't export what it loaded.
-	sofficeNothingEnv = "OFFICE_TEST_SOFFICE_NOTHING"
-	// sofficeSkipEnv, when set, names an input, by its base name, that a conversion writes
+	sofficeNothingKey = "soffice-nothing"
+	// sofficeSkipKey, when set, names an input, by its base name, that a conversion writes
 	// nothing for, as soffice does for one picture of a run it can't export.
-	sofficeSkipEnv = "OFFICE_TEST_SOFFICE_SKIP"
+	sofficeSkipKey = "soffice-skip"
 )
 
-// The stand-in magick's settings; it logs to logEnv's file too.
+// The stand-in magick's settings; it logs to logKey's file too.
 const (
-	// magickVersionEnv is the version the stand-in magick's -version prints.
-	magickVersionEnv = "OFFICE_TEST_MAGICK_VERSION"
-	// magickExitEnv, when set, is the exit code of a conversion, which then writes nothing.
-	magickExitEnv = "OFFICE_TEST_MAGICK_EXIT"
-	// magickOutputEnv, when set, is what a conversion writes to stderr.
-	magickOutputEnv = "OFFICE_TEST_MAGICK_OUTPUT"
-	// magickRawEnv, when set, makes a conversion write its output without PNG's signature.
-	magickRawEnv = "OFFICE_TEST_MAGICK_RAW"
+	// magickVersionKey is the version the stand-in magick's -version prints.
+	magickVersionKey = "magick-version"
+	// magickExitKey, when set, is the exit code of a conversion, which then writes nothing.
+	magickExitKey = "magick-exit"
+	// magickOutputKey, when set, is what a conversion writes to stderr.
+	magickOutputKey = "magick-output"
+	// magickRawKey, when set, makes a conversion write its output without PNG's signature.
+	magickRawKey = "magick-raw"
 )
 
 // convertedPrefix begins the document the stand-in soffice writes, and the PNG either stand-in
@@ -83,42 +84,49 @@ const convertedPrefix = "converted: "
 // pngSignature begins every PNG, and the stand-ins' PNG output.
 const pngSignature = "\x89PNG\r\n\x1a\n"
 
-// standinDocument is the stand-in's JSON model when stdoutEnv isn't set: an empty docx.
+// standinDocument is the stand-in's JSON model when stdoutKey isn't set: an empty docx.
 const standinDocument = `{"schema": "1", "format": "docx", "blocks": []}` + "\n"
 
 func TestMain(m *testing.M) {
-	if os.Getenv(standinEnv) == "1" {
-		switch name := filepath.Base(os.Args[0]); name {
-		case "spike-ai-pipeline-office":
-			os.Exit(standin(os.Args[1:]))
-		case "soffice":
-			os.Exit(sofficeStandin(os.Args[1:]))
-		case "magick":
-			os.Exit(magickStandin(os.Args[1:]))
-		default:
-			fmt.Fprintf(os.Stderr, "stand-in: no tool named %s\n", name)
-			os.Exit(2)
-		}
-	}
-	// The stand-in inherits the environment. Under -race, GORACE's atexit_sleep_ms keeps it from
-	// sleeping a second as it exits.
-	for key, value := range map[string]string{standinEnv: "1", "GORACE": "atexit_sleep_ms=0"} {
-		if err := os.Setenv(key, value); err != nil {
+	tooltest.Main(m, map[string]tooltest.Program{
+		"spike-ai-pipeline-office": withSettings(standin),
+		"soffice":                  withSettings(sofficeStandin),
+		"magick":                   withSettings(magickStandin),
+	})
+}
+
+// settings are the running stand-in's settings, which withSettings reads from its link.
+var settings map[string]string
+
+// withSettings returns a tooltest.Program that reads the link's settings into settings, then runs
+// program on the run's arguments.
+func withSettings(program func(args []string) int) tooltest.Program {
+	return func(r tooltest.Run) int {
+		if err := r.Settings(&settings); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
+			return 2
 		}
+		return program(r.Args)
 	}
-	os.Exit(m.Run())
+}
+
+// setting returns the stand-in's setting key, "" when it isn't set.
+func setting(key string) string { return settings[key] }
+
+// lookupSetting returns the stand-in's setting key and whether it is set.
+func lookupSetting(key string) (string, bool) {
+	v, ok := settings[key]
+	return v, ok
 }
 
 // standin is the stand-in office. With --version alone it prints the version alone, as office
 // does. Otherwise it appends its working directory, arguments, and its input file's content to
-// the log file, sleeps when sleepEnv is set, writes the media mediaEnv names into the directory
-// after --media, writes stderrEnv's value to stderr, and exits with exitEnv's code when it is
-// set, or else writes stdoutEnv's value, or standinDocument, to stdout and exits zero.
+// the log file, sleeps when sleepKey is set, writes the media mediaKey names into the directory
+// after --media, writes stderrKey's value to stderr, and exits with exitKey's code when it is
+// set, or else writes stdoutKey's value, or standinDocument, to stdout and exits zero.
 func standin(args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println(os.Getenv(versionEnv))
+		fmt.Println(setting(versionKey))
 		return 0
 	}
 	if len(args) == 0 {
@@ -130,14 +138,14 @@ func standin(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if err := appendLog(os.Getenv(logEnv), "spike-ai-pipeline-office", args, string(input), ""); err != nil {
+	if err := appendLog(setting(logKey), "spike-ai-pipeline-office", args, string(input), ""); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if os.Getenv(sleepEnv) != "" {
+	if setting(sleepKey) != "" {
 		time.Sleep(time.Minute)
 	}
-	if names := os.Getenv(mediaEnv); names != "" {
+	if names := setting(mediaKey); names != "" {
 		dir := ""
 		for i, a := range args {
 			if a == "--media" && i+1 < len(args) {
@@ -155,8 +163,8 @@ func standin(args []string) int {
 			}
 		}
 	}
-	fmt.Fprint(os.Stderr, strings.ReplaceAll(os.Getenv(stderrEnv), "{path}", args[0]))
-	if code := os.Getenv(exitEnv); code != "" {
+	fmt.Fprint(os.Stderr, strings.ReplaceAll(setting(stderrKey), "{path}", args[0]))
+	if code := setting(exitKey); code != "" {
 		n, err := strconv.Atoi(code)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -164,7 +172,7 @@ func standin(args []string) int {
 		}
 		return n
 	}
-	out, set := os.LookupEnv(stdoutEnv)
+	out, set := lookupSetting(stdoutKey)
 	if !set {
 		out = standinDocument
 	}
@@ -180,15 +188,15 @@ func standin(args []string) int {
 // inputs are its arguments that are neither options nor their values. It appends its working
 // directory, arguments, its first input's content, and the registrymodifications.xcu its
 // -env:UserInstallation profile starts with, if any, to the log file; exits with
-// sofficeExitEnv's code, having written sofficeOutputEnv's value to stderr, when it is set; exits
-// zero having written nothing when sofficeNothingEnv is set; and else writes each input's
+// sofficeExitKey's code, having written sofficeOutputKey's value to stderr, when it is set; exits
+// zero having written nothing when sofficeNothingKey is set; and else writes each input's
 // conversion into the directory after --outdir, named for its input's stem with the extension
 // --convert-to names before its colon: convertedPrefix and the input, after PNG's signature for
-// png. It writes nothing for the input sofficeSkipEnv names.
+// png. It writes nothing for the input sofficeSkipKey names.
 func sofficeStandin(args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Fprintln(os.Stderr, "(process:20): dconf-CRITICAL **: unable to create directory '/.cache/dconf'")
-		fmt.Printf("LibreOffice %s 680(Build:1)\n", os.Getenv(sofficeVersionEnv))
+		fmt.Printf("LibreOffice %s 680(Build:1)\n", setting(sofficeVersionKey))
 		return 0
 	}
 	var outdir, format, profile string
@@ -224,12 +232,12 @@ func sofficeStandin(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if err := appendLog(os.Getenv(logEnv), "soffice", args, string(contents[0]), string(registry)); err != nil {
+	if err := appendLog(setting(logKey), "soffice", args, string(contents[0]), string(registry)); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	fmt.Fprint(os.Stderr, os.Getenv(sofficeOutputEnv))
-	if code := os.Getenv(sofficeExitEnv); code != "" {
+	fmt.Fprint(os.Stderr, setting(sofficeOutputKey))
+	if code := setting(sofficeExitKey); code != "" {
 		n, err := strconv.Atoi(code)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -237,7 +245,7 @@ func sofficeStandin(args []string) int {
 		}
 		return n
 	}
-	if os.Getenv(sofficeNothingEnv) != "" {
+	if setting(sofficeNothingKey) != "" {
 		return 0
 	}
 	if err := os.MkdirAll(outdir, 0o755); err != nil {
@@ -245,7 +253,7 @@ func sofficeStandin(args []string) int {
 		return 2
 	}
 	for i, path := range inputs {
-		if filepath.Base(path) == os.Getenv(sofficeSkipEnv) {
+		if filepath.Base(path) == setting(sofficeSkipKey) {
 			continue
 		}
 		out := convertedPrefix + string(contents[i])
@@ -266,13 +274,13 @@ func sofficeStandin(args []string) int {
 // Converter reads when it is built; neither is logged. Otherwise it takes its first argument as its
 // input, with any format prefix and frame suffix, "tiff:path[0]", and its last as its output,
 // "png:path". It appends its working directory, arguments, and its input's content to the log file;
-// exits with magickExitEnv's code, having written magickOutputEnv's value to stderr, when it is
+// exits with magickExitKey's code, having written magickOutputKey's value to stderr, when it is
 // set; and else writes PNG's signature, convertedPrefix, and its input, less any PNG signature it
-// begins with, to the output, without the signature when magickRawEnv is set. A metafile's PNG,
+// begins with, to the output, without the signature when magickRawKey is set. A metafile's PNG,
 // which soffice and then magick wrote, holds convertedPrefix twice.
 func magickStandin(args []string) int {
 	if len(args) == 1 && args[0] == "-version" {
-		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", os.Getenv(magickVersionEnv))
+		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", setting(magickVersionKey))
 		return 0
 	}
 	if len(args) == 2 && args[0] == "-list" && args[1] == "format" {
@@ -294,12 +302,12 @@ func magickStandin(args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if err := appendLog(os.Getenv(logEnv), "magick", args, string(input), ""); err != nil {
+	if err := appendLog(setting(logKey), "magick", args, string(input), ""); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	fmt.Fprint(os.Stderr, os.Getenv(magickOutputEnv))
-	if code := os.Getenv(magickExitEnv); code != "" {
+	fmt.Fprint(os.Stderr, setting(magickOutputKey))
+	if code := setting(magickExitKey); code != "" {
 		n, err := strconv.Atoi(code)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -308,7 +316,7 @@ func magickStandin(args []string) int {
 		return n
 	}
 	out := convertedPrefix + strings.TrimPrefix(string(input), pngSignature)
-	if os.Getenv(magickRawEnv) == "" {
+	if setting(magickRawKey) == "" {
 		out = pngSignature + out
 	}
 	if err := os.WriteFile(strip(args[len(args)-1]), []byte(out), 0o644); err != nil {
@@ -350,61 +358,106 @@ func appendLog(file, program string, args []string, input, registry string) erro
 	return errors.Join(err, f.Close())
 }
 
+// standins are a test's three stand-ins: their links and the settings they share.
+type standins struct {
+	t        testing.TB
+	links    map[string]string
+	settings map[string]string
+	// log is the file the stand-ins log their runs to.
+	log string
+}
+
 // installStandin links the test binary as spike-ai-pipeline-office, soffice, and magick in a
-// directory of its own, makes that directory the whole PATH, and has the stand-in office report
-// version, the stand-in soffice 26.8.1.1, and the stand-in magick 7.1.2-34. It returns a function
-// that returns every run of any of them since, in order, the version commands left out.
-func installStandin(t *testing.T, version string) func() []standinRun {
+// directory of its own, the stand-in office reporting version, the stand-in soffice 26.8.1.1, and
+// the stand-in magick 7.1.2-34.
+func installStandin(t *testing.T, version string) *standins {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	s := &standins{t: t, links: map[string]string{}, log: filepath.Join(t.TempDir(), "runs.jsonl")}
+	s.settings = map[string]string{versionKey: version, sofficeVersionKey: "26.8.1.1", magickVersionKey: "7.1.2-34", logKey: s.log}
 	dir := t.TempDir()
 	for _, name := range []string{"spike-ai-pipeline-office", "soffice", "magick"} {
-		if err := os.Symlink(exe, filepath.Join(dir, name)); err != nil {
-			t.Fatal(err)
-		}
+		s.links[name] = tooltest.Link(t, dir, name, s.settings)
 	}
-	t.Setenv("PATH", dir)
-	t.Setenv(versionEnv, version)
-	t.Setenv(sofficeVersionEnv, "26.8.1.1")
-	t.Setenv(magickVersionEnv, "7.1.2-34")
-	log := filepath.Join(t.TempDir(), "runs.jsonl")
-	t.Setenv(logEnv, log)
-	return func() []standinRun {
-		t.Helper()
-		f, err := os.Open(log)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer func() { _ = f.Close() }()
-		var runs []standinRun
-		lines := bufio.NewScanner(f)
-		for lines.Scan() {
-			var r standinRun
-			if err := json.Unmarshal(lines.Bytes(), &r); err != nil {
-				t.Fatal(err)
-			}
-			r.Input = string(r.Raw)
-			runs = append(runs, r)
-		}
-		if err := lines.Err(); err != nil {
-			t.Fatal(err)
-		}
-		return runs
+	return s
+}
+
+// set sets the stand-ins' setting key to value.
+func (s *standins) set(key, value string) {
+	s.t.Helper()
+	s.settings[key] = value
+	for _, link := range s.links {
+		tooltest.Set(s.t, link, s.settings)
 	}
 }
 
-// standinConverter builds a Converter over the stand-in office at 0.1.0, built from OfficeSpec
-// through the exec runner, and returns it with the stand-in's run log.
-func standinConverter(t *testing.T) (*office.Converter, func() []standinRun) {
+// setFor sets the stand-ins' setting key to value until t ends, as t.Setenv set a variable,
+// for a subtest of a test whose stand-ins its subtests share.
+func (s *standins) setFor(t *testing.T, key, value string) {
 	t.Helper()
-	runs := installStandin(t, "0.1.0")
-	tl, err := tool.NewExec(t.Context(), office.OfficeSpec())
+	old, had := s.settings[key]
+	s.set(key, value)
+	t.Cleanup(func() {
+		if had {
+			s.set(key, old)
+			return
+		}
+		s.unset(key)
+	})
+}
+
+// unset unsets the stand-ins' setting key.
+func (s *standins) unset(key string) {
+	s.t.Helper()
+	delete(s.settings, key)
+	for _, link := range s.links {
+		tooltest.Set(s.t, link, s.settings)
+	}
+}
+
+// spec returns spec with its program the stand-in's link of the same name.
+func (s *standins) spec(spec tool.Spec) tool.Spec {
+	s.t.Helper()
+	link, ok := s.links[filepath.Base(spec.Program)]
+	if !ok {
+		s.t.Fatalf("no stand-in for %s", spec.Program)
+	}
+	spec.Program = link
+	return spec
+}
+
+// runs returns every run of any of the stand-ins, in order, the version commands left out.
+func (s *standins) runs() []standinRun {
+	s.t.Helper()
+	f, err := os.Open(s.log)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	var runs []standinRun
+	lines := bufio.NewScanner(f)
+	for lines.Scan() {
+		var r standinRun
+		if err := json.Unmarshal(lines.Bytes(), &r); err != nil {
+			s.t.Fatal(err)
+		}
+		r.Input = string(r.Raw)
+		runs = append(runs, r)
+	}
+	if err := lines.Err(); err != nil {
+		s.t.Fatal(err)
+	}
+	return runs
+}
+
+// standinConverter builds a Converter over the stand-in office at 0.1.0, built from OfficeSpec
+// through the exec runner, and returns it with the stand-ins.
+func standinConverter(t *testing.T) (*office.Converter, *standins) {
+	t.Helper()
+	s := installStandin(t, "0.1.0")
+	tl, err := tool.NewExec(t.Context(), s.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -412,20 +465,20 @@ func standinConverter(t *testing.T) (*office.Converter, func() []standinRun) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, runs
+	return c, s
 }
 
 // legacyConverter builds a Converter over the stand-in office at 0.1.0 and the stand-in soffice
 // at 26.8.1.1, built from OfficeSpec and LibreOfficeSpec through the exec runner, and returns it
-// with the stand-ins' run log.
-func legacyConverter(t *testing.T) (*office.Converter, func() []standinRun) {
+// with the stand-ins.
+func legacyConverter(t *testing.T) (*office.Converter, *standins) {
 	t.Helper()
-	runs := installStandin(t, "0.1.0")
-	o, err := tool.NewExec(t.Context(), office.OfficeSpec())
+	s := installStandin(t, "0.1.0")
+	o, err := tool.NewExec(t.Context(), s.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	lo, err := tool.NewExec(t.Context(), picture.LibreOfficeSpec())
+	lo, err := tool.NewExec(t.Context(), s.spec(picture.LibreOfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -433,7 +486,7 @@ func legacyConverter(t *testing.T) (*office.Converter, func() []standinRun) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, runs
+	return c, s
 }
 
 // entries returns the names in dir, in name order.

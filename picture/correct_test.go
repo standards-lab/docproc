@@ -23,6 +23,7 @@ var all = []picture.Correction{
 }
 
 func TestCorrectOperators(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		corrections []picture.Correction
 		want        []string
@@ -48,7 +49,8 @@ func TestCorrectOperators(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(names(tc.corrections), func(t *testing.T) {
-			c, runs := standinCorrector(t)
+			t.Parallel()
+			c, st := standinCorrector(t)
 			var out bytes.Buffer
 			if err := c.Correct(t.Context(), tc.corrections, bytes.NewReader(page), &out); err != nil {
 				t.Fatal(err)
@@ -57,7 +59,7 @@ func TestCorrectOperators(t *testing.T) {
 				t.Errorf("Correct wrote %q, want the stand-in's copy of the input %q", out.Bytes(), page)
 			}
 			want := append(append([]string{"png:-"}, tc.want...), "png:-")
-			if got := runs(); len(got) != 1 || !slices.Equal(got[0], want) {
+			if got := st.args(); len(got) != 1 || !slices.Equal(got[0], want) {
 				t.Errorf("magick ran with %q, want one run with %q", got, want)
 			}
 		})
@@ -66,7 +68,8 @@ func TestCorrectOperators(t *testing.T) {
 
 // TestCorrectOneRunPerPage checks that each page is one magick run, whatever the corrections.
 func TestCorrectOneRunPerPage(t *testing.T) {
-	c, runs := standinCorrector(t)
+	t.Parallel()
+	c, st := standinCorrector(t)
 	for i := range 3 {
 		in := append(slices.Clone(page), byte('0'+i))
 		var out bytes.Buffer
@@ -77,14 +80,15 @@ func TestCorrectOneRunPerPage(t *testing.T) {
 			t.Errorf("page %d: Correct wrote %q, want %q", i+1, out.Bytes(), in)
 		}
 	}
-	if got := len(runs()); got != 3 {
+	if got := len(st.args()); got != 3 {
 		t.Errorf("magick ran %d times for 3 pages, want 3", got)
 	}
 }
 
 // TestCorrectEmptyRunsNothing checks that no corrections copy the page without running magick.
 func TestCorrectEmptyRunsNothing(t *testing.T) {
-	c, runs := standinCorrector(t)
+	t.Parallel()
+	c, st := standinCorrector(t)
 	for _, corrections := range [][]picture.Correction{nil, {}} {
 		var out bytes.Buffer
 		if err := c.Correct(t.Context(), corrections, bytes.NewReader(page), &out); err != nil {
@@ -94,7 +98,7 @@ func TestCorrectEmptyRunsNothing(t *testing.T) {
 			t.Errorf("Correct(%v) wrote %q, want the input %q", corrections, out.Bytes(), page)
 		}
 	}
-	if got := runs(); len(got) != 0 {
+	if got := st.args(); len(got) != 0 {
 		t.Errorf("magick ran %q with no corrections, want no run", got)
 	}
 }
@@ -102,7 +106,8 @@ func TestCorrectEmptyRunsNothing(t *testing.T) {
 // TestCorrectRefusesUnknown checks that a value that is no Correction is refused before magick
 // runs, even beside valid ones.
 func TestCorrectRefusesUnknown(t *testing.T) {
-	c, runs := standinCorrector(t)
+	t.Parallel()
+	c, st := standinCorrector(t)
 	for _, bad := range []picture.Correction{0, picture.Grayscale + 1, -1} {
 		var out bytes.Buffer
 		err := c.Correct(t.Context(), []picture.Correction{picture.Deskew, bad}, bytes.NewReader(page), &out)
@@ -113,26 +118,28 @@ func TestCorrectRefusesUnknown(t *testing.T) {
 			t.Errorf("Correct with %v wrote %q, want nothing", bad, out.Bytes())
 		}
 	}
-	if got := runs(); len(got) != 0 {
+	if got := st.args(); len(got) != 0 {
 		t.Errorf("magick ran %q, want no run", got)
 	}
 }
 
 // TestCorrectMagickFails checks that a magick that exits nonzero is the Tool's *tool.ExitError.
 func TestCorrectMagickFails(t *testing.T) {
-	c, runs := standinCorrector(t)
-	t.Setenv(failEnv, "magick: improper image header")
+	t.Parallel()
+	c, st := standinCorrector(t)
+	st.set(func(s *settings) { s.Fail = "magick: improper image header" })
 	err := c.Correct(t.Context(), all, bytes.NewReader(page), &bytes.Buffer{})
 	var exit *tool.ExitError
 	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "improper image header") {
 		t.Errorf("Correct returned %v, want a *tool.ExitError with code 1 and magick's stderr", err)
 	}
-	if got := len(runs()); got != 1 {
+	if got := len(st.args()); got != 1 {
 		t.Errorf("magick ran %d times, want 1", got)
 	}
 }
 
 func TestNewCorrectorVersion(t *testing.T) {
+	t.Parallel()
 	// A Spec with a lower minimum lets the stand-in's old version through the runner; the
 	// stage's own check still refuses it.
 	lenient := picture.MagickSpec()
@@ -149,8 +156,9 @@ func TestNewCorrectorVersion(t *testing.T) {
 		{"8.0.0", true},
 	} {
 		t.Run(tc.version, func(t *testing.T) {
+			t.Parallel()
 			tl, _ := standinMagick(t, tc.version, lenient)
-			c, err := picture.NewCorrector(tl)
+			c, err := picture.NewCorrector(picture.Config{Magick: tl})
 			if tc.ok {
 				if err != nil || c == nil {
 					t.Errorf("NewCorrector over %s returned %v, %v, want a stage", tc.version, c, err)
@@ -169,17 +177,24 @@ func TestNewCorrectorVersion(t *testing.T) {
 	}
 }
 
+// TestNewCorrectorNil: a Config with no Magick is the caller's mistake, and panics naming the
+// field.
 func TestNewCorrectorNil(t *testing.T) {
-	if c, err := picture.NewCorrector(nil); err == nil || c != nil {
-		t.Errorf("NewCorrector(nil) returned %v, %v, want an error", c, err)
-	}
+	t.Parallel()
+	defer func() {
+		if r := recover(); r != "picture: Config.Magick is nil" {
+			t.Errorf("NewCorrector(Config{}) panicked with %v, want the field named", r)
+		}
+	}()
+	_, _ = picture.NewCorrector(picture.Config{})
+	t.Error("NewCorrector(Config{}) returned")
 }
 
 // TestMagickSpecRefusesOld checks that MagickSpec's own minimum refuses a magick before 7.1 at
 // construction, through the runner.
 func TestMagickSpecRefusesOld(t *testing.T) {
-	installMagick(t, "7.0.11-14")
-	_, err := tool.NewExec(t.Context(), picture.MagickSpec())
+	t.Parallel()
+	_, err := newStandins(t, "7.0.11-14").tool(picture.MagickSpec())
 	if !errors.Is(err, tool.ErrTooOld) {
 		t.Errorf("NewExec(MagickSpec()) over 7.0.11-14 returned %v, want ErrTooOld", err)
 	}
@@ -197,6 +212,7 @@ func names(cs []picture.Correction) string {
 // TestCorrectionsCatalog checks the catalog: every correction in the fixed order, each with its
 // name and a one-line description, and a value that is no correction with neither.
 func TestCorrectionsCatalog(t *testing.T) {
+	t.Parallel()
 	got := picture.Corrections()
 	if !slices.Equal(got, all) {
 		t.Fatalf("Corrections() = %v, want %v", got, all)
@@ -226,6 +242,7 @@ func TestCorrectionsCatalog(t *testing.T) {
 // TestParseCorrection checks a correction's name reads back as the correction, whatever its case,
 // and an unknown name is an error naming it.
 func TestParseCorrection(t *testing.T) {
+	t.Parallel()
 	for _, c := range all {
 		for _, name := range []string{c.String(), strings.ToLower(c.String()), strings.ToUpper(c.String())} {
 			got, err := picture.ParseCorrection(name)
@@ -251,6 +268,7 @@ const assessOutput = "width=1275\nheight=1650\nskew=-2.488338848312285\ncolored=
 // magick's output, a page with color's included. What magick measures is the integration tier's
 // to prove, on the host's magick.
 func TestAssess(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, out string
 		want      picture.Assessment
@@ -269,13 +287,14 @@ func TestAssess(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			c, runs := standinCorrector(t)
-			t.Setenv(stdoutEnv, tc.out)
+			t.Parallel()
+			c, st := standinCorrector(t)
+			st.set(func(s *settings) { s.Stdout = new(tc.out) })
 			got, err := c.Assess(t.Context(), bytes.NewReader(page))
 			if err != nil || got != tc.want {
 				t.Errorf("Assess with magick printing %q = %+v, %v, want %+v", tc.out, got, err, tc.want)
 			}
-			if r := runs(); len(r) != 1 || len(r[0]) == 0 || r[0][0] != "png:-" {
+			if r := st.args(); len(r) != 1 || len(r[0]) == 0 || r[0][0] != "png:-" {
 				t.Errorf("magick ran %q, want one run reading PNG on stdin", r)
 			}
 		})
@@ -285,6 +304,7 @@ func TestAssess(t *testing.T) {
 // TestAssessMalformed checks that magick output missing a measure, repeating one, naming one it
 // doesn't know, or giving one that isn't a number is an error quoting the output.
 func TestAssessMalformed(t *testing.T) {
+	t.Parallel()
 	cases := map[string]string{
 		"empty":           "",
 		"missing a value": strings.Replace(assessOutput, "noise=0.00404191\n", "", 1),
@@ -300,8 +320,9 @@ func TestAssessMalformed(t *testing.T) {
 	}
 	for name, out := range cases {
 		t.Run(name, func(t *testing.T) {
-			c, _ := standinCorrector(t)
-			t.Setenv(stdoutEnv, out)
+			t.Parallel()
+			c, st := standinCorrector(t)
+			st.set(func(s *settings) { s.Stdout = new(out) })
 			got, err := c.Assess(t.Context(), bytes.NewReader(page))
 			if err == nil || got != (picture.Assessment{}) {
 				t.Errorf("Assess with magick printing %q = %+v, %v, want an error", out, got, err)
@@ -313,8 +334,9 @@ func TestAssessMalformed(t *testing.T) {
 // TestAssessMagickFails checks that a magick that exits nonzero assessing is the Tool's
 // *tool.ExitError.
 func TestAssessMagickFails(t *testing.T) {
-	c, _ := standinCorrector(t)
-	t.Setenv(failEnv, "magick: improper image header")
+	t.Parallel()
+	c, st := standinCorrector(t)
+	st.set(func(s *settings) { s.Fail = "magick: improper image header" })
 	_, err := c.Assess(t.Context(), bytes.NewReader(page))
 	var exit *tool.ExitError
 	if !errors.As(err, &exit) || exit.Code != 1 || !strings.Contains(exit.Stderr, "improper image header") {

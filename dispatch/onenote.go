@@ -46,10 +46,11 @@ type OneNoteStage struct {
 	id     Identity
 }
 
-// NewOneNoteStage builds a OneNoteStage over cfg, refusing one with no Reader or Version.
+// NewOneNoteStage builds a OneNoteStage over cfg, panicking naming Reader when it is nil, the
+// caller's mistake, and refusing one with no Version.
 func NewOneNoteStage(cfg OneNoteConfig) (*OneNoteStage, error) {
 	if cfg.Reader == nil {
-		return nil, errors.New("dispatch: onenote stage: no reader")
+		panic("dispatch: OneNoteConfig.Reader is nil")
 	}
 	id, err := adapterIdentity("onenote", cfg.Version, struct {
 		Schema string `json:"schema"`

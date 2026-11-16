@@ -4,7 +4,6 @@ package document_test
 
 import (
 	"bufio"
-	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,85 +12,76 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"testing"
 
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinEnv marks a process as a stand-in tool: the test binary, re-executed through a link
-// named magick, gs, qpdf, or pdfdetach, acting on its arguments as that program instead of
-// running the tests.
-const standinEnv = "DOCUMENT_TEST_STANDIN"
-
-// The stand-in's settings, which it reads from the environment it inherits.
-const (
-	// versionEnv is the version the stand-in's version command prints, in its program's form:
+// settings are a stand-in's settings, which tooltest writes beside its link.
+type settings struct {
+	// Version is the version the stand-in's version command prints, in its program's form:
 	// "7.1.2-34" for magick, "10.08.0" for gs.
-	versionEnv = "DOCUMENT_TEST_STANDIN_VERSION"
-	// logEnv names the file each run appends its working directory and arguments to, one JSON
-	// object per line.
-	logEnv = "DOCUMENT_TEST_STANDIN_LOG"
-	// failEnv, when set, makes a run write its value to stderr and exit 1 after logging.
-	failEnv = "DOCUMENT_TEST_STANDIN_FAIL"
-	// stdoutEnv, when set, is what the stand-in writes to stdout for a run in place of its own:
-	// gs's page count or its page, or magick's copy of its stdin.
-	stdoutEnv = "DOCUMENT_TEST_STANDIN_STDOUT"
-	// stderrEnv, when set, is what the stand-in gs writes to stderr for a run that succeeds, and
-	// what the stand-in qpdf or pdfdetach writes to stderr for any run.
-	stderrEnv = "DOCUMENT_TEST_STANDIN_STDERR"
-	// exitEnv, when set, is the code the stand-in qpdf or pdfdetach exits with, once it has
-	// written its stdout and stderr; 0 when unset.
-	exitEnv = "DOCUMENT_TEST_STANDIN_EXIT"
-)
+	Version string `json:"version"`
+	// Log names the file each run but a version command appends its working directory and
+	// arguments to, one JSON object per line: tooltest's own run log holds no working directory.
+	Log string `json:"log"`
+	// Fail, when set, makes a magick or gs run write it to stderr and exit 1 after logging.
+	Fail string `json:"fail,omitzero"`
+	// Stdout, when set, is what the stand-in writes to stdout for a run in place of its own: gs's
+	// page count or its page, or magick's copy of its stdin. It is bytes, so what isn't UTF-8,
+	// such as a cut PNG signature, survives the settings' JSON.
+	Stdout *[]byte `json:"stdout,omitzero"`
+	// Stderr is what the stand-in gs writes to stderr for a run that succeeds, and what the
+	// stand-in qpdf or pdfdetach writes to stderr for any run.
+	Stderr string `json:"stderr,omitzero"`
+	// Exit is the code the stand-in qpdf or pdfdetach exits with, once it has written its stdout
+	// and stderr.
+	Exit int `json:"exit,omitzero"`
+}
 
 func TestMain(m *testing.M) {
-	if os.Getenv(standinEnv) == "1" {
-		switch name := filepath.Base(os.Args[0]); name {
-		case "magick":
-			os.Exit(magick(os.Args[1:]))
-		case "gs":
-			os.Exit(gs(os.Args[1:]))
-		case "qpdf":
-			os.Exit(qpdf(os.Args[1:]))
-		case "pdfdetach":
-			os.Exit(pdfdetach(os.Args[1:]))
-		default:
-			fmt.Fprintf(os.Stderr, "stand-in: no tool named %s\n", name)
-			os.Exit(2)
-		}
-	}
-	// The stand-in inherits the environment. Under -race, GORACE's atexit_sleep_ms keeps it from
-	// sleeping a second as it exits.
-	for key, value := range map[string]string{standinEnv: "1", "GORACE": "atexit_sleep_ms=0"} {
-		if err := os.Setenv(key, value); err != nil {
+	tooltest.Main(m, map[string]tooltest.Program{
+		"magick":    withSettings(magick),
+		"gs":        withSettings(gs),
+		"qpdf":      withSettings(qpdf),
+		"pdfdetach": withSettings(pdfdetach),
+	})
+}
+
+// withSettings returns a tooltest.Program that reads its run's settings and runs program over
+// them and the run's arguments.
+func withSettings(program func(s settings, args []string) int) tooltest.Program {
+	return func(r tooltest.Run) int {
+		var s settings
+		if err := r.Settings(&s); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-			os.Exit(2)
+			return 2
 		}
+		return program(s, r.Args)
 	}
-	os.Exit(m.Run())
 }
 
 // magick is the stand-in magick. With -version alone it prints a version line in magick's own
-// form. Otherwise it appends its arguments to the log file, then fails when failEnv is set, or
-// else writes stdoutEnv's value to stdout when it is set, and copies stdin to stdout when it
+// form. Otherwise it appends its arguments to the log file, then fails when Fail is set, or
+// else writes Stdout to stdout when it is set, and copies stdin to stdout when it
 // isn't, so a corrected image is the image it was given.
-func magick(args []string) int {
+func magick(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "-version" {
-		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", os.Getenv(versionEnv))
+		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", s.Version)
 		return 0
 	}
-	if err := appendLog(os.Getenv(logEnv), args); err != nil {
+	if err := appendLog(s.Log, args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if msg := os.Getenv(failEnv); msg != "" {
-		fmt.Fprint(os.Stderr, msg)
+	if s.Fail != "" {
+		fmt.Fprint(os.Stderr, s.Fail)
 		return 1
 	}
-	if out, set := os.LookupEnv(stdoutEnv); set {
-		if _, err := os.Stdout.WriteString(out); err != nil {
+	if s.Stdout != nil {
+		if _, err := os.Stdout.Write(*s.Stdout); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
@@ -112,27 +102,28 @@ var standinPage = []byte("\x89PNG\r\n\x1a\nstand-in gs page")
 
 // gs is the stand-in gs. With --version alone it prints the version alone, as gs does.
 // Otherwise it appends its working directory and arguments to the log file, then fails when
-// failEnv is set, or else writes stderrEnv's value to stderr when it is set, and stdoutEnv's
-// value to stdout when it is set, and its own output when it isn't: a page count of 6 for a run
+// Fail is set, or else writes Stderr to stderr, and Stdout to stdout when it is set, and its own
+// output when it isn't: a page count of 6 for a run
 // with -dNODISPLAY, a page's text for a run with the txtwrite device, and standinPage for any
 // other.
-func gs(args []string) int {
+func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Println(os.Getenv(versionEnv))
+		fmt.Println(s.Version)
 		return 0
 	}
-	if err := appendLog(os.Getenv(logEnv), args); err != nil {
+	if err := appendLog(s.Log, args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	if msg := os.Getenv(failEnv); msg != "" {
-		fmt.Fprint(os.Stderr, msg)
+	if s.Fail != "" {
+		fmt.Fprint(os.Stderr, s.Fail)
 		return 1
 	}
-	fmt.Fprint(os.Stderr, os.Getenv(stderrEnv))
-	out, set := os.LookupEnv(stdoutEnv)
+	fmt.Fprint(os.Stderr, s.Stderr)
+	var out string
 	switch {
-	case set:
+	case s.Stdout != nil:
+		out = string(*s.Stdout)
 	case slices.Contains(args, "-dNODISPLAY"):
 		out = "6\n"
 	case slices.Contains(args, "-sDEVICE=txtwrite"):
@@ -149,30 +140,30 @@ func gs(args []string) int {
 
 // qpdf is the stand-in qpdf. With --version alone it prints qpdf's two lines, its version and
 // its license's. Otherwise it acts as scripted does.
-func qpdf(args []string) int {
+func qpdf(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
-		fmt.Printf("qpdf version %s\nRun qpdf --copyright to see copyright and license information.\n", os.Getenv(versionEnv))
+		fmt.Printf("qpdf version %s\nRun qpdf --copyright to see copyright and license information.\n", s.Version)
 		return 0
 	}
-	return scripted(args)
+	return scripted(s, args)
 }
 
 // pdfdetach is the stand-in pdfdetach. With -v alone it prints its version and copyright to
 // stderr and exits 99, as pdfdetach does. Otherwise it acts as scripted does.
-func pdfdetach(args []string) int {
+func pdfdetach(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "-v" {
-		fmt.Fprintf(os.Stderr, "pdfdetach version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", os.Getenv(versionEnv))
+		fmt.Fprintf(os.Stderr, "pdfdetach version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", s.Version)
 		return 99
 	}
-	return scripted(args)
+	return scripted(s, args)
 }
 
-// scripted is a stand-in run that does what the environment says: it appends its working
-// directory and arguments to the log file, writes stdoutEnv's value to stdout and stderrEnv's to
-// stderr, and exits with exitEnv's code. A -o argument names the file the stand-in writes its
+// scripted is a stand-in run that does what its settings say: it appends its working directory
+// and arguments to the log file, writes Stdout to stdout and Stderr to stderr, and exits with
+// Exit. A -o argument names the file the stand-in writes its
 // stdout's value to in place of stdout, as pdfdetach -save does.
-func scripted(args []string) int {
-	if err := appendLog(os.Getenv(logEnv), args); err != nil {
+func scripted(s settings, args []string) int {
+	if err := appendLog(s.Log, args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
@@ -186,17 +177,14 @@ func scripted(args []string) int {
 		defer func() { _ = f.Close() }()
 		out = f
 	}
-	if _, err := out.WriteString(os.Getenv(stdoutEnv)); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
+	if s.Stdout != nil {
+		if _, err := out.Write(*s.Stdout); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 	}
-	fmt.Fprint(os.Stderr, os.Getenv(stderrEnv))
-	code, err := strconv.Atoi(cmp.Or(os.Getenv(exitEnv), "0"))
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	return code
+	fmt.Fprint(os.Stderr, s.Stderr)
+	return s.Exit
 }
 
 // standinRun is one logged run of a stand-in: its working directory and arguments.
@@ -223,85 +211,109 @@ func appendLog(file string, args []string) error {
 	return errors.Join(err, f.Close())
 }
 
-// standinMagick installs the stand-in magick at version, as installMagick does, builds the Tool
-// from spec through the exec runner, and returns it with the stand-in's run log.
-func standinMagick(t *testing.T, version string, spec tool.Spec) (*tool.Tool, func() [][]string) {
+// standin is a test's stand-in program: its link, in a directory of its own, and its settings.
+type standin struct {
+	t        *testing.T
+	link     string
+	settings settings
+}
+
+// newStandin links the stand-in as program in a directory of its own, reporting version and
+// logging to a file of the test's.
+func newStandin(t *testing.T, program, version string) *standin {
 	t.Helper()
-	runs := installMagick(t, version)
-	tl, err := tool.NewExec(t.Context(), spec)
+	s := settings{Version: version, Log: filepath.Join(t.TempDir(), "runs.jsonl")}
+	return &standin{t: t, link: tooltest.Link(t, t.TempDir(), program, s), settings: s}
+}
+
+// set changes the stand-in's settings by f, for the runs that start after it.
+func (st *standin) set(f func(*settings)) {
+	st.t.Helper()
+	f(&st.settings)
+	tooltest.Set(st.t, st.link, st.settings)
+}
+
+// tool builds a Tool from spec through the exec runner, over the stand-in in place of spec's
+// program.
+func (st *standin) tool(spec tool.Spec) (*tool.Tool, error) {
+	spec.Program = st.link
+	return tool.NewExec(st.t.Context(), spec)
+}
+
+// mustTool is tool, failing the test on an error.
+func (st *standin) mustTool(spec tool.Spec) *tool.Tool {
+	st.t.Helper()
+	tl, err := st.tool(spec)
+	if err != nil {
+		st.t.Fatal(err)
+	}
+	return tl
+}
+
+// runs returns every run of the stand-in, in order, the version command's left out.
+func (st *standin) runs() []standinRun {
+	t := st.t
+	t.Helper()
+	f, err := os.Open(st.settings.Log)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	return tl, runs
-}
-
-// installMagick links the stand-in magick as magick in a directory of its own, makes that
-// directory the whole PATH, and has the stand-in report version. It returns a function that
-// returns the arguments of every run since, in order, the version command's left out.
-func installMagick(t *testing.T, version string) func() [][]string {
-	t.Helper()
-	runs := installStandin(t, "magick", version)
-	return func() [][]string {
-		t.Helper()
-		var args [][]string
-		for _, r := range runs() {
-			args = append(args, r.Args)
-		}
-		return args
-	}
-}
-
-// installStandin links the test binary as program in a directory of its own, makes that
-// directory the whole PATH, and has the stand-in report version. It returns a function that
-// returns every run since, in order, the version command's left out.
-func installStandin(t *testing.T, program, version string) func() []standinRun {
-	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	if err := os.Symlink(exe, filepath.Join(dir, program)); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir)
-	t.Setenv(versionEnv, version)
-	log := filepath.Join(t.TempDir(), "runs.jsonl")
-	t.Setenv(logEnv, log)
-	return func() []standinRun {
-		t.Helper()
-		f, err := os.Open(log)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil
-		}
-		if err != nil {
+	defer func() { _ = f.Close() }()
+	var runs []standinRun
+	lines := bufio.NewScanner(f)
+	for lines.Scan() {
+		var r standinRun
+		if err := json.Unmarshal(lines.Bytes(), &r); err != nil {
 			t.Fatal(err)
 		}
-		defer func() { _ = f.Close() }()
-		var runs []standinRun
-		lines := bufio.NewScanner(f)
-		for lines.Scan() {
-			var r standinRun
-			if err := json.Unmarshal(lines.Bytes(), &r); err != nil {
-				t.Fatal(err)
-			}
-			runs = append(runs, r)
-		}
-		if err := lines.Err(); err != nil {
-			t.Fatal(err)
-		}
-		return runs
+		runs = append(runs, r)
 	}
+	if err := lines.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return runs
+}
+
+// args returns the arguments of every run runs returns, in order.
+func (st *standin) args() [][]string {
+	st.t.Helper()
+	var args [][]string
+	for _, r := range st.runs() {
+		args = append(args, r.Args)
+	}
+	return args
+}
+
+// standinMagick links the stand-in magick at version, builds the Tool from spec through the exec
+// runner, and returns it with the stand-in.
+func standinMagick(t *testing.T, version string, spec tool.Spec) (*tool.Tool, *standin) {
+	t.Helper()
+	st := newStandin(t, "magick", version)
+	return st.mustTool(spec), st
 }
 
 // standinCorrector builds the picture package's corrections stage over the stand-in magick at
-// 7.1.2-34, and returns it with the stand-in's run log.
-func standinCorrector(t *testing.T) (*picture.Corrector, func() [][]string) {
+// 7.1.2-34, and returns it with the stand-in.
+func standinCorrector(t *testing.T) (*picture.Corrector, *standin) {
 	t.Helper()
-	tl, runs := standinMagick(t, "7.1.2-34", picture.MagickSpec())
-	c, err := picture.NewCorrector(tl)
+	tl, st := standinMagick(t, "7.1.2-34", picture.MagickSpec())
+	c, err := picture.NewCorrector(picture.Config{Magick: tl})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c, runs
+	return c, st
+}
+
+// wantPanic fails t unless f panics with want.
+func wantPanic(t *testing.T, want string, f func()) {
+	t.Helper()
+	defer func() {
+		if r := recover(); r != want {
+			t.Errorf("panicked with %v, want %q", r, want)
+		}
+	}()
+	f()
 }

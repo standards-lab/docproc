@@ -5,7 +5,6 @@ package document
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"iter"
@@ -28,13 +27,14 @@ type Preparer struct {
 	correct *picture.Corrector
 }
 
-// NewPreparer builds a Preparer over render, and over correct when it isn't nil. It refuses a nil
-// Renderer. A Preparer with no corrections stage refuses a request that names corrections.
-func NewPreparer(render Renderer, correct *picture.Corrector) (*Preparer, error) {
-	if render == nil {
-		return nil, errors.New("document: preparer: no renderer")
+// NewPreparer builds a Preparer over cfg's Renderer, and over its Corrector when that isn't nil;
+// it reads no other field. A nil Renderer is the caller's mistake, and panics naming the field. A
+// Preparer with no corrections stage refuses a request that names corrections.
+func NewPreparer(cfg Config) *Preparer {
+	if cfg.Renderer == nil {
+		panic("document: Config.Renderer is nil")
 	}
-	return &Preparer{render: render, correct: correct}, nil
+	return &Preparer{render: cfg.Renderer, correct: cfg.Corrector}
 }
 
 // ImagesRequest is one PDF's run through a Preparer's Images.
@@ -224,22 +224,22 @@ func (p *Preparer) page(ctx context.Context, path string, page, n int, req Image
 func (p *Preparer) check(req *ImagesRequest) error {
 	switch {
 	case req.Dir == "":
-		return errors.New("document: request has no working directory")
+		return fmt.Errorf("document: request has no working directory: %w", ErrRequest)
 	case req.DPI < 0:
-		return fmt.Errorf("document: request's %d dpi: %w", req.DPI, ErrDPI)
+		return fmt.Errorf("document: request's %d dpi is negative: %w", req.DPI, ErrRequest)
 	case req.Concurrency < 0:
-		return fmt.Errorf("document: request's concurrency %d is negative", req.Concurrency)
+		return fmt.Errorf("document: request's concurrency %d is negative: %w", req.Concurrency, ErrRequest)
 	case len(req.Corrections) > 0 && p.correct == nil:
-		return errors.New("document: request names corrections, and the preparer has no corrections stage")
+		return fmt.Errorf("document: request names corrections, and the preparer has no corrections stage: %w", ErrRequest)
 	}
 	if req.Text || req.SkipText {
 		if _, ok := p.render.(TextExtractor); !ok {
-			return errors.New("document: request reads pages' text, and the preparer's renderer is no TextExtractor")
+			return fmt.Errorf("document: request reads pages' text, and the preparer's renderer is no TextExtractor: %w", ErrRequest)
 		}
 	}
 	if req.Region != nil {
 		if _, ok := p.render.(RegionRenderer); !ok {
-			return errors.New("document: request names a region, and the preparer's renderer is no RegionRenderer")
+			return fmt.Errorf("document: request names a region, and the preparer's renderer is no RegionRenderer: %w", ErrRequest)
 		}
 		if err := CheckRegion(*req.Region); err != nil {
 			return fmt.Errorf("document: request's region: %w", err)

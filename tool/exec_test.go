@@ -30,8 +30,10 @@ func standinSpec(program, version, minimum string) tool.Spec {
 	}
 }
 
+// TestNewExecFindsProgramOnPath: a program without a separator is looked up on PATH. It sets PATH,
+// so it runs alone; every other test names its stand-in by path.
 func TestNewExecFindsProgramOnPath(t *testing.T) {
-	installStandin(t)
+	t.Setenv("PATH", filepath.Dir(installStandin(t)))
 	tl, err := tool.NewExec(t.Context(), standinSpec("standin", "1.2.3", "1.0"))
 	if err != nil {
 		t.Fatal(err)
@@ -44,9 +46,11 @@ func TestNewExecFindsProgramOnPath(t *testing.T) {
 	}
 }
 
+// TestNewExecTakesPathAsGiven: a program with a separator is taken as given, its link on no
+// PATH, and the Tool is named by its base name.
 func TestNewExecTakesPathAsGiven(t *testing.T) {
+	t.Parallel()
 	link := installStandin(t)
-	t.Setenv("PATH", t.TempDir()) // the link is no longer on PATH
 	tl, err := tool.NewExec(t.Context(), standinSpec(link, "1.2.3", "1.0"))
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +61,7 @@ func TestNewExecTakesPathAsGiven(t *testing.T) {
 }
 
 func TestNewExecNotFound(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	missingPath := filepath.Join(t.TempDir(), "missing-tool")
 	for _, program := range []string{"missing-tool", missingPath} {
 		t.Run(program, func(t *testing.T) {
@@ -73,7 +77,8 @@ func TestNewExecNotFound(t *testing.T) {
 }
 
 func TestNewExecVersionRule(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	tests := []struct {
 		version, minimum string
 		ok               bool
@@ -91,7 +96,7 @@ func TestNewExecVersionRule(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.version+" vs "+tt.minimum, func(t *testing.T) {
-			_, err := tool.NewExec(t.Context(), standinSpec("standin", tt.version, tt.minimum))
+			_, err := tool.NewExec(t.Context(), standinSpec(link, tt.version, tt.minimum))
 			if tt.ok {
 				if err != nil {
 					t.Fatalf("NewExec: %v", err)
@@ -110,14 +115,15 @@ func TestNewExecVersionRule(t *testing.T) {
 }
 
 func TestNewExecUnmatchedVersion(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
+	link := installStandin(t)
 	tests := map[string]struct{ output, found string }{
 		"no match":         {"something else entirely", ""},
 		"capture not dots": {"standin version 1..2", "1..2"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			spec := standinSpec("standin", "", "1.0")
+			spec := standinSpec(link, "", "1.0")
 			spec.VersionArgs = []string{"print", tt.output}
 			spec.VersionPattern = regexp.MustCompile(`standin version ([\d.]+)`)
 			_, err := tool.NewExec(t.Context(), spec)
@@ -130,8 +136,9 @@ func TestNewExecUnmatchedVersion(t *testing.T) {
 }
 
 func TestNewExecFailingVersionCommand(t *testing.T) {
-	installStandin(t)
-	spec := standinSpec("standin", "", "1.0")
+	t.Parallel()
+	link := installStandin(t)
+	spec := standinSpec(link, "", "1.0")
 	spec.VersionArgs = []string{"exit", "3", "no version here"}
 	_, err := tool.NewExec(t.Context(), spec)
 	if _, ok := errors.AsType[*tool.VersionError](err); !ok {
@@ -150,8 +157,9 @@ func TestNewExecFailingVersionCommand(t *testing.T) {
 // pdfdetach -v exits 99, has printed the version; any other nonzero exit still fails, and a Spec
 // with no VersionExit takes the same command's exit as the failure it is.
 func TestNewExecVersionExit(t *testing.T) {
-	installStandin(t)
-	spec := standinSpec("standin", "", "1.0")
+	t.Parallel()
+	link := installStandin(t)
+	spec := standinSpec(link, "", "1.0")
 	spec.VersionArgs = []string{"exit", "99", "standin version 1.2.3"}
 	spec.VersionExit = 99
 	tl, err := tool.NewExec(t.Context(), spec)
@@ -175,7 +183,7 @@ func TestNewExecVersionExit(t *testing.T) {
 // TestNewExecRefusesBadSpec checks that a malformed spec fails as itself, before the program is
 // looked up: the program is missing, and the error still names the spec's defect.
 func TestNewExecRefusesBadSpec(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	noGroup := standinSpec("missing-tool", "1.0", "1.0")
 	noGroup.VersionPattern = regexp.MustCompile(`standin version`)
 	badMinimum := standinSpec("missing-tool", "1.0", "v1")
@@ -200,7 +208,7 @@ func TestNewExecRefusesBadSpec(t *testing.T) {
 }
 
 func TestRunArgsDirStdinStdout(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	dir := t.TempDir()
 	var stdout bytes.Buffer
@@ -230,7 +238,7 @@ func TestRunArgsDirStdinStdout(t *testing.T) {
 }
 
 func TestRunExitError(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"exit", "7", "it broke"}})
 	exitErr, ok := errors.AsType[*tool.ExitError](err)
@@ -252,7 +260,7 @@ func TestRunExitError(t *testing.T) {
 }
 
 func TestRunStderrTail(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	for _, n := range []int{100, 4096, 4097, 50000} {
 		t.Run(strconv.Itoa(n), func(t *testing.T) {
@@ -271,7 +279,7 @@ func TestRunStderrTail(t *testing.T) {
 }
 
 func TestRunStderrWriter(t *testing.T) {
-	installStandin(t)
+	t.Parallel()
 	tl := newStandin(t)
 	var stderr bytes.Buffer
 	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"stderr", "50000", "1"}, Stderr: &stderr})
@@ -287,10 +295,11 @@ func TestRunStderrWriter(t *testing.T) {
 	}
 }
 
-// newStandin builds the stand-in tool through the exec runner.
+// newStandin installs the stand-ins and builds the stand-in tool over its link through the exec
+// runner.
 func newStandin(t *testing.T) *tool.Tool {
 	t.Helper()
-	tl, err := tool.NewExec(t.Context(), standinSpec("standin", "1.0", "1.0"))
+	tl, err := tool.NewExec(t.Context(), standinSpec(installStandin(t), "1.0", "1.0"))
 	if err != nil {
 		t.Fatal(err)
 	}

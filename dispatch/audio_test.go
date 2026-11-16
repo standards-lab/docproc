@@ -21,25 +21,64 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/internal/mediatest"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/tool"
 )
 
-// The audio stage's hermetic tests run its Splitter over stand-ins: the test binary, re-executed
-// through links named ffmpeg and ffprobe, acting on its arguments as FFmpeg's tools would, as the
-// audio package's own tests do.
-const (
-	// audioStandinEnv marks a process as a stand-in.
-	audioStandinEnv = "DISPATCH_AUDIO_STANDIN"
-	// audioProbeEnv is the report the stand-in ffprobe writes to stdout.
-	audioProbeEnv = "DISPATCH_AUDIO_PROBE"
-	// audioFailWindowEnv, when set, makes the window run whose first sample it names write a line
-	// to stderr and exit 1.
-	audioFailWindowEnv = "DISPATCH_AUDIO_WINDOW_FAIL"
-	// audioRunsEnv names the file each run but a version command appends its program to, a line
-	// each.
-	audioRunsEnv = "DISPATCH_AUDIO_RUNS"
-)
+// The audio stage's hermetic tests run its Splitter over stand-ins, internal/tooltest's links named
+// ffmpeg and ffprobe, acting on their arguments as FFmpeg's tools would, as the audio package's own
+// tests do; the video stage's run media's Streamer over the same stand-ins.
+
+// ffSettings are the stand-ins' settings, which both links share.
+type ffSettings struct {
+	// Probe is the report ffprobe writes to stdout.
+	Probe string `json:"probe"`
+	// FailWindow, when set, makes the window run whose first sample it names write a line to
+	// stderr and exit 1.
+	FailWindow string `json:"fail_window,omitzero"`
+	// PCMMS is how many milliseconds of PCM media's run writes to its stdout when it has an audio
+	// output, each sample its index modulo 30011.
+	PCMMS int `json:"pcm_ms,omitzero"`
+	// Frames are the frames media's run takes when it has a video output.
+	Frames []mediatest.Frame `json:"frames,omitzero"`
+	// Fail, when set, makes media's run, once it has written its output, write it to stderr and
+	// exit 1.
+	Fail string `json:"fail,omitzero"`
+	// HoldMS, when set, is how many milliseconds media's run sleeps once it has written its first
+	// frame.
+	HoldMS int `json:"hold_ms,omitzero"`
+}
+
+// ffStandins are one test's ffmpeg and ffprobe links and the settings they share.
+type ffStandins struct {
+	ffmpeg, ffprobe string
+	settings        ffSettings
+}
+
+// set changes the stand-ins' settings through change.
+func (s *ffStandins) set(t *testing.T, change func(*ffSettings)) {
+	t.Helper()
+	change(&s.settings)
+	tooltest.Set(t, s.ffmpeg, s.settings)
+	tooltest.Set(t, s.ffprobe, s.settings)
+}
+
+// runs returns the programs the stand-ins ran as, ffprobe's runs before ffmpeg's, version
+// commands aside.
+func (s *ffStandins) runs(t *testing.T) []string {
+	t.Helper()
+	var out []string
+	for _, link := range []string{s.ffprobe, s.ffmpeg} {
+		for _, r := range tooltest.Runs(t, link) {
+			if !slices.Equal(r.Args, []string{"-version"}) {
+				out = append(out, r.Program)
+			}
+		}
+	}
+	return out
+}
 
 // The stand-in's reports: ffprobe's of a 49.82 s FLAC whose audio is its second stream, after a
 // cover picture, and volumedetect's and silencedetect's of it, which plan two windows cut in the
@@ -65,34 +104,49 @@ const (
 	mp4Bytes  = "\x00\x00\x00\x14ftypisom\x00\x00\x02\x00isom\x00\x00\x00\x08moov"
 )
 
-func init() {
-	if os.Getenv(audioStandinEnv) == "1" {
-		os.Exit(audioStandin(filepath.Base(os.Args[0]), os.Args[1:]))
-	}
-}
-
 // audioWindowFilter matches a window run's filter, its first sample and the sample it ends before.
 var audioWindowFilter = regexp.MustCompile(`^aresample=16000,atrim=start_sample=(\d+):end_sample=(\d+)$`)
 
-// audioStandin is the stand-in named name, ffmpeg or ffprobe: it prints its version at 9.0.2,
-// ffprobe's report, volumedetect's and silencedetect's reports, a window's samples, each sample its
-// index in the source modulo 30011, or, for media's run, its PCM and frames, as mediaStandin does.
-func audioStandin(name string, args []string) int {
-	if len(args) == 1 && args[0] == "-version" {
-		fmt.Printf("%s version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers\n", name)
+// ffprobeStandin is the stand-in ffprobe: it prints its version at 9.0.2, or its settings' report.
+func ffprobeStandin(r tooltest.Run) int {
+	if printFFVersion(r) {
 		return 0
 	}
-	if f, err := os.OpenFile(os.Getenv(audioRunsEnv), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
-		_, _ = fmt.Fprintln(f, name)
-		_ = f.Close()
+	var settings ffSettings
+	if err := r.Settings(&settings); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
-	if name == "ffprobe" {
-		fmt.Print(os.Getenv(audioProbeEnv))
+	fmt.Print(settings.Probe)
+	return 0
+}
+
+// printFFVersion prints the stand-in's version, 9.0.2, for a version command, and reports whether
+// the run was one.
+func printFFVersion(r tooltest.Run) bool {
+	if !slices.Equal(r.Args, []string{"-version"}) {
+		return false
+	}
+	fmt.Printf("%s version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers\n", r.Program)
+	return true
+}
+
+// ffmpegStandin is the stand-in ffmpeg: it prints its version at 9.0.2, volumedetect's and
+// silencedetect's reports, a window's samples, each sample its index in the source modulo 30011,
+// or, for media's run, its PCM and frames, as mediaStandin does.
+func ffmpegStandin(r tooltest.Run) int {
+	if printFFVersion(r) {
 		return 0
 	}
+	var settings ffSettings
+	if err := r.Settings(&settings); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	args := r.Args
 	if slices.Contains(args, "-protocol_whitelist") {
 		// Only media's run allows its input's protocols.
-		return mediaStandin(args)
+		return mediaStandin(args, settings)
 	}
 	filter := args[slices.Index(args, "-af")+1]
 	switch {
@@ -108,7 +162,7 @@ func audioStandin(name string, args []string) int {
 		fmt.Fprintf(os.Stderr, "stand-in: filter %q\n", filter)
 		return 2
 	}
-	if os.Getenv(audioFailWindowEnv) == m[1] {
+	if settings.FailWindow == m[1] {
 		fmt.Fprint(os.Stderr, "[aist#0:0/pcm_s16le] Error while filtering: Cannot allocate memory\n")
 		return 1
 	}
@@ -124,72 +178,49 @@ func audioStandin(name string, args []string) int {
 	return 0
 }
 
-// standinSplitter installs the stand-ins, ffprobe reporting probe, and builds a Splitter over them.
-func standinSplitter(t *testing.T, probe string) *audio.Splitter {
+// standinSplitter links the stand-ins, ffprobe reporting probe, and builds a Splitter over them.
+func standinSplitter(t *testing.T, probe string) (*audio.Splitter, *ffStandins) {
 	t.Helper()
-	ffmpeg, ffprobe := standinTools(t, probe)
+	ffmpeg, ffprobe, standins := standinTools(t, probe)
 	s, err := audio.NewSplitter(audio.Config{FFmpeg: ffmpeg, FFprobe: ffprobe})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s
+	return s, standins
 }
 
-// standinTools links the stand-ins as ffmpeg and ffprobe in a directory of their own, makes it the
-// whole PATH, sets ffprobe's report to probe, and builds them through the exec runner.
-func standinTools(t *testing.T, probe string) (ffmpeg, ffprobe *tool.Tool) {
+// standinTools links the stand-ins as ffmpeg and ffprobe in a directory of their own, ffprobe
+// reporting probe, and builds them through the exec runner.
+func standinTools(t *testing.T, probe string) (ffmpeg, ffprobe *tool.Tool, standins *ffStandins) {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
 	dir := t.TempDir()
-	for _, name := range []string{"ffmpeg", "ffprobe"} {
-		if err := os.Symlink(exe, filepath.Join(dir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	t.Setenv("PATH", dir)
-	t.Setenv(audioStandinEnv, "1")
-	// Under -race, GORACE's atexit_sleep_ms keeps a stand-in from sleeping a second as it exits.
-	t.Setenv("GORACE", "atexit_sleep_ms=0")
-	t.Setenv(audioProbeEnv, probe)
-	t.Setenv(audioRunsEnv, filepath.Join(t.TempDir(), "runs"))
+	standins = &ffStandins{settings: ffSettings{Probe: probe}}
+	standins.ffmpeg = tooltest.Link(t, dir, "ffmpeg", standins.settings)
+	standins.ffprobe = tooltest.Link(t, dir, "ffprobe", standins.settings)
 	var tools []*tool.Tool
 	for _, spec := range []tool.Spec{audio.FFmpegSpec(), audio.FFprobeSpec()} {
+		spec.Program = filepath.Join(dir, spec.Program)
 		tl, err := tool.NewExec(t.Context(), spec)
 		if err != nil {
 			t.Fatal(err)
 		}
 		tools = append(tools, tl)
 	}
-	return tools[0], tools[1]
-}
-
-// audioRuns returns the programs the stand-ins ran as, in order, version commands aside.
-func audioRuns(t *testing.T) []string {
-	t.Helper()
-	b, err := os.ReadFile(os.Getenv(audioRunsEnv))
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strings.Fields(string(b))
+	return tools[0], tools[1], standins
 }
 
 // audioStage returns an audio stage over the stand-ins, ffprobe reporting probe, cutting two
-// windows at once.
-func audioStage(t *testing.T, probe string) *dispatch.AudioStage {
+// windows at once, and the stand-ins.
+func audioStage(t *testing.T, probe string) (*dispatch.AudioStage, *ffStandins) {
 	t.Helper()
+	splitter, standins := standinSplitter(t, probe)
 	s, err := dispatch.NewAudioStage(dispatch.AudioConfig{
-		Splitter: standinSplitter(t, probe), Version: "ffmpeg 9.0.2, ffprobe 9.0.2", Concurrency: 2,
+		Splitter: splitter, Version: "ffmpeg 9.0.2, ffprobe 9.0.2", Concurrency: 2,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return s
+	return s, standins
 }
 
 // writeInput writes content to a file named name in a directory of the test's, returning its path.
@@ -257,7 +288,8 @@ func checkStandinWAV(t *testing.T, o dispatch.Output) {
 // windows, and seams; each window follows in plan order, a WAV in the part's directory, its Meta
 // its index, count, span, cut, samples, and seams, so a caller can transcribe and join it.
 func TestAudioStage(t *testing.T) {
-	stage := audioStage(t, audioProbe)
+	t.Parallel()
+	stage, _ := audioStage(t, audioProbe)
 	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.AudioOutput {
@@ -314,11 +346,13 @@ func TestAudioStage(t *testing.T) {
 // TestAudioStageInArchive: a FLAC in a ZIP is found by the archive stage and prepared by the audio
 // stage, as any part is.
 func TestAudioStageInArchive(t *testing.T) {
+	t.Parallel()
 	zs, err := dispatch.NewArchiveStage(dispatch.ArchiveConfig{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stages := dispatch.Stages{route.Audio: audioStage(t, audioProbe), route.Archive: zs}
+	stage, _ := audioStage(t, audioProbe)
+	stages := dispatch.Stages{route.Audio: stage, route.Archive: zs}
 	d := newDispatcher(t, stages, dispatch.NewMemoryIndex())
 	path := writeInput(t, "recordings.zip", zipBytes(t, zent{name: "talks/speech.flac", body: flacBytes}))
 	events := dispatchAll(t, d, path, nil)
@@ -330,8 +364,9 @@ func TestAudioStageInArchive(t *testing.T) {
 
 // TestAudioNoProcessor: with no audio stage, as a caller with no ffmpeg and ffprobe registers,
 // an audio part is no processor yet; a video part is no processor yet with one, which takes only
-// route.Audio; and NewAudioStage refuses a config with no Splitter.
+// route.Audio; and NewAudioStage panics on a config with no Splitter, naming the field.
 func TestAudioNoProcessor(t *testing.T) {
+	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{}, dispatch.NewMemoryIndex())
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), nil)
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.NoProcessor}})
@@ -339,34 +374,37 @@ func TestAudioNoProcessor(t *testing.T) {
 		t.Errorf("reason %q, %d outputs", ev.Reason, len(ev.Outputs))
 	}
 
-	d = newDispatcher(t, dispatch.Stages{route.Audio: audioStage(t, audioProbe)}, dispatch.NewMemoryIndex())
+	stage, standins := audioStage(t, audioProbe)
+	d = newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
 	events = dispatchAll(t, d, writeInput(t, "clip.mp4", mp4Bytes), nil)
 	wantSteps(t, events, []step{{"clip.mp4", 0, dispatch.NoProcessor}})
 	if ev := events[0]; ev.Part.Route != route.Video || ev.Reason != "no stage for route video" {
 		t.Errorf("route %s, reason %q", ev.Part.Route, ev.Reason)
 	}
-	if runs := audioRuns(t); len(runs) != 0 {
+	if runs := standins.runs(t); len(runs) != 0 {
 		t.Errorf("the video part ran %q", runs)
 	}
 
-	if _, err := dispatch.NewAudioStage(dispatch.AudioConfig{Version: "ffmpeg 9.0.2, ffprobe 9.0.2"}); err == nil {
-		t.Error("an audio stage with no splitter was built")
-	}
+	wantPanic(t, "dispatch: AudioConfig.Splitter is nil", func() {
+		_, _ = dispatch.NewAudioStage(dispatch.AudioConfig{Version: "ffmpeg 9.0.2, ffprobe 9.0.2"})
+	})
 }
 
 // TestAudioNoStream: an M4A container holding no audio stream fails, its error wrapping
 // audio.ErrNoAudio, as a part a tool refuses does, after ffprobe alone ran: it has no outputs,
 // and its entry isn't recorded, so a later dispatch tries it again.
 func TestAudioNoStream(t *testing.T) {
+	t.Parallel()
 	index := dispatch.NewMemoryIndex()
-	d := newDispatcher(t, dispatch.Stages{route.Audio: audioStage(t, audioNoStream)}, index)
+	stage, standins := audioStage(t, audioNoStream)
+	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, index)
 	events := dispatchAll(t, d, writeInput(t, "silent.m4a", m4aBytes), nil)
 	wantSteps(t, events, []step{{"silent.m4a", 0, dispatch.Failed}})
 	ev := events[0]
 	if ev.Part.Route != route.Audio || !errors.Is(ev.Err, audio.ErrNoAudio) || len(ev.Outputs) != 0 {
 		t.Errorf("route %s, err %v, %d outputs; want audio, audio.ErrNoAudio, none", ev.Part.Route, ev.Err, len(ev.Outputs))
 	}
-	if runs := audioRuns(t); !slices.Equal(runs, []string{"ffprobe"}) {
+	if runs := standins.runs(t); !slices.Equal(runs, []string{"ffprobe"}) {
 		t.Errorf("runs %q, want ffprobe alone", runs)
 	}
 	if _, ok, err := index.Lookup(t.Context(), dispatch.Key{SHA256: ev.Part.SHA256, Stage: ev.Stage}); err != nil || ok {
@@ -378,8 +416,11 @@ func TestAudioNoStream(t *testing.T) {
 // its error naming the window and ffmpeg's last line, after its plan and the windows that were
 // cut.
 func TestAudioFailedWindow(t *testing.T) {
-	stage := audioStage(t, audioProbe)
-	t.Setenv(audioFailWindowEnv, strconv.Itoa(int(audioWindows[0].Start*audio.SampleRate+0.5)))
+	t.Parallel()
+	stage, standins := audioStage(t, audioProbe)
+	standins.set(t, func(s *ffSettings) {
+		s.FailWindow = strconv.Itoa(int(audioWindows[0].Start*audio.SampleRate + 0.5))
+	})
 	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex())
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), nil)
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Failed}})
@@ -402,7 +443,8 @@ func TestAudioFailedWindow(t *testing.T) {
 // defaults applied, and not its Path or the concurrency; it refuses no version, an overlap
 // audio.CheckOverlap refuses, and a negative concurrency.
 func TestAudioStageIdentity(t *testing.T) {
-	s := standinSplitter(t, audioProbe)
+	t.Parallel()
+	s, _ := standinSplitter(t, audioProbe)
 	const version = "ffmpeg 9.0.2, ffprobe 9.0.2"
 	id := func(cfg dispatch.AudioConfig) dispatch.Identity {
 		t.Helper()

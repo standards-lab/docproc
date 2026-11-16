@@ -63,14 +63,15 @@ type Converter struct {
 }
 
 // NewConverter builds a Converter over cfg's Tools, and the picture package's Converter over its
-// LibreOffice and Magick. It refuses a nil Office, and an Office whose version is older than
+// LibreOffice and Magick. A nil Office is the caller's mistake, and panics naming the field. It
+// refuses an Office whose version is older than
 // OfficeMinimum, a LibreOffice older than picture.LibreOfficeMinimum, or a Magick older than
 // picture.MagickMinimum, whatever minimum the Tool's own Spec declared, with a *tool.VersionError
 // wrapping tool.ErrTooOld. Given a Magick, the picture package's Converter runs magick's format
 // listing under ctx, and its failure is an error.
 func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
 	if cfg.Office == nil {
-		return nil, errors.New("office: no office tool")
+		panic("office: Config.Office is nil")
 	}
 	if err := atLeast(cfg.Office, OfficeMinimum); err != nil {
 		return nil, err
@@ -133,7 +134,7 @@ type Request struct {
 	// MetafileScale is the scale the document's EMF and WMF pictures are rendered at, a multiple
 	// of their size at 96 dpi: zero is picture.DefaultMetafileScale, 3, and it may be at most
 	// picture.MaxMetafileScale, 8. A negative scale, or one above picture.MaxMetafileScale, is
-	// refused before anything runs, with an error matching picture.ErrScale.
+	// refused before anything runs, with an error matching ErrRequest.
 	MetafileScale int
 }
 
@@ -161,6 +162,11 @@ type Result struct {
 	// the OOXML format it was converted to.
 	ConvertedFrom string
 }
+
+// ErrRequest is the cause of every refused request: an unknown Format, a MetafileScale out of
+// range, and an empty working directory. It is the picture package's, so a scale picture refuses
+// matches it as office's refusal.
+var ErrRequest = picture.ErrRequest
 
 // The outcomes of an office run that exits nonzero, each its exit code's; an *ExitError matches
 // its code's through errors.Is. Each is the shared exit error of every CLI this module runs, so
@@ -235,14 +241,14 @@ const stderrLimit = 1 << 20
 // rewrites its links without parsing the Markdown; every other link stays as office wrote it.
 //
 // A MetafileScale below zero or above picture.MaxMetafileScale is an error matching
-// picture.ErrScale before anything runs. A JSON
+// ErrRequest before anything runs, as are an unknown Format and an empty Dir. A JSON
 // model whose schema isn't Schema is an error matching ErrSchema, naming the schema.
 // office's exit codes 1 to 4 are an *ExitError matching the code's error. When ctx ends the run,
 // the error matches ctx's, as every Tool run's does. A conversion that fails removes its media
 // directory.
 func (c *Converter) Convert(ctx context.Context, doc io.Reader, req Request) (*Result, error) {
 	if req.Format != JSON && req.Format != Markdown {
-		return nil, fmt.Errorf("office: unknown format %v", req.Format)
+		return nil, fmt.Errorf("office: unknown format %v: %w", req.Format, ErrRequest)
 	}
 	scale, err := picture.CheckMetafileScale(req.MetafileScale)
 	if err != nil {
@@ -252,7 +258,7 @@ func (c *Converter) Convert(ctx context.Context, doc io.Reader, req Request) (*R
 		return nil, err
 	}
 	if req.Dir == "" {
-		return nil, errors.New("office: no working directory")
+		return nil, fmt.Errorf("office: no working directory: %w", ErrRequest)
 	}
 	dir, err := filepath.Abs(req.Dir)
 	if err != nil {

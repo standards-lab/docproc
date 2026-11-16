@@ -61,6 +61,9 @@ func HashConfig(v any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// ErrRequest is the cause of a refused request: a Pool's workers under 1.
+var ErrRequest = errors.New("invalid request")
+
 // The errors a stage ends with to name its outcome; a stage wraps one with its reason, which
 // becomes the event's.
 var (

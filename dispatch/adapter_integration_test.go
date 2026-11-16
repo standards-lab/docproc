@@ -49,14 +49,11 @@ func allStages(t *testing.T) dispatch.Stages {
 	}
 	of := pinned(t, office.OfficeSpec())
 
-	render, err := document.NewGhostscript(gs)
+	render, err := document.NewGhostscript(document.Config{Ghostscript: gs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prep, err := document.NewPreparer(render, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: render})
 	docs := pdfStage(t, prep, gs, inspect.Options{})
 	oc, err := office.NewConverter(t.Context(), office.Config{Office: of, LibreOffice: lo, Magick: mg})
 	if err != nil {
@@ -110,11 +107,11 @@ func allStages(t *testing.T) dispatch.Stages {
 func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect.Options) *dispatch.DocumentStage {
 	t.Helper()
 	qt, dt := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec())
-	q, err := document.NewQPDF(qt)
+	q, err := document.NewQPDF(document.Config{QPDF: qt})
 	if err != nil {
 		t.Fatal(err)
 	}
-	detach, err := document.NewDetacher(dt)
+	detach, err := document.NewDetacher(document.Config{PDFDetach: dt})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,10 +301,7 @@ func TestOneNoteStageReal(t *testing.T) {
 // reader or converter and an empty version, and hashes exactly the options that change what it
 // prepares; the vision stage is versioned by this package.
 func TestAdapterIdentities(t *testing.T) {
-	prep, err := document.NewPreparer(&pages{n: 1}, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 1}})
 	doc := func(req document.ImagesRequest) dispatch.Identity {
 		t.Helper()
 		s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "gs 10.5", Request: req})
@@ -335,23 +329,8 @@ func TestAdapterIdentities(t *testing.T) {
 		}
 	}
 
-	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Version: "gs 10.5"}); err == nil {
-		t.Error("a document stage with no preparer was built")
-	}
 	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep}); err == nil {
 		t.Error("a document stage with no version was built")
-	}
-	if _, err := dispatch.NewOfficeStage(dispatch.OfficeConfig{Version: "x"}); err == nil {
-		t.Error("an office stage with no converter was built")
-	}
-	if _, err := dispatch.NewPictureStage(dispatch.PictureConfig{Version: "x"}); err == nil {
-		t.Error("a picture stage with no converter was built")
-	}
-	if _, err := dispatch.NewEmailStage(dispatch.EmailConfig{Version: "x"}); err == nil {
-		t.Error("an email stage with no reader was built")
-	}
-	if _, err := dispatch.NewOneNoteStage(dispatch.OneNoteConfig{Version: "x"}); err == nil {
-		t.Error("a onenote stage with no reader was built")
 	}
 
 	officeTool := pinned(t, office.OfficeSpec())

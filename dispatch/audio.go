@@ -109,11 +109,12 @@ type AudioWindow struct {
 	Cut string `json:"cut"`
 }
 
-// NewAudioStage builds an AudioStage over cfg, refusing one with no Splitter or Version, an
-// Overlap audio.CheckOverlap refuses, or a negative Concurrency.
+// NewAudioStage builds an AudioStage over cfg, panicking naming Splitter when it is nil, the
+// caller's mistake, and refusing one with no Version, an Overlap audio.CheckOverlap refuses, or a
+// negative Concurrency.
 func NewAudioStage(cfg AudioConfig) (*AudioStage, error) {
 	if cfg.Splitter == nil {
-		return nil, errors.New("dispatch: audio stage: no splitter")
+		panic("dispatch: AudioConfig.Splitter is nil")
 	}
 	if cfg.Concurrency < 0 {
 		return nil, fmt.Errorf("dispatch: audio stage: concurrency %d is negative", cfg.Concurrency)

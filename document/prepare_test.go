@@ -189,25 +189,17 @@ func newFixture(t *testing.T, pages int) *fixture {
 		pdf:    []byte("%PDF-1.7 stand-in"),
 		req:    document.ImagesRequest{Dir: t.TempDir()},
 	}
-	var err error
-	f.prep, err = document.NewPreparer(f.render, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.prep = document.NewPreparer(document.Config{Renderer: f.render})
 	return f
 }
 
 // withCorrector rebuilds f's Preparer over the stand-in magick's corrections stage, and returns
-// the stand-in's run log.
-func (f *fixture) withCorrector(t *testing.T) func() [][]string {
+// the stand-in.
+func (f *fixture) withCorrector(t *testing.T) *standin {
 	t.Helper()
-	corrector, runs := standinCorrector(t)
-	var err error
-	f.prep, err = document.NewPreparer(f.render, corrector)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return runs
+	corrector, st := standinCorrector(t)
+	f.prep = document.NewPreparer(document.Config{Renderer: f.render, Corrector: corrector})
+	return st
 }
 
 // images ranges over f's stream to its end and returns what it yielded.
@@ -224,15 +216,17 @@ func (f *fixture) images(ctx context.Context) ([]document.PageImage, []error) {
 // zero reports whether p is the zero PageImage, which a stream's own error carries.
 func zero(p document.PageImage) bool { return p.Number == 0 && p.Count == 0 && p.PNG == nil }
 
-func TestNewPreparerRefusals(t *testing.T) {
-	if _, err := document.NewPreparer(nil, nil); err == nil {
-		t.Error("NewPreparer with no renderer succeeded, want an error")
-	}
+// TestNewPreparerNil: a Config with no Renderer is the caller's mistake, and panics naming the
+// field.
+func TestNewPreparerNil(t *testing.T) {
+	t.Parallel()
+	wantPanic(t, "document: Config.Renderer is nil", func() { document.NewPreparer(document.Config{}) })
 }
 
 // TestImagesLazy checks that nothing runs until the stream is ranged over: no read of the PDF, no
 // spool, no count, no render.
 func TestImagesLazy(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
 	read := false
 	pdf := readFunc(func(p []byte) (int, error) { read = true; return 0, io.EOF })
@@ -262,6 +256,7 @@ func (r readFunc) Read(p []byte) (int, error) { return r(p) }
 // TestImagesOrder checks that pages are yielded in page order, each with its own PNG, when later
 // pages finish first: page 1 is the slowest to render and page 6 the fastest.
 func TestImagesOrder(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 6)
 	f.req.Concurrency = 6
 	f.render.wait = delays(func(page int) time.Duration { return time.Duration(7-page) * 15 * time.Millisecond })
@@ -306,6 +301,7 @@ func TestImagesConcurrency(t *testing.T) {
 
 // TestImagesDPI checks the request's DPI reaches the renderer, and zero means 150.
 func TestImagesDPI(t *testing.T) {
+	t.Parallel()
 	for dpi, want := range map[int]int{0: 150, 300: 300} {
 		f := newFixture(t, 2)
 		f.req.DPI = dpi
@@ -319,6 +315,7 @@ func TestImagesDPI(t *testing.T) {
 // TestImagesFailedPage checks that a page that fails in rendering yields its number, the count,
 // no image, and its error, naming the page, and the stream carries on.
 func TestImagesFailedPage(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 5)
 	f.req.Concurrency = 2
 	renderErr := errors.New("gs: page is damaged")
@@ -349,9 +346,10 @@ func TestImagesFailedPage(t *testing.T) {
 // TestImagesCorrectFails checks that a page whose corrections fail yields its number and count
 // with an error naming the page, and the stream carries on to the next page.
 func TestImagesCorrectFails(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
-	f.withCorrector(t)
-	t.Setenv(failEnv, "magick: no decode delegate")
+	st := f.withCorrector(t)
+	st.set(func(s *settings) { s.Fail = "magick: no decode delegate" })
 	f.req.Corrections = []picture.Correction{picture.Deskew}
 	pages, errs := f.images(t.Context())
 	if len(pages) != 3 {
@@ -368,6 +366,7 @@ func TestImagesCorrectFails(t *testing.T) {
 // TestImagesCountFails checks that a failed count yields one error and ends the stream, having
 // rendered nothing and removed the spooled PDF.
 func TestImagesCountFails(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
 	f.render.countErr = errors.New("gs: not a PDF")
 	pages, errs := f.images(t.Context())
@@ -456,15 +455,16 @@ func TestImagesContextEnds(t *testing.T) {
 // TestImagesCorrections checks a request's corrections run on each page's image, one magick run a
 // page, and the corrected image is the one yielded.
 func TestImagesCorrections(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 2)
-	runs := f.withCorrector(t)
+	st := f.withCorrector(t)
 	f.req.Corrections = []picture.Correction{picture.Grayscale, picture.Deskew}
 	pages, errs := f.images(t.Context())
 	if err := errors.Join(errs...); err != nil || len(pages) != 2 {
 		t.Fatalf("the stream yielded %d pages, %v, want 2 and no error", len(pages), err)
 	}
 	want := []string{"png:-", "-deskew", "40%", "-colorspace", "Gray", "png:-"}
-	got := runs()
+	got := st.args()
 	if len(got) != 2 || !slices.Equal(got[0], want) || !slices.Equal(got[1], want) {
 		t.Errorf("magick ran %q, want two runs of %q", got, want)
 	}
@@ -479,12 +479,13 @@ func TestImagesCorrections(t *testing.T) {
 // TestImagesNoCorrectionsRunsNothing checks a request that names no corrections runs no magick,
 // even on a Preparer with a corrections stage.
 func TestImagesNoCorrectionsRunsNothing(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 2)
-	runs := f.withCorrector(t)
+	st := f.withCorrector(t)
 	if _, errs := f.images(t.Context()); errors.Join(errs...) != nil {
 		t.Fatal(errors.Join(errs...))
 	}
-	if got := runs(); len(got) != 0 {
+	if got := st.args(); len(got) != 0 {
 		t.Errorf("magick ran %q for a request with no corrections, want nothing", got)
 	}
 }
@@ -492,6 +493,7 @@ func TestImagesNoCorrectionsRunsNothing(t *testing.T) {
 // TestImagesRefusals checks the requests Images refuses before anything runs: the refusal is the
 // stream's one error, and nothing is read, spooled, or rendered.
 func TestImagesRefusals(t *testing.T) {
+	t.Parallel()
 	cases := map[string]func(*document.ImagesRequest){
 		"no directory":       func(r *document.ImagesRequest) { r.Dir = "" },
 		"negative dpi":       func(r *document.ImagesRequest) { r.DPI = -1 },
@@ -501,6 +503,7 @@ func TestImagesRefusals(t *testing.T) {
 	}
 	for name, change := range cases {
 		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t, 3)
 			dir := f.req.Dir
 			change(&f.req)
@@ -513,20 +516,14 @@ func TestImagesRefusals(t *testing.T) {
 				}
 				errs = append(errs, err)
 			}
-			if len(errs) != 1 || errs[0] == nil {
-				t.Errorf("the stream yielded %v, want one refusal", errs)
+			if len(errs) != 1 || !errors.Is(errs[0], document.ErrRequest) {
+				t.Errorf("the stream yielded %v, want one refusal matching ErrRequest", errs)
 			}
 			if read || len(f.render.spooled) != 0 {
 				t.Error("the refused request read or counted")
 			}
 			assertEmpty(t, dir)
 		})
-	}
-	// A negative DPI is a refusal of its DPI.
-	f := newFixture(t, 1)
-	f.req.DPI = -1
-	if _, errs := f.images(t.Context()); !errors.Is(errs[0], document.ErrDPI) {
-		t.Errorf("negative DPI: %v, want document.ErrDPI", errs[0])
 	}
 }
 
@@ -542,6 +539,7 @@ func (f *fixture) drain(t *testing.T, pdf io.Reader) error {
 // TestSpool checks that the PDF is spooled into the caller's directory with the reader's content,
 // a file of each call's own, and removed when the call ends.
 func TestSpool(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 2)
 	pdf, err := os.ReadFile(filepath.Join("testdata", "clean.pdf"))
 	if err != nil {
@@ -569,6 +567,7 @@ func TestSpool(t *testing.T) {
 // TestSpoolFailedRead checks that a reader that fails part way is the stream's error, and leaves
 // nothing in the caller's directory, nothing counted.
 func TestSpoolFailedRead(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 2)
 	readErr := errors.New("connection reset")
 	pdf := io.MultiReader(bytes.NewReader([]byte("%PDF-1.7")), iotest.ErrReader(readErr))
@@ -584,6 +583,7 @@ func TestSpoolFailedRead(t *testing.T) {
 // TestSpoolNoDirectory checks that the stream needs the caller's directory: an empty one is
 // refused, not taken as the system's temporary directory, and a missing one fails.
 func TestSpoolNoDirectory(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 2)
 	f.req.Dir = ""
 	if err := f.drain(t, bytes.NewReader(f.pdf)); err == nil {
@@ -610,6 +610,7 @@ func assertEmpty(t *testing.T, dir string) {
 // TestImagesText checks a request with Text reads every page's text layer into its PageImage,
 // blank or not, and renders every page as usual.
 func TestImagesText(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
 	f.req.Concurrency = 2
 	f.req.Text = true
@@ -634,8 +635,9 @@ func TestImagesText(t *testing.T) {
 // TestImagesSkipText checks a request with SkipText yields a page with a text layer with its text
 // and no image, unrendered and uncorrected, and renders and corrects a page without one.
 func TestImagesSkipText(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 4)
-	runs := f.withCorrector(t)
+	st := f.withCorrector(t)
 	f.req.Concurrency = 2
 	f.req.SkipText = true
 	f.req.Corrections = []picture.Correction{picture.Deskew}
@@ -660,7 +662,7 @@ func TestImagesSkipText(t *testing.T) {
 	if slices.Sort(r); !slices.Equal(r, []int{2, 3}) {
 		t.Errorf("rendered pages %v, want those without a text layer, 2 and 3", r)
 	}
-	if got := len(runs()); got != 2 {
+	if got := len(st.args()); got != 2 {
 		t.Errorf("magick ran %d times, want once for each of the 2 rendered pages", got)
 	}
 }
@@ -668,6 +670,7 @@ func TestImagesSkipText(t *testing.T) {
 // TestImagesTextFails checks that a page whose text fails yields its number and count with an
 // error naming the page, unrendered, and the stream carries on.
 func TestImagesTextFails(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
 	f.req.Text = true
 	textErr := errors.New("gs: /undefined in --runpdf--")
@@ -693,6 +696,7 @@ func TestImagesTextFails(t *testing.T) {
 // TestImagesRegion checks a request with a Region renders that region of every page through
 // RenderRegion, and that the stream reads its own copy of the region.
 func TestImagesRegion(t *testing.T) {
+	t.Parallel()
 	f := newFixture(t, 3)
 	region := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
 	f.req.Region = &region
@@ -717,6 +721,7 @@ func TestImagesRegion(t *testing.T) {
 // can't do, before anything runs: a Region from a renderer that is no RegionRenderer, a region out
 // of range, and Text or SkipText from one that is no TextExtractor.
 func TestImagesRefusesCapabilities(t *testing.T) {
+	t.Parallel()
 	bad := document.Region{Top: 0.5, Bottom: 0.4, Left: 0, Right: 1}
 	footer := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
 	cases := []struct {
@@ -725,23 +730,21 @@ func TestImagesRefusesCapabilities(t *testing.T) {
 		change func(*document.ImagesRequest)
 		want   error
 	}{
-		{"region out of range", false, func(r *document.ImagesRequest) { r.Region = &bad }, document.ErrRegion},
-		{"region, plain renderer", true, func(r *document.ImagesRequest) { r.Region = &footer }, nil},
-		{"text, plain renderer", true, func(r *document.ImagesRequest) { r.Text = true }, nil},
-		{"skip text, plain renderer", true, func(r *document.ImagesRequest) { r.SkipText = true }, nil},
+		{"region out of range", false, func(r *document.ImagesRequest) { r.Region = &bad }, document.ErrRequest},
+		{"region, plain renderer", true, func(r *document.ImagesRequest) { r.Region = &footer }, document.ErrRequest},
+		{"text, plain renderer", true, func(r *document.ImagesRequest) { r.Text = true }, document.ErrRequest},
+		{"skip text, plain renderer", true, func(r *document.ImagesRequest) { r.SkipText = true }, document.ErrRequest},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			f := newFixture(t, 3)
 			if tc.plain {
-				var err error
-				if f.prep, err = document.NewPreparer(plain{f.render}, nil); err != nil {
-					t.Fatal(err)
-				}
+				f.prep = document.NewPreparer(document.Config{Renderer: plain{f.render}})
 			}
 			tc.change(&f.req)
 			pages, errs := f.images(t.Context())
-			if len(errs) != 1 || errs[0] == nil || !zero(pages[0]) || (tc.want != nil && !errors.Is(errs[0], tc.want)) {
+			if len(errs) != 1 || errs[0] == nil || !zero(pages[0]) || !errors.Is(errs[0], tc.want) {
 				t.Errorf("the stream yielded %v, %v, want one refusal", pages, errs)
 			}
 			if len(f.render.spooled) != 0 {

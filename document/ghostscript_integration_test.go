@@ -24,7 +24,7 @@ func hostGhostscript(t *testing.T) (*document.Ghostscript, *tool.Tool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	g, err := document.NewGhostscript(gs)
+	g, err := document.NewGhostscript(document.Config{Ghostscript: gs})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestGhostscriptRenderHost(t *testing.T) {
 // TestGhostscriptTextHost checks the host's gs reads clean.pdf's text layer, every page of it
 // having one, and finds none on scanned.pdf's pages, their text an image, and records each clean
 // page's character and word error rates against its ground truth. A page past the last is
-// ErrPageRange.
+// ErrRequest.
 func TestGhostscriptTextHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	pdf := filepath.Join("testdata", "clean.pdf")
@@ -117,8 +117,8 @@ func TestGhostscriptTextHost(t *testing.T) {
 			t.Errorf("scanned.pdf page %d has text layer %q, want none", page, text)
 		}
 	}
-	if _, err := g.Text(t.Context(), pdf, 7); !errors.Is(err, document.ErrPageRange) {
-		t.Errorf("Text(clean.pdf page 7) of 6 pages returned %v, want document.ErrPageRange", err)
+	if _, err := g.Text(t.Context(), pdf, 7); !errors.Is(err, document.ErrRequest) {
+		t.Errorf("Text(clean.pdf page 7) of 6 pages returned %v, want document.ErrRequest", err)
 	}
 }
 

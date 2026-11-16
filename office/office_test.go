@@ -17,15 +17,23 @@ import (
 )
 
 // TestNewConverter: the constructor takes an office at or past 0.1.0, a development build's
-// version included, and refuses none at all and an older one, whatever minimum the Tool's own
-// Spec declared; the spec's own minimum refuses an older office at the Tool's construction.
+// version included, panics naming Config.Office given none, and refuses an older one, whatever
+// minimum the Tool's own Spec declared; the spec's own minimum refuses an older office at the
+// Tool's construction.
 func TestNewConverter(t *testing.T) {
-	if _, err := office.NewConverter(t.Context(), office.Config{}); err == nil {
-		t.Error("NewConverter with no office: no error")
-	}
+	t.Parallel()
+	func() {
+		defer func() {
+			if r := recover(); r != "office: Config.Office is nil" {
+				t.Errorf("NewConverter with no office: recovered %v, want the panic naming Config.Office", r)
+			}
+		}()
+		_, _ = office.NewConverter(t.Context(), office.Config{})
+		t.Error("NewConverter with no office returned")
+	}()
 
-	installStandin(t, "0.1.0+b9bb1a2")
-	tl, err := tool.NewExec(t.Context(), office.OfficeSpec())
+	ins := installStandin(t, "0.1.0+b9bb1a2")
+	tl, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,11 +44,11 @@ func TestNewConverter(t *testing.T) {
 		t.Errorf("NewConverter over 0.1.0+b9bb1a2: %v", err)
 	}
 
-	installStandin(t, "0.0.9")
-	if _, err := tool.NewExec(t.Context(), office.OfficeSpec()); !errors.Is(err, tool.ErrTooOld) {
+	ins = installStandin(t, "0.0.9")
+	if _, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec())); !errors.Is(err, tool.ErrTooOld) {
 		t.Errorf("NewExec over 0.0.9: got %v, want ErrTooOld", err)
 	}
-	lax := office.OfficeSpec()
+	lax := ins.spec(office.OfficeSpec())
 	lax.Minimum = "0.0.1"
 	old, err := tool.NewExec(t.Context(), lax)
 	if err != nil {
@@ -60,20 +68,21 @@ func TestNewConverter(t *testing.T) {
 // document spooled there, with the format and a media directory of its own made there, and
 // removes the spooled document, leaving the media directory.
 func TestConvertRun(t *testing.T) {
-	c, runs := standinConverter(t)
+	t.Parallel()
+	c, ins := standinConverter(t)
 	for _, tc := range []struct {
 		format office.Format
 		arg    string
 	}{{office.JSON, "json"}, {office.Markdown, "markdown"}} {
 		t.Run(tc.arg, func(t *testing.T) {
 			dir := t.TempDir()
-			before := len(runs())
-			t.Setenv(stdoutEnv, map[office.Format]string{office.JSON: standinDocument, office.Markdown: "# Title\n"}[tc.format])
+			before := len(ins.runs())
+			ins.set(stdoutKey, map[office.Format]string{office.JSON: standinDocument, office.Markdown: "# Title\n"}[tc.format])
 			res, err := c.Convert(t.Context(), strings.NewReader("the document"), office.Request{Dir: dir, Format: tc.format})
 			if err != nil {
 				t.Fatal(err)
 			}
-			all := runs()
+			all := ins.runs()
 			if len(all) != before+1 {
 				t.Fatalf("runs: got %d, want 1", len(all)-before)
 			}
@@ -115,7 +124,8 @@ func TestConvertRun(t *testing.T) {
 // no other's, carrying office's message without its prefix or the spooled path, and a failed
 // conversion leaves nothing in the working directory.
 func TestConvertExits(t *testing.T) {
-	c, _ := standinConverter(t)
+	t.Parallel()
+	c, ins := standinConverter(t)
 	all := []error{office.ErrMediaNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
 	for _, tc := range []struct {
 		code    string
@@ -137,9 +147,9 @@ func TestConvertExits(t *testing.T) {
 			"an unexpected System.NullReferenceException: Object reference not set"},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
-			t.Setenv(exitEnv, tc.code)
-			t.Setenv(stderrEnv, tc.stderr)
-			t.Setenv(mediaEnv, "a.png")
+			ins.set(exitKey, tc.code)
+			ins.set(stderrKey, tc.stderr)
+			ins.set(mediaKey, "a.png")
 			dir := t.TempDir()
 			res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: dir})
 			if res != nil {
@@ -174,8 +184,9 @@ func TestConvertExits(t *testing.T) {
 // TestConvertWarnings: each warning line on stderr is a warning of the result, without office's
 // prefix or the spooled path, and the conversion succeeds.
 func TestConvertWarnings(t *testing.T) {
-	c, _ := standinConverter(t)
-	t.Setenv(stderrEnv, "spike-ai-pipeline-office: warning: {path}: header reference rId9 names no header\n"+
+	t.Parallel()
+	c, ins := standinConverter(t)
+	ins.set(stderrKey, "spike-ai-pipeline-office: warning: {path}: header reference rId9 names no header\n"+
 		"spike-ai-pipeline-office: warning: {path}: sheet Hidden names no part\n")
 	res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir()})
 	if err != nil {
@@ -190,14 +201,15 @@ func TestConvertWarnings(t *testing.T) {
 // TestConvertCancel: a conversion whose context ends while office runs returns an error matching
 // the context's, never an *ExitError, and leaves nothing in the working directory.
 func TestConvertCancel(t *testing.T) {
-	c, _ := standinConverter(t)
-	t.Setenv(sleepEnv, "1")
+	t.Parallel()
+	c, ins := standinConverter(t)
+	ins.set(sleepKey, "1")
 	dir := t.TempDir()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	// The stand-in logs its run before it sleeps, so the log's existence says it is running. The
-	// poll ends with ctx, so it never outlives the test when office never runs.
-	log := os.Getenv(logEnv)
+	// The stand-in logs its run before it sleeps, ins the log's existence says it is running. The
+	// poll ends with ctx, ins it never outlives the test when office never runs.
+	log := ins.log
 	go func() {
 		for ctx.Err() == nil {
 			if _, err := os.Stat(log); err == nil {
@@ -224,18 +236,19 @@ func TestConvertCancel(t *testing.T) {
 }
 
 // TestConvertRefuses: a request with no working directory, or a format that is none, is refused
-// before office runs.
+// with ErrRequest before office runs.
 func TestConvertRefuses(t *testing.T) {
-	c, runs := standinConverter(t)
+	t.Parallel()
+	c, ins := standinConverter(t)
 	for name, req := range map[string]office.Request{
 		"no directory": {},
 		"format":       {Dir: t.TempDir(), Format: office.Format(7)},
 	} {
-		if _, err := c.Convert(t.Context(), strings.NewReader("doc"), req); err == nil {
-			t.Errorf("%s: no error", name)
+		if _, err := c.Convert(t.Context(), strings.NewReader("doc"), req); !errors.Is(err, office.ErrRequest) {
+			t.Errorf("%s: got %v, want ErrRequest", name, err)
 		}
 	}
-	if n := len(runs()); n != 0 {
+	if n := len(ins.runs()); n != 0 {
 		t.Errorf("office ran %d times, want none", n)
 	}
 }
@@ -245,8 +258,9 @@ func TestConvertRefuses(t *testing.T) {
 // alike. Without converters, an EMF or WMF has no file handed onward, and every other file is
 // handed on as stored, not converted.
 func TestConvertMedia(t *testing.T) {
-	c, _ := standinConverter(t)
-	t.Setenv(mediaEnv, "b.emf,a.png,c.WMF,d.jpeg,e.bin")
+	t.Parallel()
+	c, ins := standinConverter(t)
+	ins.set(mediaKey, "b.emf,a.png,c.WMF,d.jpeg,e.bin")
 	for _, format := range []office.Format{office.JSON, office.Markdown} {
 		res, err := c.Convert(t.Context(), strings.NewReader("doc"), office.Request{Dir: t.TempDir(), Format: format})
 		if err != nil {

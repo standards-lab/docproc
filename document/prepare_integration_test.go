@@ -18,10 +18,7 @@ import (
 func TestImagesHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	c, _ := hostCorrector(t)
-	p, err := document.NewPreparer(g, c)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := document.NewPreparer(document.Config{Renderer: g, Corrector: c})
 	for name, corrections := range map[string][]picture.Correction{"none": nil, "all": all} {
 		t.Run(name, func(t *testing.T) {
 			req := document.ImagesRequest{Dir: t.TempDir(), Corrections: corrections, Concurrency: 4}
@@ -59,10 +56,7 @@ func TestImagesHost(t *testing.T) {
 // that band of the page.
 func TestImagesTextLayerHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p, err := document.NewPreparer(g, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := document.NewPreparer(document.Config{Renderer: g})
 	footer := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
 	for _, tc := range []struct {
 		set    string

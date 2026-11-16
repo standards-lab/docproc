@@ -1,6 +1,12 @@
 # golangci-lint v2 configuration, run per module by `mise run check`.
 version: "2"
 
+# The integration tier's files, under the integration build tag, are linted with the unit tier's:
+# a file of either tier builds under the tag, so one run covers both.
+run:
+  build-tags:
+    - integration
+
 linters:
   # The standard set (errcheck, govet, ineffassign, staticcheck, unused),
   # plus depguard, which holds the module to its allowed imports, and

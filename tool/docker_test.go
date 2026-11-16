@@ -4,7 +4,6 @@ package tool_test
 
 import (
 	"bufio"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,24 +15,27 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// dockerDirEnv names the stand-in docker's state directory. It holds calls, every command line the
-// stand-in was given, one JSON array a line; images, the references present, one a line; and
-// NAME.pid, the pid of the running container NAME.
-const dockerDirEnv = "TOOL_TEST_DOCKER_DIR"
+// dockerSettings are the stand-in docker's settings: its daemon's version, empty for a daemon the
+// CLI can't reach.
+type dockerSettings struct {
+	Server string `json:"server"`
+}
 
-// dockerServerEnv is the stand-in daemon's version; empty is a daemon the CLI can't reach.
-const dockerServerEnv = "TOOL_TEST_DOCKER_SERVER"
-
-// dockerStandin is the stand-in docker CLI. It records its arguments, then answers:
+// dockerStandin is the stand-in docker CLI, its link's run log recording every command line it is
+// given. Its state directory is its link's: images, the references present, one a line; and
+// NAME.pid, the pid of the running container NAME. It answers:
 //
 //	version --format=F            the daemon's version, or exits 1 when it can't reach one
 //	image inspect --format=F REF  exits 0 when REF is present, 1 when it isn't
 //	pull REF                      makes REF present
 //	run FLAGS... REF ARGS...      runs the stand-in tool on ARGS as the container, in a process
 //	                              group of its own as a daemon's container would be, in
-//	                              --workdir, with the CLI's stdin only with --interactive; exits
+//	                              --workdir, with the CLI's stdin only with --interactive,
+//	                              through the standin link beside it; exits
 //	                              125 when REF isn't present and 127 when --entrypoint isn't
 //	                              standin, else with the container's exit, 128 and the signal
 //	                              when one ended it
@@ -43,12 +45,13 @@ const dockerServerEnv = "TOOL_TEST_DOCKER_SERVER"
 //
 // The CLI catches SIGTERM and does nothing with it: a runner that relied on the CLI's forwarding
 // would never stop its container.
-func dockerStandin(args []string) int {
-	dir := os.Getenv(dockerDirEnv)
-	if err := recordCall(dir, args); err != nil {
+func dockerStandin(r tooltest.Run) int {
+	var settings dockerSettings
+	if err := r.Settings(&settings); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
+	dir, args := filepath.Dir(r.Link), r.Args
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "docker: no command")
 		return 2
@@ -56,7 +59,7 @@ func dockerStandin(args []string) int {
 	last := args[len(args)-1]
 	switch args[0] {
 	case "version":
-		server := os.Getenv(dockerServerEnv)
+		server := settings.Server
 		if server == "" {
 			fmt.Fprintln(os.Stderr, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?")
 			return 1
@@ -119,12 +122,7 @@ func dockerRun(dir string, args []string) int {
 		return 127
 	}
 	signal.Notify(make(chan os.Signal, 1), syscall.SIGTERM)
-	exe, err := os.Executable()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	container := exec.Command(exe, rest...)
+	container := exec.Command(filepath.Join(dir, "standin"), rest...)
 	container.Dir = workdir
 	if interactive {
 		container.Stdin = os.Stdin
@@ -140,7 +138,7 @@ func dockerRun(dir string, args []string) int {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}
-	err = container.Wait()
+	err := container.Wait()
 	_ = os.Remove(pidFile)
 	if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok && status.Signaled() {
@@ -193,15 +191,6 @@ func awaitGone(pid int, d time.Duration) bool {
 	}
 }
 
-// recordCall appends args to the state directory's calls, one JSON array.
-func recordCall(dir string, args []string) error {
-	b, err := json.Marshal(args)
-	if err != nil {
-		return err
-	}
-	return appendLine(filepath.Join(dir, "calls"), string(b))
-}
-
 // appendLine appends line and a newline to file, in one write.
 func appendLine(file, line string) error {
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
@@ -240,16 +229,18 @@ func writeFileAtomic(file, content string) error {
 	return os.Rename(tmp, file)
 }
 
-// installDocker installs the stand-ins, gives the stand-in docker a state directory of its own
-// and a daemon at version server, empty for one it can't reach, and returns the directory.
+// installDocker installs the stand-ins, gives the stand-in docker a daemon at version server,
+// empty for one it can't reach, and returns their directory, the stand-in docker's state
+// directory.
 func installDocker(t *testing.T, server string) string {
 	t.Helper()
-	installStandin(t)
-	dir := t.TempDir()
-	t.Setenv(dockerDirEnv, dir)
-	t.Setenv(dockerServerEnv, server)
+	dir := filepath.Dir(installStandin(t))
+	tooltest.Set(t, dockerLink(dir), dockerSettings{Server: server})
 	return dir
 }
+
+// dockerLink returns the stand-in docker's path in dir, the directory installDocker returned.
+func dockerLink(dir string) string { return filepath.Join(dir, "docker") }
 
 // addImage makes ref present to the stand-in docker whose state is in dir.
 func addImage(t *testing.T, dir, ref string) {
@@ -259,21 +250,14 @@ func addImage(t *testing.T, dir, ref string) {
 	}
 }
 
-// dockerCalls returns the stand-in docker's recorded command lines whose command is command.
+// dockerCalls returns the stand-in docker's command lines, as its run log holds them, whose
+// command is command.
 func dockerCalls(t *testing.T, dir, command string) [][]string {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(dir, "calls"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		t.Fatal(err)
-	}
 	var calls [][]string
-	for line := range strings.Lines(string(b)) {
-		var args []string
-		if err := json.Unmarshal([]byte(line), &args); err != nil {
-			t.Fatalf("calls line %q: %v", line, err)
-		}
-		if len(args) > 0 && args[0] == command {
-			calls = append(calls, args)
+	for _, r := range tooltest.Runs(t, dockerLink(dir)) {
+		if len(r.Args) > 0 && r.Args[0] == command {
+			calls = append(calls, r.Args)
 		}
 	}
 	return calls

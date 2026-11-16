@@ -601,8 +601,9 @@ func TestThreadsRecords(t *testing.T) {
 
 // TestThreadsStandin: Threads takes a Stream's Records whole.
 func TestThreadsStandin(t *testing.T) {
-	r, _ := standinReader(t)
-	t.Setenv(stdoutEnv, `{"line":"store","schema":"1","format":"pst"}
+	t.Parallel()
+	r, mail := standinReader(t)
+	mail.stdout(`{"line":"store","schema":"1","format":"pst"}
 {"line":"folder","id":32802}
 {"line":"message","id":2097156,"folder":32802,"subject":"Hello","message_id":"<a@x>","submit_time":"2026-01-12T14:15:00Z"}
 {"line":"folder","id":32866,"parent":32802}

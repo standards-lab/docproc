@@ -113,6 +113,7 @@ func own(dir string) string { return regexp.QuoteMeta(dir) + `/picture-[^/]+/[0-
 // SHA-256 and .png, computed when the name isn't it; the original is kept, and the copy's
 // directory removed.
 func TestConvertTIFF(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc, content, name, ext string
 	}{
@@ -121,7 +122,8 @@ func TestConvertTIFF(t *testing.T) {
 		{"named otherwise", tiffLE, "scan.dat", ""},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, false, true)
+			t.Parallel()
+			c, st := standinConverter(t, false, true)
 			path := writePicture(t, tc.content, tc.name, tc.ext)
 			dir := t.TempDir()
 			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path})
@@ -139,7 +141,7 @@ func TestConvertTIFF(t *testing.T) {
 			if got := entries(t, dir); !slices.Equal(got, []string{stem + ".png"}) {
 				t.Errorf("working directory holds %q, want the PNG alone", got)
 			}
-			all := runs()
+			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"magick"}) {
 				t.Fatalf("runs: got %q, want magick alone", got)
 			}
@@ -159,12 +161,14 @@ func TestConvertTIFF(t *testing.T) {
 // magick run, at 150 dpi through the rsvg coder, flattened onto white, and written as PNG
 // without the run's time. The PNG is named by the SVG's SHA-256 and .png.
 func TestConvertSVG(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct{ desc, name string }{
 		{"named by its SHA-256, .svg", sha(svgData) + ".svg"},
 		{"named .xml", "diagram.xml"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, false, true)
+			t.Parallel()
+			c, st := standinConverter(t, false, true)
 			path := writePicture(t, svgData, tc.name, "")
 			// A file beside the original, which an SVG's relative reference would name, isn't
 			// copied with it.
@@ -184,7 +188,7 @@ func TestConvertSVG(t *testing.T) {
 				t.Errorf("PNG holds %q, %v", b, err)
 			}
 			unchanged(t, path, svgData)
-			all := runs()
+			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"magick"}) {
 				t.Fatalf("runs: got %q, want magick alone", got)
 			}
@@ -207,6 +211,7 @@ func TestConvertSVG(t *testing.T) {
 // through magick. The PNG is the working directory's file named by the picture's SHA-256 and
 // .png, and the original is kept.
 func TestConvertMetafile(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc, content, name, ext, kind string
 		scale, width, height           int
@@ -217,7 +222,8 @@ func TestConvertMetafile(t *testing.T) {
 		{"EMF at the largest scale", emfData(), "", "", ".emf", picture.MaxMetafileScale, 6352, 8984},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, true, true)
+			t.Parallel()
+			c, st := standinConverter(t, true, true)
 			path := writePicture(t, tc.content, tc.name, tc.ext)
 			dir := t.TempDir()
 			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path, MetafileScale: tc.scale})
@@ -235,7 +241,7 @@ func TestConvertMetafile(t *testing.T) {
 			if got := entries(t, dir); !slices.Equal(got, []string{stem + ".png"}) {
 				t.Errorf("working directory holds %q, want the PNG alone", got)
 			}
-			all := runs()
+			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"soffice", "magick"}) {
 				t.Fatalf("runs: got %q, want soffice and magick", got)
 			}
@@ -266,8 +272,9 @@ func TestConvertMetafile(t *testing.T) {
 // TestConvertRefused: content of no converted kind, a picture whose converter the Converter
 // wasn't given, a scale out of range, no working directory, and a missing file are each an error
 // before anything runs, leaving the working directory empty; a missing converter's matches
-// ErrNoLibreOffice or ErrNoMagick, and a scale's ErrScale.
+// ErrNoLibreOffice or ErrNoMagick, and a scale's ErrRequest.
 func TestConvertRefused(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		desc                string
 		libreoffice, magick bool
@@ -286,11 +293,11 @@ func TestConvertRefused(t *testing.T) {
 		{"a scale above 8", true, true, emfData(),
 			func(dir, path string) picture.Request {
 				return picture.Request{Dir: dir, Path: path, MetafileScale: 9}
-			}, picture.ErrScale, "picture: metafile scale 9 isn't from 1 to 8"},
+			}, picture.ErrRequest, "picture: metafile scale 9 isn't from 1 to 8"},
 		{"a scale below 0", true, true, tiffLE,
 			func(dir, path string) picture.Request {
 				return picture.Request{Dir: dir, Path: path, MetafileScale: -1}
-			}, picture.ErrScale, "picture: metafile scale -1 isn't from 1 to 8"},
+			}, picture.ErrRequest, "picture: metafile scale -1 isn't from 1 to 8"},
 		{"no working directory", true, true, tiffLE,
 			func(_, path string) picture.Request { return picture.Request{Path: path} },
 			nil, "picture: no working directory"},
@@ -300,7 +307,8 @@ func TestConvertRefused(t *testing.T) {
 			}, os.ErrNotExist, "picture: open "},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, tc.libreoffice, tc.magick)
+			t.Parallel()
+			c, st := standinConverter(t, tc.libreoffice, tc.magick)
 			path := writePicture(t, tc.content, "", "")
 			dir := t.TempDir()
 			req := picture.Request{Dir: dir, Path: path}
@@ -314,7 +322,7 @@ func TestConvertRefused(t *testing.T) {
 			if tc.is != nil && !errors.Is(err, tc.is) {
 				t.Errorf("error %v doesn't match %v", err, tc.is)
 			}
-			if got := runs(); len(got) != 0 {
+			if got := st.runs(); len(got) != 0 {
 				t.Errorf("runs: got %q, want none", programs(got))
 			}
 			if got := entries(t, dir); len(got) != 0 {
@@ -330,37 +338,37 @@ func TestConvertRefused(t *testing.T) {
 // message or the picture's copied name, its SHA-256 and kind, and leave nothing in the working
 // directory and the original as it was.
 func TestConvertFails(t *testing.T) {
+	t.Parallel()
 	emf := emfData()
 	for _, tc := range []struct {
 		desc    string
 		content string
-		env     map[string]string
+		set     func(*settings)
 		want    string
 	}{
 		{"soffice exits 1", emf,
-			map[string]string{sofficeFailEnv: "Error: source file could not be loaded\n"},
+			func(s *settings) { s.SofficeFail = "Error: source file could not be loaded\n" },
 			"picture: libreoffice: tool: soffice: exit code 1: Error: source file could not be loaded"},
 		{"soffice writes nothing", emf,
-			map[string]string{sofficeNothingEnv: "1"},
+			func(s *settings) { s.SofficeNothing = true },
 			"picture: libreoffice: " + sha(emf) + ".emf: no PNG written"},
 		{"the trim exits 1", emf,
-			map[string]string{failEnv: "magick: insufficient image data\n"},
+			func(s *settings) { s.Fail = "magick: insufficient image data\n" },
 			"picture: magick: " + sha(emf) + ".emf: tool: magick: exit code 1: magick: insufficient image data"},
 		{"magick exits 1 on a TIFF", tiffLE,
-			map[string]string{failEnv: "magick: improper image header\n"},
+			func(s *settings) { s.Fail = "magick: improper image header\n" },
 			"picture: magick: " + sha(tiffLE) + ".tiff: tool: magick: exit code 1: magick: improper image header"},
 		{"magick exits 1 on an SVG", svgData,
-			map[string]string{failEnv: "magick: unable to read image data\n"},
+			func(s *settings) { s.Fail = "magick: unable to read image data\n" },
 			"picture: magick: " + sha(svgData) + ".svg: tool: magick: exit code 1: magick: unable to read image data"},
 		{"magick writes no PNG", tiffLE,
-			map[string]string{rawEnv: "1"},
+			func(s *settings) { s.Raw = true },
 			"picture: magick: " + sha(tiffLE) + ".tiff: " + sha(tiffLE) + ".png isn't a PNG"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, _ := standinConverter(t, true, true)
-			for k, v := range tc.env {
-				t.Setenv(k, v)
-			}
+			t.Parallel()
+			c, st := standinConverter(t, true, true)
+			st.set(tc.set)
 			path := writePicture(t, tc.content, "", "")
 			dir := t.TempDir()
 			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path})
@@ -384,7 +392,8 @@ func TestConvertFails(t *testing.T) {
 // batch, under its PNG's stem; each PNG is written to its Picture's PNG, anywhere the caller
 // names, and only the PNGs are left.
 func TestConvertBatch(t *testing.T) {
-	c, runs := standinConverter(t, true, true)
+	t.Parallel()
+	c, st := standinConverter(t, true, true)
 	dir := t.TempDir()
 	out := t.TempDir()
 	src := t.TempDir()
@@ -427,7 +436,7 @@ func TestConvertBatch(t *testing.T) {
 	if got, want := entries(t, out), []string{"a1.png", "b2.png", "c3.png", "d4.png", "e5.png"}; !slices.Equal(got, want) {
 		t.Errorf("PNG directory holds %q, want %q", got, want)
 	}
-	all := runs()
+	all := st.runs()
 	if got, want := programs(all), []string{"magick", "magick", "magick", "soffice", "magick", "magick"}; !slices.Equal(got, want) {
 		t.Fatalf("runs: got %q, want %q", got, want)
 	}
@@ -459,6 +468,7 @@ func TestConvertBatch(t *testing.T) {
 // stem, and a picture whose converter is missing are each an error before anything runs; an
 // empty batch runs nothing and succeeds.
 func TestConvertBatchRefused(t *testing.T) {
+	t.Parallel()
 	src := t.TempDir()
 	path := filepath.Join(src, "a.tiff")
 	if err := os.WriteFile(path, []byte(tiffLE), 0o600); err != nil {
@@ -483,7 +493,8 @@ func TestConvertBatchRefused(t *testing.T) {
 			picture.ErrNoMagick, "picture: a.tiff is a TIFF picture: no magick converter"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, runs := standinConverter(t, false, tc.magick)
+			t.Parallel()
+			c, st := standinConverter(t, false, tc.magick)
 			dir := t.TempDir()
 			err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir, Pictures: tc.pictures})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
@@ -492,7 +503,7 @@ func TestConvertBatchRefused(t *testing.T) {
 			if tc.is != nil && !errors.Is(err, tc.is) {
 				t.Errorf("error %v doesn't match %v", err, tc.is)
 			}
-			if got := runs(); len(got) != 0 {
+			if got := st.runs(); len(got) != 0 {
 				t.Errorf("runs: got %q, want none", programs(got))
 			}
 			if got := entries(t, dir); len(got) != 0 {
@@ -501,12 +512,13 @@ func TestConvertBatchRefused(t *testing.T) {
 		})
 	}
 	t.Run("empty", func(t *testing.T) {
-		c, runs := standinConverter(t, false, false)
+		t.Parallel()
+		c, st := standinConverter(t, false, false)
 		dir := t.TempDir()
 		if err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir}); err != nil {
 			t.Fatal(err)
 		}
-		if got := runs(); len(got) != 0 {
+		if got := st.runs(); len(got) != 0 {
 			t.Errorf("runs: got %q, want none", programs(got))
 		}
 		if got := entries(t, dir); len(got) != 0 {
@@ -518,8 +530,9 @@ func TestConvertBatchRefused(t *testing.T) {
 // TestConvertBatchFailsRemovesPNGs: a batch whose metafile fails after its TIFF's PNG was
 // written removes that PNG too, so a failed batch leaves no PNG of its own.
 func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
-	c, _ := standinConverter(t, true, true)
-	t.Setenv(sofficeNothingEnv, "1")
+	t.Parallel()
+	c, st := standinConverter(t, true, true)
+	st.set(func(s *settings) { s.SofficeNothing = true })
 	src, out := t.TempDir(), t.TempDir()
 	tiff, emf := filepath.Join(src, "a.tiff"), filepath.Join(src, "b.emf")
 	for path, content := range map[string]string{tiff: tiffLE, emf: emfData()} {
@@ -540,16 +553,17 @@ func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
 }
 
 // TestCheckMetafileScale: zero is the default, 3; 1 to 8 are themselves; below zero and above 8
-// are refused with ErrScale.
+// are refused with ErrRequest.
 func TestCheckMetafileScale(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[int]int{0: 3, 1: 1, 5: 5, 8: 8} {
 		if got, err := picture.CheckMetafileScale(in); err != nil || got != want {
 			t.Errorf("CheckMetafileScale(%d) = %d, %v, want %d", in, got, err, want)
 		}
 	}
 	for _, in := range []int{-1, 9} {
-		if _, err := picture.CheckMetafileScale(in); !errors.Is(err, picture.ErrScale) {
-			t.Errorf("CheckMetafileScale(%d) returned %v, want ErrScale", in, err)
+		if _, err := picture.CheckMetafileScale(in); !errors.Is(err, picture.ErrRequest) {
+			t.Errorf("CheckMetafileScale(%d) returned %v, want ErrRequest", in, err)
 		}
 	}
 }
@@ -558,10 +572,11 @@ func TestCheckMetafileScale(t *testing.T) {
 // 24.2, whatever their Specs declared, with a *tool.VersionError wrapping ErrTooOld; with no
 // Tools it builds a Converter that refuses every picture.
 func TestNewConverterVersion(t *testing.T) {
-	installStandin(t, "7.0.11-14")
+	t.Parallel()
+	st := newStandins(t, "7.0.11-14", func(s *settings) { s.SofficeVersion = "7.6.4.1" })
 	lenient := picture.MagickSpec()
 	lenient.Minimum = "6"
-	mg, err := tool.NewExec(t.Context(), lenient)
+	mg, err := st.tool(lenient)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -569,10 +584,9 @@ func TestNewConverterVersion(t *testing.T) {
 	if _, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg}); !errors.As(err, &verr) || verr.Minimum != picture.MagickMinimum || !errors.Is(err, tool.ErrTooOld) {
 		t.Errorf("NewConverter over magick 7.0.11-14 returned %v, want a VersionError of minimum %s", err, picture.MagickMinimum)
 	}
-	t.Setenv(sofficeVersionEnv, "7.6.4.1")
 	lo := picture.LibreOfficeSpec()
 	lo.Minimum = "7"
-	so, err := tool.NewExec(t.Context(), lo)
+	so, err := st.tool(lo)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,8 +606,8 @@ func TestNewConverterVersion(t *testing.T) {
 // TestLibreOfficeSpec: LibreOfficeSpec reads soffice's version past the noise its desktop
 // libraries write.
 func TestLibreOfficeSpec(t *testing.T) {
-	installStandin(t, "7.1.2-34")
-	so, err := tool.NewExec(t.Context(), picture.LibreOfficeSpec())
+	t.Parallel()
+	so, err := newStandins(t, "7.1.2-34").tool(picture.LibreOfficeSpec())
 	if err != nil || so.Version().String() != "26.8.1.1" {
 		t.Errorf("NewExec(LibreOfficeSpec()) = %v, %v; want soffice 26.8.1.1", so, err)
 	}

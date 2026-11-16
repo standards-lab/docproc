@@ -21,9 +21,11 @@ import (
 // range, or given a mail older than MailAfterMinimum, is refused before anything runs, the
 // latter with a VersionError naming MailAfterMinimum; the same mail without After reads.
 func TestReadAfter(t *testing.T) {
+	t.Parallel()
 	t.Run("0.3.0", func(t *testing.T) {
-		runs := installStandin(t, "0.3.0")
-		tl, err := tool.NewExec(t.Context(), email.MailSpec())
+		t.Parallel()
+		mail := installStandin(t, "0.3.0")
+		tl, err := tool.NewExec(t.Context(), mail.spec())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -49,19 +51,20 @@ func TestReadAfter(t *testing.T) {
 			{"--after", "4294967295", input},
 			{input},
 		}
-		if got := runs(); !reflect.DeepEqual(got, want) {
+		if got := mail.runs(); !reflect.DeepEqual(got, want) {
 			t.Errorf("runs %q, want %q", got, want)
 		}
 		_, err = r.Read(t.Context(), email.Request{Input: input, After: math.MaxUint32 + 1})
 		if !errors.Is(err, email.ErrRequest) {
 			t.Errorf("after past mail's range: %v, want ErrRequest", err)
 		}
-		if got := len(runs()); got != len(want) {
+		if got := len(mail.runs()); got != len(want) {
 			t.Errorf("%d runs, want %d: the refused request ran", got, len(want))
 		}
 	})
 	t.Run("0.2.0", func(t *testing.T) {
-		r, runs := standinReader(t)
+		t.Parallel()
+		r, mail := standinReader(t)
 		input := filepath.Join(t.TempDir(), "store.pst")
 		_, err := r.Read(t.Context(), email.Request{Input: input, After: 5})
 		var verr *tool.VersionError
@@ -69,7 +72,7 @@ func TestReadAfter(t *testing.T) {
 			verr.Found != "0.2.0" || verr.Minimum != email.MailAfterMinimum {
 			t.Fatalf("after on mail 0.2.0: %v, want ErrRequest and a VersionError under %s", err, email.MailAfterMinimum)
 		}
-		if got := runs(); len(got) != 0 {
+		if got := mail.runs(); len(got) != 0 {
 			t.Errorf("runs %q, want none", got)
 		}
 		if _, err := collect(r.Read(t.Context(), email.Request{Input: input})); err != nil {

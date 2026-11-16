@@ -205,14 +205,11 @@ func attachedPDF(t *testing.T, name string, content []byte) []byte {
 // check pdf-attachment-bomb and its outcome quarantined, and nothing of it is left.
 func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	gs := pinned(t, document.GhostscriptSpec())
-	render, err := document.NewGhostscript(gs)
+	render, err := document.NewGhostscript(document.Config{Ghostscript: gs})
 	if err != nil {
 		t.Fatal(err)
 	}
-	prep, err := document.NewPreparer(render, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	prep := document.NewPreparer(document.Config{Renderer: render})
 	pdf := input(t, "zeros.pdf", string(attachedPDF(t, "zeros.bin", make([]byte, 8<<20))))
 
 	d, work := newDispatcherIn(t, dispatch.Stages{route.Document: pdfStage(t, prep, gs, inspect.Options{})})

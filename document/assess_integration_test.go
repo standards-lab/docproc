@@ -26,7 +26,7 @@ func hostCorrector(t *testing.T) (*picture.Corrector, *tool.Tool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := picture.NewCorrector(magick)
+	c, err := picture.NewCorrector(picture.Config{Magick: magick})
 	if err != nil {
 		t.Fatal(err)
 	}
