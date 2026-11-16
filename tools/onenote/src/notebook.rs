@@ -6,24 +6,27 @@
 //! onenote_parser drops three kinds of entry from a notebook, and the CLI says what it can of
 //! each:
 //! - a section that fails to parse it reports as a notebook warning, which the CLI turns into a
-//!   skipped line and a warning. The parser keeps no place for it among the entries, so the
-//!   skipped lines follow them. A section that fails inside a section group isn't reported at
+//!   skipped line and a warning, the section's file scanned for an encryption key first, so an
+//!   encrypted section is skipped as one. The parser keeps no place for it among the entries, so
+//!   the skipped lines follow them. A section that fails inside a section group isn't reported at
 //!   all: the parser discards the group's report.
 //! - the recycle bin it drops without a word, so the CLI looks for it itself: a
 //!   OneNote_RecycleBin entry beside the .onetoc2, in the directory or in the cabinet.
 //! - an entry whose file is missing it drops without a word too, and the CLI can't tell: the
 //!   table of contents' entries aren't public, and a package's file system, where they could
-//!   be watched, is the parser's own.
+//!   be watched, is the parser's own. A notebook read that reads no entry at all is warned of
+//!   at `/`, so a table of contents read away from its sections is never a silent empty read.
 
 use std::fs::File;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use docproc_envelope::{Fault, Lines, Media, guarded};
 use onenote_parser::Parser;
 use onenote_parser::notebook::Notebook;
 use onenote_parser::section::SectionEntry;
 
+use crate::encryption;
 use crate::model::{self, SCHEMA};
 use crate::section::{self, hex, place, typed};
 use crate::warn;
@@ -35,6 +38,11 @@ const RECYCLE_BIN: &str = "OneNote_RecycleBin";
 /// to import section <path>: <reason>", the path its .onetoc2's directory joined with the
 /// entry's name.
 const FAILED_SECTION: &str = "failed to import section ";
+
+/// The warning, at `/`, of a notebook read that reads no section or section group: its table of
+/// contents lists none, or none it lists could be read, the parser dropping a missing one
+/// without a word, as when a .onetoc2 is read away from its sections.
+const NO_ENTRY: &str = "no section or section group is read";
 
 /// Reads the notebook whose table of contents is the .onetoc2 at `toc`, named for the directory
 /// it is in.
@@ -53,6 +61,7 @@ pub fn read(toc: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Resul
         // The parser joins the entries' names to its path's parent, as given.
         toc_dir: typed(toc_dir).to_string_lossy().into_owned(),
         recycle_bin: dir.join(RECYCLE_BIN).exists(),
+        sections: Sections::Directory(dir.to_path_buf()),
     };
     read.write(&notebook, media, out)
 }
@@ -79,6 +88,14 @@ pub fn read_package(
         .map_err(|err| Fault::Refused(format!("its cabinet can't be listed: {err}")))?;
     let entries: Vec<Vec<&str>> = names.iter().map(|name| components(name)).collect();
     let toc_dir = package_toc_dir(&entries).unwrap_or_default();
+    // Each cabinet entry beside the .onetoc2, by the name the parser gives its section, with the
+    // name the cabinet stores it under.
+    let beside = names
+        .iter()
+        .zip(&entries)
+        .filter(|(_, entry)| entry.len() == toc_dir.len() + 1 && entry.starts_with(&toc_dir))
+        .map(|(name, entry)| (entry[toc_dir.len()].to_owned(), name.clone()))
+        .collect();
     let read = Read {
         input: "package",
         name: path
@@ -88,6 +105,10 @@ pub fn read_package(
             .into_owned(),
         toc_dir: toc_dir.join("/"),
         recycle_bin: holds_recycle_bin(&entries, &toc_dir),
+        sections: Sections::Package {
+            path: path.to_path_buf(),
+            beside,
+        },
     };
     read.write(&notebook, media, out)
 }
@@ -101,6 +122,39 @@ struct Read {
     toc_dir: String,
     /// Whether a recycle bin is beside the .onetoc2.
     recycle_bin: bool,
+    /// Where the sections beside the .onetoc2 are, for the encryption scan of one that failed.
+    sections: Sections,
+}
+
+/// Where a notebook's sections are read from.
+enum Sections {
+    /// The directory of the .onetoc2.
+    Directory(PathBuf),
+    /// The .onepkg at `path`, whose entries beside the .onetoc2 `beside` names: each by its
+    /// section's name, then its stored name.
+    Package {
+        path: PathBuf,
+        beside: Vec<(String, String)>,
+    },
+}
+
+impl Sections {
+    /// Whether the section `name` beside the .onetoc2 holds 2.5.19's encryption key. One that
+    /// can't be found or read again is taken not to.
+    fn encrypted(&self, name: &str) -> bool {
+        let scanned = match self {
+            Sections::Directory(dir) => File::open(dir.join(name)).and_then(encryption::holds_key),
+            Sections::Package { path, beside } => {
+                let Some((_, stored)) = beside.iter().find(|(section, _)| section == name) else {
+                    return false;
+                };
+                File::open(path)
+                    .and_then(cab::Cabinet::new)
+                    .and_then(|mut cabinet| encryption::holds_key(cabinet.read_file(stored)?))
+            }
+        };
+        scanned.unwrap_or(false)
+    }
 }
 
 impl Read {
@@ -131,6 +185,13 @@ impl Read {
         for warning in notebook.report().warnings() {
             match failed_section(warning.message(), &self.toc_dir) {
                 Some((name, reason)) => {
+                    // Scanned only now, after its parse failed.
+                    let encrypted = self.sections.encrypted(name);
+                    let reason = if encrypted {
+                        encryption::REASON
+                    } else {
+                        reason
+                    };
                     warn(
                         &place(&[name.to_owned()]),
                         &format!("the section is skipped: {reason}"),
@@ -140,12 +201,15 @@ impl Read {
                         kind: "section",
                         name: name.to_owned(),
                         reason: reason.to_owned(),
-                        encrypted: false,
+                        encrypted,
                     })
                     .map_err(Fault::Output)?;
                 }
                 None => warn("/", warning.message()),
             }
+        }
+        if notebook.entries().is_empty() {
+            warn("/", NO_ENTRY);
         }
         Ok(())
     }

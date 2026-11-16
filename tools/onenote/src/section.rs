@@ -1,6 +1,7 @@
 //! A section: its section line and its page lines, read through onenote_parser at each page's
 //! latest revision, the only one the parser reads.
 
+use std::fs::File;
 use std::io::Write;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
@@ -12,21 +13,32 @@ use onenote_parser::property::common::Color;
 use typed_path::{PathType, TypedPath};
 
 use crate::content;
+use crate::encryption;
 use crate::markdown;
 use crate::model::{self, SCHEMA};
 use crate::{notebook, warn};
 
 /// Reads a OneStore input: a section's lines, or, when the parser finds a table of contents,
-/// the notebook's. The media directory is created once the section is read, before its first
-/// line.
-pub fn read(path: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Result<(), Fault> {
+/// the notebook's, unless `file_only` refuses it. The parser reads a table of contents' header
+/// and type alone before it fails, so a refused one has had no section read. A section that
+/// fails and holds an encryption key is refused as encrypted, else with the parser's reason. The
+/// media directory is created once the section is read, before its first line.
+pub fn read(
+    path: &Path,
+    file_only: bool,
+    media: &mut Media,
+    out: &mut Lines<impl Write>,
+) -> Result<(), Fault> {
     let parser = Parser::new();
     let section = match guarded(|| parser.parse_section(typed(path))) {
         Ok(section) => section,
         Err(failure) if !failure.panicked && is_toc(&failure.reason) => {
+            if file_only {
+                return Err(Fault::Refused(crate::TOC_REFUSED.to_owned()));
+            }
             return notebook::read(path, media, out);
         }
-        Err(failure) => return Err(Fault::Refused(failure.reason)),
+        Err(failure) => return Err(Fault::Refused(failed(path, failure.reason))),
     };
     media.create()?;
     let stem = path.file_stem().unwrap_or_default();
@@ -125,6 +137,16 @@ fn creation_time(time: time::UtcDateTime, place: &str) -> Option<String> {
 /// that splits where docproc splits it.
 pub fn place(path: &[String]) -> String {
     path.iter().map(|name| format!("/{name}")).collect()
+}
+
+/// The reason a section at `path` that failed to parse with `reason` is refused or skipped with:
+/// the encrypted section's, when the file holds 2.5.19's key, else the parser's own. A file the
+/// scan can't read keeps the parser's reason.
+fn failed(path: &Path, reason: String) -> String {
+    match File::open(path).and_then(encryption::holds_key) {
+        Ok(true) => encryption::REASON.to_owned(),
+        Ok(false) | Err(_) => reason,
+    }
 }
 
 /// Whether the parser refused a section because its store is a table of contents, by its error's

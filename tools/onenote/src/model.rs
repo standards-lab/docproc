@@ -52,7 +52,7 @@ pub struct Skipped {
     pub kind: &'static str,
     /// Its name as the notebook's table of contents gives it: a section's file name.
     pub name: String,
-    /// Why, in the parser's words.
+    /// Why, in the parser's words, or the encrypted section's reason (src/encryption.rs).
     pub reason: String,
     /// Whether the section is encrypted; written only when it is.
     #[serde(skip_serializing_if = "is_false")]

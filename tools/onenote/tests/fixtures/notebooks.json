@@ -4,21 +4,21 @@
     "code": 0,
     "notebook": {"name": "Resources", "id": "f02db08d-2e77-462d-ba9f-68bc432ef6f5", "color": "#b79cab"},
     "entries": [],
-    "warnings": []
+    "warnings": ["/: no section or section group is read"]
   },
   {
     "file": "interop/Resources/NoSection.onetoc2",
     "code": 0,
     "notebook": {"name": "Resources", "id": "d0600034-a03f-4c49-aaa5-e67b0d241614", "color": "#d5a4bb"},
     "entries": [],
-    "warnings": []
+    "warnings": ["/: no section or section group is read"]
   },
   {
     "file": "interop/Resources/Open Notebook.onetoc2",
     "code": 0,
     "notebook": {"name": "Resources", "id": "e919d52c-f149-4414-b04c-d05b73309ed1", "color": "#ba7575"},
     "entries": [],
-    "warnings": []
+    "warnings": ["/: no section or section group is read"]
   },
   {
     "file": "interop/SUT/Open Notebook.onetoc2",
@@ -31,9 +31,11 @@
        "pages": [{"id": "d2ef96b5-baf3-4551-91dc-29c28f0e67da"}]},
       {"line": "section", "id": "af6de84b-d817-4f07-8baf-fb6629cb7c2c", "path": ["OneWithFileData"], "color": "#e8d199",
        "pages": [{"id": "d9fb6b6a-ab0c-42df-a684-4fadf122b557"}]},
-      {"line": "skipped", "kind": "section", "name": "Encryption.one", "reason": "Unexpected end of file"}
+      {"line": "skipped", "kind": "section", "name": "Encryption.one",
+       "reason": "encrypted section (a password-protected section, holding an [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first",
+       "encrypted": true}
     ],
-    "warnings": ["/Encryption.one: the section is skipped: Unexpected end of file"]
+    "warnings": ["/Encryption.one: the section is skipped: encrypted section (a password-protected section, holding an [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first"]
   },
   {
     "file": "onenote-rs/New Section Group/Open Notebook.onetoc2",
@@ -72,7 +74,7 @@
     "code": 0,
     "notebook": {"name": "object-revision", "id": "9cf59d79-cd9e-4936-9333-44274544b327", "color": "#9bbbd2"},
     "entries": [],
-    "warnings": []
+    "warnings": ["/: no section or section group is read"]
   },
   {
     "file": "onenote-rs/OneNote_RecycleBin/Open Notebook.onetoc2",

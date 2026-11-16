@@ -1,18 +1,24 @@
-//! The command line: arguments, usage errors, the input's sniffing, and the inputs refused with
-//! exit 3.
+//! The command line: arguments, usage errors, the input's sniffing, the inputs refused with
+//! exit 3, and the read thread's fault.
 
 mod common;
 
 use std::ffi::OsStr;
 use std::fs::File;
 use std::os::unix::ffi::OsStrExt;
+use std::os::unix::process::CommandExt;
 use std::path::Path;
+use std::process::Command;
 
 use common::{NAME, built, error, fixture, patched, run, run_to, scratch};
 
-const USAGE: &str = "usage: docproc-onenote [--media <dir>] <input>
+const USAGE: &str = "usage: docproc-onenote [--media <dir>] [--file-only] <input>
        docproc-onenote --version
+       docproc-onenote --help
 ";
+
+/// The fixed reason a table of contents is refused with under `--file-only`.
+const TOC_REFUSED: &str = "a table of contents; its sections are read on their own";
 
 /// A small section of each format: desktop (Interop's) and OneDrive (onenote.rs's).
 const DESKTOP: &str = "interop/SUT/OneWithoutFileData.one";
@@ -28,6 +34,15 @@ fn version_prints_the_bare_crate_version_then_the_schema() {
         out.stdout,
         format!("{}\nschema 2\n", env!("CARGO_PKG_VERSION"))
     );
+    assert_eq!(out.stderr, "");
+}
+
+/// `--help` prints the usage to stdout, nothing to stderr, and exits 0.
+#[test]
+fn help_prints_the_usage_to_stdout() {
+    let out = run(&["--help"]);
+    assert_eq!(out.code, Some(0));
+    assert_eq!(out.stdout, USAGE);
     assert_eq!(out.stderr, "");
 }
 
@@ -49,6 +64,17 @@ fn usage_errors_exit_2_with_usage() {
         (
             &[section, "--version"],
             "--version takes no other arguments",
+        ),
+        (&[section, "--help"], "--help takes no other arguments"),
+        (&["--help", "--version"], "--help takes no other arguments"),
+        (
+            &["--help", "--file-only"],
+            "--help takes no other arguments",
+        ),
+        (&["--file-only"], "no input"),
+        (
+            &["--file-only", section, "--file-only"],
+            "--file-only is given more than once",
         ),
         (&[section, "--media"], "--media needs a directory"),
         (&["--media", "", section], "--media needs a directory"),
@@ -170,15 +196,114 @@ fn refused_inputs_exit_3_before_any_output() {
     }
 }
 
-/// A password-protected section is refused with the parser's bare reason, a known limit; the
-/// reason never leads with the input's path.
+/// The reason a section holding [MS-ONESTORE] 2.5.19's encryption key is refused with.
+const ENCRYPTED: &str = "encrypted section (a password-protected section, holding an \
+                         [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first";
+
+/// 2.5.19's key constants, as a file stores them: little-endian.
+const KEY: [[u8; 8]; 2] = [
+    0xFB6B_A385_DAD1_A067_u64.to_le_bytes(),
+    0x2649_294F_8E19_8B3C_u64.to_le_bytes(),
+];
+
+/// A password-protected section, which the parser fails on, is refused as encrypted, its reason
+/// beginning `encrypted`, as the input's path never leads it.
 #[test]
-fn a_password_protected_section_is_refused_with_the_parsers_reason() {
+fn a_password_protected_section_is_refused_as_encrypted() {
     let input = fixture("interop/SUT/Encryption.one");
     let out = run(&[&input]);
     assert_eq!(out.code, Some(3));
     assert_eq!(out.stdout, "");
-    assert_eq!(out.stderr, error("Unexpected end of file"));
+    assert_eq!(out.stderr, error(ENCRYPTED));
+    assert!(ENCRYPTED.starts_with("encrypted"));
+}
+
+/// The scan runs only after a failed parse, and needs both constants: a section that reads is
+/// read whatever it holds; one that fails holding a single constant keeps the parser's reason;
+/// one that fails holding both is encrypted, whatever made it fail.
+#[test]
+fn only_a_failed_section_holding_both_constants_is_encrypted() {
+    let mut bytes = std::fs::read(fixture(DESKTOP)).unwrap();
+    bytes.extend(KEY.concat());
+    let out = run(&[built("keyed.one", &bytes)]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    // Its section and page lines are the intact section's; the names are the files'.
+    let (lines, want) = (out.lines(), run(&[fixture(DESKTOP)]).lines());
+    assert_eq!(lines[1]["id"], want[1]["id"]);
+    assert_eq!(lines[2..], want[2..]);
+
+    let mut bytes = std::fs::read(fixture(DESKTOP)).unwrap();
+    bytes[1040] = 0xFF;
+    let mut half = bytes.clone();
+    half.extend(KEY[0]);
+    let out = run(&[built("half-keyed.one", &half)]);
+    assert_eq!(out.code, Some(3));
+    assert_eq!(out.stderr, error(NODE_SIZE));
+    bytes.extend(KEY.concat());
+    let out = run(&[built("failed-keyed.one", &bytes)]);
+    assert_eq!(out.code, Some(3));
+    assert_eq!(out.stderr, error(ENCRYPTED));
+}
+
+/// Under `--file-only`, a table of contents, by its content whatever its name, and a notebook
+/// directory are refused, exit 3, with the fixed reason and nothing on stdout; a section and a
+/// package read as they do without it.
+#[test]
+fn file_only_refuses_a_table_of_contents_and_reads_the_rest() {
+    let toc = std::fs::read(fixture("onenote-rs/non-legacy/Open Notebook.onetoc2")).unwrap();
+    let toc_as_section = built("FileOnly.one", &toc);
+    for input in [
+        fixture("onenote-rs/non-legacy/Open Notebook.onetoc2"),
+        toc_as_section,
+        fixture("onenote-rs/non-legacy"),
+    ] {
+        let out = run(&["--file-only".as_ref(), input.as_os_str()]);
+        assert_eq!(out.code, Some(3), "{}", input.display());
+        assert_eq!(out.stdout, "", "{}", input.display());
+        assert_eq!(out.stderr, error(TOC_REFUSED), "{}", input.display());
+    }
+    let section = fixture(DESKTOP);
+    let out = run(&[section.as_os_str(), "--file-only".as_ref()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.stdout, run(&[&section]).stdout);
+    // A missing input is refused as missing, not as a table of contents.
+    let missing = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no-such-toc.onetoc2");
+    let out = run(&["--file-only".as_ref(), missing.as_os_str()]);
+    assert_eq!(out.code, Some(3));
+    assert_eq!(out.stderr, error("No such file or directory (os error 2)"));
+}
+
+/// The read thread's stack is reserved as address space: under an address-space limit too small
+/// for it, the thread can't start, a fault outside any record, exit 4 with nothing on stdout.
+/// The limit, 64 MiB, leaves the static binary room to start and parse its arguments, and is a
+/// quarter of the stack it would reserve.
+#[test]
+fn a_read_thread_that_cant_start_is_exit_4() {
+    const LIMIT: libc::rlim_t = 64 << 20;
+    let mut command = Command::new(env!("CARGO_BIN_EXE_docproc-onenote"));
+    command.arg(fixture(DESKTOP));
+    // SAFETY: setrlimit is async-signal-safe, and the closure touches nothing else between the
+    // fork and the exec.
+    unsafe {
+        command.pre_exec(|| {
+            let limit = libc::rlimit {
+                rlim_cur: LIMIT,
+                rlim_max: LIMIT,
+            };
+            if libc::setrlimit(libc::RLIMIT_AS, &limit) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        });
+    }
+    let out = command.output().unwrap();
+    assert_eq!(out.status.code(), Some(4));
+    assert_eq!(String::from_utf8(out.stdout).unwrap(), "");
+    assert_eq!(
+        String::from_utf8(out.stderr).unwrap(),
+        error("internal fault: the read thread can't start")
+    );
 }
 
 /// A parser panic is caught by the shared guard and refused with exit 3, never 4. The byte set here makes
@@ -204,14 +329,12 @@ fn the_parsers_own_printing_never_reaches_stdout() {
     let out = run(&[&input]);
     assert_eq!(out.code, Some(3));
     assert_eq!(out.stdout, "");
-    assert_eq!(
-        out.stderr,
-        error(
-            "Malformed OneNote file data: The size specified for this structure is incorrect. \
-             Was 7, expected 27. Id: 0xff"
-        )
-    );
+    assert_eq!(out.stderr, error(NODE_SIZE));
 }
+
+/// The parser's reason for [`DESKTOP`] with byte 1040 set to 0xFF, a file node of the wrong size.
+const NODE_SIZE: &str = "Malformed OneNote file data: The size specified for this structure is \
+                         incorrect. Was 7, expected 27. Id: 0xff";
 
 /// A .onetoc2, by its content whatever its name, and a notebook directory are read as a
 /// notebook, and a cabinet as a package: one the parser can't read is refused with its reason.
@@ -237,10 +360,14 @@ fn notebooks_and_packages_are_recognised() {
     );
 }
 
-/// A stdout that can't be written exits 1 with one error line, for a read and for --version.
+/// A stdout that can't be written exits 1 with one error line, for a read, --version and --help.
 #[test]
 fn an_unwritable_stdout_exits_1() {
-    for args in [fixture(DESKTOP).into_os_string(), "--version".into()] {
+    for args in [
+        fixture(DESKTOP).into_os_string(),
+        "--version".into(),
+        "--help".into(),
+    ] {
         let full = File::options().write(true).open("/dev/full").unwrap();
         let out = run_to(full, &[&args]);
         assert_eq!(out.code, Some(1), "{args:?}");

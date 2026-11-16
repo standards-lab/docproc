@@ -104,11 +104,21 @@ pub fn fixtures() -> PathBuf {
 /// tests/golden, `.jsonl` and `.stderr` added to its name, since a section and a table of
 /// contents can share a stem.
 pub fn goldens(input: &str) -> (PathBuf, PathBuf) {
+    goldens_of(input, &[])
+}
+
+/// The goldens of the committed input `input` read with the options `options`: [`goldens`]'
+/// names, each option, its dashes dropped, added before the extension, as
+/// `Open Notebook.onetoc2.file-only.jsonl` for `--file-only`.
+pub fn goldens_of(input: &str, options: &[&str]) -> (PathBuf, PathBuf) {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/golden")
         .join(input);
     let with = |extension: &str| {
         let mut name = base.clone().into_os_string();
+        for option in options {
+            name.push(format!(".{}", option.trim_start_matches('-')));
+        }
         name.push(extension);
         PathBuf::from(name)
     };
@@ -126,9 +136,16 @@ pub fn read_golden(path: &Path, input: &str) -> String {
 /// UPDATE_GOLDEN set (the `golden` task), it writes the goldens instead; their diff is reviewed
 /// before committing.
 pub fn golden(input: &str, code: i32) {
-    let out = run_in(&fixtures(), &[input]);
-    assert_eq!(out.code, Some(code), "{input}: {}", out.stderr);
-    let (stdout, stderr) = goldens(input);
+    golden_with(input, &[], code);
+}
+
+/// [`golden`], with the options `options` before the input, against [`goldens_of`]'s goldens.
+pub fn golden_with(input: &str, options: &[&str], code: i32) {
+    let mut args = options.to_vec();
+    args.push(input);
+    let out = run_in(&fixtures(), &args);
+    assert_eq!(out.code, Some(code), "{input} {options:?}: {}", out.stderr);
+    let (stdout, stderr) = goldens_of(input, options);
     if std::env::var_os("UPDATE_GOLDEN").is_some() {
         std::fs::create_dir_all(stdout.parent().unwrap()).unwrap();
         std::fs::write(&stdout, &out.stdout).unwrap();

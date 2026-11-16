@@ -83,7 +83,10 @@ fn every_committed_notebook_has_an_expectation() {
 
 /// Each .onetoc2 reads as its expectation says: its notebook line, its entries depth-first with
 /// each section's pages after it, its skipped sections, and its warnings, which name a recycle
-/// bin beside it and a section that fails, Interop's Encryption.one, in place of a refusal.
+/// bin beside it, a section that fails, in place of a refusal, and a notebook that reads no
+/// entry, at `/`. Interop's password-protected Encryption.one is skipped as encrypted, its
+/// skipped line carrying `encrypted: true`; its package's reading, which scans the cabinet's
+/// entry, is the directory's (`a_package_reads_as_its_directorys_golden`).
 #[test]
 fn every_committed_notebook_reads_as_expected() {
     for expected in expectations() {
@@ -103,6 +106,23 @@ fn a_notebook_directory_reads_as_its_toc() {
         assert_eq!(by_dir.stdout, by_toc.stdout, "{dir}");
         assert_eq!(by_dir.stderr, by_toc.stderr, "{dir}");
     }
+}
+
+/// A table of contents read away from its sections, as one spooled from a stream is, reads no
+/// entry, the parser dropping each missing section without a word, and warns at `/`.
+#[test]
+fn a_table_of_contents_without_its_sections_warns_at_the_root() {
+    let alone = scratch("toc-alone");
+    let toc = alone.join("Open Notebook.onetoc2");
+    std::fs::copy(fixture("onenote-rs/non-legacy/Open Notebook.onetoc2"), &toc).unwrap();
+    let out = run(&[&toc]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.lines().len(), 1);
+    assert_eq!(out.lines()[0]["line"], "notebook");
+    assert_eq!(
+        out.stderr,
+        format!("{NAME}: warning: /: no section or section group is read\n")
+    );
 }
 
 /// A section group's line comes in its table of contents' place, its sections after it with

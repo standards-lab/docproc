@@ -10,7 +10,7 @@
   {
     "file": "interop/SUT/Encryption.one",
     "code": 3,
-    "reason": "Unexpected end of file"
+    "reason": "encrypted section (a password-protected section, holding an [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first"
   },
   {
     "file": "interop/SUT/FileSyncWOPI_OneNoteWithODB.one",
