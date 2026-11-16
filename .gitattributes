@@ -1,0 +1,11 @@
+# The copy of mail's fixtures and goldens is pinned by SHA-256, byte for byte, so git never
+# converts it.
+email/testdata/mail/** -text
+# The copy of onenote's fixtures and expectations is pinned by SHA-256, byte for byte, so git
+# never converts it.
+onenote/testdata/onenote/** -text
+# The audio speech fixture and its transcript are pinned by SHA-256, byte for byte, so git never
+# converts them.
+audio/testdata/speech.* -text
+# The hand-written RTF fixture is pinned by SHA-256, byte for byte, so git never converts it.
+office/testdata/rtf/** -text
