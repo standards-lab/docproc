@@ -1,6 +1,6 @@
 //! The Markdown the tools write around their readers' text: the literal-text escape, the
-//! destination writer, and the title writer. The escape is htmd's rules, which every tool's Markdown shares
-//! (context/layers.md, "Common envelope", Text layer).
+//! destination writer, and the title writer. The escape is htmd's rules, which every tool's
+//! Markdown shares (context/layers.md, "Common envelope", Text layer).
 
 /// A line of literal text as Markdown that reads as the text does: a backslash before each of
 /// ``\ * _ ` [ ] | ~ & $``, and before `<` when what follows could open an HTML tag, comment, or
