@@ -28,7 +28,7 @@ func TestGoldens(t *testing.T) {
 	}
 	index := dispatch.NewMemoryIndex(0)
 	stage := dispatchtest.NewStage(world)
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Text: stage}, Index: index, Dir: t.TempDir()})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Text: stage}, Index: index, Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

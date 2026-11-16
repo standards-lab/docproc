@@ -185,7 +185,7 @@ func TestZipMethods(t *testing.T) {
 // TestSevenZipUnsafe: the stage quarantines a 7z or cabinet whose 7-Zip listing names a
 // traversing, absolute, or drive letter entry, a symbolic link, or a FIFO, under a policy that
 // quarantines them, before anything is extracted, the listing's flags its evidence, and the
-// archive's file kept. By default, each flag active, each file is written by its SHA-256 inside
+// archive's file removed once its event is done. By default, each flag active, each file is written by its SHA-256 inside
 // the working directory, its stored name only its name, no file lands outside, and each link or
 // FIFO is a record naming its check, active, no link or node made.
 func TestSevenZipUnsafe(t *testing.T) {
@@ -227,6 +227,7 @@ func TestSevenZipUnsafe(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
+			Content: dispatch.NewMemoryContent(), Puts: 2,
 			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {
@@ -266,9 +267,10 @@ func TestSevenZipUnsafe(t *testing.T) {
 	}
 }
 
-// TestSevenZipQuarantineKept: a 7z found inside a ZIP and quarantined by policy keeps its file,
-// as a part inspect quarantines does, and its flags, the listing's among them, are the index's.
-func TestSevenZipQuarantineKept(t *testing.T) {
+// TestSevenZipQuarantined: a 7z found inside a ZIP and quarantined by policy is removed once its
+// event is done, as a part inspect quarantines is, and its flags, the listing's among them, are
+// its event's.
+func TestSevenZipQuarantined(t *testing.T) {
 	traversal, err := os.ReadFile(sevenZipFixture("generated/traversal.7z"))
 	if err != nil {
 		t.Fatal(err)
@@ -281,7 +283,7 @@ func TestSevenZipQuarantineKept(t *testing.T) {
 	}
 	index := dispatch.NewMemoryIndex(0)
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Archive: s}, Index: index, Dir: work, Inspect: strict})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Archive: s}, Index: index, Dir: work, Inspect: strict})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -290,9 +292,7 @@ func TestSevenZipQuarantineKept(t *testing.T) {
 	if flags := events[0].Part.Flags; !slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == inspect.ArchiveTraversal }) {
 		t.Errorf("traversal.7z's flags: %v", flags)
 	}
-	if left := files(t, work); len(left) != 1 || filepath.Base(left[0]) != events[0].Part.SHA256 {
-		t.Errorf("files left: %q, want the quarantined 7z's alone", left)
-	}
+	wantEmpty(t, work)
 }
 
 // TestSevenZipBombs: bomb.7z's and bomb.cab's listings declare 8 MiB and declared-bomb.zst's

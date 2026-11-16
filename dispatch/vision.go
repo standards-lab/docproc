@@ -23,7 +23,8 @@ var visionTypes = map[route.Kind]string{
 // JPEG, GIF, or BMP, by passing it through: an [ImageOutput] named "picture" whose Path is the
 // part's own file, so a layer above meets every picture, converted or not, as an image output.
 // The dispatcher removes the part's file once the caller is done with the event, as it does
-// any found part's; a caller that sends the picture on later calls [Event.Keep]. It runs no tool,
+// any found part's; a caller that sends the picture on later reads it from the content store,
+// by the output's SHA-256, or links the file in its event's body. It runs no tool,
 // and its identity's version is this package's.
 type VisionStage struct {
 	id Identity

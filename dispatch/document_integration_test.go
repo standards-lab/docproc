@@ -154,7 +154,7 @@ func TestDocumentStageAttachmentsReal(t *testing.T) {
 func newDispatcherIn(t *testing.T, stages dispatch.Stages) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}

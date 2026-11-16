@@ -148,6 +148,7 @@ func TestTarUnsafe(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
+			Content: dispatch.NewMemoryContent(), Puts: 2,
 			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {
@@ -188,7 +189,7 @@ func TestTarUnsafe(t *testing.T) {
 
 // TestTarGzipUnsafe: a gzip stream holding a tar a policy quarantines is safe itself, so it is
 // prepared, and the tar it holds is quarantined once inspected, its entries never written, its
-// content kept.
+// file removed once its event is done.
 func TestTarGzipUnsafe(t *testing.T) {
 	d, zs, work := archiveDispatcher(t, inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveTraversal: inspect.Quarantine}})
 	events := dispatchAll(t, d, inspectFixture("traversal.tar.gz"), nil)
@@ -199,10 +200,7 @@ func TestTarGzipUnsafe(t *testing.T) {
 	if n := zs.calls.Load(); n != 1 {
 		t.Errorf("the archive stage prepared %d parts, want the gzip alone", n)
 	}
-	// A quarantined part's content is kept, and nothing else.
-	if left := files(t, work); len(left) != 1 || filepath.Base(left[0]) != events[0].Part.SHA256 {
-		t.Errorf("files left: %q, want the quarantined tar's alone", left)
-	}
+	wantEmpty(t, work)
 }
 
 // TestTarBombAsWritten: sparse-bomb.tar's entry declares 4 GiB, all a hole but its last 512

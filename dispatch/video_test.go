@@ -149,7 +149,7 @@ func videoArgs(t *testing.T, standins *ffStandins) []string {
 func videoDispatch(t *testing.T, stages dispatch.Stages, path string) ([]dispatched, string) {
 	t.Helper()
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: stages, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +375,7 @@ func TestVideoCancel(t *testing.T) {
 	standins.set(t, func(s *ffSettings) { s.HoldMS = 30000 })
 	path := writeInput(t, "held.mkv", mkvBytes)
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Video: stage}, Index: dispatch.NewMemoryIndex(0), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Video: stage}, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -237,6 +237,7 @@ func storeDispatcher(t *testing.T, s *store, leaf dispatch.Stage) (*dispatch.Dis
 	t.Helper()
 	dir := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Text: s, route.Unrouted: leaf}, Index: dispatch.NewMemoryIndex(0), Dir: dir,
 	})
 	if err != nil {
@@ -322,33 +323,23 @@ func TestReleaseKeepsUnrecorded(t *testing.T) {
 	}
 }
 
-// TestReleaseRefused: no original is released when the stage's SHA-256 isn't the content's, nor
-// when the caller keeps each part, so each record is dispatched from its file; and a part with
-// no file whose SHA-256 the dispatch released nothing of fails.
+// TestReleaseRefused: a found part whose claimed SHA-256 isn't its content's fails, matching
+// ErrSHA256, and no original is released, so the store isn't recorded; and a part with no file
+// whose SHA-256 the dispatch released nothing of fails.
 func TestReleaseRefused(t *testing.T) {
 	t.Run("a lying SHA-256", func(t *testing.T) {
 		s := heavyStore(30, 10, 64)
 		s.lie = true
 		d, dir := storeDispatcher(t, s, &picky{})
 		pr := probeStore(t, d, dir, nil)
-		if s.released() != 0 || pr.last.Outcome != dispatch.Prepared || pr.outcomes["record 10"] != dispatch.Seen {
-			t.Fatalf("%d released; the store %s; record 10 %s", s.released(), pr.last.Outcome, pr.outcomes["record 10"])
-		}
-	})
-	t.Run("kept", func(t *testing.T) {
-		s := heavyStore(30, 10, 64)
-		d, dir := storeDispatcher(t, s, &picky{})
-		pr := probeStore(t, d, dir, func(ev *dispatch.Event) {
-			if ev.Output == nil && ev.Part.Depth == 1 {
-				ev.Keep()
-			}
-		})
-		if s.released() != 0 || pr.last.Outcome != dispatch.Prepared || pr.outcomes["record 20"] != dispatch.Seen {
-			t.Fatalf("%d released; the store %s; record 20 %s", s.released(), pr.last.Outcome, pr.outcomes["record 20"])
+		if s.released() != 0 || pr.last.Outcome != dispatch.Prepared || pr.outcomes["record 10"] != dispatch.Failed ||
+			!strings.Contains(pr.reasons["record 10"], dispatch.ErrSHA256.Error()) {
+			t.Fatalf("%d released; the store %s; record 10 %s, %q", s.released(), pr.last.Outcome, pr.outcomes["record 10"], pr.reasons["record 10"])
 		}
 	})
 	t.Run("no file", func(t *testing.T) {
 		d, err := dispatch.New(dispatch.Config{
+			Content: dispatch.NewMemoryContent(), Puts: 2,
 			Stages: dispatch.Stages{route.Text: ghost{}}, Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir(),
 		})
 		if err != nil {
@@ -380,7 +371,7 @@ func (ghost) Prepare(context.Context, dispatch.Part, string) iter.Seq2[dispatch.
 func unstagedDispatcher(t *testing.T, s *store, index dispatch.Index) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	dir := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Text: s}, Index: index, Dir: dir})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Text: s}, Index: index, Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,6 +429,7 @@ func TestReleaseUnstaged(t *testing.T) {
 	// The route's stage registered later: the shared content is prepared, not seen.
 	leaf := &picky{}
 	later, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Text: heavyStore(1, 1, size), route.Unrouted: leaf}, Index: index, Dir: t.TempDir(),
 	})
 	if err != nil {
@@ -446,39 +438,5 @@ func TestReleaseUnstaged(t *testing.T) {
 	events := dispatchAll(t, later, input(t, "later.txt", "later"), nil)
 	if len(events) != 2 || events[0].Outcome != dispatch.Prepared || leaf.calls != 1 {
 		t.Fatalf("with a stage registered: %d events, the content %s, %d prepared", len(events), events[0].Outcome, leaf.calls)
-	}
-}
-
-// TestReleaseUnstagedKept: a caller that keeps the first record of the shared content, whose
-// route has no stage, keeps its original: the next record naming it is dispatched from that
-// file and released, and every record is no processor yet, none lost.
-func TestReleaseUnstagedKept(t *testing.T) {
-	const n, every, size = 1000, 10, 64
-	s := heavyStore(n, every, size)
-	d, dir := unstagedDispatcher(t, s, dispatch.NewMemoryIndex(0))
-	paths := map[string]string{}
-	pr := probeStore(t, d, dir, func(ev *dispatch.Event) {
-		if ev.Output == nil && ev.Part.Depth == 1 {
-			paths[ev.Part.Where] = ev.Part.Path
-			if ev.Part.Where == "record 0" {
-				ev.Keep()
-			}
-		}
-	})
-	if pr.last.Outcome != dispatch.Prepared {
-		t.Fatalf("the store: %s, %q", pr.last.Outcome, pr.last.Reason)
-	}
-	for i := range n {
-		where := fmt.Sprintf("record %d", i)
-		if got := pr.outcomes[where]; got != dispatch.NoProcessor {
-			t.Fatalf("%s: %s, %q", where, got, pr.reasons[where])
-		}
-	}
-	if paths["record 10"] == "" || paths["record 20"] != "" {
-		t.Errorf("record 10 from %q, record 20 from %q: want the first from a file, the second with none",
-			paths["record 10"], paths["record 20"])
-	}
-	if distinct := n - n/every + 1; s.released() != distinct {
-		t.Errorf("%d released, want %d", s.released(), distinct)
 	}
 }

@@ -30,14 +30,14 @@ type poolItem struct {
 // goroutine alone.
 //
 // Each worker waits for the caller's loop body to return before its dispatch goes on, so the
-// dispatcher's contract holds as it does for one dispatch: an output is appended to its part's
-// pending entry as the body left it, its Ref set and [Event.Keep] called, the part's entry is
-// recorded, and its files are removed, only once the body has returned. A worker holds at most
+// dispatcher's contract holds as it does for one dispatch: an event's files are the caller's
+// until the body returns, and are removed only then. A worker holds at most
 // one event the loop hasn't taken, so a slow loop holds every worker back, and the disk holds at
 // most what workers dispatches hold, the files of the parts each has in flight.
 //
-// An error that stops one input's dispatch, its input unreadable or the index failing, is
-// yielded with that input, its Event zero, and the other inputs go on. Once ctx ends, the pool
+// An error that stops one input's dispatch, its input unreadable or a store failing, is yielded
+// with that input, its Event zero, and the other inputs go on; a [*StoreError] is the store's
+// failure, not the input's, on which a host stops its run. Once ctx ends, the pool
 // takes no more inputs, its dispatches stop, and it yields ctx's error alone, last, in place of
 // each dispatch's own. A loop that stops early stops every dispatch, as Dispatch's does, and the
 // pool returns once every worker has, its claims released and its files removed. workers under 1

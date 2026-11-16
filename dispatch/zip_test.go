@@ -118,6 +118,7 @@ func archiveDispatcherWith(t *testing.T, cfg dispatch.ArchiveConfig) (*dispatch.
 	zs := &counting{Stage: s}
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages:  dispatch.Stages{route.Archive: zs, route.Vision: dispatch.NewVisionStage()},
 		Index:   dispatch.NewMemoryIndex(0),
 		Dir:     work,
@@ -305,6 +306,7 @@ func TestZipUnsafeNames(t *testing.T) {
 			t.Fatal(err)
 		}
 		d, err = dispatch.New(dispatch.Config{
+			Content: dispatch.NewMemoryContent(), Puts: 2,
 			Stages: dispatch.Stages{route.Archive: s}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 		})
 		if err != nil {

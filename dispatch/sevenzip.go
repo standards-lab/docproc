@@ -67,18 +67,22 @@ func listedType(e sevenzip.Entry) (inspect.EntryType, string) {
 	return inspect.FileEntry, ""
 }
 
-// listedChecks returns the listing's verdict on entries, the archive p's, through
-// inspect.CheckListing under the stage's options: nil when they may be extracted, else the
-// *QuarantineError holding the flags, or the stage's failure.
-func (s *ArchiveStage) listedChecks(p Part, entries []inspect.Listed) error {
+// listedChecks checks entries, the archive p's listing, through inspect.CheckListing under the
+// stage's options, before anything is extracted, and yields each flag it raises as the part's own:
+// the dispatcher weighs them, and its verdict to quarantine stops the stage. It reports whether the
+// stage goes on.
+func (s *ArchiveStage) listedChecks(p Part, entries []inspect.Listed, yield func(Item, error) bool) bool {
 	rep, err := inspect.CheckListing(p.ContentType.Kind, p.Size, entries, s.opts)
-	switch {
-	case err != nil:
-		return fmt.Errorf("archive stage: %w", err)
-	case rep.Verdict == inspect.Quarantine:
-		return &QuarantineError{Flags: rep.Flags}
+	if err != nil {
+		yield(Item{}, fmt.Errorf("archive stage: %w", err))
+		return false
 	}
-	return nil
+	for _, f := range rep.Flags {
+		if !yield(FlagItem(f), nil) {
+			return false
+		}
+	}
+	return true
 }
 
 // list lists the archive p through 7-Zip as k's format, ending the stage with ErrEncrypted when
@@ -109,8 +113,7 @@ func (s *ArchiveStage) listed(ctx context.Context, p Part, dir string, k sevenZi
 		typ, link := listedType(e)
 		checked[i] = inspect.Listed{Name: e.Path, Type: typ, Link: link, Declared: e.Size, Sized: e.Sized, Encrypted: e.Encrypted}
 	}
-	if err := s.listedChecks(p, checked); err != nil {
-		yield(Item{}, err)
+	if !s.listedChecks(p, checked, yield) {
 		return
 	}
 	files, encrypted := 0, 0
@@ -224,8 +227,7 @@ func (s *ArchiveStage) zstd(ctx context.Context, p Part, dir string, yield func(
 		content = l.Entries[0]
 	}
 	checked := []inspect.Listed{{Name: name, Type: inspect.FileEntry, Declared: content.Size, Sized: content.Sized}}
-	if err := s.listedChecks(p, checked); err != nil {
-		yield(Item{}, err)
+	if !s.listedChecks(p, checked, yield) {
 		return
 	}
 	where := k.where + name

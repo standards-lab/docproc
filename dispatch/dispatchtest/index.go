@@ -121,14 +121,14 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 		k := key("token")
 		token := claim(t, idx, k)
 		other := token + "x"
-		if err := idx.Renew(ctx, k, other); err == nil {
-			t.Error("renew: no error")
+		if err := idx.Renew(ctx, k, other); !errors.Is(err, dispatch.ErrClaimLost) {
+			t.Errorf("renew: %v, want ErrClaimLost", err)
 		}
-		if err := idx.Append(ctx, k, other, warning("w")); err == nil {
-			t.Error("append: no error")
+		if err := idx.Append(ctx, k, other, warning("w")); !errors.Is(err, dispatch.ErrClaimLost) {
+			t.Errorf("append: %v, want ErrClaimLost", err)
 		}
-		if err := idx.Record(ctx, k, other, entry()); err == nil {
-			t.Error("record: no error")
+		if err := idx.Record(ctx, k, other, entry()); !errors.Is(err, dispatch.ErrClaimLost) {
+			t.Errorf("record: %v, want ErrClaimLost", err)
 		}
 		if err := idx.Release(ctx, k, other); err != nil {
 			t.Errorf("release: %v", err)
@@ -348,8 +348,8 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 				next = tok
 			}
 		}
-		if err := idx.Renew(ctx, k, token); err == nil {
-			t.Error("the old token's renewal after a takeover: no error")
+		if err := idx.Renew(ctx, k, token); !errors.Is(err, dispatch.ErrClaimLost) {
+			t.Errorf("the old token's renewal after a takeover: %v, want ErrClaimLost", err)
 		}
 		if err := idx.Append(ctx, k, token, warning("late")); err == nil {
 			// A buffered log may refuse it at the record instead.

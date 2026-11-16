@@ -106,10 +106,10 @@ type ArchiveConfig struct {
 // A 7z archive and a cabinet are read through 7-Zip: listed first, by 7zz's technical listing,
 // and the listing checked by inspect.CheckListing under the rules inspect holds a tar to, a
 // traversing, absolute, or drive letter name, a link, a device, and an entry past the bomb rule
-// by its declared size against the archive's, before anything is extracted. A listing
-// whose flags come to quarantine, under [ArchiveConfig.Inspect]'s policy, ends the stage with a
-// [QuarantineError] holding them, so the archive is [Quarantined] with that evidence and nothing
-// of it is extracted. Otherwise each file is extracted alone, in the listing's order, to 7zz's
+// by its declared size against the archive's, before anything is extracted. The listing's flags
+// are yielded as the archive's own, and a verdict to quarantine them under the dispatcher's
+// options stops the stage, so the archive is [Quarantined] with that evidence and nothing of it
+// is extracted. Otherwise each file is extracted alone, in the listing's order, to 7zz's
 // standard output, written as a ZIP's entry is, and found "7z entry <name>" or "cabinet entry
 // <name>"; a directory is no part. The bomb rule weighs the bytes read from 7zz against the whole
 // archive's size, its check "archive-bomb", and the bytes are held to the listing's size and
@@ -164,6 +164,10 @@ func NewArchiveStage(cfg ArchiveConfig) (*ArchiveStage, error) {
 // Identity returns the stage's identity: "archive", this package's version of it, and a hash of
 // its bomb thresholds and its 7-Zip's version.
 func (s *ArchiveStage) Identity() Identity { return s.id }
+
+// UntrustedWhere marks the stage as one whose found parts' Where come from its entries' stored names, which two
+// siblings may share.
+func (s *ArchiveStage) UntrustedWhere() {}
 
 // Prepare reads the archive at p.Path by its kind, as the type's doc says.
 func (s *ArchiveStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error] {
@@ -270,8 +274,8 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 		return "", w.n, why, nil
 	}
 	path = filepath.Join(dir, hex.EncodeToString(w.sum.Sum(nil)))
-	// The same content met earlier in this archive may still be at path, kept by the caller:
-	// its bytes are these, so it is found again rather than replaced.
+	// The same content met earlier in this archive may still be at path: its bytes are these, so
+	// it is found again rather than replaced.
 	if _, err := os.Lstat(path); err == nil {
 		return path, w.n, nil, nil
 	} else if !errors.Is(err, fs.ErrNotExist) {

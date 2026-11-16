@@ -128,11 +128,10 @@ func nameSum(path string) string {
 
 // place returns the path of a link to the file at path, in a new directory under the stash's,
 // named as path is: a hard link, else a copy where the file system refuses one. It removes the
-// last link's directory, which is empty once the dispatcher has removed the link, unless the
-// caller kept it.
+// last link's directory, which is empty once the dispatcher has removed the link.
 func (s *stash) place(path string) (string, error) {
 	if s.last != "" {
-		_ = os.Remove(s.last) // a directory still holding a kept link stays
+		_ = os.Remove(s.last) // a directory the caller left a file in stays
 	}
 	s.n++
 	dir := filepath.Join(s.dir, fmt.Sprintf("found-%d", s.n))

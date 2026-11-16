@@ -169,6 +169,7 @@ func newFixture(t *testing.T, world map[string]string, index dispatch.Index, lim
 		dir:     t.TempDir(),
 	}
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Text: f.text, route.Document: f.pdf, route.Archive: f.archive},
 		Index:  index, Dir: f.dir, Limits: limits,
 	})

@@ -1,7 +1,7 @@
 // Package dispatchtest holds dispatch's store contracts as conformance suites, and the fixture
 // stage, for every implementation of dispatch.Index and dispatch.Content to run, the module's own
-// and a provider's, and for a host's tests to dispatch over. It imports dispatch and route, and
-// the standard library alone, and runs no tool.
+// and a provider's, and for a host's tests to dispatch over. It imports dispatch, route, and
+// inspect, and the standard library alone, and runs no tool.
 //
 // Index runs the index contract against a new index for each case: a claim, its token, its lease,
 // a renewal, and a takeover once a lease runs out; the log appended, recorded, and read back in

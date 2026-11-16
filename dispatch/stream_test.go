@@ -51,7 +51,7 @@ func floodDispatcher(t *testing.T, s dispatch.Stage) (*dispatch.Dispatcher, disp
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Text: s}, Index: idx, Dir: t.TempDir()})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Text: s}, Index: idx, Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestStreamReleased(t *testing.T) {
 	t.Run("memory", func(t *testing.T) {
 		s := &flood{n: 1000, size: 16, failAt: 600}
 		idx := dispatch.NewMemoryIndex(0)
-		d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Text: s}, Index: idx, Dir: t.TempDir()})
+		d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Text: s}, Index: idx, Dir: t.TempDir()})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,6 +244,7 @@ func (interleaved) Prepare(_ context.Context, p dispatch.Part, dir string) iter.
 // before and after it; the part's own event comes last.
 func TestStreamOrder(t *testing.T) {
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Text: interleaved{}}, Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir(),
 	})
 	if err != nil {
@@ -315,7 +316,8 @@ const childBound = 12 << 20
 // index, the first prepared and the rest seen, and the live heap stays within a bound far under
 // their references' size, so neither the dispatcher nor the index holds them. The input's event
 // counts them; the index's record counts them and reads them back, streamed, in the order found.
-// A second dispatch sees the input, its event counting the children it never reads.
+// A second dispatch sees the input and replays its children from the index, streamed, each seen
+// at its place.
 func TestStreamedChildren(t *testing.T) {
 	const n, every = 100_000, 10_000
 	s := brood{n: n}
@@ -383,8 +385,30 @@ func TestStreamedChildren(t *testing.T) {
 		t.Errorf("the live heap grew %d MB while %d children were read back", (peak-base)>>20, n)
 	}
 
-	events := collect(t, d.Dispatch(t.Context(), dispatch.Input{Path: path}), nil)
-	if ev := events[len(events)-1]; len(events) != 1 || ev.Outcome != dispatch.Seen || ev.Children != n {
-		t.Fatalf("the seen input: %d events, %s, %d children", len(events), ev.Outcome, ev.Children)
+	// The replay streams too: its first children come with the heap within the bound, the loop
+	// stopping there, since every child already went through a seen part's replay above.
+	base, peak, i = heap(), 0, 0
+	for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: path}) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.Output != nil {
+			continue
+		}
+		if ev.Outcome != dispatch.Seen || ev.Part.Where != broodName(i, true) || ev.Part.ID != "/"+broodName(i, true) {
+			t.Fatalf("replayed child %d: %s, %q, %q", i, ev.Outcome, ev.Part.Where, ev.Part.ID)
+		}
+		if i++; i%every == 0 {
+			peak = max(peak, heap())
+		}
+		if i == 2*every {
+			break
+		}
+	}
+	if i != 2*every {
+		t.Fatalf("the replay yielded %d children before it ended", i)
+	}
+	if peak > base && peak-base > childBound {
+		t.Errorf("the live heap grew %d MB while the replay streamed", (peak-base)>>20)
 	}
 }

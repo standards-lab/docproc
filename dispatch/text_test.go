@@ -139,6 +139,7 @@ func TestTextStageCanceled(t *testing.T) {
 func TestTextDispatch(t *testing.T) {
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Text: dispatch.NewTextStage()},
 		Index:  dispatch.NewMemoryIndex(0), Dir: work,
 	})

@@ -144,6 +144,10 @@ func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 // Identity returns the stage's identity: "document", its tools' version, and its request's hash.
 func (s *DocumentStage) Identity() Identity { return s.id }
 
+// UntrustedWhere marks the stage as one whose found parts' Where come from its attachments' stored names, which two
+// siblings may share.
+func (s *DocumentStage) UntrustedWhere() {}
+
 // Prepare prepares the PDF at p.Path, as the type's doc says.
 func (s *DocumentStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error] {
 	return func(yield func(Item, error) bool) {

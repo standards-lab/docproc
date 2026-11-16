@@ -44,21 +44,22 @@ type Index interface {
 	// Claim claims key, returning the claim's token, its lease, and true; it returns false,
 	// claiming nothing, when key is recorded or another holds its claim.
 	Claim(ctx context.Context, key Key) (token string, lease time.Duration, ok bool, err error)
-	// Renew renews the claim token names for another lease, failing when token no longer holds
-	// key's claim.
+	// Renew renews the claim token names for another lease, failing, matching [ErrClaimLost],
+	// when token no longer holds key's claim.
 	Renew(ctx context.Context, key Key, token string) error
 	// Wait waits while key is claimed, then returns its entry and true if the claimant recorded
 	// it, or false if the claim ended without a record. It returns at once when key is recorded
 	// or unclaimed, and an error matching the context's when ctx ends first.
 	Wait(ctx context.Context, key Key) (Entry, bool, error)
-	// Append appends r to the log of the claim token names, failing when token no longer holds
-	// key's claim, or, when the log is buffered, at a later flush or Record. Exactly one of r's
+	// Append appends r to the log of the claim token names, failing, matching [ErrClaimLost],
+	// when token no longer holds key's claim, or, when the log is buffered, at a later flush or
+	// Record. Exactly one of r's
 	// Output, Warning, and Child is set; an item with none or more is refused, matching
 	// [ErrRequest].
 	Append(ctx context.Context, key Key, token string, r Recorded) error
 	// Record records e as key's entry, with the log appended under token, replacing any entry
-	// key had, and ends the claim, failing when token no longer holds it. It records e as given,
-	// its counts among it, so a replay checks the log against them.
+	// key had, and ends the claim, failing, matching [ErrClaimLost], when token no longer holds
+	// it. It records e as given, its counts among it, so a replay checks the log against them.
 	Record(ctx context.Context, key Key, token string, e Entry) error
 	// Release ends the claim token names without a record, discarding its log; a claim another
 	// now holds is left.
@@ -122,7 +123,7 @@ func checkRecorded(r Recorded) error {
 var (
 	// errNotClaimed is an index's refusal of a renewal, an append, or a record whose token doesn't
 	// hold the key's claim.
-	errNotClaimed = errors.New("dispatch: index: the token doesn't hold the key's claim")
+	errNotClaimed = fmt.Errorf("dispatch: index: the token doesn't hold the key's claim: %w", ErrClaimLost)
 	// errReplaced ends a read of an entry's log that was replaced or dropped while it read.
 	errReplaced = errors.New("dispatch: index: the entry was replaced or dropped while its log was read")
 )

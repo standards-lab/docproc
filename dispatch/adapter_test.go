@@ -40,7 +40,7 @@ func toollessPicture(t *testing.T) *dispatch.PictureStage {
 // newDispatcher returns a dispatcher over stages and index, in a working directory of its own.
 func newDispatcher(t *testing.T, stages dispatch.Stages, index dispatch.Index) *dispatch.Dispatcher {
 	t.Helper()
-	d, err := dispatch.New(dispatch.Config{Stages: stages, Index: index, Dir: t.TempDir()})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: stages, Index: index, Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

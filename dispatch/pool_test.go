@@ -52,9 +52,8 @@ func leftIn(t *testing.T, dir string) []string {
 
 // TestPool: 4 workers over 40 inputs, each finding its own part and one every input shares, in
 // a different place. The shared content is prepared exactly once, every other dispatch's part
-// seen, carrying the Ref the caller set on the prepared part's output event, which the index
-// records only once the part's own event's body has returned. Each input's events come in its
-// own dispatch's order, each with its input, and every input is prepared; the working directory
+// seen, carrying the prepared part's outputs, which the index records before the part's own
+// event. Each input's events come in its own dispatch's order, each with its input, and every input is prepared; the working directory
 // is empty once the pool returns.
 func TestPool(t *testing.T) {
 	const n, workers = 40, 4
@@ -81,11 +80,11 @@ func TestPool(t *testing.T) {
 		if ev.Part.Depth == 0 && ev.Part.Path != pe.Input.Path {
 			t.Errorf("input %s's event is %s's", pe.Input.Path, ev.Part.Path)
 		}
-		if ev.Part.Name == "shared.txt" && ev.Outcome != dispatch.Seen {
-			// The prepared one, recorded only once its own event's body returns.
+		if ev.Part.Name == "shared.txt" && ev.Output == nil && ev.Outcome != dispatch.Seen {
+			// The prepared one, recorded before its own event.
 			key := dispatch.Key{SHA256: ev.Part.SHA256, Stage: ev.Stage}
-			if _, ok, err := f.index.Lookup(t.Context(), key); err != nil || ok {
-				t.Errorf("shared.txt recorded before its event's body returned: %t, %v", ok, err)
+			if _, ok, err := f.index.Lookup(t.Context(), key); err != nil || !ok {
+				t.Errorf("shared.txt not recorded by its own event: %t, %v", ok, err)
 			}
 		}
 		g := gatherers[pe.Input.Path]

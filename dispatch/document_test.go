@@ -205,6 +205,7 @@ func TestDocumentStageAttachments(t *testing.T) {
 	}
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2,
 		Stages: dispatch.Stages{route.Document: s, route.Vision: dispatch.NewVisionStage()}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 	})
 	if err != nil {
@@ -270,7 +271,7 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 	zeros := string(make([]byte, 8<<20))
 	s := formsDocumentStage(t, nil, &fakeDetach{files: []string{"zeros.bin", zeros}}, inspect.Options{BombRatio: 1000, BombSize: 1 << 20})
 	work := t.TempDir()
-	d, err := dispatch.New(dispatch.Config{Stages: dispatch.Stages{route.Document: s}, Index: dispatch.NewMemoryIndex(0), Dir: work})
+	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Document: s}, Index: dispatch.NewMemoryIndex(0), Dir: work})
 	if err != nil {
 		t.Fatal(err)
 	}

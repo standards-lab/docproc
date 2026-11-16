@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -75,10 +76,11 @@ func TestDepthFirst(t *testing.T) {
 }
 
 // TestOutcomes: one input reaches every outcome but limited: a route with no stage and a stage
-// with no processor yet are no processor yet; a stage's ErrEncrypted, and a failing stage on
-// content flagged encrypted, are encrypted; a stage's failure is failed; a ZIP whose central
-// directory can't be read is quarantined, no stage run and its file kept; content equal to an ancestor's is a cycle;
-// and content seen earlier in the input is seen, carrying its first event's outputs and flags.
+// with no processor yet are no processor yet; a stage's ErrEncrypted is encrypted; a stage's
+// failure is failed, content flagged encrypted among it, since a flag decides no outcome; a ZIP
+// whose central directory can't be read is quarantined, no stage run and its file removed once its
+// event is done; content equal to an ancestor's is a cycle; and content seen earlier in the input
+// is seen, carrying its first event's outputs and flags.
 func TestOutcomes(t *testing.T) {
 	top := "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\nfile broken.zip\ncopy encrypted.zip\nfile loop.txt\ncopy javascript.pdf\nfile s1.txt\nfile s2.txt"
 	world := map[string]string{
@@ -101,6 +103,9 @@ func TestOutcomes(t *testing.T) {
 	events := dispatchAll(t, f.d, input(t, "top.txt", top), func(ev *dispatch.Event) {
 		if ev.Outcome == dispatch.Quarantined {
 			quarantinedPath = ev.Part.Path
+			if _, err := os.Stat(quarantinedPath); err != nil {
+				t.Errorf("the quarantined file is gone in its event's body: %v", err)
+			}
 		}
 	})
 	wantSteps(t, events, []step{
@@ -109,7 +114,7 @@ func TestOutcomes(t *testing.T) {
 		{"e.txt", 1, dispatch.Encrypted},
 		{"f.txt", 1, dispatch.Failed},
 		{"broken.zip", 1, dispatch.Quarantined},
-		{"encrypted.zip", 1, dispatch.Encrypted},
+		{"encrypted.zip", 1, dispatch.Failed},
 		{"again.txt", 2, dispatch.Cycle},
 		{"loop.txt", 1, dispatch.Prepared},
 		{"javascript.pdf", 1, dispatch.Prepared},
@@ -133,8 +138,8 @@ func TestOutcomes(t *testing.T) {
 	if !hasFlag(q.Part.Flags, inspect.ZIPUnreadable) || q.Reason == "" {
 		t.Errorf("broken.zip: %+v, %q", q.Part.Flags, q.Reason)
 	}
-	if _, err := os.Stat(quarantinedPath); err != nil {
-		t.Errorf("the quarantined file isn't kept: %v", err)
+	if _, err := os.Stat(quarantinedPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the quarantined file is left once its event is done: %v", err)
 	}
 	if enc := byName(t, events, "encrypted.zip"); !hasFlag(enc.Part.Flags, inspect.ArchiveEncrypted) || enc.Err == nil {
 		t.Errorf("encrypted.zip: %+v, %v", enc.Part.Flags, enc.Err)
@@ -228,8 +233,8 @@ func TestLimits(t *testing.T) {
 }
 
 // TestSeenAcrossInputs: two inputs sharing an index prepare their shared content once; the
-// second's seen events carry the outputs' SHA-256s, not their removed paths, and the flags the
-// entry recorded.
+// second's seen events, the shared part's replayed child's among them, carry the outputs'
+// SHA-256s, not their removed paths, and the flags the entry recorded.
 func TestSeenAcrossInputs(t *testing.T) {
 	world := map[string]string{"shared.txt": "file inner.txt", "inner.txt": "leaf"}
 	for name, newIndex := range indexes() {
@@ -239,6 +244,7 @@ func TestSeenAcrossInputs(t *testing.T) {
 			events := dispatchAll(t, f.d, input(t, "two.txt", "copy javascript.pdf\nfile shared.txt"), nil)
 			wantSteps(t, events, []step{
 				{"javascript.pdf", 1, dispatch.Seen},
+				{"inner.txt", 2, dispatch.Seen},
 				{"shared.txt", 1, dispatch.Seen},
 				{"two.txt", 0, dispatch.Prepared},
 			})
@@ -264,12 +270,12 @@ func TestSeenAcrossInputs(t *testing.T) {
 
 // TestRemoval: each part's file, and its working directory with its outputs' files, is there
 // while the caller's loop body runs for each of its events, its outputs' and its own, and gone
-// once its own event's body returns, unless the caller kept it in its own event; a file the caller
-// moved away is no error; the input is never removed.
+// once its own event's body returns; a file the caller moved away is no error; the input is never
+// removed.
 func TestRemoval(t *testing.T) {
-	world := map[string]string{"keep.txt": "leaf keep", "move.txt": "leaf move", "drop.txt": "leaf drop"}
+	world := map[string]string{"move.txt": "leaf move", "drop.txt": "leaf drop"}
 	f := newFixture(t, world, nil, dispatch.Limits{})
-	path := input(t, "top.txt", "file keep.txt\nfile move.txt\nfile drop.txt")
+	path := input(t, "top.txt", "file move.txt\nfile drop.txt")
 	moved := filepath.Join(t.TempDir(), "moved.txt")
 	paths := map[string][]string{}
 	dispatchAll(t, f.d, path, func(ev *dispatch.Event) {
@@ -281,79 +287,60 @@ func TestRemoval(t *testing.T) {
 			if _, err := os.Stat(p); err != nil {
 				t.Errorf("%s: %s missing in the loop's body: %v", ev.Part.Name, p, err)
 			}
-		}
-		for _, p := range files {
 			if !slices.Contains(paths[ev.Part.Name], p) {
 				paths[ev.Part.Name] = append(paths[ev.Part.Name], p)
 			}
 		}
-		switch {
-		case ev.Part.Name == "keep.txt" && ev.Output == nil:
-			ev.Keep()
-		case ev.Part.Name == "move.txt" && ev.Output != nil:
+		if ev.Part.Name == "move.txt" && ev.Output != nil {
 			if err := os.Rename(ev.Output.Path, moved); err != nil {
 				t.Fatal(err)
 			}
 		}
 	})
-	exists := func(p string) bool {
-		_, err := os.Stat(p)
-		if err != nil && !errors.Is(err, fs.ErrNotExist) {
-			t.Fatal(err)
-		}
-		return err == nil
-	}
 	for name, files := range paths {
 		for _, p := range files {
-			want := name == "keep.txt" || p == path
-			if got := exists(p); got != want {
-				t.Errorf("%s: %s exists %v, want %v", name, p, got, want)
+			_, err := os.Stat(p)
+			if exists := err == nil; exists != (p == path) {
+				t.Errorf("%s: %s exists %v, want %v", name, p, exists, p == path)
 			}
 		}
 	}
-	if !exists(moved) {
-		t.Error("the moved output is gone")
+	if _, err := os.Stat(moved); err != nil {
+		t.Errorf("the moved output: %v", err)
 	}
-	// The working directory holds only the kept part's directory and its parent's file.
-	var left []string
-	if err := filepath.WalkDir(f.dir, func(p string, d fs.DirEntry, err error) error {
-		if err == nil && !d.IsDir() {
-			left = append(left, p)
-		}
-		return err
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if want := []string{paths["keep.txt"][0], paths["keep.txt"][1]}; !sameSet(left, want) {
-		t.Errorf("left in the working directory: %v, want %v", left, want)
+	if entries, err := os.ReadDir(f.dir); err != nil || len(entries) != 0 {
+		t.Errorf("left in the working directory: %v, %v", entries, err)
 	}
 }
 
-// sameSet reports whether a and b hold the same strings.
-func sameSet(a, b []string) bool {
-	a, b = slices.Clone(a), slices.Clone(b)
-	slices.Sort(a)
-	slices.Sort(b)
-	return slices.Equal(a, b)
-}
-
-// TestKeptOutputPath: a kept output's file stays, and the index records the output without its
-// path, so a seen part's output carries its SHA-256 alone.
-func TestKeptOutputPath(t *testing.T) {
+// TestOutputContent: each output's content is in the content store, by its SHA-256, before its
+// event is yielded, and the index records the output without its path, so a seen part's output
+// carries its SHA-256 alone, its content found in the store.
+func TestOutputContent(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	path := input(t, "top.txt", "leaf")
-	var kept string
+	read := func(sum string) string {
+		t.Helper()
+		rc, err := f.d.Content().Open(t.Context(), sum)
+		if err != nil {
+			t.Fatalf("open %s: %v", sum, err)
+		}
+		defer func() { _ = rc.Close() }()
+		b, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
 	dispatchAll(t, f.d, path, func(ev *dispatch.Event) {
 		if ev.Output != nil {
-			kept = ev.Output.Path
+			if got := read(ev.Output.SHA256); got != "1" || ev.Output.SHA256 != sum("1") {
+				t.Errorf("output %s: content %q", ev.Output.SHA256, got)
+			}
 		}
-		ev.Keep()
 	})
-	if _, err := os.Stat(kept); err != nil {
-		t.Fatalf("the kept output's file: %v", err)
-	}
 	events := dispatchAll(t, f.d, path, nil)
-	if o := events[0].Outputs[0]; events[0].Outcome != dispatch.Seen || o.Path != "" || o.SHA256 != sum("1") {
+	if o := events[0].Outputs[0]; events[0].Outcome != dispatch.Seen || o.Path != "" || o.SHA256 != sum("1") || read(o.SHA256) != "1" {
 		t.Fatalf("seen %s, output %+v", events[0].Outcome, o)
 	}
 }
@@ -400,8 +387,9 @@ func (f failingRecord) Record(ctx context.Context, key dispatch.Key, token strin
 	return errRecord
 }
 
-// TestRecordFails: an index that fails to record stops the dispatch with its error, alone and
-// last, and the files of the part it failed on are removed all the same.
+// TestRecordFails: an index that fails to record stops the dispatch, before the part's own event,
+// with its error, alone and last, a *StoreError of the index, typed apart from an input's; the
+// files of the part it failed on are removed all the same.
 func TestRecordFails(t *testing.T) {
 	f := newFixture(t, map[string]string{"b.txt": "leaf"}, failingRecord{dispatch.NewMemoryIndex(0)}, dispatch.Limits{})
 	var events []dispatch.Event
@@ -415,11 +403,12 @@ func TestRecordFails(t *testing.T) {
 			events = append(events, ev)
 		}
 	}
-	if len(events) != 1 || events[0].Part.Name != "b.txt" || events[0].Outcome != dispatch.Prepared {
-		t.Fatalf("events %+v, want b.txt prepared alone", events)
+	if len(events) != 0 {
+		t.Fatalf("events %+v, want none: an entry is recorded before its part's event", events)
 	}
-	if len(errs) != 1 || !errors.Is(errs[0], errRecord) {
-		t.Fatalf("errors: %v", errs)
+	store, ok := errors.AsType[*dispatch.StoreError](errs[0])
+	if len(errs) != 1 || !errors.Is(errs[0], errRecord) || !ok || store.Store != "index" {
+		t.Fatalf("errors: %v, want the index's *StoreError", errs)
 	}
 	if entries, err := os.ReadDir(f.dir); err != nil || len(entries) != 0 {
 		t.Fatalf("working directory: %v, %v", entries, err)
@@ -451,23 +440,45 @@ func TestInputErrors(t *testing.T) {
 	}
 }
 
-// TestNew: a config with no working directory, a missing one, a nil stage, or a negative limit
-// is refused; one with no index panics, naming the field.
+// TestNew: a config with no working directory, a missing one, a nil stage, two stages sharing a
+// name with different identities, a negative cap or release bound, or puts under 1 is refused,
+// matching ErrRequest; one with no index or no content store panics, naming the field.
 func TestNew(t *testing.T) {
 	t.Parallel()
-	index := dispatch.NewMemoryIndex(0)
+	index, content := dispatch.NewMemoryIndex(0), dispatch.NewMemoryContent()
 	dir := t.TempDir()
-	wantPanic(t, "dispatch: Config.Index is nil", func() { _, _ = dispatch.New(dispatch.Config{Dir: dir}) })
-	for name, cfg := range map[string]dispatch.Config{
-		"no dir":       {Index: index},
-		"missing dir":  {Index: index, Dir: filepath.Join(dir, "missing")},
-		"nil stage":    {Index: index, Dir: dir, Stages: dispatch.Stages{route.Text: nil}},
-		"negative cap": {Index: index, Dir: dir, Limits: dispatch.Limits{Depth: -1}},
+	wantPanic(t, "dispatch: Config.Index is nil", func() { _, _ = dispatch.New(dispatch.Config{Content: content, Puts: 1, Dir: dir}) })
+	wantPanic(t, "dispatch: Config.Content is nil", func() { _, _ = dispatch.New(dispatch.Config{Index: index, Puts: 1, Dir: dir}) })
+	ok := dispatch.Config{Index: index, Content: content, Dir: dir, Puts: 1}
+	for name, change := range map[string]func(*dispatch.Config){
+		"no dir":           func(c *dispatch.Config) { c.Dir = "" },
+		"missing dir":      func(c *dispatch.Config) { c.Dir = filepath.Join(dir, "missing") },
+		"nil stage":        func(c *dispatch.Config) { c.Stages = dispatch.Stages{route.Text: nil} },
+		"negative cap":     func(c *dispatch.Config) { c.Limits = dispatch.Limits{Depth: -1} },
+		"no puts":          func(c *dispatch.Config) { c.Puts = 0 },
+		"negative release": func(c *dispatch.Config) { c.Release = -1 },
+		"one name, two identities": func(c *dispatch.Config) {
+			c.Stages = dispatch.Stages{route.Document: &leaf{name: "same"}, route.Archive: &other{leaf{name: "same"}}}
+		},
 	} {
-		if _, err := dispatch.New(cfg); err == nil {
-			t.Errorf("%s: no error", name)
+		cfg := ok
+		change(&cfg)
+		if _, err := dispatch.New(cfg); !errors.Is(err, dispatch.ErrRequest) {
+			t.Errorf("%s: %v, want ErrRequest", name, err)
 		}
 	}
+	if _, err := dispatch.New(ok); err != nil {
+		t.Errorf("a whole config: %v", err)
+	}
+}
+
+// other is a leaf whose identity's configuration differs from the leaf's of its name.
+type other struct{ leaf }
+
+func (o *other) Identity() dispatch.Identity {
+	id := o.leaf.Identity()
+	id.Config = "other"
+	return id
 }
 
 // TestStagesPanic: each stage constructor panics on a config whose required field is nil, naming
