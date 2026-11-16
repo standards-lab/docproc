@@ -1,5 +1,5 @@
-//! The Markdown the tools write around their readers' text: the literal-text escape and the
-//! destination writer. The escape is htmd's rules, which every tool's Markdown shares
+//! The Markdown the tools write around their readers' text: the literal-text escape, the
+//! destination writer, and the title writer. The escape is htmd's rules, which every tool's Markdown shares
 //! (context/layers.md, "Common envelope", Text layer).
 
 /// A line of literal text as Markdown that reads as the text does: a backslash before each of
@@ -87,6 +87,32 @@ pub fn destination(target: &str) -> String {
     out
 }
 
+/// A link's or an image's title as the text of a Markdown title, `"…"`, that CommonMark reads
+/// back as the title. Each `\` and `"` is escaped, and each `&` that could begin a character
+/// reference, as in a [`destination`], since CommonMark reads both escapes and references in a
+/// title; any other character reads as itself. A line feed is written `&#10;` and a carriage
+/// return `&#13;`, references CommonMark reads back as them, so the title keeps to its line, where
+/// no line of it can start a block, end the paragraph, or break a table's row. A NUL, which
+/// CommonMark reads as U+FFFD wherever it is, is written as U+FFFD, the one way the title reads
+/// back other than as written. A `|` is left to a table cell's writer.
+pub fn title(text: &str) -> String {
+    let mut out = String::with_capacity(text.len() + 8);
+    for (index, c) in text.char_indices() {
+        match c {
+            '\\' | '"' => {
+                out.push('\\');
+                out.push(c);
+            }
+            '&' if reference_like(&text[index + 1..]) => out.push_str("\\&"),
+            '\n' => out.push_str("&#10;"),
+            '\r' => out.push_str("&#13;"),
+            '\0' => out.push(char::REPLACEMENT_CHARACTER),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Whether what follows a `&` could make it a character reference: an optional `#`, one or more
 /// ASCII letters and digits, then `;`. Every entity and numeric reference CommonMark reads is one,
 /// and a `&` escaped that begins none still reads as itself.
@@ -124,6 +150,39 @@ mod tests {
         for case in cases::group("destinations") {
             let markdown = destination(cases::text(&case, "target"));
             assert_eq!(markdown, cases::text(&case, "markdown"), "{case}");
+        }
+    }
+
+    /// Each case's title is written as its Markdown.
+    #[test]
+    fn a_title_makes_its_tables_markdown() {
+        for case in cases::group("titles") {
+            let markdown = title(cases::text(&case, "title"));
+            assert_eq!(markdown, cases::text(&case, "markdown"), "{case}");
+        }
+    }
+
+    /// CommonMark reads each case's title, in a link and in an image, back as written, or as its
+    /// `reads` where it has one.
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn a_title_reads_back_as_written() {
+        use pulldown_cmark::{Event, Parser, Tag};
+        for case in cases::group("titles") {
+            let written = case["reads"]
+                .as_str()
+                .unwrap_or_else(|| cases::text(&case, "title"));
+            let markdown = title(cases::text(&case, "title"));
+            let both = format!("[x](y \"{markdown}\") ![x](y \"{markdown}\")");
+            let read: Vec<String> = Parser::new(&both)
+                .filter_map(|event| match event {
+                    Event::Start(Tag::Link { title, .. } | Tag::Image { title, .. }) => {
+                        Some(title.into_string())
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(read, [written, written], "{case}: {both}");
         }
     }
 

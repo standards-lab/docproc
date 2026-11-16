@@ -21,6 +21,13 @@ covers docproc-ooxml only.
   percent-encoded; any other is written bare, its parentheses backslash-escaped, no longer
   angle-bracketed for them. A line ending or a NUL, which no destination can hold, is
   percent-encoded. A `|` is still escaped.
+- A picture's title is written by the title rule docproc's tools share, stated by
+  tools/envelope/cases.json: each `\` and `"` is escaped, and so is a `&` that could begin a
+  character reference; a line ending is written as a character reference, `&#10;` or `&#13;`, so
+  a carriage return within a line no longer reads back as a line feed. A title read back as
+  written before but for that, through the literal-text escape; other markup, such as `*`, `_`,
+  `[`, or a `#` at its start, is no longer backslash-escaped in it, as a title reads it as itself.
+  Its lines are still trimmed and joined by spaces, and a `|` is still escaped.
 
 ## [v0.1.0] - 2026-11-13
 

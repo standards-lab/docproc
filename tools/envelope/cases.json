@@ -13,6 +13,9 @@
     "literal_escape: a line of literal text and its Markdown; no case holds a line break.",
     "destinations: a link's or an image's target and the Markdown destination written for it, which",
     "  CommonMark reads back as the target, or as reads where a case has one; a table cell's | is left to",
+    "  the cell's writer, so no case holds one.",
+    "titles: a link's or an image's title and the Markdown written for it within a title's \"…\", which",
+    "  CommonMark reads back as the title, or as reads where a case has one; a table cell's | is left to",
     "  the cell's writer, so no case holds one."
   ],
   "exit_codes": [
@@ -73,6 +76,20 @@
     { "target": "a\u00a0b", "markdown": "<a\u00a0b>" },
     { "target": "a\nb\r\nc", "markdown": "<a%0Ab%0D%0Ac>", "reads": "a%0Ab%0D%0Ac" },
     { "target": "東京 1.png", "markdown": "<東京 1.png>" }
+  ],
+  "titles": [
+    { "title": "A plain title", "markdown": "A plain title" },
+    { "title": "", "markdown": "" },
+    { "title": "A \"quoted\" title", "markdown": "A \\\"quoted\\\" title" },
+    { "title": "C:\\Team Notes\\plan.docx", "markdown": "C:\\\\Team Notes\\\\plan.docx" },
+    { "title": "\\\\server\\share", "markdown": "\\\\\\\\server\\\\share" },
+    { "title": "a\\\"b\\", "markdown": "a\\\\\\\"b\\\\" },
+    { "title": "a&amp;b&#35;c&#x23;d&e;f&g", "markdown": "a\\&amp;b\\&#35;c\\&#x23;d\\&e;f&g" },
+    { "title": "*a* _b_ `c` [d](e) <f> 'g' (h) ~i~ $j$ # 1.", "markdown": "*a* _b_ `c` [d](e) <f> 'g' (h) ~i~ $j$ # 1." },
+    { "title": "a\nb\r\nc\rd", "markdown": "a&#10;b&#13;&#10;c&#13;d" },
+    { "title": "a\tb\u00a0c", "markdown": "a\tb\u00a0c" },
+    { "title": "a\u0000b", "markdown": "a\ufffdb", "reads": "a\ufffdb" },
+    { "title": "東京 \"1\"", "markdown": "東京 \\\"1\\\"" }
   ],
   "literal_escape": [
     { "text": "plain text", "markdown": "plain text" },

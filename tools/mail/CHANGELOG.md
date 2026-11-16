@@ -20,8 +20,15 @@ output contract: a change to them is a change here. This changelog covers docpro
   tools/envelope/cases.json: each `\` is escaped, and so is a `&` that could begin a character
   reference; a target holding whitespace, a control character, `<`, or `>` is written within angle
   brackets, its `<` and `>` escaped; any other is written bare, its parentheses escaped. A line
-  ending or a NUL, which no destination can hold, is percent-encoded. Link text, titles, alt text,
-  media names, `inline`, and the unmatched-source warning are as before.
+  ending or a NUL, which no destination can hold, is percent-encoded. Link text, media names,
+  `inline`, and the unmatched-source warning are as before.
+- A link's or an image's title, and an image's alt text, in a message's Markdown read back as
+  written. htmd escaped only their `"`, so a `\` before punctuation, or an `&amp;`, read back as
+  something else. A title is now written by the title rule docproc's tools share, stated by
+  tools/envelope/cases.json: each `\` and `"` is escaped, and so is a `&` that could begin a
+  character reference; a line feed between its lines is written `&#10;`, so the title keeps to one
+  line. An alt text's lines are escaped as literal text. Both keep their lines trimmed and their
+  blank lines dropped.
 
 ### Added
 

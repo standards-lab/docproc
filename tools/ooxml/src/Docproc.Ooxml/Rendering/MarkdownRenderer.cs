@@ -524,7 +524,8 @@ internal sealed class MarkdownRenderer
 
     // A picture as an image link to its file, relative to the media directory, or to a linked
     // picture's target; its alternative text, or else its title, is the image text, and a title
-    // that differs from the image text is the image's title. An embedded package or OLE object is
+    // that differs from the image text is the image's title, its lines joined by spaces and
+    // written by Title, a pipe escaped as Target escapes one. An embedded package or OLE object is
     // a link to its file, its text its program id or else its part's file name; it follows its
     // preview picture (context/layers.md, "docproc-ooxml").
     private static string RenderMedia(Media media)
@@ -537,10 +538,51 @@ internal sealed class MarkdownRenderer
         }
         var text = media.Alt ?? media.Title;
         var alt = string.Join(" ", Lines(text ?? ""));
-        var title = media.Title is { } own && own != text ? string.Join(" ", Lines(own)) : "";
+        var title = media.Title is { } own && own != text ? string.Join(" ", TrimmedLines(own)) : "";
         return title.Length > 0
-            ? $"![{alt}]({destination} \"{title.Replace("\"", "\\\"", StringComparison.Ordinal)}\")"
+            ? $"![{alt}]({destination} \"{Title(title).Replace("|", "\\|", StringComparison.Ordinal)}\")"
             : $"![{alt}]({destination})";
+    }
+
+    /// <summary>A link's or an image's title as the text of a Markdown title, within
+    /// <c>"…"</c>, that CommonMark reads back as the title, by the rule every system tool shares
+    /// (tools/envelope/cases.json). Each backslash and <c>"</c> is escaped, and each
+    /// <c>&amp;</c> that could begin a character reference, as in a <see cref="Destination"/>,
+    /// since CommonMark reads both escapes and references in a title; any other character reads
+    /// as itself. A line feed is written <c>&amp;#10;</c> and a carriage return
+    /// <c>&amp;#13;</c>, references CommonMark reads back as them, so the title keeps to its line.
+    /// A NUL, which CommonMark reads as U+FFFD wherever it is, is written as U+FFFD, the one way
+    /// the title reads back other than as written. A pipe is left to a table cell's writer, as the
+    /// caller's is (a picture's title may stand in a cell).</summary>
+    internal static string Title(string title)
+    {
+        var text = new StringBuilder(title.Length + 8);
+        for (var i = 0; i < title.Length; i++)
+        {
+            var c = title[i];
+            switch (c)
+            {
+                case '\\' or '"':
+                    text.Append('\\').Append(c);
+                    break;
+                case '&' when ReferenceLike(title.AsSpan(i + 1)):
+                    text.Append(@"\&");
+                    break;
+                case '\n':
+                    text.Append("&#10;");
+                    break;
+                case '\r':
+                    text.Append("&#13;");
+                    break;
+                case '\0':
+                    text.Append('\uFFFD');
+                    break;
+                default:
+                    text.Append(c);
+                    break;
+            }
+        }
+        return text.ToString();
     }
 
     // A link's destination by Destination, a pipe in it escaped too, as a GFM table cell requires
@@ -813,8 +855,11 @@ internal sealed class MarkdownRenderer
 
     // The non-empty lines of a text, trimmed (leading spaces would make an indented code block)
     // and escaped, tabs as spaces.
-    private static IEnumerable<string> Lines(string text) =>
-        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0).Select(line => Escape(line));
+    private static IEnumerable<string> Lines(string text) => TrimmedLines(text).Select(line => Escape(line));
+
+    // The non-empty lines of a text, trimmed, tabs as spaces, as they are before they are escaped.
+    private static IEnumerable<string> TrimmedLines(string text) =>
+        text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0);
 
     // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
     // (context/layers.md, "Common envelope"), which htmd's escaping and so mail's and onenote's

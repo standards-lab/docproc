@@ -26,7 +26,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::{destination, escape};
+use docproc_envelope::markdown::{destination, escape, title};
 use docproc_envelope::{Fault, Media};
 use htmd::Element;
 use htmd::element_handler::{HandlerResult, Handlers};
@@ -443,14 +443,16 @@ pub fn from_html(html: &str) -> Result<String, String> {
 /// destination, which is the envelope's [`destination`]: htmd escapes only a target's `(` and
 /// `)`, so CommonMark would read a UNC path's `\\` back as `\` and an `&amp;` as `&`. An
 /// `<a>` with no `href` is its text alone. As htmd does, the text's leading whitespace is
-/// dropped and its trailing whitespace follows the link, and a title is [`attribute_text`].
+/// dropped and its trailing whitespace follows the link. A title is [`attribute_title`]: htmd
+/// escapes only its `"`, so CommonMark would read a `\` before punctuation, or an `&amp;`, back
+/// as something else.
 fn anchor(handlers: &dyn Handlers, element: Element) -> Option<HandlerResult> {
     let mut target = None;
     let mut title = None;
     for attr in element.attrs {
         match &*attr.name.local {
             "href" => target = Some(&*attr.value),
-            "title" => title = Some(attribute_text(&attr.value)),
+            "title" => title = Some(attribute_title(&attr.value)),
             _ => {}
         }
     }
@@ -471,8 +473,8 @@ fn anchor(handlers: &dyn Handlers, element: Element) -> Option<HandlerResult> {
 
 /// An image, as htmd 0.5.6 writes one, `![alt](destination "title")`, but for its destination,
 /// which is the envelope's [`destination`], as a link's is ([`anchor`]). Its target is its last
-/// `src` or `href`, as htmd reads it, and an `<img>` with neither is nothing; its alt text and
-/// title are [`attribute_text`].
+/// `src` or `href`, as htmd reads it, and an `<img>` with neither is nothing; its alt text is
+/// [`attribute_alt`] and its title [`attribute_title`].
 fn image(_: &dyn Handlers, element: Element) -> Option<HandlerResult> {
     let mut target = None;
     let mut alt = None;
@@ -480,8 +482,8 @@ fn image(_: &dyn Handlers, element: Element) -> Option<HandlerResult> {
     for attr in element.attrs {
         match &*attr.name.local {
             "src" | "href" => target = Some(&*attr.value),
-            "alt" => alt = Some(attribute_text(&attr.value)),
-            "title" => title = Some(attribute_text(&attr.value)),
+            "alt" => alt = Some(attribute_alt(&attr.value)),
+            "title" => title = Some(attribute_title(&attr.value)),
             _ => {}
         }
     }
@@ -498,14 +500,30 @@ fn image(_: &dyn Handlers, element: Element) -> Option<HandlerResult> {
 /// whitespace but the form feed.
 const DOCUMENT_WHITESPACE: &[char] = &['\t', '\n', '\r', ' '];
 
-/// An alt text or a title as htmd 0.5.6 writes one: its lines trimmed, the blank ones dropped,
-/// joined by line feeds, and each `"` escaped.
-fn attribute_text(text: &str) -> String {
+/// An alt text's or a title's lines as htmd 0.5.6 takes them: each trimmed, the blank ones
+/// dropped.
+fn attribute_lines(text: &str) -> impl Iterator<Item = &str> {
     text.lines()
-        .map(|line| line.trim_matches(DOCUMENT_WHITESPACE).replace('"', "\\\""))
+        .map(|line| line.trim_matches(DOCUMENT_WHITESPACE))
         .filter(|line| !line.is_empty())
+}
+
+/// An image's alt text as Markdown that reads back as its lines: each escaped as literal text,
+/// joined by line feeds as htmd 0.5.6 joins them. htmd escapes only a `"`, so CommonMark would
+/// read a `\` before punctuation, an `&amp;`, a `*`, or a `]` as something else. A line after the
+/// first begins its line of Markdown, so it is escaped as one.
+fn attribute_alt(text: &str) -> String {
+    attribute_lines(text)
+        .enumerate()
+        .map(|(index, line)| escape(line, index > 0))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// A link's or an image's title as the envelope's [`title`] writes its lines, joined by line
+/// feeds as htmd 0.5.6 joins them.
+fn attribute_title(text: &str) -> String {
+    title(&attribute_lines(text).collect::<Vec<_>>().join("\n"))
 }
 
 /// Markdown that reads as `text` does: its paragraphs, split at blank lines, each line escaped
@@ -1022,13 +1040,63 @@ mod tests {
         }
     }
 
-    /// Where htmd's own destination already reads back, the owned link and image handlers write
-    /// what htmd's would: the text, its trailing whitespace after the link, a title's and an alt
-    /// text's lines, a link with no target, and an image with none.
+    /// The titles and the alt texts of the links and images in `markdown`, as CommonMark reads
+    /// them back: an alt text is its image's text, a soft line break a line feed.
+    fn titles_and_alts(markdown: &str) -> (Vec<String>, Vec<String>) {
+        use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+        let (mut titles, mut alts) = (Vec::new(), Vec::new());
+        let mut alt = None;
+        for event in Parser::new(markdown) {
+            match event {
+                Event::Start(Tag::Link { title, .. }) => titles.push(title.into_string()),
+                Event::Start(Tag::Image { title, .. }) => {
+                    titles.push(title.into_string());
+                    alt = Some(String::new());
+                }
+                Event::End(TagEnd::Image) => alts.extend(alt.take()),
+                Event::Text(text) => alt.iter_mut().for_each(|alt| alt.push_str(&text)),
+                Event::SoftBreak => alt.iter_mut().for_each(|alt| alt.push('\n')),
+                _ => {}
+            }
+        }
+        (titles, alts)
+    }
+
+    /// A link's and an image's title, and an image's alt text, read back as their lines, through
+    /// CommonMark: backslashes, a `"`, an `&` that could begin a character reference, markup, and
+    /// a line that would begin a block, its lines trimmed and the blank ones dropped.
+    #[test]
+    fn titles_and_alt_texts_read_back_as_written() {
+        let texts = [
+            (r"C:\Team Notes\plan.docx", r"C:\Team Notes\plan.docx"),
+            (r"a\*b\&quot;c", r#"a\*b\"c"#),
+            ("&amp;amp; &amp;#35; &amp;e &lt;b&gt;", "&amp; &#35; &e <b>"),
+            ("*a* _b_ [c] `d` ~e~", "*a* _b_ [c] `d` ~e~"),
+            (
+                " one \n\n # two \r\n- three\n1. four ",
+                "one\n# two\n- three\n1. four",
+            ),
+        ];
+        for (html, text) in texts {
+            let markdown = from_html(&format!(
+                "<p><a href=\"x\" title=\"{html}\">link</a> \
+                 <img src=\"y\" alt=\"{html}\" title=\"{html}\"></p>"
+            ))
+            .unwrap();
+            let (titles, alts) = titles_and_alts(&markdown);
+            assert_eq!(titles, [text, text], "{markdown}");
+            assert_eq!(alts, [text], "{markdown}");
+        }
+    }
+
+    /// Where htmd's own destination, title, and alt text already read back, the owned link and
+    /// image handlers write what htmd's would: the text, its trailing whitespace after the link, a
+    /// title's and an alt text's lines, a link with no target, and an image with none. A title
+    /// keeps to one line, where htmd's holds line feeds.
     #[test]
     fn links_and_images_are_written_as_htmd_writes_them() {
         let htmls = [
-            "<p>See <a href=\"https://example.net/x\" title=\" One &quot;q&quot;\n\n two \">\
+            "<p>See <a href=\"https://example.net/x\" title=\" One &quot;q&quot; \">\
              <b>bold</b> text </a>after.</p>",
             "<p><a>no target</a> and <a href=\"https://example.net/f(x)\">f</a></p>",
             "<p><img src=\"a b.png\" alt=\" A\nb \" title=\"t\"><img alt=\"none\">\
