@@ -282,7 +282,7 @@ tool's check.
   musl release binary, overflow checks on, from the locked crate graph. The tests compare that
   binary's stdout and stderr, run from `tests/fixtures/` with relative inputs, for every committed
   `.one` and `.onetoc2` against its `.jsonl` and `.stderr` goldens under `tests/golden/`, and
-  each table of contents read with `--file-only` against its refusal's.
+  interop's `SUT/Open Notebook.onetoc2` read with `--file-only` against its refusal's.
 - `golden`: re-records the goldens from the release binary. The check never writes them, so a
   change to the output is reviewed as a diff of them.
 - `publish`: builds the release binary for this machine into `.state/publish/`;

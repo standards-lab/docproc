@@ -29,8 +29,8 @@ in the spike.
 - Schema `"2"` JSON Lines: a `notebook` line, then `section_group` and `section` lines
   depth-first, each section followed by its `page` lines, then a `skipped` line per section left
   out. Output is byte-identical for the same input, pinned by a `.jsonl` and a `.stderr` golden
-  for every committed `.one` and `.onetoc2`, and a refusal's for each table of contents read
-  with `--file-only`, all run against the release binary from the fixtures' directory.
+  for every committed `.one` and `.onetoc2`, and a refusal's for a table of contents read with
+  `--file-only`, all run against the release binary from the fixtures' directory.
 - A page's `media`: its images, embedded files, and ink drawings, flattened, in the reader's
   visit order, each its `kind`, `file`, `filename`, `size`, `extension`, and `type` as it has
   them.
