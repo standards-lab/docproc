@@ -13,6 +13,12 @@ GO_MODULES = "."
 # toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
 # turn: docproc-ooxml (.NET), and docproc-mail and docproc-onenote (Rust).
 TOOLS = "ooxml mail onenote"
+# The root's held pins, which currency reports as held and upgrade never moves: one line each,
+# "<item> <pin>: <reason>", the item named as currency names it (a Go module by its path, the go
+# directive as go, a mise tool by its name, an action by its owner/repo). A tool's own holds are
+# in its mise.toml. None is held.
+HOLDS = '''
+'''
 
 # The one check: read-only and deterministic, stopping at the first failure. It runs the lint, then
 # check:go, then each tool's check, so CI's lint, Go, and tool jobs run its three parts apart.
@@ -72,16 +78,11 @@ actionlint
 # Read-only and development-time: it reads the network, so CI never runs it.
 [tasks.currency]
 description = "Report every requirement, tool, and action pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
-run = "scripts/currency.sh"
+run = "scripts/currency.sh report"
 
-# Development-time, as currency is. It runs each tool's upgrade alone so far: the Go modules' and
-# the root's own pins are not upgraded by it yet.
+# Development-time, as currency is, moving what currency reports trailing but the held: the root
+# mise pins, each Go module's go directive and direct requirements, and the action pins, then each
+# tool's upgrade.
 [tasks.upgrade]
-description = "Run each tool's upgrade, which bumps its pins to their latest; rewrites only the tools' pins and lock files"
-run = '''
-set -eu
-for tool in $TOOLS; do
-  echo "upgrade: tools/$tool"
-  mise -C "$MISE_PROJECT_ROOT/tools/$tool" run upgrade
-done
-'''
+description = "Bump the root mise pins, each Go module's go directive and direct requirements, and each workflow action pin to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, and the tools' pins and lock files"
+run = "scripts/currency.sh upgrade"
