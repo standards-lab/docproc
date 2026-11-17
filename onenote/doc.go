@@ -10,8 +10,8 @@
 // NewReader refuses one older than OneNoteMinimum, 0.1.0, its first schema "2" release, and one
 // the container runner built, since docproc-onenote reads the input's path in place; the Tool's own
 // construction refuses a missing one, or one whose --version doesn't name schema "2". The contract
-// is docproc-onenote's README and context/layers.md's "docproc-onenote": its JSON Lines, schema
-// "2", its media names, its warnings, its refusal reasons, and its exit codes.
+// is docproc-onenote's README, tools/onenote/README.md: its JSON Lines, schema "2", in the common
+// envelope, whose media names, warnings, refusal reasons, and exit codes internal/cli holds.
 //
 // Reader.Read returns the sequence of one input's records. Ranging over it runs docproc-onenote
 // once, through internal/cli's envelope reader, which checks that the first line is a schema "2"

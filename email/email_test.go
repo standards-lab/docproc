@@ -381,10 +381,10 @@ func TestReadWarnings(t *testing.T) {
 }
 
 // TestReadSenderFromHeaders: a sender whose line leaves its SMTP address out takes the address of
-// its transport headers' From field (design ML-2): an Exchange sender's, a folded field's, one
-// after a line that isn't a field, the first of a list, and a nested message's. A sender with its
-// own SMTP address keeps it, and one whose headers have no From, or one that doesn't parse, or
-// whose From comes after the header block's end, has none.
+// its transport headers' From field: an Exchange sender's, a folded field's, one after a line that
+// isn't a field, the first of a list, and a nested message's. A sender with its own SMTP address
+// keeps it, and one whose headers have no From, or one that doesn't parse, or whose From comes
+// after the header block's end, has none.
 func TestReadSenderFromHeaders(t *testing.T) {
 	t.Parallel()
 	ex := `"sender":{"name":"Ada","address":"/O=EX/CN=ADA","address_type":"EX"}`

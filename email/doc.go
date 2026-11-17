@@ -9,8 +9,8 @@
 // NewReader refuses one older than MailMinimum, 0.1.0, its first schema "2" release, and one the
 // container runner built, since docproc-mail reads the input's path in place; the Tool's own
 // construction refuses a missing one, or one whose --version doesn't name schema "2". The contract
-// is docproc-mail's README and context/layers.md's "docproc-mail": its JSON Lines, schema "2", its
-// media names, its warnings, and its exit codes.
+// is docproc-mail's README, tools/mail/README.md: its JSON Lines, schema "2", in the common
+// envelope, whose media names, warnings, and exit codes internal/cli holds.
 //
 // Reader.Read returns the sequence of one input's records. Ranging over it runs docproc-mail once,
 // through internal/cli's envelope reader, which checks that the first line is a schema "2" store
@@ -54,7 +54,7 @@
 // Threads come from a store's messages: a Threader, fed each record while a read is ranged over,
 // keeps their threading keys alone, so its memory follows the number of messages, never their
 // bodies. The spike measured it, at spike-ai-pipeline-processing v0.9.0, over 200,000 messages: 362
-// bytes a message held, 435 while Threads runs (design PT-12). Its keys are unchanged since. A
+// bytes a message held, 435 while Threads runs. Its keys are unchanged since. A
 // caller resuming a read rebuilds a Threader from the message records it persisted; no Threader
 // state is saved. Threader.Threads builds the threads by RFC 5256's REFERENCES algorithm over
 // Message-ID, In-Reply-To, and References, with one addition: a message whose headers name no

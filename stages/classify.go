@@ -55,7 +55,7 @@ type fault struct {
 	reason string
 }
 
-// classify returns err's class, a unit's failure or a part's, as layers.md's table states, from
+// classify returns err's class, a unit's failure or a part's, by the package doc's table, from
 // the facts tool reports and memory, the memory bound every tool ran under, zero for none:
 //
 //   - the content's, recorded: a tool that exited nonzero by its own code, 3 and 4 included; one

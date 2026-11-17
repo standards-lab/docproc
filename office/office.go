@@ -104,8 +104,8 @@ var ErrRequest = picture.ErrRequest
 // The outcomes of a docproc-ooxml run that exits nonzero, each its exit code's, internal/cli's
 // shared errors: the *cli.ExitError a conversion returns matches its code's.
 var (
-	// ErrMediaNotWritten is exit code 1: docproc-ooxml couldn't write stdout or its media.
-	ErrMediaNotWritten = cli.ErrNotWritten
+	// ErrNotWritten is exit code 1: docproc-ooxml couldn't write stdout or its media.
+	ErrNotWritten = cli.ErrNotWritten
 	// ErrUsage is exit code 2: docproc-ooxml refused its arguments, a fault in this package.
 	ErrUsage = cli.ErrUsage
 	// ErrRefused is exit code 3: docproc-ooxml refused the document, giving its reason.

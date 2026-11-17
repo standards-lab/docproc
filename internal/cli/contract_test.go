@@ -16,7 +16,7 @@ import (
 // ExitError from either adapter matches the other adapter's error of the same code, and no
 // other. office and email each report a run through cli.ExitError itself.
 func TestAdaptersShareOutcomes(t *testing.T) {
-	officeErrs := []error{office.ErrMediaNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
+	officeErrs := []error{office.ErrNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
 	emailErrs := []error{email.ErrNotWritten, email.ErrUsage, email.ErrRefused, email.ErrFailed}
 	for i := range officeErrs {
 		code := i + 1

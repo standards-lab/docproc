@@ -9,9 +9,9 @@
 // OfficeSpec declaring it; a container runner's is refused, since docproc-ooxml reads the part's
 // path in place. NewConverter refuses one older than 0.1.0, the first schema "2" release, and the
 // Tool's own construction a missing one or one of another schema, so a missing or outdated
-// docproc-ooxml fails at startup. docproc-ooxml's contract is context/layers.md's "The tool
-// contract" and its README: schema "2" JSON Lines, the common envelope's stderr, media names, and
-// exit codes, which internal/cli reads.
+// docproc-ooxml fails at startup. docproc-ooxml's contract is its README, tools/ooxml/README.md:
+// schema "2" JSON Lines in the common envelope, whose stderr, media names, and exit codes
+// internal/cli holds and reads.
 //
 // Convert reads the document at Request.Path in place and returns the sequence of its records:
 // docproc-ooxml runs once, in the working directory the Request names, which the caller owns,
@@ -71,7 +71,7 @@
 // other medium stays as docproc-ooxml wrote it.
 //
 // A run that exits 1 to 4, or dies by a signal, ends the sequence with internal/cli's
-// *cli.ExitError: it matches its code's error through errors.Is, ErrMediaNotWritten, ErrUsage,
+// *cli.ExitError: it matches its code's error through errors.Is, ErrNotWritten, ErrUsage,
 // ErrRefused, or ErrFailed, each the exit error every reader this module runs shares, and a
 // refusal's class, an encrypted package's among them, is its Refusal method's. A conversion whose
 // context ends returns an error matching the context's, as every Tool run does.
@@ -98,7 +98,7 @@
 //   - [Medium] is one of a Document's media, of a [MediumKind]: [Picture], [Embedded], or [OLE].
 //   - [Row] and [Cell] are a Rows record's sheet rows and cells; [ValueType] is a cell's value
 //     type: [ValueNumber], [ValueText], [ValueBoolean], [ValueError], or [ValueDate].
-//   - [ErrMediaNotWritten], [ErrUsage], [ErrRefused], and [ErrFailed] are docproc-ooxml's exit
+//   - [ErrNotWritten], [ErrUsage], [ErrRefused], and [ErrFailed] are docproc-ooxml's exit
 //     codes 1 to 4, internal/cli's.
 //   - [ErrSchema] is the cause of a first line that isn't a schema "2" document, internal/cli's.
 //   - [ErrRequest] is the cause of a refused request, picture's own.

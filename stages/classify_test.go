@@ -77,7 +77,7 @@ func dispatchSet(t *testing.T, set stages.Set) (dispatched, bool) {
 
 // TestClassification dispatches a OneNote section through Build's Set over the stand-in
 // docproc-onenote, under a 2 GiB memory bound and an idle bound, once for each line of
-// layers.md's table: a tool's own exit, 3 and 4, its own fatal signal, its reason naming the
+// the package doc's table: a tool's own exit, 3 and 4, its own fatal signal, its reason naming the
 // signal and the bound, its own time bound, and output that doesn't parse are the content's,
 // failed and recorded; exit 1 and 2, and a SIGKILL or SIGTERM docproc didn't send, are the run's,
 // failed and never recorded; and a refusal internal/cli classes is encrypted or read elsewhere.

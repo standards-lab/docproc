@@ -46,8 +46,8 @@ func standinRenderer(t *testing.T) (*document.Ghostscript, *standin, string) {
 	return g, st, pdf
 }
 
-// TestGhostscriptRenderArgs checks gs's arguments for a page at a DPI, as the bake-off measured
-// them, and that the run reads the PDF by its absolute path from the PDF's directory.
+// TestGhostscriptRenderArgs checks gs's arguments for a page at a DPI, and that the run reads the
+// PDF by its absolute path from the PDF's directory.
 func TestGhostscriptRenderArgs(t *testing.T) {
 	for _, tc := range []struct{ page, dpi int }{{1, 150}, {7, 300}, {1 << 20, 72}} {
 		g, st, pdf := standinRenderer(t)

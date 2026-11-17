@@ -15,8 +15,7 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// PDFDetachMinimum is the oldest pdfdetach the package accepts: poppler 22.02, the oldest poppler
-// the renderer bake-off accepted for its utilities.
+// PDFDetachMinimum is the oldest pdfdetach the package accepts: poppler 22.02.
 const PDFDetachMinimum = "22.02"
 
 // PDFDetachSpec declares poppler's pdfdetach, minimum 22.02, for either runner's constructor.

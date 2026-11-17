@@ -312,7 +312,7 @@ func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 }
 
 // fillSenders sets the SMTP address of m's sender, and of each nested message's, from its
-// transport headers' From when the line left it out (design ML-2).
+// transport headers' From when the line left it out.
 func fillSenders(m *Message) {
 	if m.Sender.SMTPAddress == "" {
 		m.Sender.SMTPAddress = headerFrom(m.TransportHeaders)

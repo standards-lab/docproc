@@ -28,14 +28,36 @@
 //   - video, route.Video: the plan record, then frames and windows from one ffmpeg run.
 //   - text, route.Text: text decoded to UTF-8.
 //
+// A stage's outcome is classified once, here, from the facts package tool reports, for a unit of
+// a part and for a part alike:
+//
+//	the content's, recorded  the tool exited nonzero by its own code: a docproc tool's 3 and 4,
+//	                         gs's 1, qpdf's 2, 7zz's 8 (out of memory), and every other tool's
+//	                         every nonzero exit; it died by its own fault (SIGSEGV, SIGABRT,
+//	                         SIGBUS, SIGFPE, SIGILL), an allocation refused under the memory
+//	                         bound included; it passed its own time bound (TimedOut); its output
+//	                         didn't parse; a format package's content error (no audio or media
+//	                         stream, an archive 7zz can't open or list, or listing past
+//	                         inspect's Entries, an item unlike its listing); and, the
+//	                         dispatcher's, a put over the store's size (dispatch.ErrTooLarge)
+//	the run's, retried       the context ended; SIGKILL, SIGTERM, or another signal docproc
+//	                         didn't send; the program didn't start; a docproc tool's exit 1 (not
+//	                         written) or 2 (usage); 7zz's exit 7 (command line) or 255 (stopped);
+//	                         any error on docproc's side of the pipe
+//	encrypted                a stage's dispatch.ErrEncrypted alone, mapped from a refusal's
+//	                         reason by internal/cli's one mapping
+//	read elsewhere           a stage's dispatch.ErrReadElsewhere alone, onenote's
+//	                         table-of-contents refusal, by the same mapping
+//
+// A unit's failure of the content's class is a dispatch.Warning naming the unit, and the part is
+// prepared with the outputs it has; a part's fails it with dispatch.ErrRefused, recorded. A
+// failure of the run's class fails the part unrecorded, so a transient fault is never replayed as
+// a permanent gap. A death by a signal under a memory bound names the bound, as in "killed by
+// SIGABRT under a 256 MiB memory bound".
+//
 // Three rules are each this package's once:
 //
-//   - classify reads a unit's or a part's failure as layers.md's table states, from the facts
-//     package tool reports: a tool's own exit, its own fatal signal, its own time bound, and
-//     output that doesn't parse are the content's, recorded, a part's matching
-//     dispatch.ErrRefused and a unit's a dispatch.Warning naming the unit; anything else is the
-//     run's, never recorded. A death by a signal under a memory bound names the bound, as in
-//     "killed by SIGABRT under a 256 MiB memory bound".
+//   - classify reads a unit's or a part's failure by the table above.
 //   - Each stage's identity hashes its format package's request resolved, every default filled
 //     and each field that changes no output tagged out of its JSON, with the adapters' version;
 //     its Version is its tools' whole version lines.

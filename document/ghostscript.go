@@ -18,7 +18,7 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// GhostscriptMinimum is the oldest Ghostscript the released renderer accepts.
+// GhostscriptMinimum is the oldest Ghostscript the renderer accepts.
 const GhostscriptMinimum = "10.0"
 
 // GhostscriptSpec declares Ghostscript's gs, minimum 10.0, for either runner's constructor.
@@ -33,9 +33,9 @@ func GhostscriptSpec() tool.Spec {
 	}
 }
 
-// Ghostscript is the released renderer, the renderer bake-off's winner: it counts, renders, and
-// reads the text layer of a PDF's pages with Ghostscript's gs, one process per call. Ghostscript is AGPL-licensed; the
-// renderer runs gs as a separate program through a tool.Tool and never links it.
+// Ghostscript is the PDF renderer: it counts, renders, and reads the text layer of a PDF's pages
+// with Ghostscript's gs, one process per call. Ghostscript is AGPL-licensed; the renderer runs gs
+// as a separate program through a tool.Tool and never links it.
 //
 // gs reads the PDF by its path, which Count and Render make absolute, and each run's working
 // directory is the PDF's directory. The container runner mounts a run's working directory at the
@@ -213,9 +213,9 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 	return out.String(), nil
 }
 
-// renderArgs returns gs's arguments for page of the PDF at pdf at dpi, as the bake-off measured
-// them. png16m is 24-bit RGB; the alpha bits anti-alias text and graphics, as poppler's pdftoppm
-// and pdftocairo do by default and gs doesn't. -sOutputFile=- writes the PNG to stdout.
+// renderArgs returns gs's arguments for page of the PDF at pdf at dpi. png16m is 24-bit RGB; the
+// alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default and
+// gs doesn't. -sOutputFile=- writes the PNG to stdout.
 func renderArgs(pdf string, page, dpi int) []string {
 	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),

@@ -263,14 +263,14 @@ func TestConvertDecodeErrors(t *testing.T) {
 func TestConvertExits(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
-	all := []error{office.ErrMediaNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
+	all := []error{office.ErrNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
 	for _, tc := range []struct {
 		code    string
 		want    error
 		message string
 		refusal error
 	}{
-		{"1", office.ErrMediaNotWritten, "writing stdout: Broken pipe", nil},
+		{"1", office.ErrNotWritten, "writing stdout: Broken pipe", nil},
 		{"2", office.ErrUsage, "unknown option --bogus", nil},
 		{"3", office.ErrRefused, "encrypted package (an OLE compound file holding an EncryptedPackage stream); decrypt it first", dispatch.ErrEncrypted},
 		{"3", office.ErrRefused, "an OLE compound file, such as a legacy binary document (doc, xls, ppt); convert it to docx, xlsx, or pptx first", nil},
