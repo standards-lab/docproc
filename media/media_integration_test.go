@@ -156,8 +156,9 @@ func TestScenesMaxSide(t *testing.T) {
 }
 
 // TestCancel reads the fixture through both runners and ends the context once the first event is
-// yielded: the stream yields the context's error once and ends, and the media directory holds the
-// one event's file.
+// yielded: the stream yields the context's error once and ends, well before the 50 s source
+// would, and the media directory holds the one event's file. The time is taken from the cancel,
+// so a container's slow start on a loaded machine doesn't count against it.
 func TestCancel(t *testing.T) {
 	path := fixture(t)
 	for name, runner := range runners {
@@ -166,7 +167,7 @@ func TestCancel(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			dir := t.TempDir()
-			start := time.Now()
+			var cancelled time.Time
 			var events []media.Event
 			var errs []error
 			for e, err := range s.Events(ctx, path, media.Request{Dir: dir}) {
@@ -175,15 +176,18 @@ func TestCancel(t *testing.T) {
 					continue
 				}
 				events = append(events, e)
+				if cancelled.IsZero() {
+					cancelled = time.Now()
+				}
 				cancel()
 			}
-			took := time.Since(start)
-			t.Logf("recorded: cancelled after %d events; the stream ended %v after the start", len(events), took)
+			took := time.Since(cancelled)
+			t.Logf("recorded: cancelled after %d events; the stream ended %v after the cancel", len(events), took)
 			if len(errs) != 1 || !errors.Is(errs[0], context.Canceled) {
 				t.Errorf("errors %v, want context.Canceled once", errs)
 			}
-			if took > 10*time.Second {
-				t.Errorf("the stream ended %v after the start; the source is 50 s", took)
+			if len(events) == 0 || took > 10*time.Second {
+				t.Errorf("the stream ended %v after the cancel, after %d events; the source is 50 s", took, len(events))
 			}
 			checkDir(t, dir, events)
 			checkNoScratch(t, filepath.Dir(path))

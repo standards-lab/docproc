@@ -247,14 +247,16 @@ func TestRunChildHoldingStdout(t *testing.T) {
 
 // TestRunTimeout checks that a run past its own Timeout is ended as a cancelled one is, and
 // reported through either runner as an ExitError with TimedOut set, carrying the program's
-// outcome: a stubborn program's SIGKILL once the KillAfter period passes.
+// outcome: a stubborn program's SIGKILL once the KillAfter period passes. The Timeout runs from
+// the start, before the stand-in, a race-built test binary, ignores SIGTERM, so it is 2 s, past
+// any start on a loaded machine; a shorter one could end it by SIGTERM first.
 func TestRunTimeout(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
 		t.Run(label, func(t *testing.T) {
 			t.Parallel()
 			tl, leftover := build(t, time.Second)
-			err := tl.Run(t.Context(), tool.Invocation{Args: []string{"stubborn", "1m"}, Timeout: 200 * time.Millisecond})
+			err := tl.Run(t.Context(), tool.Invocation{Args: []string{"stubborn", "1m"}, Timeout: 2 * time.Second})
 			exitErr, ok := errors.AsType[*tool.ExitError](err)
 			if !ok || !exitErr.TimedOut || exitErr.Signal != "SIGKILL" {
 				t.Fatalf("Run error = %v, want a timed-out ExitError killed by SIGKILL", err)
@@ -271,11 +273,12 @@ func TestRunTimeout(t *testing.T) {
 }
 
 // TestRunTimeoutExitZero checks that a program that exits 0 on the SIGTERM its Timeout sends is
-// still reported as timed out, with its exit code.
+// still reported as timed out, with its exit code. The Timeout is 2 s, as TestRunTimeout's is, so
+// the SIGTERM never comes before the stand-in handles it.
 func TestRunTimeoutExitZero(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
-	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"sleep", "1m"}, Timeout: 200 * time.Millisecond})
+	err := tl.Run(t.Context(), tool.Invocation{Args: []string{"sleep", "1m"}, Timeout: 2 * time.Second})
 	exitErr, ok := errors.AsType[*tool.ExitError](err)
 	if !ok || !exitErr.TimedOut || exitErr.Code != 0 || exitErr.Signal != "" {
 		t.Errorf("Run error = %v, want a timed-out ExitError with exit code 0", err)

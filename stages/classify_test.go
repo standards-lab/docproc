@@ -81,6 +81,8 @@ func dispatchSet(t *testing.T, set stages.Set) (dispatched, bool) {
 // signal and the bound, its own time bound, and output that doesn't parse are the content's,
 // failed and recorded; exit 1 and 2, and a SIGKILL or SIGTERM docproc didn't send, are the run's,
 // failed and never recorded; and a refusal internal/cli classes is encrypted or read elsewhere.
+// The idle bound, 5 s, runs from the run's start, the stand-in's start included, so it is far
+// past any start on a loaded machine; only the case that holds its run reaches it.
 func TestClassification(t *testing.T) {
 	t.Parallel()
 	const notebook = `{"line":"notebook","schema":"2","input":"section","name":"S"}` + "\n"
@@ -101,7 +103,7 @@ func TestClassification(t *testing.T) {
 		{"SIGBUS", onenoteSettings{Signal: "BUS"}, dispatch.Failed, true, "killed by SIGBUS under a 2 GiB memory bound"},
 		{"SIGFPE", onenoteSettings{Signal: "FPE"}, dispatch.Failed, true, "killed by SIGFPE under a 2 GiB memory bound"},
 		{"SIGILL", onenoteSettings{Signal: "ILL"}, dispatch.Failed, true, "killed by SIGILL under a 2 GiB memory bound"},
-		{"its own time bound", onenoteSettings{HoldMS: 5000}, dispatch.Failed, true, "timed out"},
+		{"its own time bound", onenoteSettings{HoldMS: 60000}, dispatch.Failed, true, "timed out"},
 		{"output that doesn't parse", onenoteSettings{Stdout: notebook + `{"line":"page","id":` + "\n"}, dispatch.Failed, true, ""},
 		{"exit 1, not written", onenoteSettings{Stderr: "docproc-onenote: error: writing stdout: Broken pipe\n", Exit: 1}, dispatch.Failed, false, "not written"},
 		{"exit 2, usage", onenoteSettings{Stderr: "docproc-onenote: error: unknown option\n", Exit: 2}, dispatch.Failed, false, "usage"},
@@ -112,7 +114,7 @@ func TestClassification(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			set, _ := standinSet(t, c.settings, stages.Options{Exclude: onenoteOnly(), Memory: testMemory, Idle: 500 * time.Millisecond})
+			set, _ := standinSet(t, c.settings, stages.Options{Exclude: onenoteOnly(), Memory: testMemory, Idle: 5 * time.Second})
 			ev, recorded := dispatchSet(t, set)
 			if ev.Outcome != c.outcome || recorded != c.recorded || !strings.Contains(ev.Reason, c.reason) {
 				t.Errorf("%s, recorded %t, %q; want %s, recorded %t, %q in the reason", ev.Outcome, recorded, ev.Reason, c.outcome, c.recorded, c.reason)

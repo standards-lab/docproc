@@ -563,12 +563,14 @@ func TestReadCancel(t *testing.T) {
 }
 
 // TestReadDeadline: a read whose deadline passes while docproc-mail runs ends with an error
-// matching context.DeadlineExceeded.
+// matching context.DeadlineExceeded, its records before the deadline yielded. The deadline is
+// 10 s, far past the stand-in's start, a race-built test binary's, and far short of its 60 s
+// sleep, so a slow start on a loaded machine never cuts its records short.
 func TestReadDeadline(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
 	mail.sleep()
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 	recs, err := collect(r.Read(ctx, email.Request{Input: "in.msg"}))
 	if !errors.Is(err, context.DeadlineExceeded) {

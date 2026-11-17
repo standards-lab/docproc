@@ -304,7 +304,7 @@ func TestWindowsHeld(t *testing.T) {
 func TestWindowsEarlyStop(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
-	st.set(func(c *settings) { c.Probe, c.Synth, c.PaceMS = probeOf(100*time.Second), 100*audio.SampleRate, 5 })
+	st.set(func(c *settings) { c.Probe, c.Synth, c.PaceMS = probeOf(100*time.Second), 100*audio.SampleRate, 20 })
 	dir := t.TempDir()
 	req := audio.Request{Dir: dir, Concurrency: 2, Limit: 10 * time.Second, Overlap: time.Second, Threshold: -100}
 	start := time.Now()
@@ -316,8 +316,9 @@ func TestWindowsEarlyStop(t *testing.T) {
 		ws = append(ws, w)
 		break
 	}
-	// The paced stand-in takes 5 s to write the whole source.
-	if d := time.Since(start); d > 4*time.Second {
+	// The paced stand-in takes 20 s to write the whole source, and 2 s to write the first window:
+	// the bound sits between them, wide of both on a loaded machine.
+	if d := time.Since(start); d > 10*time.Second {
 		t.Errorf("the loop returned after %v, not stopping the decode", d)
 	}
 	if got := files(t, dir); len(ws) != 1 || !slices.Equal(got, names(ws)) {

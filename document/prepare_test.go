@@ -162,7 +162,8 @@ func TestImagesDPI(t *testing.T) {
 
 // TestImagesSlots checks a page's slot is released only when its outcome is taken: at
 // concurrency 2, while the consumer holds page 1, pages 2 and 3 render, page 2 waiting untaken in
-// its slot, and page 4 doesn't start until page 2 is taken.
+// its slot, and page 4 doesn't start until page 2 is taken. The test waits for page 3 before it
+// looks for page 4, so a slow render can't hide a slot released too early.
 func TestImagesSlots(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 6)
@@ -173,6 +174,14 @@ func TestImagesSlots(t *testing.T) {
 		}
 		if p.Number != 1 {
 			continue
+		}
+		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+			if rendered, _ := f.rendered(); slices.Contains(rendered, 3) {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatal("page 3 didn't render within 10 s while page 1 was held")
+			}
 		}
 		time.Sleep(300 * time.Millisecond)
 		if rendered, _ := f.rendered(); slices.Max(rendered) > 3 {
