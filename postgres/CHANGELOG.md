@@ -9,3 +9,13 @@ change to it is a change here. This changelog covers the postgres module only; t
 each system tool under `tools/` keep their own.
 
 ## [Unreleased]
+
+### Added
+
+- `Migrations`, the index's schema as a sqlate migration set named `Source`, `docproc`, recorded
+  in `Table`, `docproc_schema_version`: `docproc_entry`, a row per key with its claim's token,
+  lease expiry, creation time, `dispatch.Version`, and `Entry` as jsonb; `docproc_item`, the
+  entries' logs, a row per `Recorded` item keyed by its entry, token, and position; and
+  `docproc_ix_entry_created`, the retention's index. A host applies the set.
+- `Verify`, which prepares every statement against a live schema, and `Statements`, which lists
+  them.
