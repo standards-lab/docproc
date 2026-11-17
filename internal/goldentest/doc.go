@@ -1,7 +1,8 @@
-// Package goldentest holds the integration tier's golden-sum helpers, which the test packages
-// whose outputs must stay byte for byte what they were share: a file of SHA-256 sums, one per
-// output, recorded once and compared against on every run. Its integration-tagged tests use it;
-// it builds untagged so the unit tier proves it, and no released file imports it.
+// Package goldentest holds the golden-sum helpers the integration tier's test packages share, for
+// outputs that must stay byte for byte what they were: a file of SHA-256 sums, one per output,
+// recorded once and compared against on every run. dispatch's unit-tier goldens, compared as text,
+// are recorded under its RecordEnv too. It builds untagged so the unit tier proves it, and no
+// released file imports it.
 //
 // Its exported identifiers:
 //

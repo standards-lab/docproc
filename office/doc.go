@@ -47,12 +47,12 @@
 // Pictures follow one standard, and no conversion encodes a picture lossily: each writes PNG. Once
 // the Document line is read, and before it is yielded, its pictures are converted in one batch. A
 // picture vision decodes, PNG, JPEG, GIF, or BMP, is handed on exactly as stored, as is any kind
-// the standard names no converter for, an embedded package, and an OLE object. By its stored
-// file's signature, an EMF or WMF is rendered to PNG through soffice, all of a document's in one
-// soffice run with LibreOffice's Draw PNG export, and each trimmed to its picture through magick;
-// a TIFF is converted through magick, its first image alone. The picture package converts them,
-// each picture copied into a directory of its own, every magick run carrying its Converter's
-// limits, and its MagickSpec declares magick, minimum 7.1. A converted picture's PNG is named by the stored name's
+// the standard names no converter for, an embedded package, and an OLE object. By its stored file's
+// signature, an EMF or WMF is rendered to PNG through soffice, all of a document's in one soffice
+// run with LibreOffice's Draw PNG export, and each trimmed to its picture through magick; a TIFF is
+// converted through magick, its first image alone. The picture package converts them, each picture
+// copied into a directory of its own, every magick run carrying its Converter's limits, and its
+// MagickSpec declares magick, minimum 7.1. A converted picture's PNG is named by the stored name's
 // stem, its SHA-256, and .png, and written into the media directory beside the stored file, which
 // stays; magick writes it without the time of the run, so a picture converted twice is the same
 // bytes both times. A picture conversion that fails fails the conversion.

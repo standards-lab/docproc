@@ -42,8 +42,9 @@ the reference for its exported names, and its doc comment lists them.
 
 A host registers `stages.Build`'s stages with a `dispatch.Dispatcher` and ranges over its
 events. No bound, cap, or limit has a library default: the run bounds (`stages.Options`' Timeout,
-Idle, Memory, and Concurrency), `dispatch.Limits`, and the caps in each stage's request are none
-until the host sets them.
+Idle, and Memory), `dispatch.Limits`, and the caps in each stage's request are none until the host
+sets them. `stages.Options.Concurrency`, the pages and windows held at once, is one until the host
+raises it.
 
 ## The system tools
 
@@ -149,7 +150,8 @@ repository root, `mise run <task>`:
   routing; builds, vets, format-checks, fixes, tidies, tests under the race detector, and lints
   every Go module; then runs each tool's check. It is the unit tier: each package over its own
   testdata and a stand-in tool, the readers replaying the tools' committed goldens in place. It
-  runs no real tool and reads no network.
+  reads no network and runs no real tool but util-linux's `prlimit`, which the memory-bound tests
+  need on PATH.
 - `test:integration`: the integration tier, under the `integration` build tag, which runs the
   real tools and checks every committed fixture's route and outcome through `stages`. It builds
   docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their publish
@@ -159,9 +161,9 @@ repository root, `mise run <task>`:
   minimum or later: `gs`, `qpdf`, `pdfdetach`, `ffmpeg`, `ffprobe`, `magick`, `soffice`,
   util-linux's `prlimit`, and `docker`, whose tests pull `audio.FFmpegImage` and
   `picture.LibreOfficeImage`.
-- `currency` and `upgrade`: report, then bump, every root pin behind its latest: each Go
-  module's go directive and direct requirements, the root mise pins, and the workflows' action
-  pins, then each tool's. A pin the root `HOLDS` list names is held.
+- `currency` and `upgrade`: report, then bump, every root pin behind its latest: the root mise
+  pins, each Go module's go directive and direct requirements, and the workflows' action pins,
+  then each tool's. A pin the root `HOLDS` list names is held.
 
 A Go module's release is a `vX.Y.Z` tag (`<module>/vX.Y.Z` for a nested module), a tool's
 `tools/<format>/vX.Y.Z`; the release workflow publishes each from its own changelog.

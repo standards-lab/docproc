@@ -17,15 +17,16 @@
 //
 // # Events
 //
-// An output event carries the part it belongs to, the identity of its stage, and the [Output],
-// its SHA256 filled and its content already in the content store, and a warning event its
-// [Warning], what of the part read badly. A part's own event carries its outcome and why, the error a failed part came to, its stage's identity, how
-// many outputs it yielded, in Outputs, and how many parts it found, in Children; never the outputs
-// or the parts themselves, whose events the caller has had. Once the body returns for an output
-// event, the dispatcher holds nothing of the output but what it appended to the index, and once
-// a found part's event is done, nothing of the part but the [Child] reference it appended, so a
-// stage that yields millions of outputs and parts, a store's messages and attachments, holds the
-// memory of one at a time, the caller's loop owning each as it comes.
+// An output event carries the part it belongs to, the identity of its stage, and the [Output], its
+// SHA256 filled and its content already in the content store, and a warning event its [Warning],
+// what of the part read badly. A part's own event carries its outcome and why, the error a failed
+// part came to, its stage's identity, how many outputs it yielded, in Outputs, and how many parts
+// it found, in Children; never the outputs or the parts themselves, whose events the caller has
+// had. Once the body returns for an output event, the dispatcher holds nothing of the output but
+// what it appended to the index, and once a found part's event is done, nothing of the part but the
+// [Child] reference it appended, so a stage that yields millions of outputs and parts, a store's
+// messages and attachments, holds the memory of one at a time, the caller's loop owning each as it
+// comes.
 //
 // # Outcomes
 //
@@ -37,11 +38,11 @@
 //     [ErrNoProcessor], as office's does for a kind it has no processor for yet.
 //   - [Seen]: the index already holds its content's fresh entry under its stage's identity,
 //     recorded by this dispatch, an earlier one, or a concurrent one this dispatch waited on. Its
-//     log is replayed, streamed one item at a time, with no file: each output and warning an event
-//     with the Outcome Seen and the entry's outcome in Recorded, an output carrying its SHA256 alone,
-//     and each child dispatched as its recorded part at its place in this input; then its own event
-//     carries the entry's outcome, in Recorded, its counts, and its flags. The part is neither
-//     inspected nor prepared again.
+//     log is replayed, streamed one item at a time, with no file: each output and warning an
+//     event with the Outcome Seen and the entry's outcome in Recorded, an output carrying its
+//     SHA256 alone, and each child dispatched as its recorded part at its place in this input;
+//     then its own event carries the entry's outcome, in Recorded, its counts, and its flags. The
+//     part is neither inspected nor prepared again.
 //   - [Cycle]: its SHA-256 is an ancestor's; it is neither inspected, prepared, nor recursed
 //     into.
 //   - [Quarantined]: its flags' verdict under the dispatcher's inspect.Options quarantines it,
@@ -147,8 +148,7 @@
 // dispatch yields, the index's [Key], [Entry], [Recorded], and [Child] the shapes it stores, and
 // [Tool], [Row], and [State] the stage table's, all on encoding/json and versioned by [Version],
 // with the Meta keys, every key a stage of package stages sets, and the record outputs' media
-// types. A field local to a
-// process, such as a part's or an output's Path, never marshals.
+// types. A field local to a process, such as a part's or an output's Path, never marshals.
 //
 // # Outputs and the caller's loop
 //
@@ -170,11 +170,10 @@
 // for records still to come. A stage that releases each original, as the stages package's email,
 // onenote, and office stages do through [Found]'s Release, frees it as soon as the dispatcher
 // settles its content, the found part's event done, its entry in the index, the caller keeping
-// nothing of it. Content whose route has no stage is settled too, once the
-// caller's loop has moved past its [NoProcessor] event: the caller had its chance, and a later
-// record naming it in the same dispatch is no processor yet again, with no file, its flags, route,
-// and reason the first's.
-// So a store's working directory holds the attachments of the messages in flight, those a tool has
+// nothing of it. Content whose route has no stage is settled too, once the caller's loop has moved
+// past its [NoProcessor] event: the caller had its chance, and a later record naming it in the same
+// dispatch is no processor yet again, with no file, its flags, route, and reason the first's. So a
+// store's working directory holds the attachments of the messages in flight, those a tool has
 // written ahead of the dispatch among them, rather than every attachment until the store's own
 // event, whether or not a stage is registered for them. What the dispatcher doesn't settle stays
 // until then, so no record loses its content: an original whose part failed, was limited,
@@ -189,24 +188,24 @@
 // and its event. An input's events keep their order; the inputs' interleave. The caller's loop body
 // runs on its own goroutine, and each worker waits for it to return before its dispatch goes on, so
 // the caller's loop owns each event as it owns one dispatch's, output events among them, and the
-// files are removed once the body returns. An error that stops one input's dispatch is yielded
-// with that input: a [*StoreError] is the store's, on which a host stops its run. A worker holds one
-// event at most, so a slow loop holds the workers back, and the disk holds what that many
-// dispatches have in flight. An error that stops one input's dispatch is yielded with that input,
-// and the others go on; ctx ending stops them all, its error yielded alone, last.
+// files are removed once the body returns. A worker holds one event at most, so a slow loop holds
+// the workers back, and the disk holds what that many dispatches have in flight. An error that
+// stops one input's dispatch is yielded with that input, and the others go on; a [*StoreError] is
+// the store's, on which a host stops its run. ctx ending stops them all, its error yielded alone,
+// last.
 //
 // # Resuming a store
 //
 // [Input.After] resumes the input's read after a message, the id email.Request's After takes, a
 // .pst's node id or an mbox's ordinal: the stages package's email stage passes it to docproc-mail
-// as --after, which
-// writes the whole read's store and folders, then only the messages after it. Only the input's own
-// part carries it. A resumed input's entry is never recorded, its outputs being the read's tail, so
-// a later whole dispatch prepares it whole; the parts found below are recorded as ever. A resumed
-// input whose content the index holds replays its log past the item whose After is the cursor,
-// compared by equality alone, since a .pst's node ids don't ascend in read order; no such item
-// ends the dispatch with an error matching [ErrRequest], as docproc-mail refuses an id that names
-// no message. Each message's last output's event carries the cursor in [Event.After].
+// as --after, which writes the whole read's store and folders, then only the messages after it.
+// Only the input's own part carries it. A resumed input's entry is never recorded, its outputs
+// being the read's tail, so a later whole dispatch prepares it whole; the parts found below are
+// recorded as ever. A resumed input whose content the index holds replays its log past the item
+// whose After is the cursor, compared by equality alone, since a .pst's node ids don't ascend in
+// read order; no such item ends the dispatch with an error matching [ErrRequest], as docproc-mail
+// refuses an id that names no message. Each message's last output's event carries the cursor in
+// [Event.After].
 //
 // A caller resuming a large store after a crash combines two things it keeps as it goes: a
 // [FileIndex] in a directory that outlives the process, which holds the entries of the parts
@@ -215,19 +214,19 @@
 // checkpoint. No Threader state joins it: the message records it persisted carry the threading
 // keys, and a consumer threads them with an email.Threader fed those records.
 //
-// The store's outputs stream as the email stage reads them, so the cursor advances while the
-// store is dispatched. For each message, in docproc-mail's order, the caller has, as events: each
-// of its attachments and media, a found part's outputs, every part found in it, and its own event,
-// or an inline message's own attachments, record, and Markdown, or an attachment's unread child,
-// in the attachment table's order; then the message's record, its Meta "id" the message's store
-// id; then its Markdown, when it has one. The message's last output, its Markdown or, with none,
-// its record, carries the cursor in [Event.After] and is the last of everything the message holds,
-// so the caller persists the message's outputs as they come; at the message's last output the
-// message is done, and its id is the cursor. A message record whose Meta has "embedded_in" is an inline message's,
-// part of its parent's, and is threaded with no store's messages. A conversation record,
+// The store's outputs stream as the email stage reads them, so the cursor advances while the store
+// is dispatched. For each message, in docproc-mail's order, the caller has, as events: each of its
+// attachments and media, a found part's outputs, every part found in it, and its own event, or an
+// inline message's own attachments, record, and Markdown, or an attachment's unread child, in the
+// attachment table's order; then the message's record, its Meta "id" the message's store id; then
+// its Markdown, when it has one. The message's last output, its Markdown or, with none, its record,
+// carries the cursor in [Event.After] and is the last of everything the message holds, so the
+// caller persists the message's outputs as they come; at the message's last output the message is
+// done, and its id is the cursor. A message record whose Meta has "embedded_in" is an inline
+// message's, part of its parent's, and is threaded with no store's messages. A conversation record,
 // "conversation <id>", is a message's for the cursor, its Meta "id" the message's store id, which
-// docproc-mail's --after takes as any other; it is threaded with none, since a conversation has
-// no threading fields.
+// docproc-mail's --after takes as any other; it is threaded with none, since a conversation has no
+// threading fields.
 //
 // The cursor rule stays exact: a checkpoint is saved only at a message's last output, its cursor
 // that message's id. Every message past the checkpoint's cursor comes again on resuming, those

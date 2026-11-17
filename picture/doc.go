@@ -44,7 +44,7 @@
 // ConvertPages converts one picture, read as its Request's Kind, writing its PNGs into the working
 // directory named by the Request's Stem: a TIFF's every page, named by the stem, -page, its number
 // from 1, and .png, returned in page order; any other kind's one PNG, the stem and .png. The
-// dispatch package's picture stage converts a standalone picture through it, its stem the part's
+// stages package's picture stage converts a standalone picture through it, its stem the part's
 // SHA-256. ConvertBatch converts several at once, each read as the kind its Picture names and
 // written to the PNG it names, the EMFs and WMFs in one soffice run: the office package converts a
 // document's pictures through it. A kind the package doesn't convert, a stem that isn't a plain

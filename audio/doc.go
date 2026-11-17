@@ -6,18 +6,17 @@
 // built through either runner: FFmpegSpec and FFprobeSpec declare them, minimum 9.0, and the
 // container runner runs them in FFmpegImage.
 //
-// A Splitter, built over a Config of the two Tools, both required, cuts a source's windows with
-// one decode. Splitter.Windows probes the source through ffprobe for its first audio stream and
-// its estimated duration, refusing a source with none, with ErrNoAudio, before ffmpeg runs. Then
-// one ffmpeg run decodes the stream to 16 kHz, SampleRate, mono 16-bit PCM, and a Cutter, the
-// stream cutter, cuts it into windows as it arrives, each written into the request's media
-// directory as WAV with the canonical 44-byte header of ffmpeg's -bitexact WAV, named by the
-// SHA-256 of its bytes. The same window is the same file through either runner, and over the
-// committed speech fixtures the windows are v0.9.0's under its tracker detector, byte for byte,
-// though v0.9.0 decoded the source once to plan it and once more for each window. A Request names
-// the media directory and how many windows are held at once, at least one; the decode waits while
-// that many wait for the consumer. A loop that stops early, or a context that ends, stops the run,
-// and the media directory keeps only the windows the stream yielded.
+// A Splitter, built over a Config of the two Tools, both required, cuts a source's windows with one
+// decode. Splitter.Windows probes the source through ffprobe for its first audio stream and its
+// estimated duration, refusing a source with none, with ErrNoAudio, before ffmpeg runs. Then one
+// ffmpeg run decodes the stream to 16 kHz, SampleRate, mono 16-bit PCM, and a Cutter, the stream
+// cutter, cuts it into windows as it arrives, each written into the request's media directory as
+// WAV with the canonical 44-byte header of ffmpeg's -bitexact WAV, named by the SHA-256 of its
+// bytes. The same window is the same file through either runner, and over the committed speech
+// fixtures the windows are v0.9.0's under its tracker detector, byte for byte. A Request names the
+// media directory and how many windows are held at once, at least one; the decode waits while that
+// many wait for the consumer. A loop that stops early, or a context that ends, stops the run, and
+// the media directory keeps only the windows the stream yielded.
 //
 // A Cutter feeds the PCM to a Tracker, which finds its silences, and gives them and the stream's
 // position to a Planner, which fixes each window once the stream has passed its limit or ended,

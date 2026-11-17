@@ -37,8 +37,9 @@
 // (with docproc-onenote's reason), or ErrFailed, each internal/cli's shared error, and names a
 // refusal's class by its Refusal method, through cli.RefusalClass: a password-protected section's
 // reason begins "encrypted", dispatch.ErrEncrypted, and a table of contents refused under
-// --file-only is dispatch.ErrReadElsewhere, its sections read as their own inputs. A read whose context ends returns an error matching the
-// context's, as every Tool run does. A loop that stops early stops docproc-onenote.
+// --file-only is dispatch.ErrReadElsewhere, its sections read as their own inputs. A read whose
+// context ends returns an error matching the context's, as every Tool run does. A loop that stops
+// early stops docproc-onenote.
 //
 // Known limits, docproc-onenote's, as its README states: a password-protected section is refused
 // as an input, and skipped inside a notebook; a page is read at its latest revision only; merged

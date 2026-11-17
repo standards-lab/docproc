@@ -32,7 +32,8 @@ fixtures scripts stay in the spike.
   package's minimum, a stage whose tool is missing or too old left out; its `Set` holds the
   stages, dispatch's tool table and stage rows, and the inspection options. `Options` carries
   every run bound (Timeout, Idle, Memory, Concurrency, Env), ImageMagick's limits, the
-  inspection options, and each stage's request, none with a default.
+  inspection options, and each stage's request, none with a default but Concurrency, which is one
+  when zero.
 - One failure classification: a tool's own exit, its own fatal signal, its own time bound,
   output that doesn't parse, and a format package's content errors are the content's, a part's
   matching `dispatch.ErrRefused` and recorded, a unit's a `dispatch.Warning`; anything else is
@@ -55,18 +56,19 @@ fixtures scripts stay in the spike.
 - `audio.Cutter`, the stream cutter `audio` and `media` share, and the audio and video plan
   records, `audio.PlanRecord` and `media.VideoPlan`.
 - The unit tier on `internal/tooltest`'s stand-in tool, which reads no `~/docs` and runs no real
-  program; the readers replay each tool's committed goldens in place, skipping, by name, when
-  the tools tree is absent. The integration tier, under the `integration` build tag, runs the
-  real tools, docproc's three built from the same checkout, through `mise run
-  test:integration`; its whole-fixture test checks every committed fixture's route and outcome
-  through `stages`.
+  program but util-linux's `prlimit`, for the memory bound; the readers replay each tool's committed
+  goldens in place, skipping, by name, when the tools tree is absent. The integration tier, under
+  the `integration` build tag, runs the real tools, docproc's three built from the same checkout,
+  through `mise run test:integration`; its whole-fixture test checks every committed fixture's route
+  and outcome through `stages`.
 
 ### Changed
 
 - Constructors take a Config and panic by name on a nil required field; each package's refused
   request matches its one `ErrRequest`; every time returned or written is UTC.
-- No bound, cap, or limit has a library default: inspect's bomb rule, the index's lease and
-  poll, tool's kill delay, and the page and window concurrency are the host's.
+- No bound, cap, or limit has a library default: inspect's bomb rule, the memory index's lease,
+  and tool's kill delay are the host's, and the page and window concurrency is one at a time
+  until the host raises it.
 - `route` owns the extension table and the encrypted-package detector; a ZIP holding
   `[Content_Types].xml` routes as office whatever its name, and content of no known signature
   routes by a stored audio or video type.

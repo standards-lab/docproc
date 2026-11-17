@@ -6,34 +6,35 @@
 // holds beside its pages, its password requirement, its form fields, and its embedded files,
 // through qpdf and pdfdetach.
 //
-// The renderer, Ghostscript, is the renderer bake-off's winner, one gs process per call. Count
-// returns a PDF's page count with gs's own PDF interpreter; Render writes one page, 1-based, as
-// PNG at a DPI to a writer, with gs's png16m device, text and graphics anti-aliased, to stdout;
-// and Text reads a page's text layer with gs's txtwrite device, keeping gs's physical layout, so a
-// multi-column page or a form reads out of reading order. HasText is the rule for a page having a
-// text layer, its text not empty once whitespace is trimmed. Render refuses a DPI of zero or less
-// and a page below 1 before any tool runs, as CheckRender does. It doesn't count the pages: gs
-// past the last page exits zero with a message in place of a PNG, which Render returns as its
-// error, writing nothing. Each run reads the PDF by its absolute path in the PDF's directory, so
-// either runner's Tool sees the same file. NewGhostscript takes a gs Tool built through either
-// runner, GhostscriptSpec declaring it, in a Config, and refuses one older than 10.0. Each
-// constructor panics naming a required Config field that is nil, the caller's mistake, and
-// returns an error only for the environment's fault, a tool too old. Ghostscript is
-// AGPL-licensed, and the package runs it as a separate program, never linked.
+// The renderer, Ghostscript, runs one gs process per call. Count returns a PDF's page count with
+// gs's own PDF interpreter; Render writes one page, 1-based, as PNG at a DPI to a writer, with gs's
+// png16m device, text and graphics anti-aliased, to stdout; and Text reads a page's text layer with
+// gs's txtwrite device, keeping gs's physical layout, so a multi-column page or a form reads out of
+// reading order. HasText is the rule for a page having a text layer, its text not empty once
+// whitespace is trimmed. Render refuses a DPI of zero or less and a page below 1 before any tool
+// runs, as CheckRender does. It doesn't count the pages: gs past the last page exits zero with a
+// message in place of a PNG, which Render returns as its error, writing nothing. Each run reads the
+// PDF by its absolute path in the PDF's directory, so either runner's Tool sees the same file.
+// NewGhostscript takes a gs Tool built through either runner, GhostscriptSpec declaring it, in a
+// Config, and refuses one older than 10.0. Each constructor panics naming a required Config field
+// that is nil, the caller's mistake, and returns an error only for the environment's fault, a tool
+// too old. Ghostscript is AGPL-licensed, and the package runs it as a separate program, never
+// linked.
 //
-// Two adapters read what a PDF's structure holds beside its pages, each over a tool.Tool the
-// caller built. QPDF, over qpdf, minimum 11.0, the first whose JSON is version 2: RequiresPassword
-// asks qpdf --requires-password whether the PDF needs a password to open, exit 0 yes, 2 not
-// encrypted, 3 encrypted but opening without one, as a PDF restricted only by its permissions
-// does, and an exit 2 with qpdf's error a file it can't open; and Form reads qpdf's JSON of the
-// AcroForm, --json-key=acroform, into a Form, each terminal field's full name, type, and value,
-// a checkbox's or radio group's checked state, a choice's options and selected values, and
-// whether a signature field is signed, a radio group's widgets as one field; a field's value never
-// fails the form, only JSON that doesn't parse or isn't version 2. Detacher, over poppler's pdfdetach, minimum 22.02, whose -v
-// exits 99: List lists the embedded files, the name tree's and the file attachment annotations',
-// not the media behind a Screen or Rendition annotation; and Save writes one file's content to
-// the caller's writer, pdfdetach told to save it to /dev/stdout, so it writes no file and a stored
-// name is only ever a name. Each reads the PDF by its absolute path in the PDF's directory.
+// Two adapters read what a PDF's structure holds beside its pages, each over a tool.Tool the caller
+// built. QPDF, over qpdf, minimum 11.0, the first whose JSON is version 2: RequiresPassword asks
+// qpdf --requires-password whether the PDF needs a password to open, exit 0 yes, 2 not encrypted, 3
+// encrypted but opening without one, as a PDF restricted only by its permissions does, and an exit
+// 2 with qpdf's error a file it can't open; and Form reads qpdf's JSON of the AcroForm,
+// --json-key=acroform, into a Form, each terminal field's full name, type, and value, a checkbox's
+// or radio group's checked state, a choice's options and selected values, and whether a signature
+// field is signed, a radio group's widgets as one field; a field's value never fails the form, only
+// JSON that doesn't parse or isn't version 2. Detacher, over poppler's pdfdetach, minimum 22.02,
+// whose -v exits 99: List lists the embedded files, the name tree's and the file attachment
+// annotations', not the media behind a Screen or Rendition annotation; and Save writes one file's
+// content to the caller's writer, pdfdetach told to save it to /dev/stdout, so it writes no file
+// and a stored name is only ever a name. Each reads the PDF by its absolute path in the PDF's
+// directory.
 //
 // A Preparer, built at the composition root over a Ghostscript, streams a PDF's prepared pages
 // through Images, which reads the PDF at the caller's path, counts its pages, and renders each
