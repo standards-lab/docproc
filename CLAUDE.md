@@ -5,6 +5,10 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 
 - [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its packages,
   the system tools each stage needs, its limits, and its development tasks.
+- [`storage/README.md`](storage/README.md): docproc/storage, the content store over go-storage, a
+  nested module on its own tags.
+- [`postgres/README.md`](postgres/README.md): docproc/postgres, the index over sqlate on
+  PostgreSQL, a nested module on its own tags.
 - [`context/README.md`](context/README.md): the working context.
 - [`STANDARDS.md`](STANDARDS.md): the judgement calls the standards-reviewer applies.
 - [`tools/ooxml/README.md`](tools/ooxml/README.md): docproc-ooxml, its tasks run from
@@ -15,3 +19,6 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 - [`tools/envelope/src/lib.rs`](tools/envelope/src/lib.rs): docproc-envelope, the Rust tools'
   shared envelope crate, tested by each Rust tool's check.
 - `mise run check`: the check.
+- `mise run integration`: the providers' live tiers, `integration:postgres` and
+  `integration:storage`, each against its own compose service; `mise run test:integration`, the
+  pre-tag run, the tools tier over this checkout's tool builds, then `integration`.

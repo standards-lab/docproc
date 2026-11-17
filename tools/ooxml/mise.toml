@@ -5,7 +5,7 @@
 [tools]
 dotnet = "11.0.100"
 jq = "1.8.2"
-uv = "0.13.8"
+uv = "0.13.9"
 
 # A task's shell keeps the caller's PATH order, so where a host `dotnet` without the pinned SDK
 # (/usr/bin/dotnet) comes before mise's installs, a bare `dotnet` would run it. Each task that runs

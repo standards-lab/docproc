@@ -1,0 +1,9 @@
+# docproc's test-only harness: PostgreSQL for the postgres module's live tier and SeaweedFS's S3
+# gateway for the storage module's. Each service builds from compose/<service>/Dockerfile, which
+# pins its image and carries its configuration and health check. Each keeps its data in tmpfs, so
+# every start begins empty.
+name: docproc
+
+include:
+  - compose/postgres.yml
+  - compose/seaweedfs.yml
