@@ -116,19 +116,19 @@ func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*
 		return nil, err
 	}
 	drun := execRun(execConfig{name: dname, path: dpath, killAfter: dspec.KillAfter})
-	if _, err := checkVersion(ctx, dname, dspec, dminimum, drun); err != nil {
+	if _, _, err := checkVersion(ctx, dname, dspec, dminimum, drun); err != nil {
 		return nil, err
 	}
 	if err := ensureImage(ctx, name, image.Ref, drun); err != nil {
 		return nil, err
 	}
 	run := containerRun(name, dpath, drun, runArgs(spec, image), image.Ref, spec.KillAfter)
-	version, err := checkVersion(ctx, name, spec, minimum, run)
+	version, line, err := checkVersion(ctx, name, spec, minimum, run)
 	if err != nil {
 		return nil, err
 	}
 	image.CapAdd = slices.Clone(image.CapAdd)
-	return &Tool{name: name, version: version, run: run, image: &image}, nil
+	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: run, image: &image}, nil
 }
 
 // ensureImage pulls ref through drun, docker's runFunc, unless docker image inspect finds it

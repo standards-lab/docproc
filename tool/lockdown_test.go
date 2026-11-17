@@ -291,6 +291,57 @@ func TestRunIdle(t *testing.T) {
 	}
 }
 
+// TestSpecBounds checks that a Spec's Timeout and Idle bound every run whose Invocation sets
+// neither, and that an Invocation's own bound takes their place; a negative one is refused as the
+// spec's defect.
+func TestSpecBounds(t *testing.T) {
+	t.Parallel()
+	spec := standinSpec(installStandin(t), "1.0", "1.0")
+	spec.Timeout = 200 * time.Millisecond
+	tl, err := tool.NewExec(t.Context(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = tl.Run(t.Context(), tool.Invocation{Args: []string{"sleep", "1m"}})
+	if exitErr, ok := errors.AsType[*tool.ExitError](err); !ok || !exitErr.TimedOut {
+		t.Errorf("a run under the Spec's Timeout: %v, want a timed-out ExitError", err)
+	}
+	var out bytes.Buffer
+	err = tl.Run(t.Context(), tool.Invocation{Args: []string{"tick", "5", "100ms"}, Stdout: &out, Idle: time.Second})
+	if err != nil || strings.Count(out.String(), "tick\n") != 5 {
+		t.Errorf("a run with its own Idle, past the Spec's Timeout: %v, %q", err, out.String())
+	}
+
+	spec.Timeout, spec.Idle = 0, 300*time.Millisecond
+	if tl, err = tool.NewExec(t.Context(), spec); err != nil {
+		t.Fatal(err)
+	}
+	err = tl.Run(t.Context(), tool.Invocation{Args: []string{"sleep", "1m"}})
+	if exitErr, ok := errors.AsType[*tool.ExitError](err); !ok || !exitErr.TimedOut {
+		t.Errorf("a run under the Spec's Idle: %v, want a timed-out ExitError", err)
+	}
+
+	spec.Idle = -time.Second
+	if _, err := tool.NewExec(t.Context(), spec); err == nil || !strings.Contains(err.Error(), "below zero") {
+		t.Errorf("a negative Idle: %v, want it refused", err)
+	}
+}
+
+// TestVersionLine checks that a Tool keeps the whole line its version was found on, trimmed, so
+// two builds of one version differ.
+func TestVersionLine(t *testing.T) {
+	t.Parallel()
+	spec := standinSpec(installStandin(t), "1.0", "1.0")
+	spec.VersionArgs = []string{"print", "  build 7\nstandin version 1.2.3-dev+abc (2026-11-16)  \nlast"}
+	tl, err := tool.NewExec(t.Context(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := tl.VersionLine(), "standin version 1.2.3-dev+abc (2026-11-16)"; got != want || tl.Version().String() != "1.2.3" {
+		t.Errorf("VersionLine %q, Version %s; want %q, 1.2.3", got, tl.Version(), want)
+	}
+}
+
 // TestRunTimeoutContextFirst checks that a run its context ends before its own Timeout passes is
 // the context's, not timed out.
 func TestRunTimeoutContextFirst(t *testing.T) {

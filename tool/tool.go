@@ -43,6 +43,11 @@ type Spec struct {
 	// Env is added, as KEY=value entries, to the exec runner's fixed environment, a key here
 	// replacing the fixed one's. The container runner doesn't pass it.
 	Env []string
+	// Timeout and Idle are the bounds of every run of the tool whose Invocation sets neither of
+	// its own, as Invocation's Timeout and Idle say, so a caller bounds the runs of an adapter
+	// that sets none; zero is none. The version command's run takes neither. Neither has a
+	// default.
+	Timeout, Idle time.Duration
 }
 
 // validate checks the spec's own fields, its version pattern, its minimum, and its memory bound,
@@ -58,6 +63,9 @@ func (s Spec) validate(name string) (Version, error) {
 	}
 	if s.MemoryLimit < 0 {
 		return Version{}, fmt.Errorf("tool: %s: memory limit %d is below zero", name, s.MemoryLimit)
+	}
+	if s.Timeout < 0 || s.Idle < 0 {
+		return Version{}, fmt.Errorf("tool: %s: a time bound is below zero", name)
 	}
 	return minimum, nil
 }
@@ -120,7 +128,11 @@ type runFunc func(ctx context.Context, inv Invocation) error
 type Tool struct {
 	name    string
 	version Version
-	run     runFunc
+	// line is the version command's whole line the version was found on.
+	line string
+	// timeout and idle are the Spec's bounds, for a run whose Invocation sets neither.
+	timeout, idle time.Duration
+	run           runFunc
 	// image is the image a container tool runs in; nil for the exec runner's.
 	image *Image
 }
@@ -130,6 +142,11 @@ func (t *Tool) Name() string { return t.name }
 
 // Version returns the program's version, found at construction.
 func (t *Tool) Version() Version { return t.version }
+
+// VersionLine returns the whole line of the version command's output the version was found on,
+// trimmed, such as "GPL Ghostscript 10.05.1 (2025-04-29)": it tells two builds of one version
+// apart, a development build from a release, where Version can't.
+func (t *Tool) VersionLine() string { return t.line }
 
 // AtLeast refuses the tool when its version is older than minimum, dotted numbers, whatever
 // minimum its own Spec declared, with a *VersionError wrapping ErrTooOld. A minimum that isn't
@@ -163,8 +180,12 @@ func (t *Tool) Image() (Image, bool) {
 // context.Canceled or context.DeadlineExceeded), and is never an *ExitError; it names the
 // program, ctx's error, and the program's own outcome once each, as in "tool: ffprobe: context
 // canceled (exit status 143)". A run that passes the Invocation's own Timeout or Idle is ended
-// the same way, and gives an *ExitError with TimedOut set, whatever the program's exit.
+// the same way, and gives an *ExitError with TimedOut set, whatever the program's exit. An
+// Invocation that sets neither bound takes the Spec's.
 func (t *Tool) Run(ctx context.Context, inv Invocation) error {
+	if inv.Timeout <= 0 && inv.Idle <= 0 {
+		inv.Timeout, inv.Idle = t.timeout, t.idle
+	}
 	if inv.Timeout <= 0 && inv.Idle <= 0 {
 		return t.run(ctx, inv)
 	}
@@ -454,8 +475,8 @@ var (
 )
 
 // checkVersion runs the spec's version command through run and checks the version it prints
-// against minimum, the spec's, returning the version found.
-func checkVersion(ctx context.Context, name string, spec Spec, minimum Version, run runFunc) (Version, error) {
+// against minimum, the spec's, returning the version found and the whole line it was found on.
+func checkVersion(ctx context.Context, name string, spec Spec, minimum Version, run runFunc) (Version, string, error) {
 	var out bytes.Buffer
 	verr := &VersionError{Program: name, Minimum: spec.Minimum}
 	err := run(ctx, Invocation{Args: spec.VersionArgs, Stdout: &out, Stderr: &out})
@@ -467,24 +488,34 @@ func checkVersion(ctx context.Context, name string, spec Spec, minimum Version, 
 		if line := firstLine(out.Bytes()); line != "" {
 			verr.Err = fmt.Errorf("%w: %s", verr.Err, line)
 		}
-		return Version{}, verr
+		return Version{}, "", verr
 	}
-	m := spec.VersionPattern.FindSubmatch(out.Bytes())
+	m := spec.VersionPattern.FindSubmatchIndex(out.Bytes())
 	if m == nil {
 		verr.Err = fmt.Errorf("%w: %s matched none of %q", ErrNoVersion, spec.VersionPattern, firstLine(out.Bytes()))
-		return Version{}, verr
+		return Version{}, "", verr
 	}
-	verr.Found = string(m[1])
+	verr.Found = string(out.Bytes()[m[2]:m[3]])
 	found, err := ParseVersion(verr.Found)
 	if err != nil {
 		verr.Err = fmt.Errorf("%w: %w", ErrNoVersion, err)
-		return Version{}, verr
+		return Version{}, "", verr
 	}
 	if found.Compare(minimum) < 0 {
 		verr.Err = ErrTooOld
-		return Version{}, verr
+		return Version{}, "", verr
 	}
-	return found, nil
+	return found, matchLine(out.Bytes(), m[0]), nil
+}
+
+// matchLine returns the whole line of out that holds the byte at at, trimmed.
+func matchLine(out []byte, at int) string {
+	start := bytes.LastIndexByte(out[:at], '\n') + 1
+	end := bytes.IndexByte(out[at:], '\n')
+	if end < 0 {
+		end = len(out) - at
+	}
+	return string(bytes.TrimSpace(out[start : at+end]))
 }
 
 // firstLine returns the first line of out, at most 200 bytes, for an error's context.

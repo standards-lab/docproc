@@ -38,8 +38,10 @@
 // check is a minimum, never an exact version. Tool.AtLeast is the one later check, against a
 // minimum of the caller's.
 //
-// No bound has a default: a Spec's KillAfter and MemoryLimit, and an Invocation's Timeout and
-// Idle, are the caller's, and zero is none, or, for KillAfter, no grace.
+// No bound has a default: a Spec's KillAfter, MemoryLimit, Timeout, and Idle, and an Invocation's
+// Timeout and Idle, are the caller's, and zero is none, or, for KillAfter, no grace. A Spec's
+// Timeout and Idle bound every run whose Invocation sets neither, so a caller bounds the runs of an
+// adapter that sets none.
 //
 // Cancelling a run's context stops its tool. Through the exec runner the program's process group
 // gets SIGTERM, then SIGKILL once the Spec's KillAfter period passes, at once when it is zero.
@@ -49,8 +51,8 @@
 // context.DeadlineExceeded, never an *ExitError; it names the program's own outcome once, as in
 // "tool: ffprobe: context canceled (exit status 143)". If the process running the package is
 // itself SIGKILLed, a running container runs on until its tool exits, and --rm removes it then. A
-// run that passes the Invocation's own Timeout, or writes nothing for its Idle, is stopped the same
-// way and returns an *ExitError with TimedOut set.
+// run that passes its own Timeout, or writes nothing for its Idle, is stopped the same way and
+// returns an *ExitError with TimedOut set.
 //
 // A program that exits nonzero or dies by a signal is an *ExitError: its code, the signal's name,
 // as in "tool: gs: killed by SIGSEGV", and the last 4 KiB of its standard error when the caller
@@ -69,7 +71,8 @@
 // Its exported identifiers:
 //
 //   - [Spec] declares a tool: its program, its version command, exit code, and pattern, its
-//     minimum version, a run's KillAfter period, its memory bound, and its added environment.
+//     minimum version, a run's KillAfter period, its memory bound, its added environment, and the
+//     Timeout and Idle bounds of a run that sets none of its own.
 //   - [Invocation] is one run of a tool: arguments, working directory, standard streams, where to
 //     report its usage, and its own Timeout and Idle bounds.
 //   - [Usage] is a run's resource usage: user and system CPU time.
@@ -79,7 +82,8 @@
 //     CLI, the container runner.
 //   - [Image] is a container tool's image, pinned by digest, and its relaxations of the lockdown.
 //   - [Tool.Name] returns the program's name.
-//   - [Tool.Version] returns the version found at construction.
+//   - [Tool.Version] returns the version found at construction, and [Tool.VersionLine] the whole
+//     line it was found on, which tells two builds of one version apart.
 //   - [Tool.AtLeast] refuses a tool older than a minimum of the caller's.
 //   - [Tool.Image] returns a container tool's Image, its Network included.
 //   - [Tool.Run] runs the program once under the caller's context.

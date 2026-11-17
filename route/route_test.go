@@ -225,3 +225,35 @@ func TestFileMessages(t *testing.T) {
 		})
 	}
 }
+
+// TestFileStoredMedia: content of no signature Identify knows whose stored type's top-level type
+// is audio or video, a OneNote recording's bare "audio" or "video" among them, routes audio or
+// video, in any case and whatever the subtype; a text extension, a signature, and any other type
+// decide as they do without it.
+func TestFileStoredMedia(t *testing.T) {
+	cases := []struct {
+		name, content, filename, mime string
+		want                          route.Route
+	}{
+		{"onenote audio recording", "\x00\x01opaque", "recording.bin", "audio", route.Audio},
+		{"onenote video recording", "\x00\x01opaque", "recording", "video", route.Video},
+		{"a full audio type in odd case", "\x00\x01opaque", "a", "Audio/OGG", route.Audio},
+		{"a video type with parameters", "\x00\x01opaque", "a", "video/webm; codecs=vp9", route.Video},
+		{"another top-level type", "\x00\x01opaque", "a", "image/png", route.Unrouted},
+		{"a text extension first", "spoken words", "a.txt", "audio", route.Text},
+		{"a signature first", pdfBytes, "a", "video", route.Document},
+	}
+	dir := t.TempDir()
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			file := writeContent(t, dir, c.content, filepath.Ext(c.filename))
+			got, why, err := route.File(filepath.Join(dir, file), c.filename, c.mime)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want {
+				t.Errorf("route %q (%s), want %q", got, why, c.want)
+			}
+		})
+	}
+}

@@ -64,11 +64,11 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 		cfg.lead = []string{"--as=" + strconv.FormatInt(spec.MemoryLimit, 10), "--", path}
 	}
 	run := execRun(cfg)
-	version, err := checkVersion(ctx, name, spec, minimum, run)
+	version, line, err := checkVersion(ctx, name, spec, minimum, run)
 	if err != nil {
 		return nil, err
 	}
-	return &Tool{name: name, version: version, run: run}, nil
+	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: run}, nil
 }
 
 // execConfig is what the exec runner runs, and how.

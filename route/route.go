@@ -218,7 +218,9 @@ func File(path, name, mimeType string) (Route, string, error) {
 // package; and content of no signature, a line at a time, each at most 64 KiB, for a message's
 // header. Content of no signature and no text extension whose header is a message's, From and
 // either Date or Received in a header block whose first line is a field, is a message whatever
-// its name. It returns an error only for r's own.
+// its name. Content of no signature Identify knows whose mimeType's top-level type is audio or
+// video, such as a OneNote recording's stored "audio", routes Audio or Video. It returns an error
+// only for r's own.
 func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, string, error) {
 	head = head[:min(len(head), HeadLen)]
 	ext := Ext(name)
@@ -265,6 +267,9 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 	if textExtensions[ext] {
 		return Text, "text by its " + ext + " extension", nil
 	}
+	if r := storedMedia(mimeType); r != "" && kind == Unknown {
+		return r, "no known signature, stored as " + mimeType, nil
+	}
 	if kind == Unknown || kind == UTF8BOM {
 		fields, err := readHeader()
 		if err != nil {
@@ -278,6 +283,20 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 		return Text, "text by its " + bom + " byte order mark", nil
 	}
 	return Unrouted, "no routed signature", nil
+}
+
+// storedMedia returns the route a stored MIME type's top-level type names for content of no known
+// signature, Audio for "audio" and Video for "video", such as "audio/ogg" or a OneNote
+// recording's bare "audio"; "" for any other.
+func storedMedia(mimeType string) Route {
+	top, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(mimeType)), "/")
+	switch top {
+	case "audio":
+		return Audio
+	case "video":
+		return Video
+	}
+	return ""
 }
 
 // shortSignatures are the kinds whose signature is two or three bytes that text may begin:
