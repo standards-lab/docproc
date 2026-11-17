@@ -107,7 +107,7 @@ func randomChunks(r *rand.Rand) func(int) int {
 func checkLatency(t *testing.T, l live, bound time.Duration) {
 	t.Helper()
 	for i, w := range l.windows[:len(l.windows)-1] {
-		limit := w.Start + audio.WindowLimit
+		limit := w.Start + audio.DefaultWindowLimit
 		if l.after[i] <= limit {
 			t.Errorf("window %d, %v, returned at %v, before its limit %v", i, w.Span, l.after[i], limit)
 		}
@@ -129,7 +129,7 @@ func TestLivePlanMatchesPlanWindows(t *testing.T) {
 	long, crossings := 0, 0
 	for c := range 24 {
 		pcm := randomSignal(r)
-		req := audio.Request{Overlap: time.Duration(r.Int64N(int64(audio.WindowLimit / 2)))}
+		req := audio.Request{Overlap: time.Duration(r.Int64N(int64(audio.DefaultWindowLimit / 2)))}
 		if c%4 == 3 {
 			req.Threshold = -40
 		}
@@ -145,11 +145,11 @@ func TestLivePlanMatchesPlanWindows(t *testing.T) {
 		}
 		checkLatency(t, got, audio.DefaultMinSilence)
 		for _, s := range got.silences {
-			if s.Duration() > audio.WindowLimit {
+			if s.Duration() > audio.DefaultWindowLimit {
 				long++
 			}
 			for _, w := range want.Windows {
-				if limit := w.Start + audio.WindowLimit; s.Start < limit && s.End > limit {
+				if limit := w.Start + audio.DefaultWindowLimit; s.Start < limit && s.End > limit {
 					crossings++
 				}
 			}
@@ -189,7 +189,7 @@ func TestLivePlanLongSilence(t *testing.T) {
 			}
 			step := audio.FrameLength * time.Duration(chunk/frameBytes)
 			for i, w := range want {
-				limit := w.Start + audio.WindowLimit
+				limit := w.Start + audio.DefaultWindowLimit
 				if got.after[i] <= limit || got.after[i] > limit+step {
 					t.Errorf("window %d, %v, returned at %v, want with the %v that passes its limit, %v", i, w.Span, got.after[i], step, limit)
 				}
@@ -205,7 +205,7 @@ func TestLivePlanLongSilence(t *testing.T) {
 // that passes the limit, or, while the run of silent frames open across it is shorter than
 // MinSilence, once it reaches MinSilence or ends.
 func TestLivePlanMinSilenceAtLimit(t *testing.T) {
-	const limit = audio.WindowLimit
+	const limit = audio.DefaultWindowLimit
 	for _, early := range []time.Duration{0, 10, 100, 200, 290, 300, 310, 500} {
 		for _, length := range []time.Duration{290, 300, 310, 600} {
 			early, length := early*time.Millisecond, length*time.Millisecond

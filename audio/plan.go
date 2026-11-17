@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// WindowLimit is the longest a window may be, its overlaps included: 30 s, the span a speech
-// model's audio input takes whole.
-const WindowLimit = 30 * time.Second
+// DefaultWindowLimit is the window limit a request's zero Limit asks for: 30 s, the span a speech
+// model's audio input takes whole. It is the one bound the package defaults, the brief's own.
+const DefaultWindowLimit = 30 * time.Second
 
 // DefaultOverlap is the overlap a request's zero Overlap asks for: 2 s, which the next window
 // starts before the previous one's end, so a word a cut lands on is whole in one of the two.
@@ -35,8 +35,8 @@ type Cut int
 const (
 	// CutSilence is a window that ends at the middle of the latest silence its range allowed.
 	CutSilence Cut = iota + 1
-	// CutLimit is a window that ends at WindowLimit from its start, its range holding no silence
-	// it could end at.
+	// CutLimit is a window that ends at its plan's Limit from its start, its range holding no
+	// silence it could end at.
 	CutLimit
 	// CutEnd is the last window, which ends at the source's end.
 	CutEnd
@@ -63,38 +63,57 @@ type Window struct {
 
 // Plan is a source's windows, in order, and the seams between them.
 type Plan struct {
-	// Duration is the source's duration, which the windows cover.
+	// Source is the source as ffprobe reported it, for a plan Splitter.Windows made; zero for one
+	// PlanWindows or a Cutter made, which read no source.
+	Source Source
+	// Duration is the source's duration, which the windows cover: for a plan Splitter.Windows or a
+	// Cutter made, the samples the stream decoded to, at SampleRate.
 	Duration time.Duration
+	// Probed is ffprobe's duration of the source, Source.Duration, set only when it differs from
+	// Duration by more than a FrameLength, as a truncated or mis-sized file's does; zero otherwise.
+	// The windows end at Duration, the samples there are, whatever ffprobe estimated.
+	Probed time.Duration
+	// Limit is the window limit the plan was made with, each window at most Limit long, its
+	// overlaps included.
+	Limit time.Duration
 	// Overlap is the overlap the plan was made with: each window after the first starts Overlap
 	// before the previous one's end.
 	Overlap time.Duration
-	// Windows cover the source from 0 to Duration in order, each at most WindowLimit long.
+	// Windows cover the source from 0 to Duration in order, each at most Limit long.
 	Windows []Window
 	// Seams are the ranges consecutive windows share: Seams[i] is the end of Windows[i] and the
 	// start of Windows[i+1], Overlap long. One window has none. Seams never overlap one another,
 	// so no part of the source is in more than two windows.
 	Seams []Span
+	// Silences are the silences the tracker found, in order, each with the threshold in force when
+	// it opened, for a plan Splitter.Windows or a Cutter made; nil for one PlanWindows made, which
+	// is given its silences.
+	Silences []Silence
 }
 
-// CheckOverlap returns the overlap a request's Overlap asks for, DefaultOverlap when it is zero,
-// or an error wrapping ErrRequest when it is below zero or WindowLimit/2 or more. Under half the
-// limit, a window cut at the limit still has audio of its own between its two seams.
-func CheckOverlap(overlap time.Duration) (time.Duration, error) {
-	o := cmp.Or(overlap, DefaultOverlap)
-	if o < 0 || o >= WindowLimit/2 {
-		return 0, fmt.Errorf("audio: overlap %v isn't from 0 to under %v: %w", overlap, WindowLimit/2, ErrRequest)
+// windowing returns the window limit and the overlap req asks for, each default applied: Limit,
+// DefaultWindowLimit when it is zero, and Overlap, DefaultOverlap when it is zero. A Limit below
+// zero, or an Overlap below zero or Limit/2 or more, is an error wrapping ErrRequest. Under half
+// the limit, a window cut at the limit still has audio of its own between its two seams.
+func (req Request) windowing() (limit, overlap time.Duration, err error) {
+	limit, overlap = cmp.Or(req.Limit, DefaultWindowLimit), cmp.Or(req.Overlap, DefaultOverlap)
+	switch {
+	case limit < 0:
+		return 0, 0, fmt.Errorf("audio: window limit %v is below zero: %w", req.Limit, ErrRequest)
+	case overlap < 0 || overlap >= limit/2:
+		return 0, 0, fmt.Errorf("audio: overlap %v isn't from 0 to under %v: %w", req.Overlap, limit/2, ErrRequest)
 	}
-	return o, nil
+	return limit, overlap, nil
 }
 
-// PlanWindows plans the windows of a source duration long whose silences are silences, with
-// req's Overlap; it reads nothing else of req, and runs nothing, so the same arguments give the
+// PlanWindows plans the windows of a source duration long whose silences are silences, with req's
+// Limit and Overlap; it reads nothing else of req, and runs nothing, so the same arguments give the
 // same plan. Silences may come in any order and may overlap or reach past the source; each is
 // clipped to it.
 //
-// The first window starts at 0. A window whose start is less than WindowLimit from the source's
+// The first window starts at 0. A window whose start is less than the Limit from the source's
 // end ends there, CutEnd. Any other window ends at the middle of the latest silence in its range,
-// its start to WindowLimit after it, CutSilence; or, with no such silence, at the limit, CutLimit.
+// its start to the Limit after it, CutSilence; or, with no such silence, at the limit, CutLimit.
 // The next window starts Overlap before that end. A silence that crosses the limit is taken up to
 // the limit, its middle the middle of that part; one that began before the window's start is
 // behind the window and never ends it, so a silence longer than a window doesn't cut the windows
@@ -108,8 +127,8 @@ func CheckOverlap(overlap time.Duration) (time.Duration, error) {
 // PlanWindows is a Planner given the silences, clipped and in order, and then the source's end,
 // so a stream planned as it arrives gets the same windows.
 //
-// A duration of zero or less, or an Overlap CheckOverlap refuses, is an error wrapping
-// ErrRequest.
+// A duration of zero or less, or a Limit or an Overlap the request refuses, as Request says, is an
+// error wrapping ErrRequest.
 func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, error) {
 	if duration <= 0 {
 		return Plan{}, fmt.Errorf("audio: duration %v isn't positive: %w", duration, ErrRequest)
@@ -126,7 +145,7 @@ func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, er
 	if err != nil {
 		return Plan{}, err
 	}
-	plan := Plan{Duration: duration, Overlap: p.overlap, Windows: windows}
+	plan := Plan{Duration: duration, Limit: p.limit, Overlap: p.overlap, Windows: windows}
 	for i, w := range windows[1:] {
 		plan.Seams = append(plan.Seams, Span{w.Start, windows[i].End})
 	}
@@ -135,7 +154,7 @@ func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, er
 
 // Planner plans a stream's windows as it arrives, as PlanWindows plans a source's: it is given the
 // silences as they are found and the stream's position as it advances, and returns each window as
-// soon as it is fixed, once the stream has passed the window's limit, WindowLimit from its start,
+// soon as it is fixed, once the stream has passed the window's limit, the Limit from its start,
 // or the stream has ended. Given the same silences and the same duration, in any chunking, a
 // Planner returns PlanWindows' windows exactly: they are one policy, and PlanWindows is a Planner
 // given everything at once.
@@ -151,6 +170,7 @@ func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, er
 // A Planner keeps only the silences that can still end a window: those that begin at the current
 // window's start or later. It isn't safe for concurrent use.
 type Planner struct {
+	limit   time.Duration
 	overlap time.Duration
 	// start is the start of the window not yet fixed, and windows the windows fixed before it.
 	start   time.Duration
@@ -166,15 +186,20 @@ type Planner struct {
 	ended    bool
 }
 
-// NewPlanner returns a Planner that plans with req's Overlap, as PlanWindows does; it reads no
-// other field. An Overlap CheckOverlap refuses is an error wrapping ErrRequest.
+// NewPlanner returns a Planner that plans with req's Limit and Overlap, as PlanWindows does; it
+// reads no other field. A Limit or an Overlap the request refuses, as Request says, is an error
+// wrapping ErrRequest.
 func NewPlanner(req Request) (*Planner, error) {
-	overlap, err := CheckOverlap(req.Overlap)
+	limit, overlap, err := req.windowing()
 	if err != nil {
 		return nil, err
 	}
-	return &Planner{overlap: overlap}, nil
+	return &Planner{limit: limit, overlap: overlap}, nil
 }
+
+// Limit returns the window limit the planner plans with, its request's Limit or
+// DefaultWindowLimit.
+func (p *Planner) Limit() time.Duration { return p.limit }
 
 // Overlap returns the overlap the planner plans with, its request's Overlap or DefaultOverlap.
 func (p *Planner) Overlap() time.Duration { return p.overlap }
@@ -239,7 +264,7 @@ func (p *Planner) Open(s Span) ([]Window, error) {
 
 // Advance moves the stream's position to pos, which promises that every silence that begins
 // before pos has been given, and returns the windows that fixes, in order: each window whose
-// limit, WindowLimit from its start, is before pos. A pos before the position, an Advance while a
+// limit, the Limit from its start, is before pos. A pos before the position, an Advance while a
 // silence is open and not yet given closed, or an Advance after End, is an error wrapping
 // ErrRequest.
 func (p *Planner) Advance(pos time.Duration) ([]Window, error) {
@@ -283,7 +308,7 @@ func (p *Planner) End(duration time.Duration) ([]Window, error) {
 func (p *Planner) fix(duration time.Duration, ended bool) []Window {
 	var out []Window
 	for !p.ended {
-		limit := p.start + WindowLimit
+		limit := p.start + p.limit
 		if ended && limit >= duration {
 			out = append(out, Window{Span: Span{p.start, duration}, Cut: CutEnd})
 			p.ended, p.silences = true, nil

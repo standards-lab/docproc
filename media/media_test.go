@@ -205,7 +205,7 @@ func expectedOf(t *testing.T, pcm []byte, req audio.Request) ([]audio.Window, []
 			threshold = after[(audio.Sample(w.End)-1)*2/int64(frameBytes)]
 		case audio.CutSilence:
 			for _, s := range silences {
-				end := min(s.End, w.Start+audio.WindowLimit)
+				end := min(s.End, w.Start+plan.Limit)
 				if s.Start >= w.Start && s.Start+(end-s.Start)/2 == w.End {
 					threshold = s.Threshold
 				}
@@ -253,34 +253,14 @@ func TestEventsRefused(t *testing.T) {
 	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	ok := media.Request{Source: media.Source{File: path}, Dir: dir}
+	ok := media.Request{Dir: dir}
 	for name, change := range map[string]func(*media.Request){
-		"no source":            func(r *media.Request) { r.Source = media.Source{} },
-		"paced without a file": func(r *media.Request) { r.Source = media.Source{Paced: true} },
-		"paced reader":         func(r *media.Request) { r.Source = media.Source{Reader: strings.NewReader("x"), Paced: true} },
-		"paced URL":            func(r *media.Request) { r.Source = media.Source{URL: "srt://127.0.0.1:9000", Paced: true} },
-		"file and reader":      func(r *media.Request) { r.Source.Reader = strings.NewReader("x") },
-		"file and URL":         func(r *media.Request) { r.Source.URL = "udp://127.0.0.1:9000" },
-		"reader and URL": func(r *media.Request) {
-			r.Source = media.Source{Reader: strings.NewReader("x"), URL: "udp://127.0.0.1:9000"}
-		},
-		"tracks below":         func(r *media.Request) { r.Source.Tracks = -1 },
-		"tracks above":         func(r *media.Request) { r.Source.Tracks = media.TracksVideo + 1 },
-		"rtsp":                 func(r *media.Request) { r.Source = media.Source{URL: "rtsp://127.0.0.1:8554/live"} },
-		"RTSP":                 func(r *media.Request) { r.Source = media.Source{URL: "RTSP://127.0.0.1:8554/live"} },
-		"rtsps":                func(r *media.Request) { r.Source = media.Source{URL: "rtsps://127.0.0.1:8322/live"} },
-		"file URL":             func(r *media.Request) { r.Source = media.Source{URL: "file:///etc/passwd"} },
-		"rtmps":                func(r *media.Request) { r.Source = media.Source{URL: "rtmps://127.0.0.1/live/s"} },
-		"tcp":                  func(r *media.Request) { r.Source = media.Source{URL: "tcp://127.0.0.1:9000"} },
-		"crypto":               func(r *media.Request) { r.Source = media.Source{URL: "crypto+http://127.0.0.1/s.ts"} },
-		"no scheme":            func(r *media.Request) { r.Source = media.Source{URL: "127.0.0.1:9000"} },
-		"no host":              func(r *media.Request) { r.Source = media.Source{URL: "http:///live.m3u8"} },
-		"opaque":               func(r *media.Request) { r.Source = media.Source{URL: "udp:127.0.0.1:9000"} },
-		"unparsable":           func(r *media.Request) { r.Source = media.Source{URL: "http://[::1"} },
 		"no media directory":   func(r *media.Request) { r.Dir = "" },
 		"missing directory":    func(r *media.Request) { r.Dir = filepath.Join(dir, "missing") },
 		"directory is a file":  func(r *media.Request) { r.Dir = file },
-		"overlap":              func(r *media.Request) { r.Overlap = audio.WindowLimit / 2 },
+		"overlap":              func(r *media.Request) { r.Overlap = audio.DefaultWindowLimit / 2 },
+		"negative limit":       func(r *media.Request) { r.Limit = -time.Second },
+		"overlap of a limit":   func(r *media.Request) { r.Limit, r.Overlap = 10*time.Second, 5*time.Second },
 		"min silence":          func(r *media.Request) { r.MinSilence = -time.Second },
 		"threshold above 0":    func(r *media.Request) { r.Threshold = 3 },
 		"threshold too low":    func(r *media.Request) { r.Threshold = -121 },
@@ -298,7 +278,7 @@ func TestEventsRefused(t *testing.T) {
 			req := ok
 			change(&req)
 			var errs []error
-			for e, err := range s.Events(t.Context(), req) {
+			for e, err := range s.Events(t.Context(), path, req) {
 				if err == nil || e.Window != nil || e.Frame != nil {
 					t.Fatalf("event %+v, %v; want only the refusal", e, err)
 				}
@@ -308,6 +288,13 @@ func TestEventsRefused(t *testing.T) {
 				t.Errorf("errors %v, want ErrRequest once", errs)
 			}
 		})
+	}
+	var errs []error
+	for _, err := range s.Events(t.Context(), "", ok) {
+		errs = append(errs, err)
+	}
+	if len(errs) != 1 || !errors.Is(errs[0], media.ErrRequest) {
+		t.Errorf("no path: errors %v, want ErrRequest once", errs)
 	}
 	if r := st.runs(); len(r) != 0 {
 		t.Errorf("runs %v, want none", r)
@@ -321,7 +308,7 @@ func TestEventsNoMedia(t *testing.T) {
 	s, st := standinStreamer(t)
 	setStandin(t, st, probePicture, nil)
 	var errs []error
-	for _, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir()}) {
+	for _, err := range s.Events(t.Context(), source(t), media.Request{Dir: t.TempDir()}) {
 		errs = append(errs, err)
 	}
 	if len(errs) != 1 || !errors.Is(errs[0], media.ErrNoMedia) {
@@ -332,22 +319,26 @@ func TestEventsNoMedia(t *testing.T) {
 	}
 }
 
-// TestEventsStandin streams a source with audio and video, unpaced and paced, through the
-// stand-in: its frames' reasons, times, and sizes, in order, each its PNG named by its SHA-256;
-// its windows, in plan order, the tracker's and planner's over the same PCM, each the same WAV
-// bytes, with its seams and the threshold it was cut under; ffmpeg's one run and its arguments;
-// and a media directory holding exactly the events' files, the run's directory of frames gone.
+// TestEventsStandin streams a source with audio and video through the stand-in: its frames'
+// reasons, times, and sizes, in order, each its PNG named by its SHA-256; its windows, in plan
+// order, the tracker's and planner's over the same PCM, each the same WAV bytes, with its seams and
+// the threshold it was cut under; ffmpeg's one run and its arguments; and a media directory holding
+// exactly the events' files, the run's directory of frames gone.
 func TestEventsStandin(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
 	setStandin(t, st, probeBoth, sceneFrames)
-	wantWindows, wavs, wantThresholds := expectedThresholds(t, audio.Request{})
-	for _, paced := range []bool{false, true} {
-		t.Run(map[bool]string{false: "unpaced", true: "paced"}[paced], func(t *testing.T) {
+	for name, req := range map[string]media.Request{
+		"defaults": {},
+		"limit":    {Limit: 12 * time.Second, Overlap: time.Second},
+	} {
+		t.Run(name, func(t *testing.T) {
+			wantWindows, wavs, wantThresholds := expectedThresholds(t, audio.Request{Limit: req.Limit, Overlap: req.Overlap})
 			path := source(t)
 			dir := t.TempDir()
 			st.mark()
-			events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: path, Paced: paced}, Dir: dir}))
+			req.Dir = dir
+			events := collect(t, s.Events(t.Context(), path, req))
 			ws, fs := split(events)
 			if len(ws)+len(fs) != len(events) {
 				t.Fatalf("%d events neither or both a window and a frame", len(events)-len(ws)-len(fs))
@@ -368,9 +359,6 @@ func TestEventsStandin(t *testing.T) {
 				}
 				if filepath.Base(f.Path) != f.SHA256+".png" || sum(b) != f.SHA256 || filepath.Dir(f.Path) != dir {
 					t.Errorf("frame %d's file %s isn't named by its SHA-256 in the media directory", i, f.Path)
-				}
-				if e.Arrived.IsZero() || e.Arrived.Location() != time.UTC {
-					t.Errorf("frame %d arrived at %v, want a time in UTC", i, e.Arrived)
 				}
 			}
 			if len(ws) != len(wantWindows) {
@@ -402,9 +390,6 @@ func TestEventsStandin(t *testing.T) {
 				if w.Threshold != wantThresholds[i] || w.Threshold >= 0 || w.Threshold < -120 {
 					t.Errorf("window %d, cut at the %s, names threshold %v dB, want %v dB", i, w.Cut, w.Threshold, wantThresholds[i])
 				}
-				if e.Arrived.IsZero() || (i > 0 && e.Arrived.Before(ws[i-1].Arrived)) {
-					t.Errorf("window %d arrived at %v, before window %d", i, e.Arrived, i-1)
-				}
 			}
 			checkDir(t, dir, events)
 			checkNoScratch(t, filepath.Dir(path))
@@ -425,8 +410,8 @@ func TestEventsStandin(t *testing.T) {
 					t.Errorf("ffmpeg's arguments %q lack %q", args, want)
 				}
 			}
-			if strings.Contains(args, "-readrate 1 ") != paced {
-				t.Errorf("ffmpeg's arguments %q; paced %v", args, paced)
+			if strings.Contains(args, "-readrate") {
+				t.Errorf("ffmpeg's arguments %q pace the file", args)
 			}
 		})
 	}
@@ -438,7 +423,7 @@ func TestEventsFixedThreshold(t *testing.T) {
 	s, st := standinStreamer(t)
 	setStandin(t, st, probeAudio, nil)
 	wantWindows, _ := expectedWindows(t, audio.Request{Threshold: -45})
-	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir(), Threshold: -45}))
+	events := collect(t, s.Events(t.Context(), source(t), media.Request{Dir: t.TempDir(), Threshold: -45}))
 	if len(events) != len(wantWindows) {
 		t.Fatalf("%d events, want %d windows", len(events), len(wantWindows))
 	}
@@ -458,7 +443,7 @@ func TestEventsLimitThreshold(t *testing.T) {
 	setStandin(t, st, probeAudio, nil)
 	const minSilence = 20 * time.Second
 	wantWindows, _, wantThresholds := expectedThresholds(t, audio.Request{MinSilence: minSilence})
-	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir(), MinSilence: minSilence}))
+	events := collect(t, s.Events(t.Context(), source(t), media.Request{Dir: t.TempDir(), MinSilence: minSilence}))
 	if len(events) != len(wantWindows) || len(events) < 3 {
 		t.Fatalf("%d events, want %d windows, at least 3", len(events), len(wantWindows))
 	}
@@ -501,7 +486,7 @@ func TestEventsOpenSilence(t *testing.T) {
 	var gates []standinGate
 	open := map[int]string{}
 	for i, w := range wantWindows {
-		if limit := w.Start + audio.WindowLimit; w.Cut != audio.CutEnd && limit > 25*time.Second && limit < 95*time.Second {
+		if limit := w.Start + audio.DefaultWindowLimit; w.Cut != audio.CutEnd && limit > 25*time.Second && limit < 95*time.Second {
 			// The frame that carries the stream past the limit, and no byte more.
 			path := filepath.Join(gateDir, fmt.Sprint(i))
 			gates = append(gates, standinGate{At: (int(limit/audio.FrameLength) + 1) * frameBytes, Path: path})
@@ -513,7 +498,7 @@ func TestEventsOpenSilence(t *testing.T) {
 	}
 	st.set(func(c *settings) { c.Gates = gates })
 	var ws []media.Event
-	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: t.TempDir()}) {
+	for e, err := range s.Events(t.Context(), source(t), media.Request{Dir: t.TempDir()}) {
 		if err != nil {
 			t.Fatalf("after %d windows: %v", len(ws), err)
 		}
@@ -549,7 +534,7 @@ func TestEventsOneStream(t *testing.T) {
 			setStandin(t, st, c.probe, sceneFrames)
 			st.mark()
 			dir := t.TempDir()
-			events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: dir}))
+			events := collect(t, s.Events(t.Context(), source(t), media.Request{Dir: dir}))
 			ws, fs := split(events)
 			if c.windows && (len(ws) == 0 || len(fs) != 0) || !c.windows && (len(ws) != 0 || len(fs) != len(sceneFrames)) {
 				t.Errorf("%d windows and %d frames", len(ws), len(fs))
@@ -577,7 +562,7 @@ func TestEventsBreak(t *testing.T) {
 	dir := t.TempDir()
 	start := time.Now()
 	var events []media.Event
-	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: path}, Dir: dir}) {
+	for e, err := range s.Events(t.Context(), path, media.Request{Dir: dir}) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -605,7 +590,7 @@ func TestEventsCancel(t *testing.T) {
 	start := time.Now()
 	var events []media.Event
 	var errs []error
-	for e, err := range s.Events(ctx, media.Request{Source: media.Source{File: path}, Dir: dir}) {
+	for e, err := range s.Events(ctx, path, media.Request{Dir: dir}) {
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -635,7 +620,7 @@ func TestEventsFail(t *testing.T) {
 	dir := t.TempDir()
 	var events []media.Event
 	var errs []error
-	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: dir}) {
+	for e, err := range s.Events(t.Context(), source(t), media.Request{Dir: dir}) {
 		if err != nil {
 			errs = append(errs, err)
 			continue
@@ -665,7 +650,7 @@ func TestEventsNoPNG(t *testing.T) {
 	st.set(func(c *settings) { c.NoPNG = true })
 	dir := t.TempDir()
 	var errs []error
-	for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: source(t)}, Dir: dir}) {
+	for e, err := range s.Events(t.Context(), source(t), media.Request{Dir: dir}) {
 		if err == nil {
 			t.Errorf("event %+v", e)
 			continue

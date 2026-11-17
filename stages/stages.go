@@ -335,7 +335,9 @@ func audioStage(_ context.Context, t tools) (dispatch.Stage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return dispatch.NewAudioStage(dispatch.AudioConfig{Splitter: s, Version: dispatch.Versions(ff, fp)})
+	return dispatch.NewAudioStage(dispatch.AudioConfig{
+		Splitter: s, Version: dispatch.Versions(ff, fp), Request: audio.Request{Concurrency: 1},
+	})
 }
 
 // videoStage builds the video stage over ffmpeg and ffprobe.

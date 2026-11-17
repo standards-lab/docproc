@@ -14,9 +14,8 @@ import (
 // TestImageCapabilities checks that FFmpegImage's ffmpeg has what media asks of it: the filters
 // scdet, select, and showinfo, listed and run together over a lavfi test source, and the filters
 // of media's run, settb, metadata, scale, format, and aresample beside select, listed and the
-// frames' chain run as media runs it; the protocols srt, rtmp, http, https, and udp for input and
-// output; and HLS, which FFmpeg reads and writes as a format, its demuxer and muxer, not as a
-// protocol. It records whether the image has the x11grab device and requires nothing of it.
+// frames' chain run as media runs it. The protocols and devices a live source needs are the live
+// sources' own, which stay in spike-ai-pipeline-processing at v0.9.0.
 func TestImageCapabilities(t *testing.T) {
 	ffmpeg, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: audio.FFmpegImage}, audio.FFmpegSpec())
 	if err != nil {
@@ -81,50 +80,5 @@ func TestImageCapabilities(t *testing.T) {
 		if n := strings.Count(stderr.String(), "lavfi.scene_score="); n != 10 {
 			t.Errorf("metadata reported %d frames, want 10", n)
 		}
-	})
-
-	t.Run("protocols", func(t *testing.T) {
-		// -protocols lists the input protocols under "Input:" and the output protocols under
-		// "Output:", a name to a line.
-		have := map[string]map[string]bool{"Input:": {}, "Output:": {}}
-		var section map[string]bool
-		for line := range strings.Lines(list(t, "-protocols")) {
-			name := strings.TrimSpace(line)
-			if s, ok := have[name]; ok {
-				section = s
-			} else if section != nil {
-				section[name] = true
-			}
-		}
-		for _, name := range []string{"srt", "rtmp", "http", "https", "udp"} {
-			for dir, s := range have {
-				if !s[name] {
-					t.Errorf("the image's ffmpeg has no %s protocol for %s", name, strings.ToLower(strings.TrimSuffix(dir, ":")))
-				}
-			}
-		}
-	})
-
-	t.Run("hls", func(t *testing.T) {
-		// A line of -formats is its flags, D for a demuxer and E for a muxer, then its names.
-		for line := range strings.Lines(list(t, "-formats")) {
-			if f := strings.Fields(line); len(f) > 1 && f[1] == "hls" {
-				if f[0] != "DE" {
-					t.Errorf("the image's hls format is %q, want DE, a demuxer and a muxer", f[0])
-				}
-				return
-			}
-		}
-		t.Error("the image's ffmpeg has no hls format")
-	})
-
-	t.Run("x11grab", func(t *testing.T) {
-		have := false
-		for line := range strings.Lines(list(t, "-devices")) {
-			if f := strings.Fields(line); len(f) > 1 && f[1] == "x11grab" {
-				have = true
-			}
-		}
-		t.Logf("recorded: x11grab device present: %t", have)
 	})
 }

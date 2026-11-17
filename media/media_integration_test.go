@@ -15,7 +15,6 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/media"
-	"github.com/standards-lab/docproc/tool"
 )
 
 // scenesTruth is the part of speech-scenes.truth.json the tests read: the frames the default
@@ -70,8 +69,8 @@ func fixture(t *testing.T) string {
 
 // TestScenes reads the audio-and-video fixture unpaced through both runners and checks its frames
 // against the truth, reasons and times exactly, at the source's 320x180; its windows against
-// audio's file path under the tracker detector, byte for byte; and that the runners write the
-// same windows and frames.
+// audio's Splitter, its stream cutter's, byte for byte, spans and seams included; and that the
+// runners write the same windows and frames.
 func TestScenes(t *testing.T) {
 	path := fixture(t)
 	truth := readTruth(t)
@@ -80,7 +79,7 @@ func TestScenes(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cfg := runner(t)
 			dir := t.TempDir()
-			events := collect(t, streamer(t, cfg).Events(t.Context(), media.Request{Source: media.Source{File: path}, Dir: dir}))
+			events := collect(t, streamer(t, cfg).Events(t.Context(), path, media.Request{Dir: dir}))
 			ws, fs := split(events)
 			if len(fs) != len(truth.Video.Frames) {
 				t.Errorf("%d frames, want the truth's %d", len(fs), len(truth.Video.Frames))
@@ -100,17 +99,13 @@ func TestScenes(t *testing.T) {
 				}
 				checkPNG(t, f)
 			}
-			// audio's file path, on the same runner, under the tracker detector.
+			// audio's Splitter, on the same runner.
 			sp, err := audio.NewSplitter(audio.Config{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe})
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := sp.Plan(t.Context(), audio.Request{Path: path, Detector: audio.DetectorTracker})
-			if err != nil {
-				t.Fatal(err)
-			}
 			var want []audio.WindowFile
-			for w, err := range sp.Windows(t.Context(), audio.WindowsRequest{Path: path, Dir: t.TempDir()}, plan) {
+			for w, err := range sp.Windows(t.Context(), path, audio.Request{Dir: t.TempDir(), Concurrency: 1}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -123,7 +118,8 @@ func TestScenes(t *testing.T) {
 				w := e.Window
 				t.Logf("recorded: window %d: %v, %s, %d samples, threshold %.2f dB, sha256 %s", w.Index, w.Span, w.Cut, w.Samples, w.Threshold, w.SHA256)
 				got[name] = append(got[name], w.SHA256)
-				if w.Index != i || w.SHA256 != want[i].SHA256 || w.Samples != want[i].Samples || w.Cut != want[i].Window.Cut || w.Span.Start != want[i].Window.Start {
+				if w.Index != i || w.SHA256 != want[i].SHA256 || w.Samples != want[i].Samples || w.Cut != want[i].Window.Cut || w.Span != want[i].Window.Span ||
+					w.SeamBefore != want[i].SeamBefore || w.SeamAfter != want[i].SeamAfter || w.Threshold != want[i].Threshold {
 					t.Errorf("window %d: %d, %v %s, %d samples, %s; audio's %v %s, %d samples, %s",
 						i, w.Index, w.Span, w.Cut, w.Samples, w.SHA256, want[i].Window.Span, want[i].Window.Cut, want[i].Samples, want[i].SHA256)
 				}
@@ -146,7 +142,7 @@ func TestScenesMaxSide(t *testing.T) {
 	path := fixture(t)
 	truth := readTruth(t)
 	s := streamer(t, runners["exec"](t))
-	events := collect(t, s.Events(t.Context(), media.Request{Source: media.Source{File: path}, Dir: t.TempDir(), MaxSide: 160}))
+	events := collect(t, s.Events(t.Context(), path, media.Request{Dir: t.TempDir(), MaxSide: 160}))
 	_, fs := split(events)
 	if len(fs) != len(truth.Video.Frames) {
 		t.Fatalf("%d frames, want %d", len(fs), len(truth.Video.Frames))
@@ -159,112 +155,9 @@ func TestScenesMaxSide(t *testing.T) {
 	}
 }
 
-// excerpt cuts the fixture's first d into a directory of the test's own, streams copied, and
-// returns its path.
-func excerpt(t *testing.T, d time.Duration) string {
-	t.Helper()
-	src, err := filepath.Abs(filepath.Join("..", "audio", "testdata", "speech-scenes.mkv"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	ffmpeg, err := tool.NewExec(t.Context(), audio.FFmpegSpec())
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "excerpt.mkv")
-	err = ffmpeg.Run(t.Context(), tool.Invocation{
-		Args: []string{"-nostdin", "-loglevel", "error", "-i", src, "-t", d.String(), "-map", "0", "-c", "copy", path},
-		Dir:  dir,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return path
-}
-
-// TestPaced reads a 36 s excerpt of the fixture at real time through both runners, and checks
-// that its events arrive as the source plays, each frame yielded within a second of its arrival:
-// its first frame within a few seconds of the start; each frame after the one before by about
-// their difference in source time; each window's last sample about when the source plays it; and
-// its first window yielded once the stream passes its 30 s limit, well before the run ends. 36 s
-// is about the shortest excerpt whose first window is yielded with seconds to spare before its
-// end.
-func TestPaced(t *testing.T) {
-	const length = 36 * time.Second
-	path := excerpt(t, length)
-	truth := readTruth(t)
-	frames := 0
-	for _, f := range truth.Video.Frames {
-		if time.Duration(f.TimeMS)*time.Millisecond < length {
-			frames++
-		}
-	}
-	for name, runner := range runners {
-		t.Run(name, func(t *testing.T) {
-			s := streamer(t, runner(t))
-			start := time.Now()
-			var events []media.Event
-			var yielded []time.Duration
-			for e, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: path, Paced: true}, Dir: t.TempDir()}) {
-				if err != nil {
-					t.Fatal(err)
-				}
-				// A frame is yielded as soon as its PNG is whole, within a second of its arrival. A
-				// window is complete only once the stream passes its limit, after its last sample.
-				if lag := time.Since(e.Arrived); e.Frame != nil && lag > time.Second {
-					t.Errorf("the event at source time %v was yielded %v after it arrived", e.Time, lag)
-				}
-				events = append(events, e)
-				yielded = append(yielded, time.Since(start))
-			}
-			total := time.Since(start)
-			t.Logf("recorded: %d events over %v", len(events), total)
-			var first time.Duration
-			for i, e := range events {
-				kind := "frame"
-				if e.Window != nil {
-					kind = "window"
-					if e.Window.Index == 0 {
-						first = yielded[i]
-					}
-				}
-				t.Logf("recorded: %s at source time %v arrived at %v, yielded at %v", kind, e.Time, e.Arrived.Sub(start), yielded[i])
-			}
-			ws, fs := split(events)
-			if len(fs) != frames || len(ws) != 2 {
-				t.Fatalf("%d frames and %d windows, want %d and 2", len(fs), len(ws), frames)
-			}
-			// The first frame comes once the run has started, well before the source has played.
-			if at := fs[0].Arrived.Sub(start); at > 5*time.Second {
-				t.Errorf("the first frame arrived %v after the start", at)
-			}
-			for i := 1; i < len(fs); i++ {
-				gap, played := fs[i].Arrived.Sub(fs[i-1].Arrived), fs[i].Time-fs[i-1].Time
-				if gap < played-time.Second {
-					t.Errorf("frame %d arrived %v after frame %d, %v apart in the source", i, gap, i-1, played)
-				}
-			}
-			// Each window's last sample arrives about when the source plays it.
-			for _, e := range ws {
-				if at := e.Arrived.Sub(start); at < e.Window.Span.End-2*time.Second || at > e.Window.Span.End+2*time.Second {
-					t.Errorf("window %d's last sample, at %v, arrived %v after the start", e.Window.Index, e.Window.Span.End, at)
-				}
-			}
-			// The first window is yielded once the stream passes its limit, well before the run ends.
-			if first < audio.WindowLimit-2*time.Second || first > total-3*time.Second {
-				t.Errorf("the first window was yielded %v after the start, the run %v long; want it past its limit and before the end", first, total)
-			}
-			if total < length-time.Second {
-				t.Errorf("the run took %v, under the source's %v", total, length)
-			}
-		})
-	}
-}
-
-// TestCancel reads the fixture at real time through both runners and ends the context once the
-// first frame is yielded: the stream yields the context's error once and ends, well before the
-// source has played, and the media directory holds the one frame yielded.
+// TestCancel reads the fixture through both runners and ends the context once the first event is
+// yielded: the stream yields the context's error once and ends, and the media directory holds the
+// one event's file.
 func TestCancel(t *testing.T) {
 	path := fixture(t)
 	for name, runner := range runners {
@@ -276,7 +169,7 @@ func TestCancel(t *testing.T) {
 			start := time.Now()
 			var events []media.Event
 			var errs []error
-			for e, err := range s.Events(ctx, media.Request{Source: media.Source{File: path, Paced: true}, Dir: dir}) {
+			for e, err := range s.Events(ctx, path, media.Request{Dir: dir}) {
 				if err != nil {
 					errs = append(errs, err)
 					continue

@@ -7,10 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -29,25 +26,17 @@ type settings struct {
 	Version string `json:"version"`
 	// Probe is the report the stand-in ffprobe writes to stdout.
 	Probe string `json:"probe,omitzero"`
-	// Volume and Silence are what the stand-in ffmpeg writes to stderr for a run of volumedetect
-	// and of silencedetect.
-	Volume  string `json:"volume,omitzero"`
-	Silence string `json:"silence,omitzero"`
-	// Fail, when set, makes an ffmpeg run write it to stderr and exit 1.
-	Fail string `json:"fail,omitzero"`
-	// FailWindow, when set, makes the window run whose first sample it names write a line to
-	// stderr and exit 1.
-	FailWindow string `json:"fail_window,omitzero"`
-	// Delays is how long, in milliseconds, a window run sleeps before writing its samples, by its
-	// first sample, "*" for the rest; none sleeps without it.
-	Delays map[string]int `json:"delays,omitzero"`
-	// Decode names a canonical 44-byte WAV whose samples a decoding run, the tracker's, writes to
-	// stdout, in chunks of uneven sizes.
+	// Fail, when set, makes an ffmpeg run write it to stderr and exit 1, after the bytes FailAfter
+	// says of its samples.
+	Fail      string `json:"fail,omitzero"`
+	FailAfter int    `json:"fail_after,omitzero"`
+	// Decode names a canonical 44-byte WAV whose samples a decoding run writes to stdout, in
+	// chunks of uneven sizes.
 	Decode string `json:"decode,omitzero"`
-	// Flight, when set, names a directory each window run marks itself in, a file named by its
-	// process ID, while it sleeps; halfway through, it appends the number of runs marked there to
-	// the directory's counts file. A run that is killed leaves its mark.
-	Flight string `json:"flight,omitzero"`
+	// Synth, in place of Decode, is how many samples a decoding run writes, sample i
+	// synthSample(i), in chunks of a tenth of a second, sleeping PaceMS milliseconds before each.
+	Synth  int `json:"synth,omitzero"`
+	PaceMS int `json:"pace_ms,omitzero"`
 }
 
 // run is one stand-in run, as the links' logs record it.
@@ -69,117 +58,55 @@ func standin(r tooltest.Run) int {
 		fmt.Print(s.Probe)
 		return 0
 	}
-	if s.Fail != "" {
-		fmt.Fprint(os.Stderr, s.Fail)
-		return 1
+	if filter := args[slices.Index(args, "-af")+1]; filter != "aresample=16000" || !slices.Contains(args, "s16le") {
+		fmt.Fprintf(os.Stderr, "stand-in: not a decoding run: %q\n", args)
+		return 2
 	}
-	filter := args[slices.Index(args, "-af")+1]
-	if slices.Contains(args, "s16le") {
-		if filter == "aresample=16000" {
-			return standinDecode(s)
-		}
-		return standinWindow(s, filter)
-	}
-	switch {
-	case filter == "volumedetect":
-		fmt.Fprint(os.Stderr, s.Volume)
-	case strings.HasPrefix(filter, "silencedetect="):
-		fmt.Fprint(os.Stderr, s.Silence)
-	}
-	return 0
+	return standinDecode(s)
 }
 
 // standinDecode is the stand-in ffmpeg's decoding run: it writes the samples of the WAV s.Decode
-// names to stdout, in chunks of 1 to 7,919 bytes, so a sample is split across writes.
+// names, in chunks of 1 to 7,919 bytes, so a sample is split across writes, or s.Synth's, to
+// stdout; then, with s.Fail, it fails.
 func standinDecode(s settings) int {
-	data, err := os.ReadFile(s.Decode)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
+	var pcm []byte
+	chunk := func(n int) int { return n*31%7919 + 1 }
+	switch {
+	case s.Decode != "":
+		data, err := os.ReadFile(s.Decode)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		pcm = data[44:]
+	default:
+		for i := range s.Synth {
+			pcm = binary.LittleEndian.AppendUint16(pcm, uint16(synthSample(i)))
+		}
+		chunk = func(int) int { return audio.SampleRate / 10 * 2 }
 	}
-	pcm := data[44:]
-	for n := 1; len(pcm) > 0; n = n*31%7919 + 1 {
+	if s.Fail != "" {
+		pcm = pcm[:min(len(pcm), s.FailAfter)]
+	}
+	for n := 1; len(pcm) > 0; n = chunk(n) {
+		time.Sleep(time.Duration(s.PaceMS) * time.Millisecond)
 		k := min(n, len(pcm))
 		if _, err := os.Stdout.Write(pcm[:k]); err != nil {
 			return 2
 		}
 		pcm = pcm[k:]
 	}
-	return 0
-}
-
-// windowFilter matches a window run's filter, its first sample and the sample it ends before.
-var windowFilter = regexp.MustCompile(`^aresample=16000,atrim=start_sample=(\d+):end_sample=(\d+)$`)
-
-// standinWindow is the stand-in ffmpeg's window run on filter: it sleeps as s.Delays says, marked
-// in s.Flight's directory, and writes the window's samples, windowSample's, to stdout as 16-bit
-// little-endian PCM.
-func standinWindow(s settings, filter string) int {
-	m := windowFilter.FindStringSubmatch(filter)
-	if m == nil {
-		fmt.Fprintf(os.Stderr, "stand-in: window filter %q\n", filter)
-		return 2
-	}
-	first, _ := strconv.Atoi(m[1])
-	end, _ := strconv.Atoi(m[2])
-	if s.FailWindow == m[1] {
-		fmt.Fprint(os.Stderr, "[aist#0:0/pcm_s16le] Error while filtering: Cannot allocate memory\n")
+	if s.Fail != "" {
+		fmt.Fprint(os.Stderr, s.Fail)
 		return 1
 	}
-	if err := sleepMarked(s, m[1]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	pcm := make([]byte, 0, 2*(end-first))
-	for i := first; i < end; i++ {
-		pcm = binary.LittleEndian.AppendUint16(pcm, uint16(windowSample(i)))
-	}
-	if _, err := os.Stdout.Write(pcm); err != nil {
-		return 2
-	}
 	return 0
 }
 
-// windowSample is the stand-in's sample i of the source: it names its own place, so a window's
+// synthSample is the synthetic source's sample i: a loud sawtooth with no silence in it, so every
+// window but the last is cut at the limit, and whose samples name their own place, so a window's
 // samples show which window they are.
-func windowSample(i int) int16 { return int16(i % 30011) }
-
-// sleepMarked sleeps as s.Delays says for the window run whose first sample is first, marked in
-// s.Flight's directory when that is set.
-func sleepMarked(s settings, first string) error {
-	ms, ok := s.Delays[first]
-	if !ok {
-		ms = s.Delays["*"]
-	}
-	d := time.Duration(ms) * time.Millisecond
-	dir := s.Flight
-	if dir == "" {
-		time.Sleep(d)
-		return nil
-	}
-	mark := filepath.Join(dir, strconv.Itoa(os.Getpid()))
-	if err := os.WriteFile(mark, nil, 0o600); err != nil {
-		return err
-	}
-	time.Sleep(d / 2)
-	marks, err := filepath.Glob(filepath.Join(dir, "[0-9]*"))
-	if err != nil {
-		return err
-	}
-	f, err := os.OpenFile(filepath.Join(dir, "counts"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	_, err = fmt.Fprintln(f, len(marks))
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		return err
-	}
-	time.Sleep(d - d/2)
-	return os.Remove(mark)
-}
+func synthSample(i int) int16 { return int16(i%30011 - 15005) }
 
 // standins are a test's stand-in ffmpeg and ffprobe: two links in a directory of their own,
 // sharing one settings.
@@ -188,8 +115,6 @@ type standins struct {
 	settings settings
 	// ffmpeg and ffprobe are the links' paths.
 	ffmpeg, ffprobe string
-	// since is how many runs of each link a mark left out of runs.
-	since map[string]int
 }
 
 // installStandins links the stand-ins as ffmpeg and ffprobe in a directory of their own, at
@@ -197,7 +122,7 @@ type standins struct {
 func installStandins(t testing.TB, version string) *standins {
 	t.Helper()
 	dir := t.TempDir()
-	s := &standins{t: t, settings: settings{Version: version}, since: map[string]int{}}
+	s := &standins{t: t, settings: settings{Version: version}}
 	s.ffmpeg = tooltest.Link(t, dir, "ffmpeg", s.settings)
 	s.ffprobe = tooltest.Link(t, dir, "ffprobe", s.settings)
 	return s
@@ -211,22 +136,14 @@ func (s *standins) set(change func(*settings)) {
 	tooltest.Set(s.t, s.ffprobe, s.settings)
 }
 
-// mark leaves the runs so far out of runs.
-func (s *standins) mark() {
-	s.t.Helper()
-	for _, link := range []string{s.ffprobe, s.ffmpeg} {
-		s.since[link] = len(tooltest.Runs(s.t, link))
-	}
-}
-
-// runs returns the stand-ins' runs since the last mark, version commands left out: ffprobe's,
+// runs returns the stand-ins' runs, version commands left out: ffprobe's,
 // then ffmpeg's, each in the order they began. The package probes a source before ffmpeg runs on
 // it, so that is the order they ran in; the logs, one a link, don't order runs across the two.
 func (s *standins) runs() []run {
 	s.t.Helper()
 	var out []run
 	for _, link := range []string{s.ffprobe, s.ffmpeg} {
-		for _, r := range tooltest.Runs(s.t, link)[s.since[link]:] {
+		for _, r := range tooltest.Runs(s.t, link) {
 			if !slices.Equal(r.Args, []string{"-version"}) {
 				out = append(out, r)
 			}

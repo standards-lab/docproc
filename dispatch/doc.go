@@ -125,22 +125,23 @@
 //     docproc-onenote wrote no content for is a record. A password-protected section, whose
 //     refusal internal/cli classes as encrypted, ends with [ErrEncrypted], and a table of
 //     contents, refused as read elsewhere, with [ErrReadElsewhere].
-//   - [AudioStage], for route.Audio: a WAV, FLAC, MP3, Ogg, or M4A through audio's Splitter.
-//     The part's plan comes first, a record holding an [AudioPlan], then each window in plan
-//     order, an audio output holding a 16 kHz mono WAV, its Meta its index, span, cut, and seams.
-//     The stage transcribes nothing: a layer above transcribes each window and joins the
-//     transcripts with audio.Join. A source with no audio stream fails, its error wrapping
-//     audio.ErrNoAudio, and a failed window fails the part once the other windows are yielded. A
-//     caller with no ffmpeg and ffprobe has no Splitter and registers no audio stage, so its
-//     audio parts have no processor yet.
+//   - [AudioStage], for route.Audio: a WAV, FLAC, MP3, Ogg, or M4A through audio's Splitter,
+//     which decodes the part once. Each window comes in plan order as it is cut, an audio output
+//     holding a 16 kHz mono WAV, its Meta its index, span, cut, seams, and threshold; then the
+//     part's plan, a record holding an audio.PlanRecord, its duration the decoded samples'. The
+//     stage transcribes nothing: a layer above transcribes each window and joins the
+//     transcripts. A source with no audio stream fails, its error wrapping audio.ErrNoAudio, and
+//     a failed decode fails the part after the windows cut before it. A caller with no ffmpeg
+//     and ffprobe has no Splitter and registers no audio stage, so its audio parts have no
+//     processor yet.
 //   - [VideoStage], for route.Video: an MP4, Matroska, WebM, or AVI through media's Streamer, one
-//     unpaced ffmpeg run per part, over a hard link to the part's file in the part's directory,
+//     ffmpeg run per part, over a hard link to the part's file in the part's directory,
 //     so media's directory of frames is made there and never beside the caller's input. The
-//     part's plan comes first, a record holding a [VideoPlan], the settings its windows are
+//     part's plan comes first, a record holding a media.VideoPlan, the settings its windows are
 //     planned and its frames sampled under; then each frame, an image output holding a PNG, its
 //     Meta its index, time, reason, and size, and each window, an audio output holding a 16 kHz
-//     mono WAV, its Meta the audio stage's but its count, with the threshold it was cut under,
-//     interleaved as the run completes them. A video with no audio stream yields frames only, and
+//     mono WAV, cut by audio's stream cutter, its Meta the audio stage's, interleaved as the run
+//     completes them. A video with no audio stream yields frames only, and
 //     one with no video stream windows only; a source with neither fails, its error wrapping
 //     media.ErrNoMedia. The stage runs no model. A caller with no ffmpeg and ffprobe has no
 //     Streamer and registers no video stage, so its video parts have no processor yet, as is
@@ -392,10 +393,9 @@
 //     [NewPictureStage], [NewEmailStage], [NewOneNoteStage], [NewAudioStage], and [NewVideoStage]
 //     over a [DocumentConfig], [OfficeConfig], [PictureConfig], [EmailConfig], [OneNoteConfig],
 //     [AudioConfig], and [VideoConfig]; the document stage reading a PDF's structure through its
-//     [QPDF] and its embedded files through its [PDFDetach]; the audio stage's plan record an
-//     [AudioPlan] of [AudioWindow]s and [AudioSpan]s, and the video stage's a [VideoPlan] of its
-//     [VideoWindowing] and [VideoSampling]; [VisionStage], made by [NewVisionStage]; and
-//     [Versions], a stage's tools' version.
+//     [QPDF] and its embedded files through its [PDFDetach]; [VisionStage], made by
+//     [NewVisionStage]; and [Versions], a stage's tools' version. The audio and video stages'
+//     plan records are their packages' own, audio.PlanRecord and media.VideoPlan.
 //   - [ArchiveStage], made by [NewArchiveStage] over an [ArchiveConfig], on any platform, reading
 //     7-Zip's kinds through its [SevenZip].
 //   - [TextStage], made by [NewTextStage], on any platform.

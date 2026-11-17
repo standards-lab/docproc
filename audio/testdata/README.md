@@ -1,15 +1,14 @@
 # testdata
 
-The audio package's speech fixture and its reference transcript, and the streams fixtures built
-from them. The audio package's tests and
-dispatch's audio stage tests probe, plan, and cut the fixture, through both runners in the
-integration tier, which also transcribes it against the transcript. Both files are committed and
-never generated in the check; `mise run fixtures:audio` (`scripts/fixtures-audio.sh`) rebuilds
-them from the test corpus at `~/docs`, checking each source against the SHA-256 the corpus's
-`MANIFEST.json` pins and each output against the SHA-256 below.
-The streams fixtures are committed too: `mise run fixtures:streams`
-(`scripts/fixtures-streams.sh`) rebuilds them from `speech.flac` and `speech.truth.txt`, checking
-each against its SHA-256 below, and each output against its own.
+The audio package's speech fixture and its reference transcript, the streams fixtures built
+from them, the truncated MP3, and v0.9.0's windows of the speech fixtures. The audio package's
+tests and dispatch's audio stage tests cut the fixtures, through the stand-in in the unit tier,
+which decodes a WAV to its own samples, and through both runners in the integration tier. Every
+file is committed and never generated in the check. The fixtures were built in
+spike-ai-pipeline-processing by `mise run fixtures:audio` (`scripts/fixtures-audio.sh`), from the
+test corpus at `~/docs`, checking each source against the SHA-256 the corpus's `MANIFEST.json`
+pins, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
+`speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to its SHA-256 below.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -20,13 +19,14 @@ each against its SHA-256 below, and each output against its own.
 | `speech-gain.wav` | `speech.flac`'s utterances, with generated pink noise | CC BY 4.0 | 2407404 | `d98a6e3264f104a5ca09f3e160b6f0770fd40ee93f11acc2bdb63129fc6840e6` |
 | `speech-noise.wav` | `speech.flac`'s utterances, with generated pink noise | CC BY 4.0 | 2407404 | `bb8655839e2a6a120984225f7996ea5183f52f6db350bd68e72bd4425bae867a` |
 | `speech-levels.truth.json` | the variants' settings and measure, with `speech.truth.txt` | CC BY 4.0 | 2891 | `a3193d531303009c0338f2b6a35abb1f3fda962f9fe7cd35f9e4a7db9a45f7b8` |
+| `speech-truncated.mp3` | `speech.flac`'s first 12 s, as MP3, cut short | CC BY 4.0 | 24000 | `1281d2e9ab62d7f925218183206ddbb8d831f211ac80c06071cdf5fbaac66c68` |
+| `windows-v0.9.0.txt` | v0.9.0's windows of three fixtures, under DetectorTracker | CC BY 4.0 | 929 | `4886500f856f56a395e6dee006a9bc2ea2e03e2e4828e639cb3f0914149383e3` |
 
 - `speech.flac`: 49.82 s of 16 kHz mono 16-bit FLAC. The four utterances, 6.59, 7.145, 4.835, and
   2.84 s long, are read in order twice, eight in all, with one second of digital silence after each
   but the last, so the seven inserted gaps begin at 6.59, 14.735, 20.57, 24.41, 32.0, 40.145, and
-  45.98 s. silencedetect at its default threshold, 15 dB under the mean volume of -25.1 dB, finds
-  each gap within a longer silence, the utterances' own pauses beside it, and more besides; the
-  plan cuts the one window boundary in the gap at 24.41 s. The host's ffmpeg n9.0.2 and
+  45.98 s. The tracker at its defaults finds each gap within a silence, and the plan cuts the one
+  window boundary in the gap at 24.41 s, at 24.91 s. The host's ffmpeg n9.0.2 and
   `audio.FFmpegImage`'s 9.0.2 build the same bytes.
 - `speech.truth.txt`: the eight utterances' transcripts, one a line in the fixture's order, as
   LibriSpeech gives them, upper case without punctuation, from the corpus's
@@ -59,6 +59,34 @@ each against its SHA-256 below, and each output against its own.
 - `speech-levels.truth.json`: that truth: the variants' settings, inserted gaps, transcript, the
   change at 30 s, the first 30 s's mean volume and the threshold it fixes, the gaps after the
   change, and each variant's change. Times are whole milliseconds.
+
+- `speech-truncated.mp3`: `speech.flac`'s first 12 s as 32 kb/s MP3 cut to its first 24,000
+  bytes, so its Info header still counts the whole 12 s, which ffprobe reports, while it decodes to
+  94,511 samples, 5.907 s: a plan of it ends at the samples, ffprobe's duration beside it. Its
+  recipe, with the host's ffmpeg n9.0.2 and its libmp3lame, which builds the same bytes again:
+
+  ```sh
+  ffmpeg -nostdin -i speech.flac -t 12 -c:a libmp3lame -b:a 32k \
+    -flags:a +bitexact -fflags +bitexact -map_metadata -1 full.mp3
+  head -c 24000 full.mp3 > speech-truncated.mp3
+  ```
+
+- `windows-v0.9.0.txt`: the oracle the one-decode windows are held to, byte for byte. A line a
+  window: the fixture, the window's index, its start and end in nanoseconds, its cut, its samples,
+  and the SHA-256 of its WAV. It is spike-ai-pipeline-processing v0.9.0 (4402f7c) cutting
+  `speech.flac`, `speech-gain.wav`, and `speech-noise.wav` under DetectorTracker, with the host's
+  ffmpeg n9.0.2, through a throwaway program over v0.9.0's own audio package, run from a checkout
+  of that commit (`GOFLAGS=-mod=mod go run ./cmd/oracle <fixture>...`):
+
+  ```go
+  plan, err := s.Plan(ctx, audio.Request{Path: path, Detector: audio.DetectorTracker})
+  for w, err := range s.Windows(ctx, audio.WindowsRequest{Path: path, Dir: dir}, plan) {
+      fmt.Printf("%d %d %d %s %d %s\n", w.Index, w.Window.Start, w.Window.End, w.Window.Cut, w.Samples, w.SHA256)
+  }
+  ```
+
+  v0.9.0's default detector was silencedetect, so the oracle names the tracker, the one detector
+  left; v0.9.0 decoded once to plan and once more for each window.
 
 The host's ffmpeg n9.0.2 and `audio.FFmpegImage`'s 9.0.2 build the same bytes of each streams
 fixture: their encoders and noise sources are FFmpeg's own, seeded, and bit-exact.

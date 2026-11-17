@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"testing"
@@ -31,10 +32,15 @@ var audioRunners = map[string]func(t *testing.T, spec tool.Spec) (*tool.Tool, er
 }
 
 // TestAudioStageReal dispatches the speech fixture through the audio stage over each runner's
-// ffmpeg and ffprobe, and checks that its plan record is the Splitter's own plan of it and that
-// each window follows in plan order, a WAV of its Meta's samples, named by its SHA-256; and that
-// the runners prepare the same windows.
+// ffmpeg and ffprobe, and checks that each window comes in plan order, a WAV of its Meta's
+// samples, named by its SHA-256 and holding v0.9.0's bytes, and that the plan record comes last,
+// the Splitter's own plan of it; and that the runners prepare the same windows.
 func TestAudioStageReal(t *testing.T) {
+	// v0.9.0's windows of the fixture under DetectorTracker, audio/testdata/windows-v0.9.0.txt's.
+	v090 := []string{
+		"e142ddb2f6d968dc33d2858f20ba456718b0335be22f3be7eafba3bd97a8cbd5.wav",
+		"b5f802b375656c7fd2d06b6bc76c6da71b2b67ddab2f72d0ad12f2dd22293af3.wav",
+	}
 	sums := map[string][]string{}
 	for name, build := range audioRunners {
 		t.Run(name, func(t *testing.T) {
@@ -51,7 +57,7 @@ func TestAudioStageReal(t *testing.T) {
 				t.Fatal(err)
 			}
 			stage, err := dispatch.NewAudioStage(dispatch.AudioConfig{
-				Splitter: s, Version: dispatch.Versions(ffmpeg, ffprobe), Concurrency: 2,
+				Splitter: s, Version: dispatch.Versions(ffmpeg, ffprobe), Request: audio.Request{Concurrency: 2},
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -60,9 +66,12 @@ func TestAudioStageReal(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			plan, err := s.Plan(t.Context(), audio.Request{Path: path})
-			if err != nil {
-				t.Fatal(err)
+			var plan *audio.Plan
+			for w, err := range s.Windows(t.Context(), path, audio.Request{Dir: t.TempDir(), Concurrency: 1}) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				plan = w.Plan
 			}
 
 			d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
@@ -74,30 +83,27 @@ func TestAudioStageReal(t *testing.T) {
 			})
 			wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Prepared}})
 			outs := events[0].Outputs
-			if len(outs) != 1+len(plan.Windows) || outs[0].Name != "plan" {
-				t.Fatalf("%d outputs, want the plan and its %d windows", len(outs), len(plan.Windows))
+			last := len(outs) - 1
+			if len(outs) != 1+len(plan.Windows) || outs[last].Name != "plan" {
+				t.Fatalf("%d outputs, want the plan's %d windows and the plan", len(outs), len(plan.Windows))
 			}
-			t.Logf("recorded: plan %s", outs[0].Value)
-			var p dispatch.AudioPlan
-			if err := json.Unmarshal(outs[0].Value, &p); err != nil {
+			t.Logf("recorded: plan %s", outs[last].Value)
+			var p audio.PlanRecord
+			if err := json.Unmarshal(outs[last].Value, &p); err != nil {
 				t.Fatal(err)
 			}
-			if p.Duration != plan.Duration.Seconds() || len(p.Windows) != len(plan.Windows) || len(p.Seams) != len(plan.Seams) {
-				t.Fatalf("the plan record %+v isn't the Splitter's plan %+v", p, plan)
+			if !reflect.DeepEqual(p, plan.Record()) {
+				t.Fatalf("the plan record %+v isn't the Splitter's plan %+v", p, plan.Record())
 			}
 			for i, w := range plan.Windows {
-				o := outs[1+i]
-				if pw := p.Windows[i]; pw.Start != w.Start.Seconds() || pw.End != w.End.Seconds() || pw.Cut != w.Cut.String() {
-					t.Errorf("the plan record's window %d %+v, want %v", i, pw, w)
-				}
-				if o.Kind != dispatch.AudioOutput || o.Name != "window "+strconv.Itoa(i) || o.Meta["count"] != strconv.Itoa(len(plan.Windows)) {
-					t.Errorf("output %d is %s %s of %s", 1+i, o.Kind, o.Name, o.Meta["count"])
-				}
-				samples, _ := strconv.Atoi(o.Meta["samples"])
-				if d := float64(samples) - w.Duration().Seconds()*audio.SampleRate; d < -1 || d > 1 {
-					t.Errorf("%s holds %d samples; its span is %v", o.Name, samples, w.Span)
+				o := outs[i]
+				if o.Kind != dispatch.AudioOutput || o.Name != "window "+strconv.Itoa(i) || o.Meta["end"] != strconv.FormatFloat(w.End.Seconds(), 'f', -1, 64) {
+					t.Errorf("output %d is %s %s ending at %s, want window %d, %v", i, o.Kind, o.Name, o.Meta["end"], i, w.Span)
 				}
 				sums[name] = append(sums[name], filepath.Base(o.Path))
+			}
+			if !slices.Equal(sums[name], v090) {
+				t.Errorf("windows %q, v0.9.0's %q", sums[name], v090)
 			}
 		})
 	}

@@ -68,7 +68,7 @@ func streamed(t *testing.T, s *media.Streamer, path string) (frames, windows []s
 	if err := os.WriteFile(src, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for ev, err := range s.Events(t.Context(), media.Request{Source: media.Source{File: src}, Dir: t.TempDir()}) {
+	for ev, err := range s.Events(t.Context(), src, media.Request{Dir: t.TempDir()}) {
 		if err != nil {
 			t.Fatal(err)
 		}

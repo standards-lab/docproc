@@ -15,12 +15,13 @@ const FrameLength = 10 * time.Millisecond
 // frameSamples is the samples in a frame at SampleRate.
 const frameSamples = SampleRate * int(FrameLength) / int(time.Second)
 
-// The tracker's defaults, chosen by measurement: TestFindingsFloor, in the findings tier, measures
-// a grid of settings over the level-change fixtures and the corpus's long sources, unchanged and
-// with a gain step and a noise floor added at 10 minutes. These are the settings that find every
-// inserted gap of both fixtures, before their change and after it, by the middle of a band of
-// margins that do, and cut no more windows at the limit than silencedetect at its default does on
-// the long sources unchanged, nor more under either change.
+// The tracker's defaults, chosen by measurement: TestFindingsFloor, in the findings tier that stays
+// in spike-ai-pipeline-processing at v0.9.0, measured a grid of settings over the level-change
+// fixtures and the corpus's long sources, unchanged and with a gain step and a noise floor added at
+// 10 minutes. These are the settings that find every inserted gap of both fixtures, before their
+// change and after it, by the middle of a band of margins that do, and cut no more windows at the
+// limit than silencedetect at its default does on the long sources unchanged, nor more under either
+// change.
 const (
 	// DefaultPercentile is the percentile of frame energy a request's zero Percentile asks for:
 	// the 10th, the quietest tenth of the frames, which in speech is its pauses.
@@ -144,16 +145,12 @@ type Tracker struct {
 
 // NewTracker returns a Tracker that finds silences as req says: its MinSilence, the shortest
 // silence; and either its fixed Threshold or its rolling threshold's Percentile, FloorWindow, and
-// Margin. It reads no other field; Below, the mean volume's, isn't the tracker's, and must be zero.
+// Margin. It reads no other field.
 //
 // A MinSilence below zero; a Threshold above zero or below -120 dB; a Threshold with any of
 // Percentile, FloorWindow, or Margin; a Percentile below zero or 100 or more; a FloorWindow not
-// zero and under 1 s or over 10 minutes; a Margin below zero; or a Below not zero, is an error
-// wrapping ErrRequest.
+// zero and under 1 s or over 10 minutes; or a Margin below zero, is an error wrapping ErrRequest.
 func NewTracker(req Request) (*Tracker, error) {
-	if req.Below != 0 {
-		return nil, fmt.Errorf("audio: %v dB below the mean volume, which the tracker doesn't measure: %w", req.Below, ErrRequest)
-	}
 	settings, err := req.checkTracker()
 	if err != nil {
 		return nil, err

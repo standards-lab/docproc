@@ -172,7 +172,7 @@ func TestPlanWindowsInvariants(t *testing.T) {
 			start := time.Duration(r.Int64N(int64(duration)))
 			silences = append(silences, audio.Span{Start: start, End: start + time.Duration(r.Int64N(int64(3*time.Second)))})
 		}
-		overlap := time.Duration(r.Int64N(int64(audio.WindowLimit / 2)))
+		overlap := time.Duration(r.Int64N(int64(audio.DefaultWindowLimit / 2)))
 		req := audio.Request{Overlap: overlap}
 		plan, err := audio.PlanWindows(duration, silences, req)
 		if err != nil {
@@ -214,7 +214,7 @@ func checkPlan(t *testing.T, plan audio.Plan, duration time.Duration) {
 		t.Errorf("the last window is %v, cut %v; want it to end at %v, cut end", last.Span, last.Cut, duration)
 	}
 	for i, w := range ws {
-		if w.Duration() <= 0 || w.Duration() > audio.WindowLimit {
+		if w.Duration() <= 0 || w.Duration() > audio.DefaultWindowLimit {
 			t.Errorf("window %d, %v, is %v long", i, w.Span, w.Duration())
 		}
 		if i == len(ws)-1 {
@@ -249,7 +249,7 @@ func TestPlanWindowsRefuses(t *testing.T) {
 		{"zero duration", 0, 0},
 		{"negative duration", -time.Second, 0},
 		{"negative overlap", time.Minute, -time.Second},
-		{"half the window's overlap", time.Minute, audio.WindowLimit / 2},
+		{"half the window's overlap", time.Minute, audio.DefaultWindowLimit / 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -259,17 +259,39 @@ func TestPlanWindowsRefuses(t *testing.T) {
 			}
 		})
 	}
-	if _, err := audio.PlanWindows(time.Minute, nil, audio.Request{Overlap: audio.WindowLimit/2 - 1}); err != nil {
+	if _, err := audio.PlanWindows(time.Minute, nil, audio.Request{Overlap: audio.DefaultWindowLimit/2 - 1}); err != nil {
 		t.Errorf("an overlap just under half the window: %v", err)
 	}
 }
 
-func TestCheckOverlap(t *testing.T) {
-	if got, err := audio.CheckOverlap(0); err != nil || got != audio.DefaultOverlap {
-		t.Errorf("CheckOverlap(0) = %v, %v; want the default, %v", got, err, audio.DefaultOverlap)
+// TestPlannerLimit: a zero Limit and Overlap are the defaults, a set Limit bounds every window
+// PlanWindows plans, and the Overlap must be under half of it; a negative Limit is refused.
+func TestPlannerLimit(t *testing.T) {
+	p, err := audio.NewPlanner(audio.Request{})
+	if err != nil || p.Limit() != audio.DefaultWindowLimit || p.Overlap() != audio.DefaultOverlap {
+		t.Errorf("zero request: %v, %v, %v; want the defaults", p, err, audio.DefaultWindowLimit)
 	}
-	if got, err := audio.CheckOverlap(3 * time.Second); err != nil || got != 3*time.Second {
-		t.Errorf("CheckOverlap(3s) = %v, %v; want 3s", got, err)
+	p, err = audio.NewPlanner(audio.Request{Limit: 10 * time.Second, Overlap: 3 * time.Second})
+	if err != nil || p.Limit() != 10*time.Second || p.Overlap() != 3*time.Second {
+		t.Errorf("10 s and 3 s: %v, %v", p, err)
+	}
+	for name, req := range map[string]audio.Request{
+		"negative limit":           {Limit: -time.Second},
+		"overlap of half a limit":  {Limit: 10 * time.Second, Overlap: 5 * time.Second},
+		"default overlap, 4 s cut": {Limit: 4 * time.Second},
+	} {
+		if _, err := audio.NewPlanner(req); !errors.Is(err, audio.ErrRequest) {
+			t.Errorf("%s: %v, want ErrRequest", name, err)
+		}
+	}
+	silences := []audio.Span{span(4, 4.5), span(9, 9.5), span(17, 17.5)}
+	plan, err := audio.PlanWindows(sec(25), silences, audio.Request{Limit: 10 * time.Second, Overlap: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []audio.Window{win(0, 9.25, audio.CutSilence), win(8.25, 17.25, audio.CutSilence), win(16.25, 25, audio.CutEnd)}
+	if !slices.Equal(plan.Windows, want) || plan.Limit != 10*time.Second {
+		t.Errorf("windows %v, limit %v; want %v, 10s", plan.Windows, plan.Limit, want)
 	}
 }
 
@@ -307,7 +329,7 @@ func planIncrementally(t *testing.T, duration time.Duration, silences []audio.Sp
 		got = append(got, ws...)
 		fixed := 0
 		for _, w := range want.Windows {
-			if w.Start+audio.WindowLimit < pos && w.Cut != audio.CutEnd {
+			if w.Start+audio.DefaultWindowLimit < pos && w.Cut != audio.CutEnd {
 				fixed++
 			}
 		}
@@ -351,11 +373,11 @@ func TestPlannerMatchesPlanWindows(t *testing.T) {
 			start := time.Duration(r.Int64N(int64(duration))) - time.Second
 			length := time.Duration(r.Int64N(int64(3 * time.Second)))
 			if r.IntN(8) == 0 {
-				length = audio.WindowLimit + time.Duration(r.Int64N(int64(45*time.Second)))
+				length = audio.DefaultWindowLimit + time.Duration(r.Int64N(int64(45*time.Second)))
 			}
 			silences = append(silences, audio.Span{Start: start, End: start + length})
 		}
-		req := audio.Request{Overlap: time.Duration(r.Int64N(int64(audio.WindowLimit / 2)))}
+		req := audio.Request{Overlap: time.Duration(r.Int64N(int64(audio.DefaultWindowLimit / 2)))}
 		want, err := audio.PlanWindows(duration, silences, req)
 		if err != nil {
 			t.Fatal(err)
@@ -365,7 +387,7 @@ func TestPlannerMatchesPlanWindows(t *testing.T) {
 			// The positions at each window's limit and just past it, where it is fixed.
 			positions = nil
 			for _, w := range want.Windows {
-				if limit := w.Start + audio.WindowLimit; limit < duration {
+				if limit := w.Start + audio.DefaultWindowLimit; limit < duration {
 					positions = append(positions, limit, limit+1)
 				}
 			}
@@ -435,7 +457,7 @@ func TestPlannerFixtures(t *testing.T) {
 				t.Errorf("%s in chunks of %d: windows %v, want %v", v.File, chunk, got, want.Windows)
 			}
 			for i, at := range fixedAt {
-				if limit := got[i].Start + audio.WindowLimit; at <= limit {
+				if limit := got[i].Start + audio.DefaultWindowLimit; at <= limit {
 					t.Errorf("%s: window %d returned at %v, before its limit, %v", v.File, i, at, limit)
 				}
 			}
@@ -444,7 +466,7 @@ func TestPlannerFixtures(t *testing.T) {
 }
 
 func TestPlannerRefuses(t *testing.T) {
-	if _, err := audio.NewPlanner(audio.Request{Overlap: audio.WindowLimit / 2}); !errors.Is(err, audio.ErrRequest) {
+	if _, err := audio.NewPlanner(audio.Request{Overlap: audio.DefaultWindowLimit / 2}); !errors.Is(err, audio.ErrRequest) {
 		t.Errorf("an overlap of half a window: %v, want ErrRequest", err)
 	}
 	p, err := audio.NewPlanner(audio.Request{})

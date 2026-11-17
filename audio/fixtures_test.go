@@ -135,7 +135,7 @@ type levelsFixture struct {
 	Transcript    []string   `json:"transcript"`
 	ChangeMS      int        `json:"change_ms"`
 	// FirstMeanVolumeDB is volumedetect's mean volume of the speech before the change, and
-	// FixedThresholdDB that less audio.DefaultBelow.
+	// FixedThresholdDB that less 15 dB, v0.9.0's silencedetect default.
 	FirstMeanVolumeDB float64    `json:"first_mean_volume_db"`
 	FixedThresholdDB  float64    `json:"fixed_threshold_db"`
 	MinSilenceMS      int        `json:"min_silence_ms"`
@@ -281,8 +281,8 @@ func spans(gaps []gapTruth) []audio.Span {
 
 // TestLevelsTruth: the levels truth parses; its gaps and transcript are speech.flac's first four
 // utterances read three times; its gaps after the change are those that start after it; its
-// threshold is its mean volume less audio's DefaultBelow; and each variant is a canonical 44-byte
-// 16 kHz mono 16-bit PCM WAV of its duration.
+// threshold is its mean volume less 15 dB, v0.9.0's silencedetect default; and each variant is a
+// canonical 44-byte 16 kHz mono 16-bit PCM WAV of its duration.
 func TestLevelsTruth(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -310,7 +310,8 @@ func TestLevelsTruth(t *testing.T) {
 	if len(after) == 0 || !slices.Equal(f.GapsAfterChange, after) {
 		t.Errorf("gaps after the change %v, want %v, at least one", f.GapsAfterChange, after)
 	}
-	if want := f.FirstMeanVolumeDB - audio.DefaultBelow; f.FixedThresholdDB != want || f.MinSilenceMS != int(audio.DefaultMinSilence/time.Millisecond) {
+	// The fixed threshold is v0.9.0's silencedetect default, 15 dB under the mean volume.
+	if want := f.FirstMeanVolumeDB - 15; f.FixedThresholdDB != want || f.MinSilenceMS != int(audio.DefaultMinSilence/time.Millisecond) {
 		t.Errorf("threshold %v dB, minimum silence %d ms; want %v dB, %v", f.FixedThresholdDB, f.MinSilenceMS, want, audio.DefaultMinSilence)
 	}
 	changes := map[string]bool{}
@@ -361,11 +362,11 @@ func canonicalWAV(data []byte, rate, samples int) error {
 	return nil
 }
 
-// within reports whether s lies within one of silences, to the millisecond: silencedetect's times
-// fall on its sample boundaries, and the fixture's utterances end on a millisecond's.
+// within reports whether s lies within one of silences, to the tracker's frame: its silences fall
+// on its 10 ms frames, and a frame that holds an utterance's first or last sample isn't silent.
 func within(s audio.Span, silences []audio.Span) bool {
 	for _, x := range silences {
-		if x.Start <= s.Start+time.Millisecond && s.End <= x.End+time.Millisecond {
+		if x.Start <= s.Start+audio.FrameLength && s.End <= x.End+audio.FrameLength {
 			return true
 		}
 	}

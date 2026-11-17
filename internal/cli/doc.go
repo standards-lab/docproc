@@ -1,7 +1,8 @@
 // Package cli is the envelope reader: one definition of how docproc runs the system tools,
 // docproc-ooxml, docproc-mail, and docproc-onenote, and reads the common envelope they write
 // (context/layers.md, "Common envelope"), so every reader reads a tool the same way. It also holds
-// the helpers the readers and the document package's renderers share.
+// the helpers the readers, the document package's renderers, and audio's and media's FFmpeg runs
+// share.
 //
 // [Read] runs a tool with its stdout and stderr on pipes. stdout is JSON Lines: Read yields each
 // line's kind and raw JSON, the reader decoding it, and checks that the first line is the
@@ -35,5 +36,9 @@
 //   - [LimitedBuffer] keeps the first bytes written to it, for a tool's output read only in
 //     part.
 //   - [Spool] copies an input into a file in a working directory, for a tool that reads a path.
+//   - [LineWriter] splits a program's stderr into lines as it arrives, keeping the last, each at
+//     most [MaxLine], for audio's and media's FFmpeg runs.
+//   - [WriteTemp] writes bytes to a hidden temporary file in a directory, for a file renamed into
+//     place once whole, as audio's windows and media's windows and frames are.
 //   - [UTC] is the decoding option that makes every time a reader decodes UTC.
 package cli

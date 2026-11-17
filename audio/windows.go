@@ -5,15 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"iter"
 	"os"
 	"path/filepath"
-	"strconv"
-	"sync"
 	"time"
 
+	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -25,39 +23,30 @@ const SampleRate = 16000
 // a 16-byte fmt chunk and the data chunk, and nothing else.
 const wavHeader = 44
 
-// WindowsRequest is one source's windows, cut as a Plan of it says, through a Splitter's Windows.
-type WindowsRequest struct {
-	// Path is the source's file, the one the plan was made of, which is read and never changed.
-	// It is required; ffmpeg reads it by its absolute path, in its own directory, as Detect does.
-	Path string
-	// Dir is the media directory the windows are written into and left, which the caller owns. It
-	// is required, and must be a directory; an empty Dir is refused rather than taken as the
-	// system's temporary directory.
-	Dir string
-	// Concurrency is how many windows are cut at once, each an ffmpeg run. Zero means 1; a
-	// negative concurrency is refused.
-	Concurrency int
-}
-
-// WindowFile is one window of a plan, written to the media directory as WAV: 16 kHz, SampleRate,
-// mono 16-bit PCM, its header the canonical 44 bytes, carrying no encoder's name, so the same
-// window of the same source is the same bytes through either runner.
+// WindowFile is one window of a source, written to the media directory as WAV: 16 kHz,
+// SampleRate, mono 16-bit PCM, its header the canonical 44 bytes, carrying no encoder's name, so
+// the same window of the same source is the same bytes through either runner.
 type WindowFile struct {
-	// Index is the window's index in the plan's Windows, from 0; the plan's Seams[Index-1] is the
-	// seam it starts in, and Seams[Index] the one it ends in.
+	// Index is the window's index in the plan's Windows, from 0.
 	Index int
-	// Count is the number of windows in the plan. The zero WindowFile, which a stream yields with
-	// an error that ends it, has a Count of zero.
-	Count int
-	// Window is the plan's window: its span of the source and what ended it.
+	// Window is the window: its span of the source, overlaps included, and what ended it.
 	Window Window
-	// Path is the WAV's path in the media directory, named by SHA256 and ".wav"; empty for a
-	// window that failed.
+	// SeamBefore is the seam the window starts in, shared with the window before it; zero for the
+	// first. SeamAfter is the seam it ends in, shared with the window after it; zero for the last.
+	SeamBefore Span
+	SeamAfter  Span
+	// Threshold is the silence threshold, in dB relative to full scale, the window was cut under,
+	// as a Piece's.
+	Threshold float64
+	// Path is the WAV's path in the media directory, named by SHA256 and ".wav".
 	Path string
 	// SHA256 is the lowercase hex SHA-256 of the WAV's bytes, header included.
 	SHA256 string
 	// Samples is the number of samples the WAV holds, at SampleRate.
 	Samples int
+	// Plan is the source's whole plan, set on the last window alone, the one cut at the end,
+	// CutEnd: the decode has ended by then, so the plan's Duration is the samples it gave.
+	Plan *Plan
 }
 
 // Duration returns the WAV's duration: its Samples at SampleRate.
@@ -65,40 +54,41 @@ func (w WindowFile) Duration() time.Duration {
 	return time.Duration(w.Samples) * time.Second / SampleRate
 }
 
-// Windows returns the stream of the windows plan gives the source req.Path names, each cut by
-// ffmpeg and written into req.Dir as a WindowFile. The stream is lazy: nothing runs, not even the
-// request's validation, until it is ranged over.
+// Windows returns the stream of the windows of the source at path, cut as req says, each written
+// into req.Dir as a WindowFile. The stream is lazy: nothing runs, not even the request's
+// validation, until it is ranged over.
 //
-// Ranging over it validates req and plan, an invalid one an error wrapping ErrRequest: a plan with
-// no windows, or a window outside its Duration. It probes the source, as Probe does, and refuses
-// one whose duration isn't plan.Duration, with ErrRequest, as a plan of another source. Then, for
-// each window in order, one ffmpeg run reads the audio stream Probe found, resamples it to
-// SampleRate, downmixes it to mono, and trims it to the window's samples: from its Start, to the
-// nearest sample at SampleRate, up to but not including its End's, so a window is its span long to
-// within a sample. ffmpeg writes the samples as raw 16-bit PCM to its stdout, read in memory, at
-// most a window's, 960,000 bytes for one of WindowLimit; the package writes the WAV header and
-// names the file by the SHA-256 of the whole. A WAV ffmpeg muxed itself would need a seekable
-// output to set its sizes, and the container runner mounts only the source's directory, so ffmpeg
-// writes nothing to the media directory. At most req.Concurrency windows are being cut at once.
-// Windows are yielded in plan order, a window that finishes early held until the windows before it
-// are yielded.
+// Ranging over it validates path and req, an invalid one an error wrapping ErrRequest. It probes
+// the source, as Probe does, refusing one with no audio stream, with ErrNoAudio, before ffmpeg
+// runs. Then one ffmpeg run decodes the audio stream Probe found, resampled to SampleRate and
+// downmixed to mono, as 16-bit PCM on its stdout, and a Cutter of req's fields cuts it into
+// windows as it arrives: each window is cut once the stream passes its limit or ends, its samples
+// the stream's from Sample of its start up to but not including its end's, and the package writes
+// the WAV header and names the file by the SHA-256 of the whole. The source is decoded once,
+// whatever its windows; ffmpeg writes nothing to the media directory, which the container runner
+// doesn't mount. Over the committed speech fixtures, the windows are v0.9.0's under its tracker
+// detector, byte for byte.
+//
+// Windows are yielded in plan order, each as soon as it is cut. At most req.Concurrency windows
+// are held at once, from its cut until the consumer's loop body returns from it: while that many
+// are held, the decode waits. The last window, cut at the end, carries the source's Plan: its
+// Duration the samples the stream decoded to, which the windows cover, with ffprobe's duration
+// beside it as Probed when the two differ by more than a FrameLength.
 //
 // A window is written to a hidden temporary file in req.Dir and renamed to its SHA-256 name just
 // before it is yielded, so the media directory holds only whole windows, and only the ones the
 // stream yielded: a window cut but never yielded, because the loop stopped or ctx ended first, is
-// removed, as is a failed window's partial file.
+// removed.
 //
-// A window that fails, in its ffmpeg run or in writing its file, yields the WindowFile's Index,
-// Count, and Window with the error, which names the window and wraps its cause, and the stream
-// carries on. A refused request or plan, or a failed probe, yields one error with a zero
-// WindowFile, and the stream ends. When ctx ends, the runs in flight are stopped, and the stream
-// yields ctx's error once, with a zero WindowFile, and ends.
-//
-// Breaking out of the range cancels the runs in flight, and the loop returns once they have
-// ended and their files are removed.
-func (s *Splitter) Windows(ctx context.Context, req WindowsRequest, plan Plan) iter.Seq2[WindowFile, error] {
+// A refused request, or a failed probe, yields one error with a zero WindowFile, and the stream
+// ends. A decode that fails, a stream of no samples, or a window that can't be written ends the
+// stream with its error, after the windows already yielded. When ctx ends, the run is stopped, and
+// the stream yields ctx's error once, with a zero WindowFile, and ends. Breaking out of the range
+// stops the run, and the loop returns once it has ended and its files are removed.
+func (s *Splitter) Windows(ctx context.Context, path string, req Request) iter.Seq2[WindowFile, error] {
 	return func(yield func(WindowFile, error) bool) {
-		if err := req.check(plan); err != nil {
+		abs, cutter, err := req.check(path)
+		if err != nil {
 			yield(WindowFile{}, err)
 			return
 		}
@@ -106,7 +96,7 @@ func (s *Splitter) Windows(ctx context.Context, req WindowsRequest, plan Plan) i
 			yield(WindowFile{}, err)
 			return
 		}
-		src, err := s.probe(ctx, req.Path)
+		src, err := s.probe(ctx, abs)
 		if err != nil {
 			if cerr := ctx.Err(); cerr != nil {
 				err = cerr
@@ -114,133 +104,194 @@ func (s *Splitter) Windows(ctx context.Context, req WindowsRequest, plan Plan) i
 			yield(WindowFile{}, err)
 			return
 		}
-		if src.Duration != plan.Duration {
-			yield(WindowFile{}, fmt.Errorf("audio: %s is %v long, and the plan is of a source %v long: %w",
-				req.Path, src.Duration, plan.Duration, ErrRequest))
-			return
-		}
-		s.windows(ctx, req, plan, src, yield)
+		s.windows(ctx, abs, req, src, cutter, yield)
 	}
 }
 
-// check validates req and plan and sets req's defaults: its Path absolute, and a concurrency of 1
-// for zero. An invalid one is an error wrapping ErrRequest.
-func (req *WindowsRequest) check(plan Plan) error {
+// check validates path and req, returning path made absolute and a Cutter of req's fields. An
+// invalid one is an error wrapping ErrRequest.
+func (req Request) check(path string) (string, *Cutter, error) {
 	switch {
-	case req.Path == "":
-		return fmt.Errorf("audio: no source path: %w", ErrRequest)
+	case path == "":
+		return "", nil, fmt.Errorf("audio: no source path: %w", ErrRequest)
 	case req.Dir == "":
-		return fmt.Errorf("audio: request has no media directory: %w", ErrRequest)
-	case req.Concurrency < 0:
-		return fmt.Errorf("audio: request's concurrency %d is negative: %w", req.Concurrency, ErrRequest)
-	case len(plan.Windows) == 0:
-		return fmt.Errorf("audio: the plan has no windows: %w", ErrRequest)
+		return "", nil, fmt.Errorf("audio: request has no media directory: %w", ErrRequest)
+	case req.Concurrency < 1:
+		return "", nil, fmt.Errorf("audio: request's concurrency %d isn't 1 or more: %w", req.Concurrency, ErrRequest)
 	}
-	for i, w := range plan.Windows {
-		if w.Start < 0 || w.Start >= w.End || w.End > plan.Duration {
-			return fmt.Errorf("audio: the plan's window %d, %v, isn't within 0 to %v: %w", i, w.Span, plan.Duration, ErrRequest)
-		}
-	}
-	path, err := filepath.Abs(req.Path)
+	cutter, err := NewCutter(req)
 	if err != nil {
-		return fmt.Errorf("audio: source path %s: %w: %w", req.Path, ErrRequest, err)
+		return "", nil, err
 	}
-	req.Path = path
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", nil, fmt.Errorf("audio: source path %s: %w: %w", path, ErrRequest, err)
+	}
 	info, err := os.Stat(req.Dir)
 	if err != nil {
-		return fmt.Errorf("audio: media directory: %w: %w", ErrRequest, err)
+		return "", nil, fmt.Errorf("audio: media directory: %w: %w", ErrRequest, err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("audio: media directory %s isn't a directory: %w", req.Dir, ErrRequest)
+		return "", nil, fmt.Errorf("audio: media directory %s isn't a directory: %w", req.Dir, ErrRequest)
 	}
-	if req.Concurrency == 0 {
-		req.Concurrency = 1
-	}
-	return nil
+	return abs, cutter, nil
 }
 
-// cut is one window's outcome, as its worker hands it to the stream: the WindowFile, its Path
-// empty, the temporary file holding the WAV, and the window's error.
+// cut is one window as the decode hands it to the stream: the WindowFile, its Path empty, and the
+// temporary file holding the WAV.
 type cut struct {
 	file WindowFile
 	tmp  string
-	err  error
 }
 
-// windows cuts the plan's windows of the source src, req already checked, yielding each in plan
-// order. It returns once every window's run has ended and every window it didn't yield is
-// removed.
+// windows decodes the source at path, its audio stream src's, through one ffmpeg run, cutting it
+// with cutter and yielding each window in plan order, and then the run's error, if any. It returns
+// once the run has ended and every window it didn't yield is removed.
 //
-// A dispatcher starts a worker per window, in plan order, each holding one of req.Concurrency
-// slots for its ffmpeg run and the writing of its temporary file; each worker hands its outcome
-// to a channel of its window's own, buffered so it never waits on the consumer. The consumer reads
-// the channels in plan order, so a later window that finishes first waits in its channel, its slot
-// already freed, as document's pages do.
-func (s *Splitter) windows(ctx context.Context, req WindowsRequest, plan Plan, src Source, yield func(WindowFile, error) bool) {
-	n := len(plan.Windows)
+// The run's goroutine runs ffmpeg, its stdout a cutting that feeds cutter and writes each window
+// it cuts to a temporary file, holding one of req.Concurrency slots, and hands it to the stream
+// on a channel. The stream renames it into place and yields it, and frees its slot once the loop
+// body returns; a cutting waiting for a slot holds ffmpeg's stdout, and so the decode, back.
+func (s *Splitter) windows(ctx context.Context, path string, req Request, src Source, cutter *Cutter, yield func(WindowFile, error) bool) {
 	work, cancel := context.WithCancel(ctx)
-	var wg sync.WaitGroup
-	done := make([]chan cut, n)
-	for i := range done {
-		done[i] = make(chan cut, 1)
-	}
-	next := 0
-	defer func() {
-		cancel()
-		wg.Wait()
-		// Every worker started has handed its outcome over by now; the ones the stream didn't
-		// take are removed.
-		for _, ch := range done[next:] {
-			select {
-			case c := <-ch:
-				removeTemp(c.tmp)
-			default:
-			}
-		}
-	}()
-	slots := make(chan struct{}, req.Concurrency)
-	wg.Go(func() {
-		for i := range n {
-			select {
-			case slots <- struct{}{}:
-			case <-work.Done():
+	// The slots bound the cuts on their way, so a cut never waits on the channel.
+	cuts := make(chan cut, req.Concurrency)
+	c := &cutting{work: work, cancel: cancel, cuts: cuts, slots: make(chan struct{}, req.Concurrency), dir: req.Dir, cutter: cutter}
+	go func() {
+		defer close(cuts)
+		stderr := &cli.LineWriter{}
+		err := s.ffmpeg.Run(work, tool.Invocation{Args: decodeArgs(path, src), Dir: filepath.Dir(path), Stdout: c, Stderr: stderr})
+		stderr.Flush()
+		switch {
+		case c.failure != nil:
+		case err != nil && stderr.Last() != "":
+			c.failure = fmt.Errorf("audio: ffmpeg decoding %s: %w: %s", path, err, stderr.Last())
+		case err != nil:
+			c.failure = fmt.Errorf("audio: ffmpeg decoding %s: %w", path, err)
+		default:
+			pieces, err := cutter.End()
+			if err != nil {
+				c.failure = fmt.Errorf("audio: ffmpeg decoding %s: %w", path, err)
 				return
 			}
-			wg.Go(func() {
-				defer func() { <-slots }()
-				file := WindowFile{Index: i, Count: n, Window: plan.Windows[i]}
-				tmp, err := s.window(work, req, src, &file)
-				done[i] <- cut{file: file, tmp: tmp, err: err}
-			})
+			plan := cutter.Plan()
+			plan.Source = src
+			if d := plan.Duration - src.Duration; d > FrameLength || d < -FrameLength {
+				plan.Probed = src.Duration
+			}
+			c.hand(pieces, &plan)
 		}
-	})
-	for next < n {
-		var c cut
+	}()
+	defer func() {
+		cancel()
+		// The run's goroutine hands every cut over or removes it once work has ended, and closes
+		// the channel once the run has ended; a cut still on its way is removed here.
+		for w := range cuts {
+			removeTemp(w.tmp)
+		}
+	}()
+	for {
+		var w cut
+		var ok bool
 		select {
-		case c = <-done[next]:
-			// Taken, so the deferred drain doesn't take it again.
-			next++
+		case w, ok = <-cuts:
 		case <-ctx.Done():
 		}
-		// A window that failed because ctx ended is ctx's error, not the window's.
 		if err := ctx.Err(); err != nil {
-			removeTemp(c.tmp)
+			if ok {
+				removeTemp(w.tmp)
+			}
 			yield(WindowFile{}, err)
 			return
 		}
-		if c.err == nil {
-			path := filepath.Join(req.Dir, c.file.SHA256+".wav")
-			if err := os.Rename(c.tmp, path); err != nil {
-				removeTemp(c.tmp)
-				c.err = fmt.Errorf("audio: window %d of %d, %v: %w", c.file.Index, n, c.file.Window.Span, err)
-			} else {
-				c.file.Path = path
-			}
+		if !ok {
+			break
 		}
-		if c.err != nil {
-			c.file.SHA256, c.file.Samples = "", 0
+		name := filepath.Join(req.Dir, w.file.SHA256+".wav")
+		if err := os.Rename(w.tmp, name); err != nil {
+			removeTemp(w.tmp)
+			yield(WindowFile{}, fmt.Errorf("audio: window %d, %v: %w", w.file.Index, w.file.Window.Span, err))
+			return
 		}
-		if !yield(c.file, c.err) {
+		w.file.Path = name
+		if !yield(w.file, nil) {
+			return
+		}
+		<-c.slots
+	}
+	// The channel closed after the run's goroutine set its failure.
+	if c.failure != nil {
+		yield(WindowFile{}, c.failure)
+	}
+}
+
+// cutting is ffmpeg's stdout in a Splitter's run: it feeds the stream to its Cutter and hands each
+// window cut to the stream. Its writes never fail; a window it can't write ends the run.
+type cutting struct {
+	work   context.Context
+	cancel context.CancelFunc
+	cuts   chan<- cut
+	slots  chan struct{}
+	dir    string
+	cutter *Cutter
+	// failure is the run's error, set by its goroutine alone before it closes cuts; done is set
+	// once the cutting has stopped, after a failure or once the run has ended.
+	failure error
+	done    bool
+}
+
+func (c *cutting) Write(p []byte) (int, error) {
+	if c.done {
+		return len(p), nil
+	}
+	pieces, err := c.cutter.Feed(p)
+	if err != nil {
+		c.stop(err)
+		return len(p), nil
+	}
+	c.hand(pieces, nil)
+	return len(p), nil
+}
+
+// stop ends the run with err, stopping ffmpeg.
+func (c *cutting) stop(err error) {
+	c.done = true
+	c.failure = err
+	c.cancel()
+}
+
+// hand writes each piece's WAV to a temporary file and hands it to the stream, each holding a slot,
+// the last window, cut at the end, carrying plan.
+func (c *cutting) hand(pieces []Piece, plan *Plan) {
+	for _, p := range pieces {
+		if c.done {
+			return
+		}
+		select {
+		case c.slots <- struct{}{}:
+		case <-c.work.Done():
+			c.done = true
+			return
+		}
+		wav := WAV(p.PCM)
+		sum := sha256.Sum256(wav)
+		file := WindowFile{
+			Index: p.Index, Window: p.Window, SeamBefore: p.SeamBefore, SeamAfter: p.SeamAfter, Threshold: p.Threshold,
+			SHA256: hex.EncodeToString(sum[:]), Samples: len(p.PCM) / 2,
+		}
+		if p.Window.Cut == CutEnd {
+			file.Plan = plan
+		}
+		tmp, err := cli.WriteTemp(c.dir, ".window-*.wav", wav)
+		if err != nil {
+			c.stop(fmt.Errorf("audio: window %d, %v: %w", p.Index, p.Window.Span, err))
+			return
+		}
+		select {
+		case c.cuts <- cut{file: file, tmp: tmp}:
+		case <-c.work.Done():
+			removeTemp(tmp)
+			c.done = true
 			return
 		}
 	}
@@ -252,71 +303,6 @@ func removeTemp(path string) {
 	if path != "" {
 		_ = os.Remove(path)
 	}
-}
-
-// window cuts file's window of the source src through ffmpeg and writes it as WAV to a new
-// temporary file in req.Dir, setting file's SHA256 and Samples; it returns the temporary file's
-// path. Its error names the window; a failed window leaves no file.
-func (s *Splitter) window(ctx context.Context, req WindowsRequest, src Source, file *WindowFile) (string, error) {
-	w := file.Window
-	first, end := Sample(w.Start), Sample(w.End)
-	want := int(end - first)
-	fail := func(err error) (string, error) {
-		return "", fmt.Errorf("audio: window %d of %d, %v: %w", file.Index, file.Count, w.Span, err)
-	}
-	// One byte past the window's samples is room enough to see that ffmpeg wrote too many.
-	pcm := &capped{limit: 2*want + 1}
-	stderr := &lineWriter{line: func(string) error { return nil }}
-	err := s.ffmpeg.Run(ctx, tool.Invocation{
-		Args: []string{
-			"-nostdin", "-hide_banner", "-nostats", "-loglevel", "error",
-			"-flags:a", "+bitexact", "-i", req.Path, "-map", "0:" + strconv.Itoa(src.Stream),
-			"-af", fmt.Sprintf("aresample=%d,atrim=start_sample=%d:end_sample=%d", SampleRate, first, end),
-			"-ac", "1", "-ar", strconv.Itoa(SampleRate), "-c:a", "pcm_s16le",
-			"-flags:a", "+bitexact", "-fflags", "+bitexact", "-f", "s16le", "-",
-		},
-		Dir:    filepath.Dir(req.Path),
-		Stdout: pcm,
-		Stderr: stderr,
-	})
-	stderr.flush()
-	if err != nil {
-		if stderr.last != "" {
-			return fail(fmt.Errorf("ffmpeg: %w: %s", err, stderr.last))
-		}
-		return fail(fmt.Errorf("ffmpeg: %w", err))
-	}
-	data := pcm.b
-	switch {
-	case len(data) == 0:
-		return fail(errors.New("ffmpeg wrote no samples"))
-	case len(data)%2 != 0:
-		return fail(fmt.Errorf("ffmpeg wrote %d bytes, not whole 16-bit samples", len(data)))
-	case len(data) > 2*want:
-		return fail(fmt.Errorf("ffmpeg wrote more than the window's %d samples", want))
-	}
-	wav := WAV(data)
-	sum := sha256.Sum256(wav)
-	tmp, err := writeTemp(req.Dir, wav)
-	if err != nil {
-		return fail(err)
-	}
-	file.SHA256, file.Samples = hex.EncodeToString(sum[:]), len(data)/2
-	return tmp, nil
-}
-
-// capped is a writer that keeps the first limit bytes written to it, allocated as they come, and
-// discards the rest; its writes never fail.
-type capped struct {
-	b     []byte
-	limit int
-}
-
-func (c *capped) Write(p []byte) (int, error) {
-	if room := c.limit - len(c.b); room > 0 {
-		c.b = append(c.b, p[:min(len(p), room)]...)
-	}
-	return len(p), nil
 }
 
 // Sample returns the index of the sample at SampleRate nearest d, without overflow for any
@@ -351,22 +337,4 @@ func WAV(pcm []byte) []byte {
 	b = append(b, "data"...)
 	b = binary.LittleEndian.AppendUint32(b, uint32(len(pcm)))
 	return append(b, pcm...)
-}
-
-// writeTemp writes b to a new hidden temporary file in dir and returns its path; a failed write
-// removes the file.
-func writeTemp(dir string, b []byte) (string, error) {
-	f, err := os.CreateTemp(dir, ".window-*.wav")
-	if err != nil {
-		return "", err
-	}
-	_, err = f.Write(b)
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		removeTemp(f.Name())
-		return "", err
-	}
-	return f.Name(), nil
 }

@@ -171,6 +171,20 @@ func videoDispatch(t *testing.T, stages dispatch.Stages, path string) ([]dispatc
 	return events, work
 }
 
+// checkStandinWAV fails the test unless o's WAV, as checkWAV checks it, holds the stand-in
+// media run's samples from o's start: each sample its index in the source modulo 30011.
+func checkStandinWAV(t *testing.T, o dispatch.Output) {
+	t.Helper()
+	b := checkWAV(t, o)
+	start, _ := strconv.ParseFloat(o.Meta["start"], 64)
+	first := int(start*audio.SampleRate + 0.5)
+	for i := 0; 44+2*i+2 <= len(b); i++ {
+		if got := int(binary.LittleEndian.Uint16(b[44+2*i:])); got != (first+i)%30011 {
+			t.Fatalf("%s: its sample %d is %d, want the source's sample %d", o.Name, i, got, first+i)
+		}
+	}
+}
+
 // checkFrame fails the test unless the file at o.Path, read while its part is in flight, is a PNG
 // of o's Meta's size, named by its SHA-256.
 func checkFrame(t *testing.T, o dispatch.Output) {
@@ -236,16 +250,16 @@ func TestVideoStage(t *testing.T) {
 		t.Fatalf("outputs %q, want %q", got, want)
 	}
 
-	var p dispatch.VideoPlan
+	var p media.VideoPlan
 	if err := json.Unmarshal(ev.Outputs[0].Value, &p); err != nil {
 		t.Fatal(err)
 	}
-	wantPlan := dispatch.VideoPlan{
-		Windows: dispatch.VideoWindowing{
+	wantPlan := media.VideoPlan{
+		Windows: media.VideoWindowing{
 			Detector: "tracker", Limit: 30, Overlap: 2, MinSilence: 0.3,
 			Percentile: audio.DefaultPercentile, FloorWindow: audio.DefaultFloorWindow.Seconds(), Margin: audio.DefaultMargin,
 		},
-		Frames: dispatch.VideoSampling{SceneThreshold: media.DefaultSceneThreshold, MaxGap: 10},
+		Frames: media.VideoSampling{SceneThreshold: media.DefaultSceneThreshold, MaxGap: 10},
 	}
 	if p != wantPlan || ev.Outputs[0].MediaType != "application/json" {
 		t.Errorf("the plan %+v, want %+v", p, wantPlan)
@@ -263,7 +277,7 @@ func TestVideoStage(t *testing.T) {
 				t.Errorf("%s: %s, threshold %q", o.Name, o.MediaType, o.Meta["threshold"])
 			}
 			delete(o.Meta, "threshold")
-			want := map[string]string{"window": "0", "start": "0", "end": "3", "cut": "end", "samples": strconv.Itoa(samplesOf(0, 3))}
+			want := map[string]string{"window": "0", "start": "0", "end": "3", "cut": "end", "samples": "48000"}
 			if !maps.Equal(o.Meta, want) {
 				t.Errorf("%s's Meta %v, want %v", o.Name, o.Meta, want)
 			}
@@ -441,7 +455,7 @@ func TestVideoNoProcessor(t *testing.T) {
 }
 
 // TestVideoStageIdentity: the video stage hashes its windows' and frames' settings, defaults
-// applied, and not its Source or Dir; it panics on no streamer, naming the field, and refuses no
+// applied, and not its Dir; it panics on no streamer, naming the field, and refuses no
 // version and a windowing field audio refuses.
 func TestVideoStageIdentity(t *testing.T) {
 	t.Parallel()
@@ -464,15 +478,15 @@ func TestVideoStageIdentity(t *testing.T) {
 		t.Errorf("identity %v", base)
 	}
 	same := media.Request{
-		Source: media.Source{File: "elsewhere.mkv", Paced: true, Tracks: media.TracksVideo}, Dir: "elsewhere",
-		Overlap: audio.DefaultOverlap, MinSilence: audio.DefaultMinSilence, Percentile: audio.DefaultPercentile,
+		Dir: "elsewhere", Limit: audio.DefaultWindowLimit, Overlap: audio.DefaultOverlap, MinSilence: audio.DefaultMinSilence, Percentile: audio.DefaultPercentile,
 		FloorWindow: audio.DefaultFloorWindow, Margin: audio.DefaultMargin,
 		SceneThreshold: media.DefaultSceneThreshold, MaxGap: media.DefaultMaxGap,
 	}
 	if id(same) != base {
-		t.Error("the defaults, a Source, or a Dir changed the video identity")
+		t.Error("the defaults or a Dir changed the video identity")
 	}
 	for name, req := range map[string]media.Request{
+		"limit":           {Limit: 20 * time.Second},
 		"overlap":         {Overlap: time.Second},
 		"min silence":     {MinSilence: time.Second},
 		"threshold":       {Threshold: -40},
@@ -492,7 +506,8 @@ func TestVideoStageIdentity(t *testing.T) {
 	})
 	for name, cfg := range map[string]dispatch.VideoConfig{
 		"no version":             {Streamer: s},
-		"overlap of the limit":   {Streamer: s, Version: version, Request: media.Request{Overlap: audio.WindowLimit / 2}},
+		"overlap of the limit":   {Streamer: s, Version: version, Request: media.Request{Overlap: audio.DefaultWindowLimit / 2}},
+		"negative limit":         {Streamer: s, Version: version, Request: media.Request{Limit: -time.Second}},
 		"threshold and a margin": {Streamer: s, Version: version, Request: media.Request{Threshold: -40, Margin: 6}},
 	} {
 		if _, err := dispatch.NewVideoStage(cfg); err == nil {

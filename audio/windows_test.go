@@ -7,100 +7,73 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
-	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/standards-lab/docproc/audio"
-	"github.com/standards-lab/docproc/tool"
 )
 
-// flacPlan is the plan TestPlanStandin makes of flacProbe's source: two windows, cut in the
-// silence at 24.2 s.
-func flacPlan() audio.Plan {
-	return audio.Plan{
-		Duration: 49820 * time.Millisecond,
-		Overlap:  audio.DefaultOverlap,
-		Windows: []audio.Window{
-			{Start: 0, End: 24979187500 * time.Nanosecond, Cut: audio.CutSilence},
-			{Start: 22979187500 * time.Nanosecond, End: 49820 * time.Millisecond, Cut: audio.CutEnd},
-		},
-		Seams: []audio.Span{{Start: 22979187500 * time.Nanosecond, End: 24979187500 * time.Nanosecond}},
-	}
+// gainProbe is ffprobe's report of speech-gain.wav: 75.23 s of 16 kHz mono 16-bit PCM.
+const gainProbe = `{"streams":[` +
+	`{"index":0,"codec_name":"pcm_s16le","codec_type":"audio","sample_rate":"16000","channels":1,"duration":"75.230000"}],` +
+	`"format":{"duration":"75.230000"}}`
+
+// gainDuration is speech-gain.wav's duration, its samples at 16 kHz.
+const gainDuration = 75230 * time.Millisecond
+
+// probeOf returns ffprobe's report of a source of 16 kHz mono 16-bit PCM d long, its audio the
+// first stream.
+func probeOf(d time.Duration) string {
+	return fmt.Sprintf(`{"streams":[{"index":0,"codec_name":"pcm_s16le","codec_type":"audio","sample_rate":"16000","channels":1}],"format":{"duration":"%.6f"}}`,
+		d.Seconds())
 }
 
-// limitPlan plans a source of n windows cut at the limit, and sets the stand-in ffprobe to report
-// a source that long, its audio the first stream.
-func limitPlan(t *testing.T, st *standins, n int) audio.Plan {
-	t.Helper()
-	duration := time.Duration(n-1)*(audio.WindowLimit-audio.DefaultOverlap) + 10*time.Second
-	plan, err := audio.PlanWindows(duration, nil, audio.Request{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(plan.Windows) != n {
-		t.Fatalf("%d windows planned, want %d", len(plan.Windows), n)
-	}
-	probe := fmt.Sprintf(`{"streams":[{"index":0,"codec_name":"flac","codec_type":"audio","sample_rate":"16000","channels":1}],"format":{"duration":"%.6f"}}`,
-		duration.Seconds())
-	st.set(func(c *settings) { c.Probe = probe })
-	return plan
-}
-
-// first returns the first sample of w at 16 kHz, rounded, as the stand-in reads it.
-func first(w audio.Window) int {
-	return int((w.Start*audio.SampleRate + time.Second/2) / time.Second)
-}
-
-// end returns the sample w ends before at 16 kHz, rounded.
-func end(w audio.Window) int {
-	return int((w.End*audio.SampleRate + time.Second/2) / time.Second)
-}
-
-// collect ranges over the windows stream, failing the test on an error.
-func collect(t *testing.T, s *audio.Splitter, ctx context.Context, req audio.WindowsRequest, plan audio.Plan) []audio.WindowFile {
-	t.Helper()
+// windows ranges over the windows of the source at path, returning those yielded and the error
+// that ended the stream, if any; a window yielded with an error fails the test.
+func windows(s *audio.Splitter, ctx context.Context, path string, req audio.Request) ([]audio.WindowFile, error) {
 	var out []audio.WindowFile
-	for w, err := range s.Windows(ctx, req, plan) {
+	for w, err := range s.Windows(ctx, path, req) {
 		if err != nil {
-			t.Fatal(err)
+			return out, err
 		}
 		out = append(out, w)
 	}
-	return out
+	return out, nil
 }
 
-// checkWindow checks that w is window i of plan and that its file is the stand-in's samples of
-// it, as WAV, named by its SHA-256 in dir.
-func checkWindow(t *testing.T, w audio.WindowFile, i int, plan audio.Plan, dir string) {
+// collect is windows, failing the test on an error.
+func collect(t *testing.T, s *audio.Splitter, ctx context.Context, path string, req audio.Request) []audio.WindowFile {
 	t.Helper()
-	if w.Index != i || w.Count != len(plan.Windows) || w.Window != plan.Windows[i] {
-		t.Errorf("window %d of %d, %v; want %d of %d, %v", w.Index, w.Count, w.Window, i, len(plan.Windows), plan.Windows[i])
+	ws, err := windows(s, ctx, path, req)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return ws
+}
+
+// checkFile checks that w's file is pcm, as WAV, named by its SHA-256 in dir.
+func checkFile(t *testing.T, w audio.WindowFile, pcm []byte, dir string) {
+	t.Helper()
 	b, err := os.ReadFile(w.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sum := sha256.Sum256(b)
 	if got := hex.EncodeToString(sum[:]); got != w.SHA256 || w.Path != filepath.Join(dir, got+".wav") {
-		t.Errorf("window %d at %s, SHA-256 %s; its bytes' SHA-256 is %s, in %s", i, w.Path, w.SHA256, got, dir)
+		t.Errorf("window %d at %s, SHA-256 %s; its bytes' SHA-256 is %s, in %s", w.Index, w.Path, w.SHA256, got, dir)
 	}
-	a, z := first(plan.Windows[i]), end(plan.Windows[i])
-	if w.Samples != z-a {
-		t.Errorf("window %d holds %d samples, want %d", i, w.Samples, z-a)
+	if w.Samples != len(pcm)/2 || w.Duration() != time.Duration(len(pcm)/2)*time.Second/audio.SampleRate {
+		t.Errorf("window %d holds %d samples, %v; want %d", w.Index, w.Samples, w.Duration(), len(pcm)/2)
 	}
-	var want []byte
-	for j := a; j < z; j++ {
-		want = binary.LittleEndian.AppendUint16(want, uint16(windowSample(j)))
-	}
-	checkWAV(t, b, want)
+	checkWAV(t, b, pcm)
 }
 
 // checkWAV checks that b is pcm, 16 kHz mono 16-bit, under the canonical 44-byte WAV header.
@@ -146,326 +119,499 @@ func names(ws []audio.WindowFile) []string {
 	return out
 }
 
-// inFlight makes a directory for the stand-ins to mark themselves in, and returns it.
-func inFlight(t *testing.T, st *standins) string {
-	t.Helper()
-	dir := t.TempDir()
-	st.set(func(c *settings) { c.Flight = dir })
-	return dir
+// windowPCM returns the samples of the window w of pcm, the stream's from Sample of its start up to
+// but not including its end's.
+func windowPCM(pcm []byte, w audio.Window) []byte {
+	return pcm[2*audio.Sample(w.Start) : 2*audio.Sample(w.End)]
 }
 
-// maxInFlight returns the most window runs the stand-ins counted marked at once.
-func maxInFlight(t *testing.T, flight string) int {
-	t.Helper()
-	b, err := os.ReadFile(filepath.Join(flight, "counts"))
-	if err != nil {
-		t.Fatal(err)
+// synthPCM returns the stand-in's synthetic source of n samples.
+func synthPCM(n int) []byte {
+	var out []byte
+	for i := range n {
+		out = binary.LittleEndian.AppendUint16(out, uint16(synthSample(i)))
 	}
-	most := 0
-	for line := range strings.Lines(string(b)) {
-		n, err := strconv.Atoi(strings.TrimSpace(line))
-		if err != nil {
-			t.Fatal(err)
-		}
-		most = max(most, n)
-	}
-	return most
+	return out
 }
 
-// checkEnded checks that every stand-in marked in flight has ended: those that finished removed
-// their marks, and the process of each mark left, killed, is gone.
-func checkEnded(t *testing.T, flight string) {
-	t.Helper()
-	marks, err := filepath.Glob(filepath.Join(flight, "[0-9]*"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, m := range marks {
-		pid, err := strconv.Atoi(filepath.Base(m))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-			t.Errorf("the window run of process %d is still running (signal 0: %v)", pid, err)
-		}
-	}
-}
-
+// TestWindows decodes speech-gain.wav once, the stand-in ffmpeg writing its samples in uneven
+// chunks, under several requests: the windows are the incremental path's over the same samples,
+// a Tracker and a Planner fed them as a stream, and PlanWindows' of the tracker's silences; each is
+// its span's samples, as WAV, named by its SHA-256; and the last carries the plan, which ends at
+// the decoded samples, ffprobe's duration matching them.
 func TestWindows(t *testing.T) {
 	t.Parallel()
-	s, st := standinSplitter(t)
-	st.set(func(c *settings) { c.Probe = flacProbe })
-	dir := t.TempDir()
-	plan := flacPlan()
-	ws := collect(t, s, t.Context(), audio.WindowsRequest{Path: "speech.flac", Dir: dir}, plan)
-	if len(ws) != 2 {
-		t.Fatalf("%d windows, want 2", len(ws))
-	}
-	for i, w := range ws {
-		checkWindow(t, w, i, plan, dir)
-	}
-	if got, want := ws[0].Samples, 399667; got != want {
-		t.Errorf("the first window holds %d samples, want 24.9791875 s at 16 kHz rounded, %d", got, want)
-	}
-	if got, want := ws[0].Duration(), 24979187500*time.Nanosecond; got-want > time.Second/audio.SampleRate || want-got > time.Second/audio.SampleRate {
-		t.Errorf("the first window is %v long, want %v to within a sample", got, want)
-	}
-	if got := files(t, dir); !slices.Equal(got, names(ws)) {
-		t.Errorf("the media directory holds %q, want the windows' %q", got, names(ws))
-	}
-	rs := st.runs()
-	if got := programs(rs); !slices.Equal(got, []string{"ffprobe", "ffmpeg", "ffmpeg"}) {
-		t.Fatalf("runs %q, want ffprobe, then ffmpeg for each window", got)
-	}
-	abs, err := filepath.Abs("speech.flac")
+	decode, err := filepath.Abs(filepath.Join("testdata", "speech-gain.wav"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, r := range rs[1:] {
-		args := strings.Join(r.Args, " ")
-		for _, want := range []string{
-			"-i " + abs + " -map 0:1 ",
-			fmt.Sprintf("-af aresample=16000,atrim=start_sample=%d:end_sample=%d ", first(plan.Windows[i]), end(plan.Windows[i])),
-			"-ac 1 -ar 16000 -c:a pcm_s16le -flags:a +bitexact -fflags +bitexact -f s16le -",
-		} {
-			if !strings.Contains(args, want) {
-				t.Errorf("window %d's ffmpeg arguments %q lack %q", i, args, want)
-			}
-		}
-	}
-}
-
-// TestWindowsOrderAndConcurrency cuts six windows, the first the slowest, and checks that they
-// come in plan order and that the runs in flight never pass the request's concurrency, zero
-// meaning one.
-func TestWindowsOrderAndConcurrency(t *testing.T) {
-	for _, tt := range []struct {
-		concurrency, want int
-	}{{0, 1}, {3, 3}} {
-		t.Run("concurrency "+strconv.Itoa(tt.concurrency), func(t *testing.T) {
+	pcm := samplesOf(t, "speech-gain.wav")
+	for name, req := range map[string]audio.Request{
+		"defaults": {},
+		"settings": {Percentile: 20, FloorWindow: 10 * time.Second, Margin: 9, MinSilence: 400 * time.Millisecond, Overlap: time.Second},
+		"fixed":    {Threshold: -46.2},
+		"limit":    {Limit: 12 * time.Second, Overlap: time.Second},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 			s, st := standinSplitter(t)
-			plan := limitPlan(t, st, 6)
-			flight := inFlight(t, st)
-			st.set(func(c *settings) { c.Delays = map[string]int{"0": 900, "*": 300} })
+			st.set(func(c *settings) { c.Probe, c.Decode = gainProbe, decode })
 			dir := t.TempDir()
-			ws := collect(t, s, t.Context(), audio.WindowsRequest{Path: "long.flac", Dir: dir, Concurrency: tt.concurrency}, plan)
-			if len(ws) != 6 {
-				t.Fatalf("%d windows, want 6", len(ws))
+			req.Dir, req.Concurrency = dir, 2
+			ws := collect(t, s, t.Context(), "speech-gain.wav", req)
+			want := streamPlan(t, pcm, req, 1<<15, gainDuration)
+			if len(ws) != len(want) || len(ws) < 3 {
+				t.Fatalf("%d windows, want the incremental path's %d, at least 3", len(ws), len(want))
+			}
+			silences := feedTracker(t, pcm, req, len(pcm))
+			var spans []audio.Span
+			for _, x := range silences {
+				spans = append(spans, x.Span)
+			}
+			planned, err := audio.PlanWindows(gainDuration, spans, req)
+			if err != nil {
+				t.Fatal(err)
 			}
 			for i, w := range ws {
-				checkWindow(t, w, i, plan, dir)
+				if w.Index != i || w.Window != want[i] {
+					t.Errorf("window %d, %v; want %d, %v", w.Index, w.Window, i, want[i])
+				}
+				checkFile(t, w, windowPCM(pcm, w.Window), dir)
+				if (i > 0) != (w.SeamBefore != audio.Span{}) || (i > 0 && w.SeamBefore != planned.Seams[i-1]) {
+					t.Errorf("window %d's seam before %v", i, w.SeamBefore)
+				}
+				if (i < len(ws)-1) != (w.SeamAfter != audio.Span{}) || (i < len(ws)-1 && w.SeamAfter != planned.Seams[i]) {
+					t.Errorf("window %d's seam after %v", i, w.SeamAfter)
+				}
+				if w.Threshold >= 0 || (req.Threshold != 0 && w.Threshold != req.Threshold) {
+					t.Errorf("window %d's threshold %v dB", i, w.Threshold)
+				}
+				if (w.Plan != nil) != (i == len(ws)-1) {
+					t.Errorf("window %d's plan %v", i, w.Plan)
+				}
 			}
-			most := maxInFlight(t, flight)
-			t.Logf("at most %d window runs at once", most)
-			if most > tt.want {
-				t.Errorf("%d window runs at once, more than %d", most, tt.want)
+			if got := files(t, dir); !slices.Equal(got, names(ws)) {
+				t.Errorf("media directory %q, want the windows %q", got, names(ws))
 			}
-			// Six runs, each 300 ms or more, from a dispatcher that starts them as slots free:
-			// a concurrency of three overlaps some.
-			if tt.want > 1 && most < 2 {
-				t.Errorf("at most %d window run at once, at a concurrency of %d", most, tt.want)
+			plan := ws[len(ws)-1].Plan
+			if plan == nil {
+				t.Fatal("no plan")
 			}
-			checkEnded(t, flight)
+			planned.Source = audio.Source{Duration: gainDuration, Stream: 0, Codec: "pcm_s16le", SampleRate: 16000, Channels: 1}
+			planned.Silences = silences
+			if !reflect.DeepEqual(*plan, planned) {
+				t.Errorf("plan %+v, want PlanWindows' %+v", *plan, planned)
+			}
+			rs := st.runs()
+			if got := programs(rs); !slices.Equal(got, []string{"ffprobe", "ffmpeg"}) {
+				t.Fatalf("runs %q, want ffprobe, then ffmpeg once", got)
+			}
+			args := strings.Join(rs[1].Args, " ")
+			abs, _ := filepath.Abs("speech-gain.wav")
+			for _, want := range []string{"-i " + abs + " -map 0:0", "-af aresample=16000", "-ac 1 -ar 16000 -c:a pcm_s16le", "-f s16le -"} {
+				if !strings.Contains(args, want) {
+					t.Errorf("ffmpeg's arguments %q, without %q", args, want)
+				}
+			}
 		})
 	}
 }
 
-// TestWindowsEarlyStop breaks out of the stream after the first window, once with the later
-// windows still running and once with them cut and waiting, and checks that the loop returns
-// promptly, every run has ended, and the media directory holds the first window alone.
-func TestWindowsEarlyStop(t *testing.T) {
-	for name, delays := range map[string]map[string]int{
-		"runs in flight":   {"0": 100, "*": 20000},
-		"windows finished": {"0": 1000, "*": 50},
+// TestWindowsProbed: a plan ends at the decoded samples, whatever ffprobe estimated, with
+// ffprobe's duration beside it as Probed when the two differ by more than a frame, as a truncated
+// file's do; within a frame, Probed is zero.
+func TestWindowsProbed(t *testing.T) {
+	t.Parallel()
+	decode, err := filepath.Abs(filepath.Join("testdata", "speech-gain.wav"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		probed, want time.Duration
+	}{
+		{90 * time.Second, 90 * time.Second},
+		{60 * time.Second, 60 * time.Second},
+		{gainDuration + audio.FrameLength + time.Millisecond, gainDuration + audio.FrameLength + time.Millisecond},
+		{gainDuration + audio.FrameLength, 0},
+		{gainDuration - audio.FrameLength, 0},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tt.probed.String(), func(t *testing.T) {
+			t.Parallel()
 			s, st := standinSplitter(t)
-			plan := limitPlan(t, st, 6)
-			flight := inFlight(t, st)
-			st.set(func(c *settings) { c.Delays = delays })
+			st.set(func(c *settings) { c.Probe, c.Decode = probeOf(tt.probed), decode })
+			ws := collect(t, s, t.Context(), "speech-gain.wav", audio.Request{Dir: t.TempDir(), Concurrency: 1})
+			last := ws[len(ws)-1]
+			if last.Plan == nil || last.Plan.Duration != gainDuration || last.Plan.Probed != tt.want || last.Window.End != gainDuration {
+				t.Errorf("plan %+v, last window %v; want %v decoded, %v probed", last.Plan, last.Window, gainDuration, tt.want)
+			}
+			if rec := last.Plan.Record(); rec.Duration != gainDuration.Seconds() || rec.ProbedDuration != tt.want.Seconds() {
+				t.Errorf("record's durations %v and %v", rec.Duration, rec.ProbedDuration)
+			}
+		})
+	}
+}
+
+// TestWindowsHeld: the decode waits while Concurrency windows are held, from each one's cut until
+// the loop body returns from it, so the media directory never holds more than that many while the
+// consumer holds the first; and it reaches that many. The windows are the synthetic source's, each
+// cut at the limit under a fixed threshold no sample is under.
+func TestWindowsHeld(t *testing.T) {
+	t.Parallel()
+	for _, concurrency := range []int{1, 3} {
+		t.Run(fmt.Sprint(concurrency), func(t *testing.T) {
+			t.Parallel()
+			s, st := standinSplitter(t)
+			const samples = 100 * audio.SampleRate
+			st.set(func(c *settings) { c.Probe, c.Synth = probeOf(100*time.Second), samples })
 			dir := t.TempDir()
-			start := time.Now()
-			var got []audio.WindowFile
-			for w, err := range s.Windows(t.Context(), audio.WindowsRequest{Path: "long.flac", Dir: dir, Concurrency: 3}, plan) {
+			req := audio.Request{Dir: dir, Concurrency: concurrency, Limit: 10 * time.Second, Overlap: time.Second, Threshold: -100}
+			var ws []audio.WindowFile
+			for w, err := range s.Windows(t.Context(), "synth.wav", req) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				got = append(got, w)
-				break
+				ws = append(ws, w)
+				if w.Index != 0 {
+					continue
+				}
+				// Held in the loop body: the decode cuts until concurrency windows are held, and no
+				// further.
+				deadline := time.Now().Add(10 * time.Second)
+				for len(files(t, dir)) < concurrency && time.Now().Before(deadline) {
+					time.Sleep(10 * time.Millisecond)
+				}
+				time.Sleep(200 * time.Millisecond)
+				if n := len(files(t, dir)); n != concurrency {
+					t.Errorf("%d windows held while the first is, want %d", n, concurrency)
+				}
 			}
-			if elapsed := time.Since(start); elapsed > 10*time.Second {
-				t.Errorf("the loop returned after %v", elapsed)
+			pcm := synthPCM(samples)
+			if len(ws) != 11 {
+				t.Fatalf("%d windows, want 11", len(ws))
 			}
-			if len(got) != 1 {
-				t.Fatalf("%d windows, want 1", len(got))
-			}
-			checkWindow(t, got[0], 0, plan, dir)
-			checkEnded(t, flight)
-			if files := files(t, dir); !slices.Equal(files, names(got)) {
-				t.Errorf("the media directory holds %q, want the first window's %q alone", files, names(got))
+			for i, w := range ws {
+				if i < 10 && w.Window.Cut != audio.CutLimit || w.Threshold != -100 {
+					t.Errorf("window %d, %v at %v dB; want cut at the limit, at -100", i, w.Window, w.Threshold)
+				}
+				checkFile(t, w, windowPCM(pcm, w.Window), dir)
 			}
 		})
 	}
 }
 
-// TestWindowsCancel cancels the context after the first window, with the later ones running, and
-// checks that the stream yields the context's error once and ends, every run ended and the media
-// directory holding the first window alone.
-func TestWindowsCancel(t *testing.T) {
+// TestWindowsEarlyStop: breaking out of the range after the first window stops the decode, and
+// the media directory keeps that window alone.
+func TestWindowsEarlyStop(t *testing.T) {
+	t.Parallel()
 	s, st := standinSplitter(t)
-	plan := limitPlan(t, st, 6)
-	flight := inFlight(t, st)
-	st.set(func(c *settings) { c.Delays = map[string]int{"0": 100, "*": 20000} })
+	st.set(func(c *settings) { c.Probe, c.Synth, c.PaceMS = probeOf(100*time.Second), 100*audio.SampleRate, 5 })
 	dir := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
+	req := audio.Request{Dir: dir, Concurrency: 2, Limit: 10 * time.Second, Overlap: time.Second, Threshold: -100}
 	start := time.Now()
-	var got []audio.WindowFile
-	var errs []error
-	for w, err := range s.Windows(ctx, audio.WindowsRequest{Path: "long.flac", Dir: dir, Concurrency: 3}, plan) {
+	var ws []audio.WindowFile
+	for w, err := range s.Windows(t.Context(), "synth.wav", req) {
 		if err != nil {
-			errs = append(errs, err)
-			if w.Count != 0 {
-				t.Errorf("the error came with window %d of %d, want a zero WindowFile", w.Index, w.Count)
-			}
-			continue
+			t.Fatal(err)
 		}
-		got = append(got, w)
-		cancel()
+		ws = append(ws, w)
+		break
 	}
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("the stream ended after %v", elapsed)
+	// The paced stand-in takes 5 s to write the whole source.
+	if d := time.Since(start); d > 4*time.Second {
+		t.Errorf("the loop returned after %v, not stopping the decode", d)
 	}
-	if len(got) != 1 || len(errs) != 1 || !errors.Is(errs[0], context.Canceled) {
-		t.Fatalf("%d windows and errors %v; want 1 window, then context.Canceled once", len(got), errs)
-	}
-	checkEnded(t, flight)
-	if files := files(t, dir); !slices.Equal(files, names(got)) {
-		t.Errorf("the media directory holds %q, want the first window's %q alone", files, names(got))
+	if got := files(t, dir); len(ws) != 1 || !slices.Equal(got, names(ws)) {
+		t.Errorf("media directory %q after %d windows, want the first alone", got, len(ws))
 	}
 }
 
+// TestWindowsCancel: a context that ends while the decode runs is yielded once, after the windows
+// already cut, and the media directory keeps only those yielded.
+func TestWindowsCancel(t *testing.T) {
+	t.Parallel()
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) { c.Probe, c.Synth, c.PaceMS = probeOf(100*time.Second), 100*audio.SampleRate, 5 })
+	dir := t.TempDir()
+	req := audio.Request{Dir: dir, Concurrency: 2, Limit: 10 * time.Second, Overlap: time.Second, Threshold: -100}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var ws []audio.WindowFile
+	var errs []error
+	for w, err := range s.Windows(ctx, "synth.wav", req) {
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		ws = append(ws, w)
+		cancel()
+	}
+	if len(errs) != 1 || !errors.Is(errs[0], context.Canceled) || len(ws) != 1 {
+		t.Errorf("%d windows and errors %v; want one window, then context.Canceled once", len(ws), errs)
+	}
+	if got := files(t, dir); !slices.Equal(got, names(ws)) {
+		t.Errorf("media directory %q, want %q", got, names(ws))
+	}
+}
+
+// TestWindowsCancelledBeforeRuns: a context ended before the stream is ranged over runs nothing.
 func TestWindowsCancelledBeforeRuns(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
-	st.set(func(c *settings) { c.Probe = flacProbe })
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	n := 0
-	for w, err := range s.Windows(ctx, audio.WindowsRequest{Path: "speech.flac", Dir: t.TempDir()}, flacPlan()) {
-		n++
-		if !errors.Is(err, context.Canceled) || w.Count != 0 {
-			t.Errorf("window %+v, err %v; want a zero WindowFile and context.Canceled", w, err)
-		}
-	}
-	if n != 1 {
-		t.Errorf("%d values, want 1", n)
+	if _, err := windows(s, ctx, "speech.flac", audio.Request{Dir: t.TempDir(), Concurrency: 1}); !errors.Is(err, context.Canceled) {
+		t.Errorf("err %v, want context.Canceled", err)
 	}
 	if rs := st.runs(); len(rs) != 0 {
 		t.Errorf("runs %q, want none", programs(rs))
 	}
 }
 
-func TestWindowsRefused(t *testing.T) {
+// TestWindowsFailsMidStream: a decode that fails partway yields the windows cut before it, then
+// its error, carrying ffmpeg's last line; the media directory keeps the windows yielded.
+func TestWindowsFailsMidStream(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
-	st.set(func(c *settings) { c.Probe = flacProbe })
+	st.set(func(c *settings) {
+		c.Probe, c.Synth = probeOf(100*time.Second), 100*audio.SampleRate
+		c.Fail, c.FailAfter = "[aist#0:0/flac] Error while decoding: Cannot allocate memory\n", 2*25*audio.SampleRate
+	})
 	dir := t.TempDir()
-	file := filepath.Join(dir, "file")
-	if err := os.WriteFile(file, nil, 0o600); err != nil {
-		t.Fatal(err)
+	req := audio.Request{Dir: dir, Concurrency: 1, Limit: 10 * time.Second, Overlap: time.Second, Threshold: -100}
+	ws, err := windows(s, t.Context(), "synth.wav", req)
+	if err == nil || !strings.Contains(err.Error(), "Cannot allocate memory") {
+		t.Errorf("err %v, want ffmpeg's", err)
 	}
-	past := flacPlan()
-	past.Windows = slices.Clone(past.Windows)
-	past.Windows[1].End = past.Duration + time.Second
-	empty := flacPlan()
-	empty.Windows = nil
-	for name, tt := range map[string]struct {
-		req  audio.WindowsRequest
-		plan audio.Plan
-	}{
-		"no path":               {audio.WindowsRequest{Dir: dir}, flacPlan()},
-		"no media directory":    {audio.WindowsRequest{Path: "speech.flac"}, flacPlan()},
-		"missing directory":     {audio.WindowsRequest{Path: "speech.flac", Dir: filepath.Join(dir, "none")}, flacPlan()},
-		"directory is a file":   {audio.WindowsRequest{Path: "speech.flac", Dir: file}, flacPlan()},
-		"negative concurrency":  {audio.WindowsRequest{Path: "speech.flac", Dir: dir, Concurrency: -1}, flacPlan()},
-		"no windows":            {audio.WindowsRequest{Path: "speech.flac", Dir: dir}, empty},
-		"a window past the end": {audio.WindowsRequest{Path: "speech.flac", Dir: dir}, past},
-	} {
-		t.Run(name, func(t *testing.T) {
-			st.mark()
-			n := 0
-			for w, err := range s.Windows(t.Context(), tt.req, tt.plan) {
-				n++
-				if !errors.Is(err, audio.ErrRequest) || w.Count != 0 {
-					t.Errorf("window %+v, err %v; want a zero WindowFile and ErrRequest", w, err)
-				}
-			}
-			if n != 1 {
-				t.Errorf("%d values, want 1", n)
-			}
-			if rs := st.runs(); len(rs) != 0 {
-				t.Errorf("runs %q, want none", programs(rs))
-			}
-		})
+	// 25 s of the source fixes the windows whose limit it passes: 0-10 s and 9-19 s.
+	if len(ws) != 2 {
+		t.Errorf("%d windows before the error, want 2", len(ws))
 	}
-	t.Run("a plan of another source", func(t *testing.T) {
-		st.mark()
-		other := flacPlan()
-		other.Duration += time.Millisecond
-		for _, err := range s.Windows(t.Context(), audio.WindowsRequest{Path: "speech.flac", Dir: dir}, other) {
-			if !errors.Is(err, audio.ErrRequest) {
-				t.Errorf("err %v, want ErrRequest", err)
-			}
-		}
-		if got := programs(st.runs()); !slices.Equal(got, []string{"ffprobe"}) {
-			t.Errorf("runs %q, want ffprobe alone", got)
-		}
-	})
-	t.Run("no audio", func(t *testing.T) {
-		st.set(func(c *settings) { c.Probe = `{"streams":[],"format":{}}` })
-		for _, err := range s.Windows(t.Context(), audio.WindowsRequest{Path: "speech.flac", Dir: dir}, flacPlan()) {
-			if !errors.Is(err, audio.ErrNoAudio) {
-				t.Errorf("err %v, want ErrNoAudio", err)
-			}
-		}
-	})
-	if got := files(t, dir); !slices.Equal(got, []string{"file"}) {
-		t.Errorf("the media directory holds %q", got)
+	if got := files(t, dir); !slices.Equal(got, names(ws)) {
+		t.Errorf("media directory %q, want %q", got, names(ws))
 	}
 }
 
-// TestWindowsFailedWindow fails the second window's run and checks that it yields its index and
-// count with ffmpeg's error and last line, the first window written, and no file of its own.
-func TestWindowsFailedWindow(t *testing.T) {
+// TestWindowsNoSamples: a decode that writes no sample is an error, with no window.
+func TestWindowsNoSamples(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
-	plan := limitPlan(t, st, 3)
-	st.set(func(c *settings) { c.FailWindow = strconv.Itoa(first(plan.Windows[1])) })
+	st.set(func(c *settings) { c.Probe = probeOf(time.Second) })
 	dir := t.TempDir()
-	var got []audio.WindowFile
-	var errs []error
-	for w, err := range s.Windows(t.Context(), audio.WindowsRequest{Path: "long.flac", Dir: dir, Concurrency: 2}, plan) {
-		got = append(got, w)
-		errs = append(errs, err)
+	ws, err := windows(s, t.Context(), "empty.wav", audio.Request{Dir: dir, Concurrency: 1})
+	if err == nil || !strings.Contains(err.Error(), "no samples") || len(ws) != 0 {
+		t.Errorf("%d windows, err %v; want none and no samples", len(ws), err)
 	}
-	if len(got) != 3 {
-		t.Fatalf("%d values, want 3, the stream carrying on past the failed window", len(got))
+}
+
+// cutAll cuts pcm with a Cutter of req, fed in chunks next(rest) bytes long, rest the bytes left,
+// returning each piece, its PCM copied, and the plan.
+func cutAll(t *testing.T, pcm []byte, req audio.Request, next func(rest int) int) ([]audio.Piece, audio.Plan) {
+	t.Helper()
+	c, err := audio.NewCutter(req)
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, i := range []int{0, 2} {
-		if errs[i] != nil {
-			t.Fatalf("window %d: %v", i, errs[i])
+	var out []audio.Piece
+	keep := func(ps []audio.Piece, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
 		}
-		checkWindow(t, got[i], i, plan, dir)
+		for _, p := range ps {
+			p.PCM = slices.Clone(p.PCM)
+			out = append(out, p)
+		}
 	}
-	var exit *tool.ExitError
-	if !errors.As(errs[1], &exit) || !strings.Contains(errs[1].Error(), "Cannot allocate memory") {
-		t.Errorf("window 1's error %v, want a *tool.ExitError carrying ffmpeg's last line", errs[1])
+	for rest := pcm; len(rest) > 0; {
+		n := min(next(len(rest)), len(rest))
+		keep(c.Feed(rest[:n]))
+		rest = rest[n:]
 	}
-	if w := got[1]; w.Index != 1 || w.Count != 3 || w.Window != plan.Windows[1] || w.Path != "" || w.SHA256 != "" {
-		t.Errorf("the failed window %+v, want its index, count, and window, with no file", w)
+	keep(c.End())
+	return out, c.Plan()
+}
+
+// TestCutterChunking: a Cutter's pieces are the same however the stream is chunked, each its
+// window's samples, and its plan is PlanWindows' of the stream's length and the tracker's
+// silences.
+func TestCutterChunking(t *testing.T) {
+	t.Parallel()
+	pcm := samplesOf(t, "speech-noise.wav")
+	for name, req := range map[string]audio.Request{
+		"defaults": {},
+		"limit":    {Limit: 8 * time.Second, Overlap: 500 * time.Millisecond},
+		"fixed":    {Threshold: -40},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			want, plan := cutAll(t, pcm, req, func(rest int) int { return rest })
+			var spans []audio.Span
+			for _, s := range plan.Silences {
+				spans = append(spans, s.Span)
+			}
+			planned, err := audio.PlanWindows(time.Duration(len(pcm)/2)*time.Second/audio.SampleRate, spans, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			planned.Silences = plan.Silences
+			if !reflect.DeepEqual(plan, planned) {
+				t.Errorf("plan %+v, PlanWindows' %+v", plan, planned)
+			}
+			if len(want) != len(plan.Windows) {
+				t.Fatalf("%d pieces, %d windows", len(want), len(plan.Windows))
+			}
+			for i, p := range want {
+				if p.Index != i || p.Window != plan.Windows[i] || !slices.Equal(p.PCM, windowPCM(pcm, p.Window)) {
+					t.Errorf("piece %d, %v, %d bytes; want window %d, %v", p.Index, p.Window, len(p.PCM), i, plan.Windows[i])
+				}
+			}
+			for _, chunk := range []int{1, 321, 4097, 1 << 16} {
+				got, again := cutAll(t, pcm, req, func(int) int { return chunk })
+				if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(again, plan) {
+					t.Errorf("in chunks of %d: the pieces or the plan differ", chunk)
+				}
+			}
+		})
 	}
-	if files := files(t, dir); !slices.Equal(files, names([]audio.WindowFile{got[0], got[2]})) {
-		t.Errorf("the media directory holds %q, want the two windows' files alone", files)
+}
+
+// TestCutterRefuses: a Cutter refuses its request's windowing and tracker fields, and an End after
+// End, or of a stream with no whole sample.
+func TestCutterRefuses(t *testing.T) {
+	t.Parallel()
+	for name, req := range map[string]audio.Request{
+		"negative limit":     {Limit: -time.Second},
+		"positive threshold": {Threshold: 1},
+	} {
+		if _, err := audio.NewCutter(req); !errors.Is(err, audio.ErrRequest) {
+			t.Errorf("%s: %v, want ErrRequest", name, err)
+		}
+	}
+	c, err := audio.NewCutter(audio.Request{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Feed([]byte{1}); err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := c.End(); err == nil || len(ps) != 0 {
+		t.Errorf("End of a stream of one byte: %v, %v", ps, err)
+	}
+	c, _ = audio.NewCutter(audio.Request{})
+	if _, err := c.Feed(make([]byte, 320)); err != nil {
+		t.Fatal(err)
+	}
+	if ps, err := c.End(); err != nil || len(ps) != 1 || ps[0].Window.End != audio.FrameLength {
+		t.Errorf("End of a frame: %v, %v", ps, err)
+	}
+	if _, err := c.End(); !errors.Is(err, audio.ErrRequest) {
+		t.Errorf("End after End: %v, want ErrRequest", err)
+	}
+}
+
+// TestPlanRecord: a plan's record holds its times in seconds, its silences with their thresholds,
+// and its windows by index and cut, ProbedDuration left out when it is zero.
+func TestPlanRecord(t *testing.T) {
+	t.Parallel()
+	plan := audio.Plan{
+		Source:   audio.Source{Duration: 49820 * time.Millisecond, Stream: 1, Codec: "flac", SampleRate: 16000, Channels: 1},
+		Duration: 49820 * time.Millisecond, Limit: audio.DefaultWindowLimit, Overlap: audio.DefaultOverlap,
+		Windows: []audio.Window{
+			{Start: 0, End: 24910 * time.Millisecond, Cut: audio.CutSilence},
+			{Start: 22910 * time.Millisecond, End: 49820 * time.Millisecond, Cut: audio.CutEnd},
+		},
+		Seams:    []audio.Span{{Start: 22910 * time.Millisecond, End: 24910 * time.Millisecond}},
+		Silences: []audio.Silence{{Start: 24410 * time.Millisecond, End: 25410 * time.Millisecond, Threshold: -52.5}},
+	}
+	b, err := json.Marshal(plan.Record())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"duration":49.82,"limit":30,"overlap":2,"stream":1,"codec":"flac","sample_rate":16000,"channels":1,` +
+		`"silences":[{"start":24.41,"end":25.41,"threshold":-52.5}],` +
+		`"windows":[{"index":0,"start":0,"end":24.91,"cut":"silence"},{"index":1,"start":22.91,"end":49.82,"cut":"end"}],` +
+		`"seams":[{"start":22.91,"end":24.91}]}`
+	if string(b) != want {
+		t.Errorf("record %s\nwant   %s", b, want)
+	}
+	plan.Probed = 50 * time.Second
+	if b, _ := json.Marshal(plan.Record()); !strings.Contains(string(b), `"duration":49.82,"probed_duration":50,`) {
+		t.Errorf("record with a probed duration %s", b)
+	}
+	if b, _ := json.Marshal(audio.Plan{Duration: time.Second}.Record()); !strings.Contains(string(b), `"silences":[],"windows":[],"seams":[]`) {
+		t.Errorf("an empty plan's record %s", b)
+	}
+}
+
+// v090Window is one line of testdata/windows-v0.9.0.txt: a window v0.9.0 cut under
+// DetectorTracker.
+type v090Window struct {
+	window  audio.Window
+	samples int
+	sha256  string
+}
+
+// v090Windows returns testdata/windows-v0.9.0.txt's windows by fixture.
+func v090Windows(t *testing.T) map[string][]v090Window {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "windows-v0.9.0.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := map[string][]v090Window{}
+	for line := range strings.Lines(string(data)) {
+		var name, cut string
+		var index int
+		var start, end int64
+		var w v090Window
+		if _, err := fmt.Sscan(line, &name, &index, &start, &end, &cut, &w.samples, &w.sha256); err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		w.window = audio.Window{Start: time.Duration(start), End: time.Duration(end)}
+		for _, c := range []audio.Cut{audio.CutSilence, audio.CutLimit, audio.CutEnd} {
+			if c.String() == cut {
+				w.window.Cut = c
+			}
+		}
+		if index != len(out[name]) || w.window.Cut == 0 {
+			t.Fatalf("%q: out of order, or an unknown cut", line)
+		}
+		out[name] = append(out[name], w)
+	}
+	return out
+}
+
+// checkV090 checks that ws are v0.9.0's windows want, byte for byte.
+func checkV090(t *testing.T, ws []audio.WindowFile, want []v090Window) {
+	t.Helper()
+	if len(ws) != len(want) {
+		t.Fatalf("%d windows, v0.9.0 cut %d", len(ws), len(want))
+	}
+	for i, w := range ws {
+		if w.Window != want[i].window || w.Samples != want[i].samples || w.SHA256 != want[i].sha256 {
+			t.Errorf("window %d, %v %v, %d samples, %s; v0.9.0's %v %v, %d, %s",
+				i, w.Window, w.Window.Cut, w.Samples, w.SHA256, want[i].window, want[i].window.Cut, want[i].samples, want[i].sha256)
+		}
+	}
+}
+
+// TestWindowsMatchV090: one decode of each 16 kHz mono WAV fixture, which the stand-in decodes to
+// its own samples as ffmpeg does, cuts v0.9.0's windows under DetectorTracker, byte for byte. The
+// integration tier holds speech.flac, through the real ffmpeg, to them too.
+func TestWindowsMatchV090(t *testing.T) {
+	t.Parallel()
+	golden := v090Windows(t)
+	for _, name := range []string{"speech-gain.wav", "speech-noise.wav"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			decode, err := filepath.Abs(filepath.Join("testdata", name))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, st := standinSplitter(t)
+			st.set(func(c *settings) { c.Probe, c.Decode = gainProbe, decode })
+			ws := collect(t, s, t.Context(), name, audio.Request{Dir: t.TempDir(), Concurrency: 1})
+			checkV090(t, ws, golden[name])
+		})
 	}
 }

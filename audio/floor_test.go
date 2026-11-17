@@ -78,10 +78,9 @@ func gapsFound(t *testing.T, f levelsFixture, silences []audio.Span) (before, af
 }
 
 // TestTrackerLevels runs the tracker, at its defaults, over each level-change variant: it finds
-// every inserted gap, before the change and after it, each within one silence, where silencedetect
-// at the threshold fixed from the first 30 s finds none after it (TestLevelsFixedThreshold, in the
-// integration tier). The tracker at that fixed threshold finds none after the noise's change
-// either: the gaps there are above it.
+// every inserted gap, before the change and after it, each within one silence, where v0.9.0's
+// silencedetect at the threshold fixed from the first 30 s found none after it. The tracker at
+// that fixed threshold finds none after the noise's change either: the gaps there are above it.
 func TestTrackerLevels(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -348,7 +347,6 @@ func TestTrackerThreshold(t *testing.T) {
 func TestNewTrackerRefuses(t *testing.T) {
 	for name, req := range map[string]audio.Request{
 		"negative minimum":               {MinSilence: -time.Second},
-		"below the mean":                 {Below: 15},
 		"positive threshold":             {Threshold: 1},
 		"threshold under -120 dB":        {Threshold: -121},
 		"threshold and percentile":       {Threshold: -40, Percentile: 10},
@@ -374,7 +372,7 @@ func TestNewTrackerRefuses(t *testing.T) {
 		"the shortest window": {FloorWindow: time.Second},
 		"the longest window":  {FloorWindow: 10 * time.Minute},
 		"-120 dB":             {Threshold: -120},
-		"a request's others":  {Path: "a.flac", Overlap: time.Second, Detector: audio.DetectorTracker},
+		"a request's others":  {Dir: "media", Concurrency: 2, Overlap: time.Second, Limit: time.Minute},
 	} {
 		if _, err := audio.NewTracker(req); err != nil {
 			t.Errorf("%s: %v", name, err)

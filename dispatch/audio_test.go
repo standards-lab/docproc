@@ -3,6 +3,7 @@
 package dispatch_test
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -12,7 +13,6 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -35,16 +35,18 @@ import (
 type ffSettings struct {
 	// Probe is the report ffprobe writes to stdout.
 	Probe string `json:"probe"`
-	// FailWindow, when set, makes the window run whose first sample it names write a line to
-	// stderr and exit 1.
-	FailWindow string `json:"fail_window,omitzero"`
+	// Decode names a canonical 44-byte WAV whose samples the audio Splitter's decoding run writes
+	// to its stdout; DecodeMS, when set, is how many milliseconds of them it writes before it
+	// fails, as Fail says.
+	Decode   string `json:"decode,omitzero"`
+	DecodeMS int    `json:"decode_ms,omitzero"`
 	// PCMMS is how many milliseconds of PCM media's run writes to its stdout when it has an audio
 	// output, each sample its index modulo 30011.
 	PCMMS int `json:"pcm_ms,omitzero"`
 	// Frames are the frames media's run takes when it has a video output.
 	Frames []mediatest.Frame `json:"frames,omitzero"`
-	// Fail, when set, makes media's run, once it has written its output, write it to stderr and
-	// exit 1.
+	// Fail, when set, makes media's run, or the Splitter's run cut short by DecodeMS, once it has
+	// written its output, write it to stderr and exit 1.
 	Fail string `json:"fail,omitzero"`
 	// HoldMS, when set, is how many milliseconds media's run sleeps once it has written its first
 	// frame.
@@ -80,21 +82,20 @@ func (s *ffStandins) runs(t *testing.T) []string {
 	return out
 }
 
-// The stand-in's reports: ffprobe's of a 49.82 s FLAC whose audio is its second stream, after a
-// cover picture, and volumedetect's and silencedetect's of it, which plan two windows cut in the
-// silence at 24.2 s.
+// The stand-in's reports: ffprobe's of a 75.23 s FLAC whose audio is its second stream, after a
+// cover picture, the stand-in ffmpeg decoding it to speech-gain.wav's samples.
 const (
 	audioProbe = `{"streams":[` +
 		`{"index":0,"codec_name":"mjpeg","codec_type":"video"},` +
-		`{"index":1,"codec_name":"flac","codec_type":"audio","sample_rate":"16000","channels":1,"duration":"49.820000"}],` +
-		`"format":{"duration":"49.820000"}}`
-	audioVolume   = "[Parsed_volumedetect_0 @ 0x7f9254003c80] mean_volume: -25.1 dB\n"
-	audioSilences = `[Parsed_silencedetect_0 @ 0x7f6e94003d40] silence_start: 24.22575
-[Parsed_silencedetect_0 @ 0x7f6e94003d40] silence_end: 25.732625 | silence_duration: 1.506875
-`
+		`{"index":1,"codec_name":"flac","codec_type":"audio","sample_rate":"16000","channels":1,"duration":"75.230000"}],` +
+		`"format":{"duration":"75.230000"}}`
 	// audioNoStream is ffprobe's report of an M4A container holding no audio stream.
 	audioNoStream = `{"streams":[{"index":0,"codec_name":"h264","codec_type":"video"}],"format":{"duration":"3.000000"}}`
 )
+
+// gainWAV is the audio package's gain-step fixture, 75.23 s of canonical WAV, whose samples the
+// stand-in decodes the FLAC to.
+var gainWAV = filepath.Join("..", "audio", "testdata", "speech-gain.wav")
 
 // The inputs the audio tests dispatch, by their signatures: a FLAC, an M4A, and an MP4, each
 // routed as its kind and read by none but the stand-ins, which don't read them.
@@ -103,9 +104,6 @@ const (
 	m4aBytes  = "\x00\x00\x00\x14ftypM4A \x00\x00\x00\x00M4A \x00\x00\x00\x08moov"
 	mp4Bytes  = "\x00\x00\x00\x14ftypisom\x00\x00\x02\x00isom\x00\x00\x00\x08moov"
 )
-
-// audioWindowFilter matches a window run's filter, its first sample and the sample it ends before.
-var audioWindowFilter = regexp.MustCompile(`^aresample=16000,atrim=start_sample=(\d+):end_sample=(\d+)$`)
 
 // ffprobeStandin is the stand-in ffprobe: it prints its version at 9.0.2, or its settings' report.
 func ffprobeStandin(r tooltest.Run) int {
@@ -131,9 +129,9 @@ func printFFVersion(r tooltest.Run) bool {
 	return true
 }
 
-// ffmpegStandin is the stand-in ffmpeg: it prints its version at 9.0.2, volumedetect's and
-// silencedetect's reports, a window's samples, each sample its index in the source modulo 30011,
-// or, for media's run, its PCM and frames, as mediaStandin does.
+// ffmpegStandin is the stand-in ffmpeg: it prints its version at 9.0.2; for the Splitter's
+// decoding run, writes the samples of its settings' Decode, failing after DecodeMS of them when
+// that is set; or, for media's run, its PCM and frames, as mediaStandin does.
 func ffmpegStandin(r tooltest.Run) int {
 	if printFFVersion(r) {
 		return 0
@@ -148,32 +146,25 @@ func ffmpegStandin(r tooltest.Run) int {
 		// Only media's run allows its input's protocols.
 		return mediaStandin(args, settings)
 	}
-	filter := args[slices.Index(args, "-af")+1]
-	switch {
-	case filter == "volumedetect":
-		fmt.Fprint(os.Stderr, audioVolume)
-		return 0
-	case strings.HasPrefix(filter, "silencedetect="):
-		fmt.Fprint(os.Stderr, audioSilences)
-		return 0
-	}
-	m := audioWindowFilter.FindStringSubmatch(filter)
-	if m == nil {
+	if filter := args[slices.Index(args, "-af")+1]; filter != "aresample=16000" {
 		fmt.Fprintf(os.Stderr, "stand-in: filter %q\n", filter)
 		return 2
 	}
-	if settings.FailWindow == m[1] {
-		fmt.Fprint(os.Stderr, "[aist#0:0/pcm_s16le] Error while filtering: Cannot allocate memory\n")
-		return 1
+	data, err := os.ReadFile(settings.Decode)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
-	first, _ := strconv.Atoi(m[1])
-	end, _ := strconv.Atoi(m[2])
-	pcm := make([]byte, 0, 2*(end-first))
-	for i := first; i < end; i++ {
-		pcm = binary.LittleEndian.AppendUint16(pcm, uint16(i%30011))
+	pcm := data[44:]
+	if settings.DecodeMS > 0 {
+		pcm = pcm[:2*settings.DecodeMS*audio.SampleRate/1000]
 	}
 	if _, err := os.Stdout.Write(pcm); err != nil {
 		return 2
+	}
+	if settings.DecodeMS > 0 {
+		fmt.Fprintln(os.Stderr, settings.Fail)
+		return 1
 	}
 	return 0
 }
@@ -194,7 +185,11 @@ func standinSplitter(t *testing.T, probe string) (*audio.Splitter, *ffStandins) 
 func standinTools(t *testing.T, probe string) (ffmpeg, ffprobe *tool.Tool, standins *ffStandins) {
 	t.Helper()
 	dir := t.TempDir()
-	standins = &ffStandins{settings: ffSettings{Probe: probe}}
+	decode, err := filepath.Abs(gainWAV)
+	if err != nil {
+		t.Fatal(err)
+	}
+	standins = &ffStandins{settings: ffSettings{Probe: probe, Decode: decode}}
 	standins.ffmpeg = tooltest.Link(t, dir, "ffmpeg", standins.settings)
 	standins.ffprobe = tooltest.Link(t, dir, "ffprobe", standins.settings)
 	var tools []*tool.Tool
@@ -209,13 +204,13 @@ func standinTools(t *testing.T, probe string) (ffmpeg, ffprobe *tool.Tool, stand
 	return tools[0], tools[1], standins
 }
 
-// audioStage returns an audio stage over the stand-ins, ffprobe reporting probe, cutting two
+// audioStage returns an audio stage over the stand-ins, ffprobe reporting probe, holding two
 // windows at once, and the stand-ins.
 func audioStage(t *testing.T, probe string) (*dispatch.AudioStage, *ffStandins) {
 	t.Helper()
 	splitter, standins := standinSplitter(t, probe)
 	s, err := dispatch.NewAudioStage(dispatch.AudioConfig{
-		Splitter: splitter, Version: "ffmpeg 9.0.2, ffprobe 9.0.2", Concurrency: 2,
+		Splitter: splitter, Version: "ffmpeg 9.0.2, ffprobe 9.0.2", Request: audio.Request{Concurrency: 2},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -233,22 +228,17 @@ func writeInput(t *testing.T, name, content string) string {
 	return path
 }
 
-// The stand-in source's plan: two windows, the first cut at the middle of the silence at
-// 24.22575 s, the next starting 2 s before it, and their seam.
+// The stand-in source's plan, v0.9.0's windows of speech-gain.wav under DetectorTracker: three
+// windows, each after the first starting 2 s before the one before it ends, and their seams.
 var (
-	audioWindows = []dispatch.AudioWindow{
-		{Index: 0, Start: 0, End: 24.9791875, Cut: "silence"},
-		{Index: 1, Start: 22.9791875, End: 49.82, Cut: "end"},
+	audioWindows = []audio.WindowRecord{
+		{Index: 0, Start: 0, End: 24.985, Cut: "silence"},
+		{Index: 1, Start: 22.985, End: 50.395, Cut: "silence"},
+		{Index: 2, Start: 48.395, End: 75.23, Cut: "end"},
 	}
-	audioSeams = []dispatch.AudioSpan{{Start: 22.9791875, End: 24.9791875}}
+	audioSeams   = []audio.SpanRecord{{Start: 22.985, End: 24.985}, {Start: 48.395, End: 50.395}}
+	audioSamples = []string{"399760", "438560", "429360"}
 )
-
-// samplesOf returns the samples at 16 kHz a window from start to end seconds holds, as the
-// Splitter rounds each to the nearest sample.
-func samplesOf(start, end float64) int {
-	at := func(s float64) int { return int(s*audio.SampleRate + 0.5) }
-	return at(end) - at(start)
-}
 
 // checkWAV fails the test unless the file at o.Path, read while its part is in flight, is a
 // 16 kHz mono 16-bit WAV of o's samples, named by its SHA-256; it returns the file's bytes.
@@ -270,30 +260,33 @@ func checkWAV(t *testing.T, o dispatch.Output) []byte {
 	return b
 }
 
-// checkStandinWAV fails the test unless o's WAV, as checkWAV checks it, holds the stand-in
-// source's samples from o's start: each sample its index in the source modulo 30011.
-func checkStandinWAV(t *testing.T, o dispatch.Output) {
+// checkGainWAV fails the test unless o's WAV, as checkWAV checks it, holds the stand-in source's
+// samples, speech-gain.wav's, from o's start.
+func checkGainWAV(t *testing.T, o dispatch.Output) {
 	t.Helper()
 	b := checkWAV(t, o)
+	data, err := os.ReadFile(gainWAV)
+	if err != nil {
+		t.Fatal(err)
+	}
 	start, _ := strconv.ParseFloat(o.Meta["start"], 64)
-	first := int(start*audio.SampleRate + 0.5)
-	for i := 0; 44+2*i+2 <= len(b); i++ {
-		if got := int(binary.LittleEndian.Uint16(b[44+2*i:])); got != (first+i)%30011 {
-			t.Fatalf("%s: its sample %d is %d, want the source's sample %d", o.Name, i, got, first+i)
-		}
+	first := 44 + 2*int(start*audio.SampleRate+0.5)
+	if !bytes.Equal(b[44:], data[first:first+len(b)-44]) {
+		t.Fatalf("%s: its samples aren't the source's from %v s", o.Name, start)
 	}
 }
 
-// TestAudioStage: a FLAC's plan is its first output, a record of the plan's source, silences,
-// windows, and seams; each window follows in plan order, a WAV in the part's directory, its Meta
-// its index, count, span, cut, samples, and seams, so a caller can transcribe and join it.
+// TestAudioStage: a FLAC is decoded once, its windows following in plan order as they are cut,
+// each a WAV in the part's directory, its Meta its index, span, cut, samples, seams, and
+// threshold, so a caller can transcribe and join it; and its plan last, a record of the source,
+// the silences, the windows, and the seams.
 func TestAudioStage(t *testing.T) {
 	t.Parallel()
-	stage, _ := audioStage(t, audioProbe)
+	stage, standins := audioStage(t, audioProbe)
 	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.AudioOutput {
-			checkStandinWAV(t, *o)
+			checkGainWAV(t, *o)
 		}
 	})
 	wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Prepared}})
@@ -305,39 +298,45 @@ func TestAudioStage(t *testing.T) {
 	for _, o := range ev.Outputs {
 		got = append(got, string(o.Kind)+" "+o.Name+" "+o.MediaType)
 	}
-	want := []string{"record plan application/json", "audio window 0 audio/wav", "audio window 1 audio/wav"}
+	want := []string{"audio window 0 audio/wav", "audio window 1 audio/wav", "audio window 2 audio/wav", "record plan application/json"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("outputs %q, want %q", got, want)
 	}
+	if runs := standins.runs(t); !slices.Equal(runs, []string{"ffprobe", "ffmpeg"}) {
+		t.Errorf("runs %q, want ffprobe, then one decode", runs)
+	}
 
-	plan := ev.Outputs[0]
-	if plan.Meta["windows"] != "2" || plan.Meta["duration"] != "49.82" {
+	plan := ev.Outputs[3]
+	if plan.Meta["windows"] != "3" || plan.Meta["duration"] != "75.23" {
 		t.Errorf("the plan's Meta %v", plan.Meta)
 	}
-	var p dispatch.AudioPlan
+	var p audio.PlanRecord
 	if err := json.Unmarshal(plan.Value, &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Duration != 49.82 || p.Overlap != 2 || p.Stream != 1 || p.Codec != "flac" || p.SampleRate != 16000 ||
-		p.Channels != 1 || p.MeanVolume != -25.1 || p.Threshold != -40.1 || p.MinSilence != 0.3 {
-		t.Errorf("the plan's source and detection %+v", p)
-	}
-	if !slices.Equal(p.Silences, []dispatch.AudioSpan{{Start: 24.22575, End: 25.732625}}) {
-		t.Errorf("silences %v", p.Silences)
+	if p.Duration != 75.23 || p.ProbedDuration != 0 || p.Limit != 30 || p.Overlap != 2 || p.Stream != 1 || p.Codec != "flac" ||
+		p.SampleRate != 16000 || p.Channels != 1 || len(p.Silences) == 0 {
+		t.Errorf("the plan's source and windowing %+v", p)
 	}
 	if !slices.Equal(p.Windows, audioWindows) || !slices.Equal(p.Seams, audioSeams) {
 		t.Errorf("windows %v, seams %v; want %v, %v", p.Windows, p.Seams, audioWindows, audioSeams)
 	}
 
-	seam := "22.9791875-24.9791875"
+	seams := []string{"22.985-24.985", "48.395-50.395"}
 	wantMeta := []map[string]string{
-		{"window": "0", "count": "2", "start": "0", "end": "24.9791875", "cut": "silence",
-			"samples": strconv.Itoa(samplesOf(0, 24.9791875)), "seam_after": seam},
-		{"window": "1", "count": "2", "start": "22.9791875", "end": "49.82", "cut": "end",
-			"samples": strconv.Itoa(samplesOf(22.9791875, 49.82)), "seam_before": seam},
+		{"window": "0", "start": "0", "end": "24.985", "cut": "silence", "samples": audioSamples[0], "seam_after": seams[0]},
+		{"window": "1", "start": "22.985", "end": "50.395", "cut": "silence", "samples": audioSamples[1],
+			"seam_before": seams[0], "seam_after": seams[1]},
+		{"window": "2", "start": "48.395", "end": "75.23", "cut": "end", "samples": audioSamples[2], "seam_before": seams[1]},
 	}
-	for i, o := range ev.Outputs[1:] {
-		if !maps.Equal(o.Meta, wantMeta[i]) {
+	for i, o := range ev.Outputs[:3] {
+		threshold, err := strconv.ParseFloat(o.Meta["threshold"], 64)
+		if err != nil || threshold >= 0 {
+			t.Errorf("%s's threshold %q", o.Name, o.Meta["threshold"])
+		}
+		meta := maps.Clone(o.Meta)
+		delete(meta, "threshold")
+		if !maps.Equal(meta, wantMeta[i]) {
 			t.Errorf("%s's Meta %v, want %v", o.Name, o.Meta, wantMeta[i])
 		}
 	}
@@ -357,8 +356,8 @@ func TestAudioStageInArchive(t *testing.T) {
 	path := writeInput(t, "recordings.zip", zipBytes(t, zent{name: "talks/speech.flac", body: flacBytes}))
 	events := dispatchAll(t, d, path, nil)
 	wantSteps(t, events, []step{{"talks/speech.flac", 1, dispatch.Prepared}, {"recordings.zip", 0, dispatch.Prepared}})
-	if n := len(events[0].Outputs); n != 3 {
-		t.Errorf("the FLAC's %d outputs, want its plan and two windows", n)
+	if n := len(events[0].Outputs); n != 4 {
+		t.Errorf("the FLAC's %d outputs, want its three windows and its plan", n)
 	}
 }
 
@@ -412,14 +411,13 @@ func TestAudioNoStream(t *testing.T) {
 	}
 }
 
-// TestAudioFailedWindow: a window whose ffmpeg run fails doesn't stop the next: the part fails,
-// its error naming the window and ffmpeg's last line, after its plan and the windows that were
-// cut.
-func TestAudioFailedWindow(t *testing.T) {
+// TestAudioFailedDecode: a decode that fails partway fails the part, its error carrying
+// ffmpeg's last line, after the windows cut before it, with no plan.
+func TestAudioFailedDecode(t *testing.T) {
 	t.Parallel()
 	stage, standins := audioStage(t, audioProbe)
 	standins.set(t, func(s *ffSettings) {
-		s.FailWindow = strconv.Itoa(int(audioWindows[0].Start*audio.SampleRate + 0.5))
+		s.DecodeMS, s.Fail = 40000, "[aist#0:1/flac] Error while decoding: Cannot allocate memory"
 	})
 	d := newDispatcher(t, dispatch.Stages{route.Audio: stage}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, writeInput(t, "speech.flac", flacBytes), nil)
@@ -429,58 +427,62 @@ func TestAudioFailedWindow(t *testing.T) {
 	for _, o := range ev.Outputs {
 		got = append(got, o.Name)
 	}
-	if !slices.Equal(got, []string{"plan", "window 1"}) {
-		t.Errorf("outputs %q, want the plan and window 1", got)
+	if !slices.Equal(got, []string{"window 0"}) {
+		t.Errorf("outputs %q, want window 0 alone, cut before the failure", got)
 	}
 	var exit *tool.ExitError
-	if !errors.As(ev.Err, &exit) || !strings.Contains(ev.Reason, "1 of 2 windows failed") ||
-		!strings.Contains(ev.Reason, "window 0 of 2") || !strings.Contains(ev.Reason, "Cannot allocate memory") {
-		t.Errorf("err %v, want a *tool.ExitError naming window 0 and ffmpeg's last line", ev.Err)
+	if !errors.As(ev.Err, &exit) || !strings.Contains(ev.Reason, "Cannot allocate memory") {
+		t.Errorf("err %v, want a *tool.ExitError carrying ffmpeg's last line", ev.Err)
 	}
 }
 
-// TestAudioStageIdentity: the audio stage hashes the request's detection and overlap, its
-// defaults applied, and not its Path or the concurrency; it refuses no version, an overlap
-// audio.CheckOverlap refuses, and a negative concurrency.
+// TestAudioStageIdentity: the audio stage hashes the request's windowing, its defaults applied,
+// and not its Dir or its concurrency; it refuses no version, a field audio's Cutter refuses, and a
+// concurrency below 1.
 func TestAudioStageIdentity(t *testing.T) {
 	t.Parallel()
 	s, _ := standinSplitter(t, audioProbe)
 	const version = "ffmpeg 9.0.2, ffprobe 9.0.2"
-	id := func(cfg dispatch.AudioConfig) dispatch.Identity {
+	id := func(req audio.Request) dispatch.Identity {
 		t.Helper()
-		cfg.Splitter, cfg.Version = s, version
-		st, err := dispatch.NewAudioStage(cfg)
+		st, err := dispatch.NewAudioStage(dispatch.AudioConfig{Splitter: s, Version: version, Request: req})
 		if err != nil {
 			t.Fatal(err)
 		}
 		return st.Identity()
 	}
-	base := id(dispatch.AudioConfig{})
+	base := id(audio.Request{Concurrency: 1})
 	if base.Name != "audio" || base.Version != version || len(base.Config) != 64 {
 		t.Errorf("identity %v", base)
 	}
-	same := dispatch.AudioConfig{
-		Request: audio.Request{Path: "elsewhere.flac", Overlap: audio.DefaultOverlap,
-			MinSilence: audio.DefaultMinSilence, Below: audio.DefaultBelow},
-		Concurrency: 4,
+	same := audio.Request{
+		Dir: "elsewhere", Concurrency: 4, Limit: audio.DefaultWindowLimit, Overlap: audio.DefaultOverlap,
+		MinSilence: audio.DefaultMinSilence, Percentile: audio.DefaultPercentile, FloorWindow: audio.DefaultFloorWindow,
+		Margin: audio.DefaultMargin,
 	}
 	if id(same) != base {
-		t.Error("the defaults, a Path, or a concurrency changed the audio identity")
+		t.Error("the defaults, a Dir, or a concurrency changed the audio identity")
 	}
 	for name, req := range map[string]audio.Request{
-		"overlap":     {Overlap: time.Second},
-		"min silence": {MinSilence: time.Second},
-		"below":       {Below: 20},
-		"threshold":   {Threshold: -40},
+		"limit":        {Limit: 20 * time.Second},
+		"overlap":      {Overlap: time.Second},
+		"min silence":  {MinSilence: time.Second},
+		"threshold":    {Threshold: -40},
+		"percentile":   {Percentile: 20},
+		"floor window": {FloorWindow: 10 * time.Second},
+		"margin":       {Margin: 6},
 	} {
-		if id(dispatch.AudioConfig{Request: req}).Config == base.Config {
+		req.Concurrency = 1
+		if id(req).Config == base.Config {
 			t.Errorf("%s left the audio identity's config unchanged", name)
 		}
 	}
 	for name, cfg := range map[string]dispatch.AudioConfig{
-		"no version":           {Splitter: s},
-		"overlap of the limit": {Splitter: s, Version: version, Request: audio.Request{Overlap: audio.WindowLimit / 2}},
-		"negative concurrency": {Splitter: s, Version: version, Concurrency: -1},
+		"no version":           {Splitter: s, Request: audio.Request{Concurrency: 1}},
+		"overlap of the limit": {Splitter: s, Version: version, Request: audio.Request{Concurrency: 1, Overlap: audio.DefaultWindowLimit / 2}},
+		"negative limit":       {Splitter: s, Version: version, Request: audio.Request{Concurrency: 1, Limit: -time.Second}},
+		"zero concurrency":     {Splitter: s, Version: version},
+		"negative concurrency": {Splitter: s, Version: version, Request: audio.Request{Concurrency: -1}},
 	} {
 		if _, err := dispatch.NewAudioStage(cfg); err == nil {
 			t.Errorf("%s: an audio stage was built", name)

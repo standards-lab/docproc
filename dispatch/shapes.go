@@ -77,8 +77,8 @@ const (
 	// and the picture stage's PNG of a TIFF's page.
 	MetaPage = "page"
 	// MetaCount is how many there are of what the output is one of: a PDF's pages on the document
-	// stage's page outputs, a TIFF's pages on the picture stage's, and a part's windows on the
-	// audio stage's windows.
+	// stage's page outputs, and a TIFF's pages on the picture stage's. No window carries it: a
+	// part's windows are cut as it decodes, and its plan record, last, counts them.
 	MetaCount = "count"
 	// MetaWindow is a window's index, from 0, in its plan's order: the audio and video stages'
 	// audio outputs.
