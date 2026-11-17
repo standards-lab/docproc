@@ -6,7 +6,7 @@
 -- dispatch.Entry as JSON, NULL until Record: a row with an entry is recorded, one without is
 -- claimed. dispatch_version is the dispatch.Version whose shapes the row's entry and its log's
 -- items carry, set by the writer that claims or records the key. created_at is the claim's
--- time, which a retention reads.
+-- time, and, once recorded, the record's, from which a retention counts the entry's age.
 CREATE TABLE docproc_entry (
     sha256           text        NOT NULL,
     stage_name       text        NOT NULL,

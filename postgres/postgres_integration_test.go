@@ -163,7 +163,14 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 		err := r.Scan(&version, &entry)
 		return version + " " + entry, err
 	})
-	items := statement(t, "list_items").Scan(query.Scalar[string])
+	items := statement(t, "list_items").Scan(func(r query.Row) (string, error) {
+		var seq int
+		var item string
+		err := r.Scan(&seq, &item)
+		return item, err
+	})
+	// A page of the log under token, from its start, large enough for the whole log.
+	page := func(token string) query.Args { return key.With("token", token).With("after", -1).With("size", 10) }
 
 	// A claim: the row, with its token and a lease on the database's clock, and no entry.
 	exec(t, db, `INSERT INTO docproc_entry (sha256, stage_name, stage_version, stage_config, token, expires_at, dispatch_version)
@@ -173,7 +180,7 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 	if _, err := lookup.One(ctx, db, key); !errors.Is(err, sql.ErrNoRows) {
 		t.Errorf("lookup of a claimed key: %v, want no rows", err)
 	}
-	if got, err := items.All(ctx, db, key); err != nil || len(got) != 0 {
+	if got, err := items.All(ctx, db, page("old")); err != nil || len(got) != 0 {
 		t.Errorf("items of a claimed key = %v, %v, want none", got, err)
 	}
 
@@ -190,8 +197,11 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 	if got, err := lookup.One(ctx, db, key); err != nil || got != `1 {"stages": [], "outcome": "prepared"}` {
 		t.Errorf("lookup = %q, %v", got, err)
 	}
-	if got, err := items.All(ctx, db, key); err != nil || strings.Join(got, ",") != `{"after": 0},{"after": 1}` {
+	if got, err := items.All(ctx, db, page("new")); err != nil || strings.Join(got, ",") != `{"after": 0},{"after": 1}` {
 		t.Errorf("items = %v, %v, want the new token's two in order", got, err)
+	}
+	if got, err := items.All(ctx, db, page("old")); err != nil || len(got) != 0 {
+		t.Errorf("items under the old token = %v, %v, want none", got, err)
 	}
 
 	// An item without its entry is refused, and a drop takes the log with the entry.

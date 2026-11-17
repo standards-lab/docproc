@@ -19,3 +19,12 @@ each system tool under `tools/` keep their own.
   `docproc_ix_entry_created`, the retention's index. A host applies the set.
 - `Verify`, which prepares every statement against a live schema, and `Statements`, which lists
   them.
+- `Index`, the `dispatch.Index` over PostgreSQL, made by `New` from a `Config`: `DB`, the sqlate
+  session, whose pool must be on pgx's `database/sql` driver; `Lease`, every claim's lease; and
+  `Flush`, the log items a claim buffers before one multi-row insert, and the page `Items` reads.
+  None has a default. Claims, renewals, flushes, records, and releases are each one statement
+  conditional on the entry's token, on the database's clock; a takeover deletes the old token's
+  log, and the old token's calls fail matching `dispatch.ErrClaimLost`. `Record` commits the log
+  whole with the entry and resets the entry's `created_at`, from which a retention counts its age.
+  A row of another `dispatch.Version` is refused. `Wait` is not implemented yet, failing matching
+  `errors.ErrUnsupported`.
