@@ -154,7 +154,7 @@ repository root, `mise run <task>`:
   real tools and checks every committed fixture's route and outcome through `stages`. It builds
   docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their publish
   tasks and puts those three ahead of everything else on PATH, so no installed release stands in
-  for them; it runs 7zz at the root's pin, and runs the packages one at a time. Run it on your
+  for them; it runs 7zz at the root's pin. Run it on your
   machine before each Go tag; CI doesn't. The other programs come from the host, each at its
   minimum or later: `gs`, `qpdf`, `pdfdetach`, `ffmpeg`, `ffprobe`, `magick`, `soffice`,
   util-linux's `prlimit`, and `docker`, whose tests pull `audio.FFmpegImage` and

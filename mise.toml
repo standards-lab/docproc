@@ -86,11 +86,10 @@ scripts/release-tag-test.sh
 # docproc tool is built from this checkout through its own publish task, and the three binaries
 # alone are linked into a directory put ahead of everything else on PATH, so no released or
 # installed docproc tool stands in for them. 7zz is the root's pin above; gs, qpdf, pdfdetach,
-# ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run one at a
-# time, -p 1: tool's container tests count the containers of FFmpeg's image, which audio's and
-# media's tests also run, so in parallel they find another package's containers as their own.
+# ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run in parallel,
+# as the unit tier's do: each container test watches only the containers its own runs name.
 [tasks."test:integration"]
-description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier, one package at a time; writes only the tools' build output and a temporary directory"
+description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier; writes only the tools' build output and a temporary directory"
 run = '''
 set -eu
 export GOWORK=off
@@ -109,7 +108,7 @@ echo "test:integration: $(command -v 7zz)"
 for mod in $GO_MODULES; do
   echo "test:integration: $mod"
   cd "$MISE_PROJECT_ROOT/$mod"
-  go test -tags integration -p 1 ./...
+  go test -tags integration ./...
 done
 '''
 
