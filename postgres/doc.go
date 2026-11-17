@@ -24,8 +24,8 @@
 // content's SHA-256 and the stage identity's name, version, and config. Its token is the claim's
 // while the key is claimed and, once recorded, the token whose log the entry holds; expires_at is
 // the lease's expiry, NULL for a claim that never expires and for a recorded entry; created_at is
-// the claim's time and, once recorded, the record's, from which a retention counts the entry's
-// age; dispatch_version is the dispatch.Version whose shapes the row's JSON carries;
+// the first claim's time, which neither a takeover nor a record changes, from which a retention
+// counts the entry's age; dispatch_version is the dispatch.Version whose shapes the row's JSON carries;
 // and entry is the dispatch.Entry as jsonb, NULL until recorded, so a row with an entry is
 // recorded and one without is claimed. docproc_item holds the log, a row per dispatch.Recorded as
 // jsonb, keyed by its entry, the token that appended it, and its position, seq, so a takeover's
@@ -63,7 +63,7 @@
 // conditional on the entry's current token, so the database, not the claimant, decides whether
 // a token still holds its claim; an old token's renewal, flush, and record fail matching
 // dispatch.ErrClaimLost. A claim inserts the key's row, or takes over a claimed row whose lease
-// ran out, replacing its token, restarting its lease, and resetting created_at, and deletes the
+// ran out, replacing its token, restarting its lease, and keeping created_at, and deletes the
 // old token's log in the same transaction. An Index buffers a claim's appends in memory, Flush at
 // a time, and writes each full buffer in one multi-row insert on the token; Record writes the
 // remainder with the entry in one statement, so the log commits whole with its entry or not at

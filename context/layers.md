@@ -1229,8 +1229,7 @@ by age: over `docproc/postgres` with its `Retention`, `NewRetention(db, age)`, w
 budget)` drops at most the budget of entries older than the age, oldest first, with their logs,
 and never a claim under a live lease, a pass from the host's sweeper; over `MemoryIndex` and
 `FileIndex` with `Drop`. The retention is the `state` task's, under "Content"'s bound. An entry's
-age runs from its creation, its first claim, and a replay never refreshes it; `docproc/postgres`
-counts a recorded entry's from its `Record`, and a claim taken over from the takeover.
+age runs from its creation, its first claim, and neither a replay nor `Record` refreshes it.
 
 ### Event shapes
 

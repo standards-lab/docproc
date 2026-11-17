@@ -14,7 +14,7 @@ import (
 var reclaimEntries = statements.Statement("reclaim_entries")
 
 // Retention drops the entries the index no longer needs, a budget at a time: those created more
-// than its age ago, a recorded entry counting from its record. [NewRetention] makes one. Its Pass
+// than its age ago, counting from the key's first claim. [NewRetention] makes one. Its Pass
 // is a reclaimer's, so a host's sweeper that bounds each pass by a budget drives it.
 //
 // It is safe for concurrent use, and passes on several hosts over one database skip each other's

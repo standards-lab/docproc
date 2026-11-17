@@ -86,10 +86,27 @@ func itemsOf(t *testing.T, db *sqlate.DB, token string) int {
 	return scalar[int](t, db, `SELECT count(*) FROM docproc_item WHERE sha256 = $1 AND token = $2`, fixtureKey.SHA256, token)
 }
 
+// firstClaimed is the creation time backdate gives fixtureKey's row, far enough back that a
+// statement setting created_at to now() can't leave it.
+const firstClaimed = "2001-02-03 04:05:06+00"
+
+// backdate sets fixtureKey's row's created_at to firstClaimed.
+func backdate(t *testing.T, db *sqlate.DB) {
+	t.Helper()
+	exec(t, db, `UPDATE docproc_entry SET created_at = $1 WHERE sha256 = $2`, firstClaimed, fixtureKey.SHA256)
+}
+
+// keptFirstClaim reports whether fixtureKey's row's created_at is still firstClaimed: an
+// entry's age runs from its first claim, and neither a takeover nor a record refreshes it.
+func keptFirstClaim(t *testing.T, db *sqlate.DB) bool {
+	t.Helper()
+	return scalar[bool](t, db, `SELECT created_at = $1::timestamptz FROM docproc_entry WHERE sha256 = $2`, firstClaimed, fixtureKey.SHA256)
+}
+
 // A takeover deletes the log the old token flushed, and from then on the old token's renewal,
 // append, and record fail matching ErrClaimLost, while its release leaves the new claim, which
-// records its own log alone. A claim is two hosts' here: the old claimant's Index and the
-// taker's.
+// records its own log alone. The row keeps its first claim's created_at. A claim is two hosts'
+// here: the old claimant's Index and the taker's.
 func TestLive_TakeoverDiscardsTheOldLog(t *testing.T) {
 	db := migrated(t)
 	ctx := t.Context()
@@ -103,7 +120,11 @@ func TestLive_TakeoverDiscardsTheOldLog(t *testing.T) {
 	if n := itemsOf(t, db, old); n != 2 {
 		t.Fatalf("before the takeover, %d of the old token's items are written, want 2", n)
 	}
+	backdate(t, db)
 	next := takeOver(t, taker)
+	if !keptFirstClaim(t, db) {
+		t.Error("the takeover changed the row's created_at, want the first claim's")
+	}
 	if n := itemsOf(t, db, old); n != 0 {
 		t.Errorf("after the takeover, %d of the old token's items remain", n)
 	}
@@ -173,7 +194,8 @@ func TestLive_OldTokenStatementsRefuse(t *testing.T) {
 
 // Record commits the log whole with its entry or not at all: a record the database fails, here
 // through a trigger that refuses every entry, writes none of the buffered items, and the claim
-// survives it, its record retried once the trigger is gone writing the log whole.
+// survives it, its record retried once the trigger is gone writing the log whole, and leaving
+// the row's created_at the first claim's.
 func TestLive_RecordIsAtomic(t *testing.T) {
 	db := migrated(t)
 	ctx := t.Context()
@@ -201,6 +223,7 @@ func TestLive_RecordIsAtomic(t *testing.T) {
 		t.Errorf("lookup after a failed record: %v, %v, want no entry", ok, err)
 	}
 	exec(t, db, `DROP TRIGGER docproc_test_refuse ON docproc_entry`)
+	backdate(t, db)
 	if err := idx.Record(ctx, fixtureKey, token, fixture); err != nil {
 		t.Fatalf("the retried record: %v", err)
 	}
@@ -219,8 +242,11 @@ func TestLive_RecordIsAtomic(t *testing.T) {
 	if err := idx.Renew(ctx, fixtureKey, token); !errors.Is(err, dispatch.ErrClaimLost) {
 		t.Errorf("renew after the record: %v, want ErrClaimLost", err)
 	}
-	if exp := scalar[bool](t, db, `SELECT expires_at IS NULL AND created_at >= now() - interval '1 minute' FROM docproc_entry`); !exp {
-		t.Error("the recorded row kept a lease or an old creation time")
+	if exp := scalar[bool](t, db, `SELECT expires_at IS NULL FROM docproc_entry`); !exp {
+		t.Error("the recorded row kept a lease")
+	}
+	if !keptFirstClaim(t, db) {
+		t.Error("the record changed the row's created_at, want the first claim's")
 	}
 }
 

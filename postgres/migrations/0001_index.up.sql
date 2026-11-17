@@ -5,8 +5,9 @@
 -- for a claim that never expires and for a recorded entry, whose claim has ended. entry is the
 -- dispatch.Entry as JSON, NULL until Record: a row with an entry is recorded, one without is
 -- claimed. dispatch_version is the dispatch.Version whose shapes the row's entry and its log's
--- items carry, set by the writer that claims or records the key. created_at is the claim's
--- time, and, once recorded, the record's, from which a retention counts the entry's age.
+-- items carry, set by the writer that claims or records the key. created_at is the first
+-- claim's time, which neither a takeover nor a record changes, from which a retention counts the
+-- entry's age.
 CREATE TABLE docproc_entry (
     sha256           text        NOT NULL,
     stage_name       text        NOT NULL,

@@ -64,10 +64,10 @@ takes from the pool, so a pool it can't reach fails too.
   `NewRetention(db, age)` returns a `Retention` whose `Pass(ctx, budget)` drops at most `budget`
   entries created more than `age` ago on the database's clock, oldest first, with their logs, and
   notifies each dropped key's waiters; it reports `more` exactly when it dropped its whole budget.
-  A recorded entry's age runs from its record, and a lapsed claim's from its claim; a claim under
-  a live lease, or one that never expires, is never dropped. The host drives `Pass` from its
-  sweeper, and the age is its call: a dropped key's content is prepared again on its next
-  dispatch, and the module has no default.
+  An entry's age runs from its first claim, which neither a takeover nor a record refreshes; a
+  claim under a live lease, or one that never expires, is never dropped. The host drives `Pass`
+  from its sweeper, and the age is its call: a dropped key's content is prepared again on its
+  next dispatch, and the module has no default.
 
 ```go
 retention, err := postgres.NewRetention(db, 30*24*time.Hour)
