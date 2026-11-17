@@ -51,7 +51,9 @@ func committedFixtures(t *testing.T) []string {
 // tools, the same-checkout docproc tools among them, under a host's bomb rule and entry bound, so
 // a bomb fixture is held to it rather than expanded, and checks each fixture's route and outcome
 // against the golden, as text: the whole module's fixtures read as a host reads them, through
-// stages and dispatch.
+// stages and dispatch, four at once, as a host's pool workers run them. The bomb rule matters to
+// the others too: an expanded bomb fills the working directory's filesystem, and soffice, its
+// user installation not written, then fails whatever legacy document runs beside it.
 func TestEveryFixture(t *testing.T) {
 	set := builtSet(t, stages.Options{Inspect: inspect.Options{BombRatio: 100, BombSize: 64 << 20, Entries: 10000}})
 	d, err := dispatch.New(dispatch.Config{
@@ -69,7 +71,7 @@ func TestEveryFixture(t *testing.T) {
 				return
 			}
 		}
-	}, 1) {
+	}, 4) {
 		if err != nil {
 			t.Fatalf("%s: %v", ev.Input.Path, err)
 		}
