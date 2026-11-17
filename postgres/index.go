@@ -259,8 +259,8 @@ func (x *Index) Items(ctx context.Context, key dispatch.Key) iter.Seq2[dispatch.
 				break
 			}
 		}
-		now, err := lookupLog.One(ctx, x.db, args(key))
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && string(now.data) != token) {
+		last, err := lookupLog.One(ctx, x.db, args(key))
+		if errors.Is(err, sql.ErrNoRows) || (err == nil && string(last.data) != token) {
 			fail(errReplaced)
 		} else if err != nil {
 			fail(fmt.Errorf("postgres: index: items: %w", err))

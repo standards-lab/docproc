@@ -3,8 +3,9 @@
 -- Claims key for token: inserts its row, claimed, when the key has none, or takes over a
 -- claimed row whose lease ran out, on the database's clock. A takeover replaces the token,
 -- restarts the lease, and keeps created_at, the first claim's time, and the row returned names
--- the token it replaced, whose log Claim then discards in the same transaction. A first claim returns NULL. No row is
--- returned, claiming nothing, when the key is recorded or another holds an unexpired claim.
+-- the token it replaced, whose log Claim then discards in the same transaction. A first claim
+-- returns NULL. No row is returned, claiming nothing, when the key is recorded or another holds
+-- an unexpired claim.
 INSERT INTO docproc_entry (sha256, stage_name, stage_version, stage_config, token, expires_at, dispatch_version)
 VALUES ({{sha256}}, {{stage_name}}, {{stage_version}}, {{stage_config}}, {{token}},
         now() + {{lease:interval}}, {{version}})

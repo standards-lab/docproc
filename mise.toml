@@ -85,9 +85,7 @@ for mod in $GO_MODULES; do
   golangci-lint run ./...
 done
 # sqlint is the postgres module's tool, and resolves the engine sqlint.toml names through the
-# module's own requirements. A directory sqlint.toml names that doesn't exist yet holds no SQL to
-# find, so the step passes until the module's first statement or migration, and checks it from
-# then on.
+# module's own requirements.
 echo "check: sqlint"
 cd "$MISE_PROJECT_ROOT/postgres"
 go tool sqlint .
