@@ -17,7 +17,7 @@ import (
 // adapterVersion is the version of the stage adapters, part of every adapter's configuration
 // hash: a change to what an adapter yields for the same tools and request changes it, so the index
 // prepares content again.
-const adapterVersion = "4"
+const adapterVersion = "5"
 
 // versions returns the versions of the tools behind a stage, for its identity's Version: each
 // tool's whole version line, as its version command printed it, joined by ", " in the order

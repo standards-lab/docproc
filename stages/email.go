@@ -36,10 +36,10 @@ type emailConfig struct {
 // its subject, and its Message-ID, and an embedded one's the message it is embedded in; and a line
 // of a kind email doesn't know, by its kind. A message of a conversation class, a Skype for
 // Business conversation or missed conversation, is read as email's Message.Conversation views it:
-// a record of email.Conversation, "conversation <id>", or "conversation" without one, as JSON,
-// since it is a view of the line, then its transcript's Markdown, of the same name, the Meta of
-// both its topic and "missed", "true" or "false", in place of the subject and Message-ID, an
-// embedded one's too, since the class decides.
+// a record of email.Conversation, "conversation <id>", or "conversation" without one, of
+// [dispatch.MediaMailConversation], not MediaMail, since it is a view of the line, then its
+// transcript's Markdown, of the same name, the Meta of both its topic and "missed", "true" or
+// "false", in place of the subject and Message-ID, an embedded one's too, since the class decides.
 //
 // A message's attachments and media come before its own outputs, in their order: docproc-mail
 // writes a message's files before its line, so each is a part dispatched, every part found in it
@@ -152,11 +152,11 @@ func (w *emailWalk) folder(folder uint64) string {
 func (w *emailWalk) record(rec email.Record) error {
 	switch r := rec.(type) {
 	case *email.Store:
-		return w.output(record("store", r, dispatch.MediaMail, map[string]string{"format": r.Format}))
+		return w.output(record("store", r, dispatch.MediaMail, map[string]string{dispatch.MetaFormat: r.Format}))
 	case *email.Folder:
 		w.folders[r.ID] = r.Path
 		id := strconv.FormatUint(r.ID, 10)
-		return w.output(record("folder "+id, r, dispatch.MediaMail, map[string]string{"id": id, "path": strings.Join(r.Path, "/")}))
+		return w.output(record("folder "+id, r, dispatch.MediaMail, map[string]string{dispatch.MetaID: id, dispatch.MetaPath: strings.Join(r.Path, "/")}))
 	case *email.Message:
 		id := ""
 		if r.ID != 0 {
@@ -207,9 +207,9 @@ func (w *emailWalk) message(m *email.Message, name, parent string) error {
 	if err := w.attachments(m.Attachments, m.Media, name); err != nil {
 		return err
 	}
-	meta := map[string]string{"subject": m.Subject}
+	meta := map[string]string{dispatch.MetaSubject: m.Subject}
 	if m.MessageID != "" {
-		meta["message_id"] = m.MessageID
+		meta[dispatch.MetaMessageID] = m.MessageID
 	}
 	return w.own(m, dispatch.MediaMail, name, parent, m.ID, m.Folder, m.Markdown, meta)
 }
@@ -221,8 +221,8 @@ func (w *emailWalk) conversation(c *email.Conversation, name, parent string) err
 	if err := w.attachments(c.Attachments, c.Media, name); err != nil {
 		return err
 	}
-	meta := map[string]string{"topic": c.Topic, "missed": strconv.FormatBool(c.Missed)}
-	return w.own(c, "application/json", name, parent, c.ID, c.Folder, c.Markdown, meta)
+	meta := map[string]string{dispatch.MetaTopic: c.Topic, dispatch.MetaMissed: strconv.FormatBool(c.Missed)}
+	return w.own(c, dispatch.MediaMailConversation, name, parent, c.ID, c.Folder, c.Markdown, meta)
 }
 
 // attachments yields each of a message's attachments, then each of its media, in their order, the
@@ -249,13 +249,13 @@ func (w *emailWalk) attachments(as []email.Attachment, media []email.Medium, nam
 // dispatch.Item's After, when the message is one of the read's own, with an id.
 func (w *emailWalk) own(v any, mediaType, name, parent string, id, folder uint64, md string, meta map[string]string) error {
 	if id != 0 {
-		meta["id"] = strconv.FormatUint(id, 10)
+		meta[dispatch.MetaID] = strconv.FormatUint(id, 10)
 	}
 	if path, ok := w.folders[folder]; ok && folder != 0 {
-		meta["folder"] = strings.Join(path, "/")
+		meta[dispatch.MetaFolder] = strings.Join(path, "/")
 	}
 	if parent != "" {
-		meta["embedded_in"] = parent
+		meta[dispatch.MetaEmbeddedIn] = parent
 	}
 	var cursor uint64
 	if parent == "" {

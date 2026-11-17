@@ -1,4 +1,4 @@
-//go:build (integration || findings) && linux
+//go:build integration && linux
 
 package audio_test
 

@@ -27,7 +27,8 @@ import (
 // prepares text again.
 const textVersion = "2"
 
-// The encodings the text stage names in its output's Meta "encoding", and how it decided each.
+// The encodings the text stage names in its output's Meta [dispatch.MetaEncoding], and how it
+// decided each.
 const (
 	textByBOM    = " (byte order mark)"
 	textFallback = "windows-1252 (fallback)"
@@ -192,7 +193,7 @@ func textOutput(path, encoding string, warnings []string) decoded {
 	return decoded{
 		output: dispatch.Output{
 			Kind: dispatch.TextOutput, Name: "text", MediaType: "text/plain", Path: path,
-			Meta: map[string]string{"encoding": encoding},
+			Meta: map[string]string{dispatch.MetaEncoding: encoding},
 		},
 		warnings: warnings,
 	}

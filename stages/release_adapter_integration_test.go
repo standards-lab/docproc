@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io/fs"
 	"iter"
-	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
@@ -55,27 +54,19 @@ func diskBytes(t *testing.T, dir string) int64 {
 
 // TestEmailStageReleases dispatches real stores through the email stage, a sink stage on every
 // other route so that each attachment is recorded, probing the working directory's bytes at
-// every event: no attachment fails or is lost, a repeated one is seen, and the peak stays under
-// the attachments' sum, each original released once its content is recorded. The tika store
-// gives mail no attachment content, and the plaso store, outside the repository, is dispatched
-// only where it is present.
+// every event: no attachment fails or is lost, and a repeated one is seen. The tika store gives
+// mail no attachment content, and libyal's repeats one message's eleven attachments in a second.
+// No committed store spreads its attachments over messages enough that the peak must fall below
+// their sum, mail writing a small store's ahead of the dispatch, so the test logs the peak;
+// dispatch's TestReleaseBoundsDisk holds that each original is released once it is recorded.
 func TestEmailStageReleases(t *testing.T) {
-	stores := []struct {
-		path string
-		// many is whether the store spreads its attachments over messages enough that its peak
-		// must fall below their sum; a small store's attachments mail may write all at once,
-		// ahead of the dispatch.
-		many bool
-	}{
-		{filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), false},
-		{filepath.Join(mailFixtures(t), "pst", "tika", "testPST.pst"), false},
-		{filepath.Join("..", ".state", "findings", "plaso", "nromanoff@stark-research-labs.com.pst"), true},
+	stores := []string{
+		filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"),
+		filepath.Join(mailFixtures(t), "pst", "tika", "testPST.pst"),
+		filepath.Join(mailFixtures(t), "pst", "libyal", "outlook.pst"),
 	}
-	for _, st := range stores {
-		t.Run(filepath.Base(st.path), func(t *testing.T) {
-			if _, err := os.Stat(st.path); errors.Is(err, fs.ErrNotExist) {
-				t.Skipf("%s isn't here", st.path)
-			}
+	for _, store := range stores {
+		t.Run(filepath.Base(store), func(t *testing.T) {
 			stages := dispatch.Stages{route.Nested: testEmailStage(t)}
 			for _, r := range []route.Route{
 				route.Document, route.Office, route.Vision, route.VisionConverted, route.OneNote,
@@ -92,7 +83,7 @@ func TestEmailStageReleases(t *testing.T) {
 			distinct := map[string]bool{}
 			found, seen := 0, 0
 			var last dispatch.Event
-			for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: st.path}) {
+			for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: store}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -120,9 +111,6 @@ func TestEmailStageReleases(t *testing.T) {
 			}
 			if found-len(distinct) != seen {
 				t.Errorf("%d found, %d distinct, %d seen: each repeat should be seen", found, len(distinct), seen)
-			}
-			if st.many && peak >= sum {
-				t.Errorf("the working directory peaked at %d bytes, the attachments' sum %d", peak, sum)
 			}
 			t.Logf("%d attachments, %d distinct, %d bytes; the working directory's peak %d bytes", found, len(distinct), sum, peak)
 		})

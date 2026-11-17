@@ -146,7 +146,8 @@
 // [Event], [Part], [ContentType], [Identity], [Output], and [Warning] are the JSON shapes a
 // dispatch yields, the index's [Key], [Entry], [Recorded], and [Child] the shapes it stores, and
 // [Tool], [Row], and [State] the stage table's, all on encoding/json and versioned by [Version],
-// with the Meta keys a consumer reads and the record outputs' media types. A field local to a
+// with the Meta keys, every key a stage of package stages sets, and the record outputs' media
+// types. A field local to a
 // process, such as a part's or an output's Path, never marshals.
 //
 // # Outputs and the caller's loop
@@ -267,7 +268,14 @@
 //     made by [NewFileContent], and [MemoryContent], made by [NewMemoryContent].
 //   - The shapes, versioned by [Version]: [Event], its [Part] and the part's [ContentType], an
 //     [Output], a [Warning], and the stage table's [Tool], [Row], and [State], [Wired],
-//     [Missing], or [Excluded]; the Meta keys [MetaPage], [MetaCount], [MetaWindow],
-//     [MetaFrame], [MetaSheet], and [MetaDPI]; and the record media types [MediaAudioPlan],
-//     [MediaVideoPlan], [MediaOOXML], [MediaMail], and [MediaOneNote].
+//     [Missing], or [Excluded]; the Meta keys, every key a stage of package stages sets:
+//     [MetaPage], [MetaCount], [MetaWindow], [MetaFrame], [MetaSheet], [MetaDPI], and
+//     [MetaFields]; the windows' [MetaStart], [MetaEnd], [MetaCut], [MetaSamples],
+//     [MetaThreshold], [MetaSeamBefore], and [MetaSeamAfter]; the frames' [MetaTime],
+//     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding], and
+//     [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath], [MetaFormat], [MetaFolder],
+//     [MetaSubject], [MetaMessageID], [MetaTopic], [MetaMissed], [MetaEmbeddedIn], [MetaName],
+//     [MetaSection], and [MetaTitle]; and the record media types [MediaAudioPlan],
+//     [MediaVideoPlan], [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm], and
+//     [MediaMailConversation].
 package dispatch

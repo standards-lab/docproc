@@ -63,8 +63,9 @@ type documentConfig struct {
 // finding as the part's own flag, inspect.PDFEncrypt, through dispatch.Item.Flag, then ends with
 // dispatch.ErrEncrypted, nothing rendered; one encrypted but restricted only by its permissions,
 // which opens with no password, is prepared as any other. It then reads the PDF's AcroForm, and a
-// PDF whose AcroForm has fields yields, before anything else, a [dispatch.RecordOutput] named
-// "forms" holding a document.Form, its Meta's "fields" their count.
+// PDF whose AcroForm has fields yields, before anything else, a [dispatch.RecordOutput] of
+// [dispatch.MediaForm] named "forms" holding a document.Form, its Meta's [dispatch.MetaFields]
+// their count.
 //
 // It then saves each of the PDF's embedded files, the name tree's and the file attachment
 // annotations': each is written into the part's directory under its content's SHA-256, never its
@@ -196,7 +197,7 @@ func (r *documentRun) forms() bool {
 	case len(form.Fields) == 0:
 		return true
 	}
-	o, err := record("forms", form, "application/json", map[string]string{"fields": strconv.Itoa(len(form.Fields))})
+	o, err := record("forms", form, dispatch.MediaForm, map[string]string{dispatch.MetaFields: strconv.Itoa(len(form.Fields))})
 	if err != nil {
 		r.yield(dispatch.Item{}, err)
 		return false

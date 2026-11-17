@@ -35,9 +35,9 @@
 // docproc-onenote's exit codes 1 to 4, and a death by a signal, are a *cli.ExitError, which matches
 // its code's error through errors.Is, ErrNotWritten, ErrUsage (a fault in this package), ErrRefused
 // (with docproc-onenote's reason), or ErrFailed, each internal/cli's shared error, and names a
-// refusal's class by its Refusal method: a password-protected section's reason begins "encrypted",
-// cli.Encrypted, and a table of contents refused under --file-only is cli.ReadElsewhere, its
-// sections read as their own inputs. A read whose context ends returns an error matching the
+// refusal's class by its Refusal method, through cli.RefusalClass: a password-protected section's
+// reason begins "encrypted", dispatch.ErrEncrypted, and a table of contents refused under
+// --file-only is dispatch.ErrReadElsewhere, its sections read as their own inputs. A read whose context ends returns an error matching the
 // context's, as every Tool run does. A loop that stops early stops docproc-onenote.
 //
 // Known limits, docproc-onenote's, as its README states: a password-protected section is refused

@@ -116,9 +116,9 @@ var ErrSchema = cli.ErrSchema
 // the working directory, is an error matching ErrRequest before anything runs. A first line that
 // isn't a schema "2" notebook line is an error matching ErrSchema. docproc-onenote's exit codes 1
 // to 4, and a death by a signal, are a *cli.ExitError, which matches its code's error and names a
-// refusal's class by its Refusal method: an encrypted section's is cli.Encrypted, and a table of
-// contents' under --file-only cli.ReadElsewhere. When ctx ends the run, the error matches ctx's,
-// as every Tool run's does. A read that fails yields one last pair, nil and its error.
+// refusal's class by its Refusal method, through cli.RefusalClass: an encrypted section's is
+// dispatch.ErrEncrypted, and a table of contents' under --file-only dispatch.ErrReadElsewhere.
+// When ctx ends the run, the error matches ctx's, as every Tool run's does. A read that fails yields one last pair, nil and its error.
 func (r *Reader) Read(ctx context.Context, req Request) iter.Seq2[Record, error] {
 	return func(yield func(Record, error) bool) {
 		stopped := false

@@ -158,8 +158,8 @@ func TestRealThreadsMIME(t *testing.T) {
 // realThreads is the threads of docproc-mail's stores that have a hand truth, each by its path
 // under its tests/fixtures, rendered: Tika's two, derived by hand from the stored fields tika-threading.json holds
 // and the dates mail's goldens give, and the generated store's, by subject alone. TestRealThreads,
-// TestRealThreadsIndex, and TestRealThreadsGenerated check them, and the findings tier scores
-// against them.
+// TestRealThreadsIndex, and TestRealThreadsGenerated check them; the findings tier that stays in
+// spike-ai-pipeline-processing at v0.9.0 scored against them.
 var realThreads = map[string]string{
 	"pst/tika/testPST.pst":                  "2097348 2097252[2097188] 2097220 2097316 2097284 2097380",
 	"pst/tika/testPST_variousBodyTypes.pst": "2097188[2097220 2097252 2097284]",

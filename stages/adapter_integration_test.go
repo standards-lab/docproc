@@ -600,9 +600,9 @@ func TestEmailEmbedded(t *testing.T) {
 // TestEmailConversations dispatches mail's conversations.pst, whose Conversation History folder
 // holds three conversations, a missed one, and a note. Each conversation-class item is a
 // conversation record, "conversation <id>", the email package's Conversation, right before its
-// transcript's Markdown of the same name; the Meta of both names
-// its id, folder, topic, and whether it was missed. The note is a message record and Markdown, as
-// before. Each item's Markdown is its hand truth's, in truth.json, found by its subject.
+// transcript's Markdown of the same name, of dispatch.MediaMailConversation; the Meta of both
+// names its id, folder, topic, and whether it was missed. The note is a message record and
+// Markdown, of dispatch.MediaMail, as before. Each item's Markdown is its hand truth's, in truth.json, found by its subject.
 func TestEmailConversations(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
 	generated := filepath.Join(mailFixtures(t), "generated")
@@ -650,6 +650,9 @@ func TestEmailConversations(t *testing.T) {
 			if !maps.Equal(o.Meta, want) || strconv.FormatUint(c.ID, 10) != id || c.Topic == "" {
 				t.Errorf("%s: meta %v, want %v", o.Name, o.Meta, want)
 			}
+			if o.MediaType != dispatch.MediaMailConversation {
+				t.Errorf("%s: %s, want %s", o.Name, o.MediaType, dispatch.MediaMailConversation)
+			}
 			recordThenMarkdown(t, store, o.Name)
 			md := store.Outputs[i+1]
 			if string(md.Value) != c.Markdown || c.Markdown != markdownBy[c.Topic] || !maps.Equal(md.Meta, want) {
@@ -660,6 +663,9 @@ func TestEmailConversations(t *testing.T) {
 			recordThenMarkdown(t, store, o.Name)
 			if md := store.Outputs[i+1]; o.Meta["folder"] != folder || string(md.Value) != markdownBy[o.Meta["subject"]] {
 				t.Errorf("%s: meta %v, Markdown %q", o.Name, o.Meta, md.Value)
+			}
+			if o.MediaType != dispatch.MediaMail {
+				t.Errorf("%s: %s, want %s", o.Name, o.MediaType, dispatch.MediaMail)
 			}
 		}
 	}

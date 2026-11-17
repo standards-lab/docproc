@@ -143,18 +143,18 @@ func (s *audioStage) Prepare(ctx context.Context, p dispatch.Part, dir string) i
 // windowMeta returns a window output's Meta, as audioStage's doc says.
 func windowMeta(w audio.WindowFile) map[string]string {
 	meta := map[string]string{
-		dispatch.MetaWindow: strconv.Itoa(w.Index),
-		"start":             secs(w.Window.Start),
-		"end":               secs(w.Window.End),
-		"cut":               w.Window.Cut.String(),
-		"samples":           strconv.Itoa(w.Samples),
-		"threshold":         strconv.FormatFloat(w.Threshold, 'f', -1, 64),
+		dispatch.MetaWindow:    strconv.Itoa(w.Index),
+		dispatch.MetaStart:     secs(w.Window.Start),
+		dispatch.MetaEnd:       secs(w.Window.End),
+		dispatch.MetaCut:       w.Window.Cut.String(),
+		dispatch.MetaSamples:   strconv.Itoa(w.Samples),
+		dispatch.MetaThreshold: strconv.FormatFloat(w.Threshold, 'f', -1, 64),
 	}
 	if w.Index > 0 {
-		meta["seam_before"] = spanSecs(w.SeamBefore)
+		meta[dispatch.MetaSeamBefore] = spanSecs(w.SeamBefore)
 	}
 	if w.Window.Cut != audio.CutEnd {
-		meta["seam_after"] = spanSecs(w.SeamAfter)
+		meta[dispatch.MetaSeamAfter] = spanSecs(w.SeamAfter)
 	}
 	return meta
 }

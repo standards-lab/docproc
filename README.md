@@ -34,7 +34,7 @@ the reference for its exported names, and its doc comment lists them.
 | `audio` | Speech cut into windows that end in a silence, from one ffmpeg decode, and the audio plan record beside them. |
 | `media` | A file's audio windows and its video frames, at its scene changes and at least every so often, from one ffmpeg run, and the video plan record beside them. |
 | `sevenzip` | 7z, zstd, cabinet, and a ZIP's entries of methods `archive/zip` doesn't read, listed and read through 7-Zip's 7zz. |
-| `dispatch` | The walk over an input's parts to their stages; the Stage contract and its error classes; the content store and its layout, and the index, each with a file and a memory implementation; the shapes of its events, parts, outputs, and warnings; and the Meta keys and record media types a consumer reads. It imports `route` and `inspect` alone. |
+| `dispatch` | The walk over an input's parts to their stages; the Stage contract and its error classes; the content store and its layout, and the index, each with a file and a memory implementation; the shapes of its events, parts, outputs, and warnings; and the Meta keys every stage sets and the record media types. It imports `route` and `inspect` alone. |
 | `dispatch/dispatchtest` | The Index and Content conformance suites, for every store, the module's own and a provider's, and the fixture stage a host's tests dispatch over. |
 | `stages` | `Build` and its `Options`: docproc's shipped wiring, each route's stage over its format package and tools, found on the host, under the host's run bounds and requests, with the one failure classification and each stage's identity. |
 | `internal/cli` | The envelope reader the three readers share: their lines, stderr warnings, exit codes, and media names. |

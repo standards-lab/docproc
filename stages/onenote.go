@@ -131,11 +131,11 @@ func (w *onenoteWalk) output(o dispatch.Output, err error) error {
 func (w *onenoteWalk) record(rec onenote.Record) error {
 	switch r := rec.(type) {
 	case *onenote.Notebook:
-		return w.output(record("notebook", r, dispatch.MediaOneNote, map[string]string{"id": r.ID, "name": r.Name}))
+		return w.output(record("notebook", r, dispatch.MediaOneNote, map[string]string{dispatch.MetaID: r.ID, dispatch.MetaName: r.Name}))
 	case *onenote.SectionGroup:
-		return w.output(record("section group "+r.ID, r, dispatch.MediaOneNote, map[string]string{"id": r.ID, "path": strings.Join(r.Path, "/")}))
+		return w.output(record("section group "+r.ID, r, dispatch.MediaOneNote, map[string]string{dispatch.MetaID: r.ID, dispatch.MetaPath: strings.Join(r.Path, "/")}))
 	case *onenote.Section:
-		return w.output(record("section "+r.ID, r, dispatch.MediaOneNote, map[string]string{"id": r.ID, "path": strings.Join(r.Path, "/")}))
+		return w.output(record("section "+r.ID, r, dispatch.MediaOneNote, map[string]string{dispatch.MetaID: r.ID, dispatch.MetaPath: strings.Join(r.Path, "/")}))
 	case *onenote.Page:
 		return w.page(r)
 	case *onenote.Skipped:
@@ -156,7 +156,7 @@ func (w *onenoteWalk) record(rec onenote.Record) error {
 // page yields p's record and Markdown, then each of its media, as the stage's doc says.
 func (w *onenoteWalk) page(p *onenote.Page) error {
 	name := "page " + p.ID
-	meta := map[string]string{"id": p.ID, "section": p.Section, "title": p.Title}
+	meta := map[string]string{dispatch.MetaID: p.ID, dispatch.MetaSection: p.Section, dispatch.MetaTitle: p.Title}
 	if err := w.output(record(name, p, dispatch.MediaOneNote, meta)); err != nil {
 		return err
 	}

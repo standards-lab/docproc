@@ -163,7 +163,7 @@ func TestDocumentStageForms(t *testing.T) {
 		`{"name":"applicant.name","type":"text","value":"Ada Lovelace"},` +
 		`{"name":"subscribe","type":"checkbox","value":"Yes","checked":true},` +
 		`{"name":"colour","type":"choice","value":"Green","options":["Red","Green"],"selected":["Green"]}]}`
-	if string(rec.Value) != want || rec.MediaType != "application/json" || rec.Meta["fields"] != "3" {
+	if string(rec.Value) != want || rec.MediaType != dispatch.MediaForm || rec.Meta["fields"] != "3" {
 		t.Errorf("forms record %s, %s, %v;\nwant %s", rec.Value, rec.MediaType, rec.Meta, want)
 	}
 	var back document.Form

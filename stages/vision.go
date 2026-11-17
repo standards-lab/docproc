@@ -58,7 +58,7 @@ func (s *visionStage) Prepare(_ context.Context, p dispatch.Part, _ string) iter
 		}
 		yield(dispatch.OutputItem(dispatch.Output{
 			Kind: dispatch.ImageOutput, Name: "picture", MediaType: mime, Path: p.Path,
-			Meta: map[string]string{"kind": string(p.ContentType.Kind)},
+			Meta: map[string]string{dispatch.MetaKind: string(p.ContentType.Kind)},
 		}), nil)
 	}
 }

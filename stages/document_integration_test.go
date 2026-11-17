@@ -99,8 +99,8 @@ func TestDocumentStageFormsReal(t *testing.T) {
 			continue
 		}
 		rec := ev.Outputs[0]
-		if string(rec.Value) != want || rec.Meta["fields"] != strconv.Itoa(strings.Count(want, `"name"`)) {
-			t.Errorf("%s: forms record %s, %v;\nwant %s", name, rec.Value, rec.Meta, want)
+		if string(rec.Value) != want || rec.MediaType != dispatch.MediaForm || rec.Meta["fields"] != strconv.Itoa(strings.Count(want, `"name"`)) {
+			t.Errorf("%s: forms record %s, %s, %v;\nwant %s", name, rec.Value, rec.MediaType, rec.Meta, want)
 		}
 		t.Logf("%s: %s", name, rec.Value)
 	}

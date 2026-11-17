@@ -175,11 +175,11 @@ func frameOutput(ev media.Event) dispatch.Output {
 	return dispatch.Output{
 		Kind: dispatch.ImageOutput, Name: "frame " + strconv.Itoa(f.Index), MediaType: "image/png", Path: f.Path,
 		Meta: map[string]string{
-			dispatch.MetaFrame: strconv.Itoa(f.Index),
-			"time":             secs(ev.Time),
-			"reason":           f.Reason.String(),
-			"width":            strconv.Itoa(f.Width),
-			"height":           strconv.Itoa(f.Height),
+			dispatch.MetaFrame:  strconv.Itoa(f.Index),
+			dispatch.MetaTime:   secs(ev.Time),
+			dispatch.MetaReason: f.Reason.String(),
+			dispatch.MetaWidth:  strconv.Itoa(f.Width),
+			dispatch.MetaHeight: strconv.Itoa(f.Height),
 		},
 	}
 }
@@ -187,18 +187,18 @@ func frameOutput(ev media.Event) dispatch.Output {
 // videoWindowOutput returns a window event's audio output, as videoStage's doc says.
 func videoWindowOutput(w *media.Window) dispatch.Output {
 	meta := map[string]string{
-		dispatch.MetaWindow: strconv.Itoa(w.Index),
-		"start":             secs(w.Span.Start),
-		"end":               secs(w.Span.End),
-		"cut":               w.Cut.String(),
-		"samples":           strconv.Itoa(w.Samples),
-		"threshold":         strconv.FormatFloat(w.Threshold, 'f', -1, 64),
+		dispatch.MetaWindow:    strconv.Itoa(w.Index),
+		dispatch.MetaStart:     secs(w.Span.Start),
+		dispatch.MetaEnd:       secs(w.Span.End),
+		dispatch.MetaCut:       w.Cut.String(),
+		dispatch.MetaSamples:   strconv.Itoa(w.Samples),
+		dispatch.MetaThreshold: strconv.FormatFloat(w.Threshold, 'f', -1, 64),
 	}
 	if w.Index > 0 {
-		meta["seam_before"] = spanSecs(w.SeamBefore)
+		meta[dispatch.MetaSeamBefore] = spanSecs(w.SeamBefore)
 	}
 	if w.Cut != audio.CutEnd {
-		meta["seam_after"] = spanSecs(w.SeamAfter)
+		meta[dispatch.MetaSeamAfter] = spanSecs(w.SeamAfter)
 	}
 	return dispatch.Output{
 		Kind: dispatch.AudioOutput, Name: "window " + strconv.Itoa(w.Index), MediaType: "audio/wav", Path: w.Path, Meta: meta,

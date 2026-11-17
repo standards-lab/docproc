@@ -270,7 +270,7 @@ func speechLayout(utterances []time.Duration, rounds int) (gaps []audio.Span, du
 	return gaps, duration
 }
 
-// spans is gaps as audio.Spans.
+// spans is gaps as a []audio.Span.
 func spans(gaps []gapTruth) []audio.Span {
 	out := make([]audio.Span, len(gaps))
 	for i, g := range gaps {

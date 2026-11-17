@@ -169,7 +169,7 @@ func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Do
 	case *office.Document:
 		meta := map[string]string{}
 		if r.ConvertedFrom != "" {
-			meta["converted_from"] = r.ConvertedFrom
+			meta[dispatch.MetaConvertedFrom] = r.ConvertedFrom
 		}
 		return r, w.item(dispatch.OutputItem(markdown("document", r.Markdown, meta)))
 	case *office.Sheet:

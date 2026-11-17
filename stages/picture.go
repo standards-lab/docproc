@@ -82,7 +82,7 @@ func (s *pictureStage) Prepare(ctx context.Context, p dispatch.Part, dir string)
 		for i, png := range pngs {
 			o := dispatch.Output{
 				Kind: dispatch.ImageOutput, Name: "picture", MediaType: "image/png", Path: png,
-				Meta: map[string]string{"from": string(p.ContentType.Kind)},
+				Meta: map[string]string{dispatch.MetaFrom: string(p.ContentType.Kind)},
 			}
 			if p.ContentType.Kind == route.TIFF {
 				// A TIFF yields its every page, as the document stage yields a PDF's.
