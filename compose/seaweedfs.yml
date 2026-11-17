@@ -1,0 +1,8 @@
+services:
+  seaweedfs:
+    build:
+      context: seaweedfs
+    ports:
+      # 8334 by default so the harness coexists with go-storage's SeaweedFS on 8333.
+      - "127.0.0.1:${DOCPROC_SEAWEEDFS_PORT:-8334}:8333"
+    tmpfs: /data

@@ -1,14 +1,16 @@
-# CI runs on every pull request into main and every push to main. Each system tool's check runs
-# once per runner, natively on x64 and arm64, followed by its third-party notices, but only when
-# the tool's directory or the wiring every tool shares changed; the Go job runs the root's
-# check:go on both runners only when what the Go modules build or read changed; the lint job runs
-# the root's lint, shellcheck and actionlint and the release workflow's tag-routing test, only
-# when a script, a workflow, or the root mise.toml changed. The `ci` job always runs last and is
-# the one check docproc's `main` ruleset requires: it fails when any job it needs failed or was
-# cancelled, and passes when they succeeded or their paths skipped them, so a skipped job never
-# blocks a merge. Actions are pinned by their exact release tag, which `mise run currency`
-# compares with each action's latest release. A newer run on the same ref cancels the one it
-# supersedes.
+# CI runs on every pull request into main, every push to main, and on demand. Each system tool's
+# check runs once per runner, natively on x64 and arm64, followed by its third-party notices, but
+# only when the tool's directory or the wiring every tool shares changed; the Go job runs the
+# root's check:go on both runners only when what the Go modules build or read changed; the lint
+# job runs the root's lint, shellcheck and actionlint and the release workflow's tag-routing test,
+# only when a script, a workflow, or the root mise.toml changed; the integration job runs the
+# provider modules' live tiers against the compose harness, on a push to main when what they build
+# or run against changed and on demand, never on a pull request. The `ci` job always runs last and
+# is the one check docproc's `main` ruleset requires: it fails when any job it needs failed or was
+# cancelled, and passes when they succeeded or were skipped, by their paths or, the integration
+# job, by a pull request, so a skipped job never blocks a merge. Actions are pinned by their exact
+# release tag, which `mise run currency` compares with each action's latest release. A newer run
+# on the same ref cancels the one it supersedes.
 name: CI
 
 on:
@@ -16,6 +18,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -39,6 +42,7 @@ jobs:
       tools: ${{ steps.tools.outputs.changes }}
       go: ${{ steps.go.outputs.go }}
       lint: ${{ steps.lint.outputs.lint }}
+      integration: ${{ steps.integration.outputs.integration }}
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -65,11 +69,13 @@ jobs:
               - *envelope
               - 'tools/onenote/**'
 
-      # What the Go modules build or read: their sources, go.mod and go.sum files (tools/go.mod, the
-      # boundary that keeps the tools out of the base module, among them), any testdata, the lint
-      # config, this workflow, and the root mise.toml check:go runs from; and, in the tools' trees,
-      # only what the Go tests read in place: the shared envelope cases and each tool's committed
-      # goldens and expected outputs. A change to a tool's code alone doesn't run it.
+      # What the Go modules build or read: their sources, go.mod and go.sum files (the storage and
+      # postgres modules', and tools/go.mod, the boundary that keeps the tools out of the base
+      # module, among them), any testdata, each module's lint config, the postgres module's SQL and
+      # the sqlint.toml check:go lints it under, this workflow, and the root mise.toml check:go runs
+      # from; and, in the tools' trees, only what the Go tests read in place: the shared envelope
+      # cases and each tool's committed goldens and expected outputs. A change to a tool's code
+      # alone doesn't run it.
       - id: go
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -79,13 +85,39 @@ jobs:
               - '**/go.mod'
               - '**/go.sum'
               - '**/testdata/**'
-              - '.golangci.yml'
+              - '**/.golangci.yml'
+              - '**/*.sql'
+              - '**/sqlint.toml'
               - '.github/workflows/ci.yml'
               - 'mise.toml'
               - 'tools/envelope/cases.json'
               - 'tools/mail/tests/golden/**'
               - 'tools/onenote/tests/golden/**'
               - 'tools/ooxml/test/**/Expected/**'
+
+      # What the provider modules' live tiers build or run against: the storage and postgres
+      # modules' sources, go.mod and go.sum, testdata, and the postgres module's SQL, never their
+      # docs; each requires the base module at its released version, not this tree's, so a change
+      # to the base alone doesn't run them. Then the compose harness, this workflow, and the root
+      # mise.toml that defines the integration tasks and the harness's environment.
+      - id: integration
+        uses: dorny/paths-filter@v4.0.3
+        with:
+          filters: |
+            integration:
+              - 'storage/**/*.go'
+              - 'storage/go.mod'
+              - 'storage/go.sum'
+              - 'storage/**/testdata/**'
+              - 'postgres/**/*.go'
+              - 'postgres/go.mod'
+              - 'postgres/go.sum'
+              - 'postgres/**/testdata/**'
+              - 'postgres/**/*.sql'
+              - 'compose.yml'
+              - 'compose/**'
+              - '.github/workflows/ci.yml'
+              - 'mise.toml'
 
       - id: lint
         uses: dorny/paths-filter@v4.0.3
@@ -204,9 +236,38 @@ jobs:
           esac
           mise exec -- ../notices.sh "$TOOL" "$rid" >/dev/null
 
+  # The provider modules' live tiers, each against its compose service, the same tasks a developer
+  # runs; never the base module's tools tier. On a push to main whose paths need it, and always on
+  # demand, where the paths filter has no push to compare; skipped on a pull request, below the
+  # per-PR rate by design. Each task starts its service, prints its log on a failure, and stops it.
+  integration:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && needs.changes.outputs.integration == 'true')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # The tasks need only the root's Go toolchain; docker is the runner's.
+      - uses: jdx/mise-action@v5.2.9
+        with:
+          install_args: go
+
+      - uses: actions/cache@v6.1.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: mise run integration
+        run: mise run integration
+
   ci:
     if: always()
-    needs: [changes, lint, go, tool]
+    needs: [changes, lint, go, tool, integration]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if a needed job failed or was cancelled

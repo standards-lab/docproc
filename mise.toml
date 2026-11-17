@@ -1,8 +1,10 @@
 # The integration tier's 7-Zip, 7zz, pinned here so currency and upgrade keep it current: sevenzip
 # requires 24.07 or later. The test:integration task runs under it; CI never needs it, so its
 # workflows set MISE_DISABLE_TOOLS to it, and no job installs it. The tier's other system tools
-# are the host's (README.md, "Development").
+# are the host's (README.md, "Development"). crane lists an image's tags for currency's scan of the
+# compose harness's image pins; no CI job installs it either.
 [tools]
+"aqua:google/go-containerregistry" = "0.22.1"
 "github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"
@@ -11,16 +13,29 @@ jq = "1.8.2"
 shellcheck = "0.11.0"
 
 # Space-separated list of Go module directories, each with its own go.mod, which the check:go task
-# checks in turn: the base module, github.com/standards-lab/docproc, at the root.
+# checks in turn, kept in sync with go.work's use list: the base module,
+# github.com/standards-lab/docproc, at the root, then the storage and postgres provider modules,
+# which require it.
 [env]
-GO_MODULES = "."
+GO_MODULES = ". storage postgres"
+# The postgres module's live tier's server: compose.yml's PostgreSQL, whose port follows
+# DOCPROC_POSTGRES_PORT as compose/postgres.yml's does. Each test creates and drops its own
+# database on it.
+DOCPROC_DSN = "postgres://app:app@127.0.0.1:{{ get_env(name='DOCPROC_POSTGRES_PORT', default='5436') }}/app?sslmode=disable"
+# The storage module's live tier's S3 gateway: compose.yml's SeaweedFS, whose port follows
+# DOCPROC_SEAWEEDFS_PORT as compose/seaweedfs.yml's does, and the credential compose/seaweedfs's
+# Dockerfile gives it. Each test creates its own bucket on it.
+DOCPROC_S3_ENDPOINT = "http://127.0.0.1:{{ get_env(name='DOCPROC_SEAWEEDFS_PORT', default='8334') }}"
+DOCPROC_S3_ACCESS_KEY = "admin"
+DOCPROC_S3_SECRET_KEY = "secret"
 # Space-separated list of the system tools under tools/, each with its own mise.toml that pins its
 # toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
 # turn: docproc-ooxml (.NET), and docproc-mail and docproc-onenote (Rust).
 TOOLS = "ooxml mail onenote"
 # The root's held pins, which currency reports as held and upgrade never moves: one line each,
 # "<item> <pin>: <reason>", the item named as currency names it (a Go module by its path, the go
-# directive as go, a mise tool by its name, an action by its owner/repo). A tool's own holds are
+# directive as go, a mise tool by its name, an action by its owner/repo, a compose image by its
+# image). A tool's own holds are
 # in its mise.toml. None is held.
 HOLDS = '''
 '''
@@ -49,9 +64,11 @@ echo "check: ok"
 '''
 
 # The Go part of the check, which CI's Go job runs alone: each module in GO_MODULES built, vetted,
-# formatted, fixed, tidied, tested under the race detector, and linted, outside any go.work.
+# formatted, fixed, tidied, tested under the race detector, and linted under the .golangci.yml
+# nearest it, outside any go.work, so each resolves its own pins as a consumer does; then sqlint
+# over the postgres module's statements and migrations.
 [tasks."check:go"]
-description = "Build, vet, format, fix, tidy, test, and lint every Go module; writes nothing"
+description = "Build, vet, format, fix, tidy, test, and lint every Go module, then sqlint the postgres module's SQL; writes nothing"
 run = '''
 set -eu
 export GOWORK=off
@@ -67,6 +84,13 @@ for mod in $GO_MODULES; do
   go test -race ./...
   golangci-lint run ./...
 done
+# sqlint is the postgres module's tool, and resolves the engine sqlint.toml names through the
+# module's own requirements. A directory sqlint.toml names that doesn't exist yet holds no SQL to
+# find, so the step passes until the module's first statement or migration, and checks it from
+# then on.
+echo "check: sqlint"
+cd "$MISE_PROJECT_ROOT/postgres"
+go tool sqlint .
 '''
 
 # actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. The
@@ -82,14 +106,16 @@ actionlint
 scripts/release-tag-test.sh
 '''
 
-# The integration tier, on the developer's machine before each Go tag; CI never runs it. Each
+# The integration tier, on the developer's machine before each Go tag; CI never runs this task. Each
 # docproc tool is built from this checkout through its own publish task, and the three binaries
 # alone are linked into a directory put ahead of everything else on PATH, so no released or
 # installed docproc tool stands in for them. 7zz is the root's pin above; gs, qpdf, pdfdetach,
 # ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run in parallel,
-# as the unit tier's do: each container test watches only the containers its own runs name.
+# as the unit tier's do: each container test watches only the containers its own runs name. The
+# base module's tier runs over the tools; the storage and postgres modules' through their
+# integration:* tasks, each against its own compose service, every one even after one fails.
 [tasks."test:integration"]
-description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier; writes only the tools' build output and a temporary directory"
+description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier, the provider modules' against the compose harness; writes only the tools' build output and a temporary directory"
 run = '''
 set -eu
 export GOWORK=off
@@ -105,21 +131,57 @@ for tool in $TOOLS; do
   echo "test:integration: $(command -v "docproc-$tool"): $("docproc-$tool" --version | head -n 1)"
 done
 echo "test:integration: $(command -v 7zz)"
-for mod in $GO_MODULES; do
-  echo "test:integration: $mod"
-  cd "$MISE_PROJECT_ROOT/$mod"
-  go test -tags integration ./...
-done
+rc=0
+echo "test:integration: ."
+(cd "$MISE_PROJECT_ROOT" && go test -tags integration ./...) || rc=1
+mise -C "$MISE_PROJECT_ROOT" run integration || rc=1
+exit $rc
+'''
+
+# The provider modules' live tiers, each against its compose service, the same definition CI's
+# integration job runs. Each service keeps its data in tmpfs, so every start is empty. Each task
+# starts only its own service, runs its module's integration suite, and stops the service whether
+# the suite passes or fails, printing its log on failure.
+[tasks."integration:postgres"]
+description = "Run the postgres module's integration suite against a fresh compose PostgreSQL"
+dir = "{{config_root}}"
+env = { GOWORK = "off" }
+run = '''
+set -e
+trap 'rc=$?; [ $rc -eq 0 ] || docker compose logs postgres; docker compose down postgres; exit $rc' EXIT
+docker compose up -d --wait --build postgres
+(cd postgres && go test -race -tags integration -count=1 -v ./...)
+'''
+
+[tasks."integration:storage"]
+description = "Run the storage module's integration suite against a fresh compose SeaweedFS"
+dir = "{{config_root}}"
+env = { GOWORK = "off" }
+run = '''
+set -e
+trap 'rc=$?; [ $rc -eq 0 ] || docker compose logs seaweedfs; docker compose down seaweedfs; exit $rc' EXIT
+docker compose up -d --wait --build seaweedfs
+(cd storage && go test -race -tags integration -count=1 -v ./...)
+'''
+
+# One module at a time, every module even after one fails.
+[tasks.integration]
+description = "Run the postgres and storage modules' integration suites, each against a fresh compose service"
+run = '''
+rc=0
+mise -C "$MISE_PROJECT_ROOT" run integration:postgres || rc=1
+mise -C "$MISE_PROJECT_ROOT" run integration:storage || rc=1
+exit $rc
 '''
 
 # Read-only and development-time: it reads the network, so CI never runs it.
 [tasks.currency]
-description = "Report every requirement, tool, and action pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
+description = "Report every requirement, tool, action pin, and compose image pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
 run = "scripts/currency.sh report"
 
 # Development-time, as currency is, moving what currency reports trailing but the held: the root
-# mise pins, each Go module's go directive and direct requirements, and the action pins, then each
-# tool's upgrade.
+# mise pins, each Go module's go directive, direct requirements, and tool modules, the action pins,
+# and the compose image pins, then each tool's upgrade.
 [tasks.upgrade]
-description = "Bump the root mise pins, each Go module's go directive and direct requirements, and each workflow action pin to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, and the tools' pins and lock files"
+description = "Bump the root mise pins, each Go module's go directive, direct requirements, and tool modules, each workflow action pin, and each compose image pin to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, the compose Dockerfiles, and the tools' pins and lock files"
 run = "scripts/currency.sh upgrade"
