@@ -25,9 +25,10 @@ linters:
     depguard:
       # The module's requirements alone: the standard library, docproc's base packages, whose
       # dispatch.Content it implements, and go-storage's Client it stores through; its tests add
-      # go-storage's S3 provider, which the live tier runs against. Allow entries match by prefix
-      # unless they end in `$`, so each is anchored. The longest match wins, so the deny entry
-      # keeps the postgres module out despite docproc's prefix.
+      # go-storage's Fake, which the unit tier runs over, and its S3 provider, which the live tier
+      # runs against. Allow entries match by prefix unless they end in `$`, so each is anchored.
+      # The longest match wins, so the deny entry keeps the postgres module out despite docproc's
+      # prefix.
       rules:
         production:
           list-mode: strict
@@ -50,6 +51,7 @@ linters:
             - github.com/standards-lab/docproc/
             - github.com/standards-lab/go-storage$
             - github.com/standards-lab/go-storage/s3$
+            - github.com/standards-lab/go-storage/storagetest$
           deny:
             - pkg: github.com/standards-lab/docproc/postgres
               desc: the storage module requires the base module alone

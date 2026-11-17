@@ -3,15 +3,19 @@
 package storage_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"io"
+	"errors"
+	"io/fs"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/dispatch/dispatchtest"
+	"github.com/standards-lab/docproc/storage"
 	gostorage "github.com/standards-lab/go-storage"
 	"github.com/standards-lab/go-storage/s3"
 )
@@ -35,48 +39,77 @@ func env(t *testing.T, name string) string {
 	return v
 }
 
-// TestLive_PutGet proves the harness: it creates a bucket of its own on the gateway, puts an
-// object through go-storage's S3 provider, and reads the same bytes back. The harness keeps its
-// data in tmpfs, so the bucket goes when the service stops.
-func TestLive_PutGet(t *testing.T) {
-	var b [6]byte
-	if _, err := rand.Read(b[:]); err != nil {
+// random returns a random name of n bytes in hex.
+func random(t *testing.T, n int) string {
+	t.Helper()
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
 		t.Fatal(err)
 	}
+	return hex.EncodeToString(b)
+}
+
+// liveConfig returns the finalized go-storage configuration of a bucket of the test's own on the
+// gateway, which nothing has created yet. The harness keeps its data in tmpfs, so the bucket goes
+// when the service stops.
+func liveConfig(t *testing.T) gostorage.Config {
+	t.Helper()
 	cfg := gostorage.Config{
 		Endpoint:  env(t, endpointEnv),
-		Container: "docproc-" + hex.EncodeToString(b[:]),
+		Container: "docproc-" + random(t, 6),
 		Account:   env(t, accessKeyEnv),
 		Key:       env(t, secretKeyEnv),
 	}
 	if err := cfg.Finalize(""); err != nil {
 		t.Fatalf("Finalize: %v", err)
 	}
+	return cfg
+}
+
+// liveClient returns go-storage's S3 provider over cfg.
+func liveClient(t *testing.T, cfg gostorage.Config) *s3.Client {
+	t.Helper()
 	client, err := s3.New(cfg)
 	if err != nil {
 		t.Fatalf("s3.New: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	if err := client.EnsureContainer(ctx); err != nil {
-		t.Fatalf("EnsureContainer: %v", err)
-	}
+	return client
+}
 
-	want := []byte("docproc's harness")
-	opts := gostorage.PutOptions{Size: int64(len(want))}
-	if _, err := client.Put(ctx, "harness", bytes.NewReader(want), opts); err != nil {
-		t.Fatalf("Put: %v", err)
+// TestLive_Suite runs the Content suite over go-storage's S3 provider, through a started Store,
+// in one bucket of the test's own, each case's store under a prefix of its own, so each starts
+// empty.
+func TestLive_Suite(t *testing.T) {
+	cfg := liveConfig(t)
+	store := gostorage.New(liveClient(t, cfg), cfg)
+	if err := store.Start(t.Context()); err != nil {
+		t.Fatalf("Start: %v", err)
 	}
-	blob, err := client.Get(ctx, "harness", gostorage.GetOptions{})
+	t.Cleanup(func() { _ = store.Shutdown(context.Background()) }) // the S3 client closes nothing
+	dispatchtest.Content(t, func(t *testing.T) dispatch.Content {
+		c, err := storage.New(storage.Config{Client: store, Prefix: random(t, 6) + "/", Renew: time.Hour})
+		if err != nil {
+			t.Fatalf("New: %v", err)
+		}
+		return c
+	})
+}
+
+// TestLive_MissingContainer checks that a bucket the gateway doesn't have is no miss: an open
+// fails, never matching fs.ErrNotExist, and a put fails too.
+func TestLive_MissingContainer(t *testing.T) {
+	cfg := liveConfig(t)
+	c, err := storage.New(storage.Config{Client: liveClient(t, cfg), Prefix: "docproc/", Renew: time.Hour})
 	if err != nil {
-		t.Fatalf("Get: %v", err)
+		t.Fatalf("New: %v", err)
 	}
-	defer func() { _ = blob.Body.Close() }()
-	got, err := io.ReadAll(blob.Body)
-	if err != nil {
-		t.Fatalf("read: %v", err)
+	sum := hash([]byte("nowhere"))
+	_, err = c.Open(t.Context(), sum)
+	if err == nil || errors.Is(err, fs.ErrNotExist) || !errors.Is(err, gostorage.ErrContainerNotFound) {
+		t.Errorf("open in a missing bucket: %v, want ErrContainerNotFound, not fs.ErrNotExist", err)
 	}
-	if !bytes.Equal(got, want) {
-		t.Fatalf("Get returned %q, want %q", got, want)
+	err = c.Put(t.Context(), sum, strings.NewReader("nowhere"))
+	if err == nil || errors.Is(err, fs.ErrNotExist) || !errors.Is(err, gostorage.ErrContainerNotFound) {
+		t.Errorf("put in a missing bucket: %v, want ErrContainerNotFound, not fs.ErrNotExist", err)
 	}
 }
