@@ -35,8 +35,11 @@ repository's [README](../README.md) and each package's documentation.
 - **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
   parts yielded as events (`layers.md`, "Dispatch", "Event shapes").
 - **Stores**: the content store and the content-addressed index, interfaces with filesystem and
-  memory implementations, and their providers `docproc/storage` and `docproc/postgres`
-  (`layers.md`, "Content", "Index").
+  memory implementations (`layers.md`, "Content", "Index"). Two nested modules provide them over
+  stack libraries: `docproc/storage`, the content store over go-storage
+  ([`storage/`](../storage/README.md)), and `docproc/postgres`, the index over sqlate on
+  PostgreSQL ([`postgres/`](../postgres/README.md)). Their live tiers run against the compose
+  harness through `mise run integration` (the root [README](../README.md), "Development").
 - **Run directory**: `cmd/docproc`'s, read and written by `rundir` and `rundir/schema`
   (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library (`layers.md`, "The nested

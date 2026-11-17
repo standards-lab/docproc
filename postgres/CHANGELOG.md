@@ -32,9 +32,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   None has a default. Claims, renewals, flushes, records, and releases are each one statement
   conditional on the entry's token, on the database's clock; a takeover deletes the old token's
   log, and the old token's calls fail matching `dispatch.ErrClaimLost`. `Record` commits the log
-  whole with the entry and keeps the entry's `created_at`, its first claim's time, from which a
-  retention counts its age; nor does a takeover change it.
-  A row of another `dispatch.Version` is refused. `Wait` waits on LISTEN/NOTIFY: `Record`,
+  whole with the entry. Neither `Record` nor a takeover changes the entry's `created_at`, its
+  first claim's time, from which a retention counts its age. A row of another `dispatch.Version` is refused. `Wait` waits on LISTEN/NOTIFY: `Record`,
   `Release`, and `Drop` notify the channel `docproc_index` with the key's payload, the lowercase hex
   SHA-256 of its SHA-256, name, version, and config joined by NUL bytes, in their own statement, and
   a waiter wakes at the notification or at the claim's lease expiry, so a claimant that died is

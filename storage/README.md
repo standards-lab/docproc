@@ -5,7 +5,8 @@
 container a go-storage `Client` names, so the outputs a dispatcher stores live in an object store,
 such as S3 or Azure Blob, rather than on a local disk. It is a nested module of
 [docproc](../README.md), released on its own `storage/vX.Y.Z` tags, and requires the base module
-and go-storage alone; a provider, such as go-storage's `s3`, is the host's.
+and go-storage; a provider, such as go-storage's `s3`, is the host's. The module's go.mod also
+requires `s3`, for its live tier alone.
 
 ## Install
 
