@@ -3,31 +3,26 @@
 package office_test
 
 import (
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// TestRTFRoundTrip converts an RTF through soffice in the default image to docx, then
-// docproc-ooxml: the committed testdata/rtf/memo.rtf, and ~/docs's office/rtf/test-rtf.rtf, skipped
-// without it. Each result is converted from "rtf", and its Markdown holds the text the RTF holds,
-// as its source reads, each line given here as office's Markdown writes it: memo.rtf's heading,
-// its paragraph with a windows-1252 é and a bold run, which office's Markdown writes plain, its
-// table's rows, and its last paragraph; test-rtf.rtf's paragraph, one sentence eleven times. The
-// "title" above that paragraph is a \tc table-of-contents entry, hidden text RTF doesn't display,
-// and the Markdown holds none of it. No golden Markdown is recorded: the asserted lines are the
-// content, not LibreOffice's layout.
+// TestRTFRoundTrip converts each committed RTF through soffice in the default image to docx, then
+// docproc-ooxml. Each result is converted from "rtf", and its Markdown holds the text the RTF
+// holds, as its source reads, each line given here as office's Markdown writes it: memo.rtf's
+// heading, its paragraph with a windows-1252 é and a bold run, which office's Markdown writes
+// plain, its table's rows, and its last paragraph; hidden-entry.rtf's paragraph, one sentence
+// eleven times. The title above that paragraph is a \tc table-of-contents entry, hidden text RTF
+// doesn't display, and the Markdown holds none of it. No golden Markdown is recorded: the asserted
+// lines are the content, not LibreOffice's layout.
 func TestRTFRoundTrip(t *testing.T) {
 	c := containerConverter(t)
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
 	sentence := "Sluwe Sjaantje sloeg de slome slager."
 	for _, tc := range []struct {
-		path string
-		want []string
+		path   string
+		want   []string
+		hidden string
 	}{
 		{filepath.Join("testdata", "rtf", "memo.rtf"), []string{
 			"# Harbor memo",
@@ -36,15 +31,12 @@ func TestRTFRoundTrip(t *testing.T) {
 			"| North | 12 m |",
 			"| South | 9 m |",
 			"Next survey: Thursday.",
-		}},
-		{filepath.Join(home, "docs", "office", "rtf", "test-rtf.rtf"), []string{
+		}, ""},
+		{filepath.Join("testdata", "rtf", "hidden-entry.rtf"), []string{
 			strings.TrimSpace(strings.Repeat(sentence+" ", 11)),
-		}},
+		}, "Harbor title"},
 	} {
 		t.Run(filepath.Base(tc.path), func(t *testing.T) {
-			if _, err := os.Stat(tc.path); os.IsNotExist(err) {
-				t.Skipf("%s isn't here", tc.path)
-			}
 			res := convertPath(t, c, tc.path)
 			if res.doc.ConvertedFrom != "rtf" {
 				t.Errorf("converted from %q, want rtf", res.doc.ConvertedFrom)
@@ -60,6 +52,9 @@ func TestRTFRoundTrip(t *testing.T) {
 				if !lines[w] {
 					t.Errorf("no line %q in the Markdown:\n%s", w, res.markdown)
 				}
+			}
+			if tc.hidden != "" && strings.Contains(res.markdown, tc.hidden) {
+				t.Errorf("the hidden %q is in the Markdown:\n%s", tc.hidden, res.markdown)
 			}
 		})
 	}

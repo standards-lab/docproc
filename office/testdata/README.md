@@ -128,19 +128,20 @@ What they hold:
 
 ## RTF
 
-`rtf/memo.rtf` is an RTF written by hand for this repository, plain text with LF line endings, no
-generator: a heading in a `heading 1` style at outline level 0, a paragraph with a bold run and a
-windows-1252 `é` (`\'e9`), a table of three rows and two columns, and a last paragraph. Its text
-is the truth the integration tier's `TestRTFRoundTrip` asserts the Markdown against, line by line;
-no golden Markdown is recorded. It is this repository's, Apache-2.0.
+`rtf/memo.rtf` and `rtf/hidden-entry.rtf` are RTFs written by hand for this repository, plain text
+with LF line endings, no generator. `memo.rtf` holds a heading in a `heading 1` style at outline
+level 0, a paragraph with a bold run and a windows-1252 `é` (`\'e9`), a table of three rows and two
+columns, and a last paragraph. `hidden-entry.rtf` holds a centered title that is only a `\tc`
+table-of-contents entry, hidden text RTF doesn't display, then one sentence eleven times, the
+shape of the RTF `~/docs` holds at `office/rtf/test-rtf.rtf`, which no test reads. Their text is
+the truth the integration tier's `TestRTFRoundTrip` asserts the Markdown against, line by line,
+and the hidden title is in none of it; no golden Markdown is recorded. They are this
+repository's, Apache-2.0.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
 | `memo.rtf` | written by hand | Apache-2.0 | 561 | `e5a71af577f53dc33d399a62804f830c750585e00da144081a95ed89c245727c` |
-
-The tier also converts `~/docs`'s `office/rtf/test-rtf.rtf`, when it is there, and asserts its
-paragraph, one sentence eleven times. Its centered title is a `\tc` table-of-contents entry, text
-RTF hides, and the Markdown holds none of it.
+| `hidden-entry.rtf` | written by hand | Apache-2.0 | 545 | `4ff68ba8548ad1de7a95a928bb20c5f38779466507efa0bb073434e893cfcd5e` |
 
 ## Golden sums
 
