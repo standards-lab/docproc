@@ -16,7 +16,8 @@ boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) 
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
 disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
-each artifact's tags and the task that releases each.
+each artifact's tags and the task that releases each. The built base module is stated by the
+repository's [README](../README.md) and each package's documentation.
 
 ## Capability map
 

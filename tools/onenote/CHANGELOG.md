@@ -10,6 +10,11 @@ covers docproc-onenote only.
 
 ## [Unreleased]
 
+### Changed
+
+- The crate graph locks uuid 1.29.3, a patch release, in place of 1.29.2. The output is
+  unchanged.
+
 ## [v0.1.0] - 2026-11-16
 
 The first release. docproc-onenote was copied, in one commit, from spike-ai-pipeline-onenote

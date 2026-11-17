@@ -1,38 +1,38 @@
+# The integration tier's 7-Zip, 7zz, pinned here so currency and upgrade keep it current: sevenzip
+# requires 24.07 or later. The test:integration task runs under it; CI never needs it, so its
+# workflows set MISE_DISABLE_TOOLS to it, and no job installs it. The tier's other system tools
+# are the host's (README.md, "Development").
 [tools]
+"github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"
 golangci-lint = "2.15.0"
 jq = "1.8.2"
 shellcheck = "0.11.0"
 
-# Space-separated list of Go module directories. Empty until the library task lands the base
-# module.
+# Space-separated list of Go module directories, each with its own go.mod, which the check:go task
+# checks in turn: the base module, github.com/standards-lab/docproc, at the root.
 [env]
-GO_MODULES = ""
+GO_MODULES = "."
 # Space-separated list of the system tools under tools/, each with its own mise.toml that pins its
 # toolchain and defines its `check`, `currency`, and `upgrade` tasks, which the root's tasks run in
 # turn: docproc-ooxml (.NET), and docproc-mail and docproc-onenote (Rust).
 TOOLS = "ooxml mail onenote"
+# The root's held pins, which currency reports as held and upgrade never moves: one line each,
+# "<item> <pin>: <reason>", the item named as currency names it (a Go module by its path, the go
+# directive as go, a mise tool by its name, an action by its owner/repo). A tool's own holds are
+# in its mise.toml. None is held.
+HOLDS = '''
+'''
 
-# The one check: read-only and deterministic, stopping at the first failure.
+# The one check: read-only and deterministic, stopping at the first failure. It runs the lint, then
+# check:go, then each tool's check, so CI's lint, Go, and tool jobs run its three parts apart.
 [tasks.check]
-description = "Lint the scripts and workflows; build, vet, format, fix, tidy, test, and lint every module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
+description = "Lint the scripts and workflows; check every Go module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
 run = '''
 set -eu
 mise -C "$MISE_PROJECT_ROOT" run lint
-export GOWORK=off
-for mod in $GO_MODULES; do
-  echo "check: $mod"
-  cd "$MISE_PROJECT_ROOT/$mod"
-  go build ./...
-  go vet ./...
-  unformatted=$(gofmt -l .)
-  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
-  go fix -diff ./...
-  go mod tidy -diff
-  go test -race ./...
-  golangci-lint run ./...
-done
+mise -C "$MISE_PROJECT_ROOT" run check:go
 case "$(uname -m)" in
   x86_64) rid=linux-x64 ;;
   aarch64) rid=linux-arm64 ;;
@@ -48,30 +48,78 @@ done
 echo "check: ok"
 '''
 
-# actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. CI's
-# lint job runs this task; the check runs it first.
+# The Go part of the check, which CI's Go job runs alone: each module in GO_MODULES built, vetted,
+# formatted, fixed, tidied, tested under the race detector, and linted, outside any go.work.
+[tasks."check:go"]
+description = "Build, vet, format, fix, tidy, test, and lint every Go module; writes nothing"
+run = '''
+set -eu
+export GOWORK=off
+for mod in $GO_MODULES; do
+  echo "check: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go build ./...
+  go vet ./...
+  unformatted=$(gofmt -l .)
+  if [ -n "$unformatted" ]; then echo "gofmt: unformatted files:"; echo "$unformatted"; exit 1; fi
+  go fix -diff ./...
+  go mod tidy -diff
+  go test -race ./...
+  golangci-lint run ./...
+done
+'''
+
+# actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. The
+# release workflow's tag routing is a script, so its test runs here, beside the workflow it
+# routes. CI's lint job runs this task; the check runs it first.
 [tasks.lint]
-description = "Shellcheck every committed shell script and lint the GitHub Actions workflows with actionlint; reads no network, writes nothing"
+description = "Shellcheck every committed shell script, lint the GitHub Actions workflows with actionlint, and test the release workflow's tag routing; reads no network, writes only a temporary tree"
 dir = "{{config_root}}"
 run = '''
 set -eu
 git ls-files -z '*.sh' | xargs -0 -r shellcheck
 actionlint
+scripts/release-tag-test.sh
+'''
+
+# The integration tier, on the developer's machine before each Go tag; CI never runs it. Each
+# docproc tool is built from this checkout through its own publish task, and the three binaries
+# alone are linked into a directory put ahead of everything else on PATH, so no released or
+# installed docproc tool stands in for them. 7zz is the root's pin above; gs, qpdf, pdfdetach,
+# ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run in parallel,
+# as the unit tier's do: each container test watches only the containers its own runs name.
+[tasks."test:integration"]
+description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier; writes only the tools' build output and a temporary directory"
+run = '''
+set -eu
+export GOWORK=off
+bin=$(mktemp -d)
+trap 'rm -rf "$bin"' EXIT
+for tool in $TOOLS; do
+  echo "test:integration: building tools/$tool"
+  mise -C "$MISE_PROJECT_ROOT/tools/$tool" run publish
+  ln -s "$MISE_PROJECT_ROOT/tools/$tool/.state/publish/docproc-$tool" "$bin/docproc-$tool"
+done
+export PATH="$bin:$PATH"
+for tool in $TOOLS; do
+  echo "test:integration: $(command -v "docproc-$tool"): $("docproc-$tool" --version | head -n 1)"
+done
+echo "test:integration: $(command -v 7zz)"
+for mod in $GO_MODULES; do
+  echo "test:integration: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go test -tags integration ./...
+done
 '''
 
 # Read-only and development-time: it reads the network, so CI never runs it.
 [tasks.currency]
 description = "Report every requirement, tool, and action pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
-run = "scripts/currency.sh"
+run = "scripts/currency.sh report"
 
-# Development-time, as currency is. It runs each tool's upgrade alone so far: the Go modules' and
-# the root's own pins are not upgraded by it yet.
+# Development-time, as currency is, moving what currency reports trailing but the held: the root
+# mise pins, each Go module's go directive and direct requirements, and the action pins, then each
+# tool's upgrade.
 [tasks.upgrade]
-description = "Run each tool's upgrade, which bumps its pins to their latest; rewrites only the tools' pins and lock files"
-run = '''
-set -eu
-for tool in $TOOLS; do
-  echo "upgrade: tools/$tool"
-  mise -C "$MISE_PROJECT_ROOT/tools/$tool" run upgrade
-done
-'''
+description = "Bump the root mise pins, each Go module's go directive and direct requirements, and each workflow action pin to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, and the tools' pins and lock files"
+run = "scripts/currency.sh upgrade"

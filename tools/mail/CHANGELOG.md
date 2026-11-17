@@ -9,6 +9,11 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+### Changed
+
+- The crate graph locks uuid 1.29.3, a patch release, in place of 1.29.2. The output is
+  unchanged.
+
 ## [v0.1.1] - 2026-11-16
 
 ### Fixed

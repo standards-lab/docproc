@@ -1,0 +1,212 @@
+# testdata
+
+The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
+AcroForm and a page of a signed PDF for the forms record; and a generated PDF of embedded files. Each set is one multi-page PDF, so a renderer test names
+a page of it and a page stream test takes the whole PDF. The clean and degraded sets are
+generated from `clean.typ`; the scanned set is real scans.
+
+- `clean.pdf` is six pages, one layout each: prose, two columns, a table, 8 pt print, a filled-in
+  form, and a figure (shapes only) with a caption.
+- `degraded.pdf` is nine pages made from the clean pages rendered at 150 dpi in grayscale, each
+  degraded by ImageMagick and wrapped back into PDF at 150 dpi. Each fault comes at a moderate and
+  a severe level, and the last page has all four:
+
+  | Page | Clean page | Fault | ImageMagick operators |
+  | ---- | ---------- | ----- | --------------------- |
+  | 1 | 1, prose | skew, moderate | `-rotate 2.5` |
+  | 2 | 3, a table | skew, severe | `-rotate 7` |
+  | 3 | 3, a table | fade, moderate | `+level 55%,100%` |
+  | 4 | 5, a form | fade, severe | `+level 78%,96%` |
+  | 5 | 5, a form | speckle, moderate | `-seed 7 -attenuate 0.6 +noise Impulse` |
+  | 6 | 6, a figure | speckle, severe | `-seed 11 -attenuate 1.2 +noise Impulse` |
+  | 7 | 2, two columns | blur, moderate | `-blur 0x1.8` |
+  | 8 | 1, prose | blur, severe | `-blur 0x3` |
+  | 9 | 2, two columns | all four | `-rotate 4`, `-blur 0x1.2`, `+level 40%,100%`, `-seed 13 -attenuate 0.5 +noise Impulse` |
+
+  A rotated page is cropped back to letter size around its center (`-gravity center -extent
+  1275x1650`) on white.
+- `scanned.pdf` is seven pages of a real scan, described below.
+- `clean/page-N.txt`, `degraded/page-N.txt`, and `scanned/page-N.txt` are each page's ground
+  truth: its plain text in reading order. Blocks are separated by a blank line; two columns read
+  left column first, a table reads row by row with its cells joined by single spaces, and a form
+  field reads as its label, a colon, and its value. A clean page's truth is taken from the source:
+  `clean.typ` keeps every page's text as data, sets it on the page, and records it in a `<truth>`
+  metadata element, which the generator queries. A degraded page's truth is its clean page's.
+
+## The clean and degraded sets
+
+typst never runs in the check. `generate.sh` regenerates the clean and degraded sets; it needs
+typst 0.15.1 and ImageMagick 7.1.2 on the laptop, and jq, which mise declares:
+
+```sh
+mise exec -- document/testdata/generate.sh
+```
+
+The outputs are byte-reproducible: typst sets no document date and uses only its embedded fonts,
+the speckle's noise is seeded, and the degraded PDF's dates are fixed by
+`-define pdf:create-epoch=1767225600 -define pdf:modify-epoch=1767225600` and its identifier left
+out by `-define pdf:no-identifier=true`. Two runs give the same bytes, and the generator prints
+these SHA-256 sums:
+
+```
+d849622ac7cc02d640e15ec590897ccdd6cb1ac514be4f865f659558a5ab16bc  clean.pdf
+744df9c9858c518bb5dbe7b6d61b917e2ca2a2d37b4d05c243f34514396048ef  clean/page-1.txt
+de0904965c6dafe979524fa693cf8d5b01a0c7fe16ee9296574589c8d40e4e24  clean/page-2.txt
+53d92d6a53cc7e56e4fb482d3fc6ccd87256f753b2a147c5bff40be872eb7571  clean/page-3.txt
+11acf397443c188b6af660b11a566989fa26f062f79d7f58b97c6ed7846d7502  clean/page-4.txt
+9e7a3885a7ecf55dde1cb5619fd6035f029bf97895f898e64b28eee6d8835cca  clean/page-5.txt
+5fe96350a3380240f926fa888fa33be02408740ca646345e228ec92b52d142a8  clean/page-6.txt
+e544e7ec4db9971cccd5d8ba83bf875d1d02272b5ab354044474d2e2896a2849  degraded.pdf
+744df9c9858c518bb5dbe7b6d61b917e2ca2a2d37b4d05c243f34514396048ef  degraded/page-1.txt
+53d92d6a53cc7e56e4fb482d3fc6ccd87256f753b2a147c5bff40be872eb7571  degraded/page-2.txt
+53d92d6a53cc7e56e4fb482d3fc6ccd87256f753b2a147c5bff40be872eb7571  degraded/page-3.txt
+9e7a3885a7ecf55dde1cb5619fd6035f029bf97895f898e64b28eee6d8835cca  degraded/page-4.txt
+9e7a3885a7ecf55dde1cb5619fd6035f029bf97895f898e64b28eee6d8835cca  degraded/page-5.txt
+5fe96350a3380240f926fa888fa33be02408740ca646345e228ec92b52d142a8  degraded/page-6.txt
+de0904965c6dafe979524fa693cf8d5b01a0c7fe16ee9296574589c8d40e4e24  degraded/page-7.txt
+744df9c9858c518bb5dbe7b6d61b917e2ca2a2d37b4d05c243f34514396048ef  degraded/page-8.txt
+de0904965c6dafe979524fa693cf8d5b01a0c7fe16ee9296574589c8d40e4e24  degraded/page-9.txt
+```
+
+## The scanned set
+
+`scanned.pdf` is seven pages of herald's `_project/marked-documents/marked-documents.pdf`, at
+herald commit `bdacbb699c7979ff41ff29f6c32c8a6962b94c2c` (the last to touch
+`_project/marked-documents`): 27 pages a Lexmark CX725 scanned at 300 dpi, each page one JPEG image
+with no text layer. They are redacted documents; the first six chosen carry the most legible text
+outside the redactions, and the seventh carries faded markings that herald read inconsistently:
+
+| Page | Source page | What it shows |
+| ---- | ----------- | ------------- |
+| 1 | 2 | a printed web page: its title, navigation, and footer URL and date |
+| 2 | 3 | classification banners, a red EXPEDITE stamp, and a date |
+| 3 | 12 | a name and three classification blocks in a sans face |
+| 4 | 13 | a printed message: header, a name, two classification blocks, a date |
+| 5 | 16 | a letterhead: a seal, banners, a city line, handwritten initials, and a date |
+| 6 | 25 | an email's header labels and two classification blocks in a typewriter face |
+| 7 | 19 | a letterhead: a stamped SECRET, two seals, a reply line, and faded SECRET and NOFORN at its foot |
+
+qpdf 12.4.2 copied the pages without re-encoding their scans, so each page keeps its source
+JPEG byte for byte; `--deterministic-id` makes the output reproducible. Source page 19 was added
+after the first six, so it comes last rather than in source order:
+
+```sh
+qpdf --deterministic-id --empty \
+  --pages ~/code/herald/_project/marked-documents/marked-documents.pdf 2,3,12,13,16,25,19 -- \
+  document/testdata/scanned.pdf
+```
+
+Each page's truth was transcribed by reading the source page's image
+(`_project/marked-documents/images/marked-document.N.png`): the legible text in reading order, in
+the conventions above. Redacted text and stray marks are left out. A stamp, a seal's legend, or a
+handwritten mark is kept where its text is legible, as page 2's EXPEDITE, page 5's M.M., and
+page 7's faded SECRET and NOFORN are; the part of a seal too blurred to read is left out, as page
+5's UNITED STATES OF AMERICA is, and so is a seal the scan clips, as page 7's left one is. A
+seal's legible text sits in reading order where the seal does: page 5's beside the first banner,
+page 7's right seal after HEADQUARTERS, one line per line of the seal, its blurred ring of years
+and its redaction-touched COMMEMORATION left out. A label whose value is redacted reads as the
+label alone. Their SHA-256 sums:
+
+```
+6eced800de1d92e81f0c5901e2a563e1ae0676ecb883f8f0ba60eff2e17fdfc2  scanned.pdf
+9ef621af40c6bacd04b62367d2f333230907d8bba4e799a88e899111292d6937  scanned/page-1.txt
+ed03efd95ea4fbb919dcfe228b85da9af702e012f96c7f3873ddfc4f04216a84  scanned/page-2.txt
+80a17e23d142dc1ffb7e99d5635b7a904e1e2e13400d649344194efee68098a6  scanned/page-3.txt
+c78b22d17c06925c3ed829a4d3cf163b61fa4f741ad33625df302aa039321b53  scanned/page-4.txt
+114405efbf857a531f2c0cc4868cab9996e60808be48903ff2a18c7328728680  scanned/page-5.txt
+75184a354cef398e536a1953112aa930879cafd6a99260fe325f8960e8188f59  scanned/page-6.txt
+3697cea8fba85a5696ee7dd941854ee7edc3e998fb02ec1ff74f404b2be8b573  scanned/page-7.txt
+```
+
+## The forms fixture
+
+`forms/acroform.pdf` is this repository's, Apache-2.0: a one-page PDF whose AcroForm holds seven
+filled fields, written by hand by `forms/generate.go`, every byte fixed, so a rerun writes the
+same bytes. Run it in `document/testdata/forms`:
+
+```sh
+mise exec -- go run generate.go
+```
+
+Its fields, in the AcroForm's order, are its truth, which the generator's doc lists and the tests
+hold the forms record to exactly:
+
+| Field | Type | Value |
+| ----- | ---- | ----- |
+| `applicant.name` | text, under a non-terminal parent | `Ada Lovelace` |
+| `applicant.city` | text, its value UTF-16BE | `Zürich` |
+| `subscribe` | checkbox | checked, `/Yes` |
+| `newsletter` | checkbox | unchecked, `/Off` |
+| `contact` | radio group of two buttons, `Email` and `Phone` | `Phone` |
+| `colour` | combo box of `Red`, `Green`, and `Blue` | `Green` |
+| `languages` | multi-select list box of `English`, `French`, and `German`, export values `en`, `fr`, and `de` | `en` and `de` |
+
+`forms/acroform.json` is qpdf 12.4.2's JSON of the fixture's AcroForm, recorded so the check reads
+it without qpdf; the integration tier reads the fixture through the host's qpdf and holds it to
+the same fields:
+
+```sh
+qpdf --json=2 --json-key=acroform acroform.pdf > acroform.json
+```
+
+qpdf gives a choice's options by their display text and its value by its export value, so the
+list box's options read `English`, `French`, and `German` and its selection `en` and `de`. Their
+SHA-256 sums, which `TestFixtureSums` holds them to:
+
+```
+bf77a44be70876ecd682b1d2f0f6b7a710c17a7ce76288f018bf165ad44a3e2a  forms/acroform.pdf
+c4449427e48adef6d2fe6cd8f769a4157e59906dc69d7cc3f19d5579494c2fe5  forms/acroform.json
+```
+
+## The signed fixture
+
+`forms/signed.pdf` is page 1 of `cfr-2024-title32-vol1.pdf`, the Code of Federal Regulations,
+Title 32, Volume 1, revised as of July 1, 2024, as the US Government Publishing Office publishes
+it: a US government work, in the public domain. The source's SHA-256 is
+`a1946ff2e79347cc55adf80a0b0618e071d45d36ed367c7ddd979bdb3560e660`. The GPO signs the whole
+volume; the cut keeps its AcroForm's one signature field, `USGPOSignature`, of type `/Sig`, whose
+value is a reference to its signature dictionary, `12 0 R` in the cut, which a form reader must
+read without failing. The signature no longer covers the cut's bytes, which is no matter to a
+reader of the form. qpdf 12.4.2 made the cut, one page of about 157 KB; it exits 3, success with
+a warning about the source's object count, and `--deterministic-id` makes the output reproducible:
+
+```sh
+qpdf --deterministic-id --empty --pages cfr-2024-title32-vol1.pdf 1 -- document/testdata/forms/signed.pdf
+```
+
+`forms/signed.json` is qpdf 12.4.2's JSON of its AcroForm, recorded verbatim so the check reads it
+without qpdf; the integration tier reads the fixture through the host's qpdf and holds it to the
+same field, signed:
+
+```sh
+qpdf --json=2 --json-key=acroform signed.pdf > signed.json
+```
+
+Their SHA-256 sums, which `TestFixtureSums` holds them to:
+
+```
+acfc446f2d5ba5b51bf9d387e829e1dca4be355f3f21fa0dc336d56b1759204c  forms/signed.pdf
+dd1dfd83317dd0f5e673da59474f93c686d718fade7f4f145ef4788bd608a31f  forms/signed.json
+```
+
+## The attachments fixture
+
+`attachments/attachments.pdf` is this repository's, Apache-2.0: a one-page PDF that embeds a file
+each way a PDF holds one, written by hand by `attachments/generate.go`, every byte fixed, so a
+rerun writes the same bytes. Run it in `document/testdata/attachments`:
+
+```sh
+mise exec -- go run generate.go
+```
+
+| File | Held by | Content |
+| ---- | ------- | ------- |
+| `notes.txt` | the catalog's name tree of embedded files | `Embedded through the name tree.` and a newline |
+| `data.csv` | a file attachment annotation on the page | `name,count`, `harbor,3`, each line ending in a newline |
+| `clip.avi` | a Screen annotation's rendition | media the page plays, which pdfdetach doesn't list |
+
+Its SHA-256 sum, which `TestFixtureSums` holds it to:
+
+```
+2512e73aaca5a4d2df650018fedea34fcf05caecb5106172a713cd34ed8edf7f  attachments/attachments.pdf
+```

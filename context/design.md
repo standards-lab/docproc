@@ -48,8 +48,8 @@ alternatives the code can't state, and what the build leaves to later tasks is i
   codes, and `rows` lines bound only the reader. Each worksheet part is read in two forward-only
   passes; docx and pptx keep the whole model, their `document` line being whole by contract.
   Acceptance measures peak memory over ~/docs. Rejected: deferring with a stated ceiling.
-- **OX-4 · stderr labels and exit codes differed from the envelope.** library drops the `Labels`
-  list from `internal/cli` (`layers.md`, "docproc's packages [library]").
+- **OX-4 · stderr labels and exit codes differed from the envelope.** `internal/cli` holds no
+  `Labels` list.
 - **OX-5 · Embedded and OLE media were a larger change than "Added" read.** `ole` media is the
   part as stored; unwrapping its compound file, which the Open XML SDK can't read, is docproc's,
   whose inspection already recognises one. A chart's embedded source workbook is never media:
@@ -91,7 +91,7 @@ the build leaves to later tasks is in `layers.md`, "docproc-mail [mail]".
   storages (18 of 18 in POI's `outlook_30_msg.msg`), so the sender's is read from
   `PidTagSenderSmtpAddress` (0x5D01). Of the committed fixtures only Tika's
   `testPST_variousBodyTypes.pst` holds 0x5D01, so a unit test over a built `.msg` shows it too.
-  docproc's fallback to `transport_headers`' From is in "docproc's packages [library]".
+  docproc's fallback to `transport_headers`' From is the `email` package's.
 - **ML-3 · The content rule's Unicode 16.0 couldn't be both schema "2" and current.** 16.0 was
   the measuring tool's (uniseg 0.10.1, a Go library), while current Rust crates carry 18.0
   (finl_unicode 1.5.1, unicode-ident 1.0.27). Schema "2"'s rule takes the Unicode version its
@@ -146,7 +146,7 @@ license, and the rule that nothing is asked of the parser upstream.
   links each stroke to its word (`InkStroke::recognized_word()`), which gives each drawing its
   own words.
 - **ON-2 · A table of contents through docproc read empty or twice, and a directory never
-  arrived.** The stage's outcome is in "docproc's packages [library]". The tool read a
+  arrived.** The stage's outcome is `stages`' (read elsewhere). The tool read a
   `.onetoc2` as its whole notebook, resolving sections beside it. Spooled from a stream, as
   Cerebro passes every input, nothing is beside it, and the parser drops a missing entry without
   a word: one `notebook` line, exit 0, no warning. Given by path, as `cmd/docproc` walks a share,
@@ -163,8 +163,8 @@ license, and the rule that nothing is asked of the parser upstream.
   and `tests/ink.rs` walked the same tree. They were the tool's only hand truth, and a golden
   records what the tool wrote, not what is right. A refusal's stderr led with the input path as
   given, and no `.onepkg` was committed.
-- **ON-4 · An encryption signal is feasible for desktop-format sections.** The mapping is in
-  "docproc's packages [library]". `Encryption.one` was refused with the parser's
+- **ON-4 · An encryption signal is feasible for desktop-format sections.** The mapping is
+  `internal/cli`'s. `Encryption.one` was refused with the parser's
   `Unexpected end of file`, and skipped inside a notebook with the same reason, so docproc could
   only call it failed. [MS-ONESTORE] 2.5.19's encryption-key structure opens with the fixed bytes
   `0xFB6BA385DAD1A067` and closes with `0x2649294F8E198B3C`; `Encryption.one` holds each three
@@ -181,7 +181,7 @@ license, and the rule that nothing is asked of the parser upstream.
   release-mode check (ML-8); the spike's test `a_parser_panic_is_refused_with_exit_3` relied on
   debug overflow checks a release build lacks.
 - **ON-7 · Memory was unbounded in four places, one of them the tool's own.** The run's bound is
-  in "docproc's packages [library]". The tool read each image and embedded file whole before
+  `tool`'s `Spec.MemoryLimit`. The tool read each image and embedded file whole before
   hashing and writing it, though the parser hands back a streaming reader, and `fs::write` to the
   hash name left a truncated file under the full content's name when a run was killed
   mid-write. The parser holds a notebook whole before its first line and decompresses a
@@ -235,7 +235,7 @@ license, and the rule that nothing is asked of the parser upstream.
   parse in `HashMap` order, so two faults report in either order. No committed fixture reaches
   them.
 - **ON-16 · Nesting depth was unbounded, and a stack overflow dies by signal.** The signal's
-  outcome is in "docproc's packages [library]". By reading: outline items, groups, tables in
+  outcome is `stages`' classification. By reading: outline items, groups, tables in
   cells, and equations recurse to the file's depth in the reader, the renderer, the math port,
   and the parser, and a stack overflow is a SIGSEGV no handler catches. docproc records a tool's
   death by signal as failed, naming the signal.
@@ -256,17 +256,18 @@ synthesised into sixteen cross-package findings (PX) and twenty decisions; the g
 probes on scratch copies and an entry says where a finding was run, the rest found by reading.
 Round 4 accepted every finding as proposed, merged and with conflicts resolved as the synthesis
 set out, and every decision as recommended; each decision names the round's question that
-settled it. The changes are in `layers.md`, "docproc's packages [library]", unless an entry names
-another task; the signatures and sentences the decisions changed are in `layers.md`'s "docproc's
-API" sections. An entry merged into a PX finding is settled there and only points to it.
+settled it. `library` built the changes into the base module, whose package docs state them,
+unless an entry names another task; the signatures the decisions changed are in `layers.md`'s
+"docproc's API" sections. An entry merged into a PX finding is settled there and only points to
+it.
 
 ### Decisions
 
-- **1 · Which failures are recorded (Q2).** Settled → library; acceptance counts recorded
-  failures by class. PX-1's table, classified once in `stages` from `ExitError.Signal` and
-  `TimedOut`: a tool's own exit, its own fatal signal, its own time bound, and output that
-  doesn't parse are the content's, recorded; the context ending, a SIGKILL or SIGTERM docproc
-  didn't send, a failed start, exit 1 or 2, and docproc's side of the pipe are the run's,
+- **1 · Which failures are recorded (Q2).** Settled → library; acceptance counts recorded failures
+  by class. PX-1's table, classified once in `stages` from `ExitError.Signal` and `TimedOut`: a
+  tool's own exit, its own fatal signal, its own time bound, and output that doesn't parse are the
+  content's, recorded; the context ending, a SIGKILL or SIGTERM docproc didn't send, a failed start,
+  a docproc tool's exit 1 or 2 (7zz's 7 or 255), and docproc's side of the pipe are the run's,
   retried. It is the one rule under which ON-16's signal is recorded failed. Rejected: PD-11's
   narrow rule, only a tool's exit 3.
 - **2 · A replay miss (Q3).** Settled → library; the docinfer goal for `job`'s counting. The
@@ -399,8 +400,9 @@ API" sections. An entry merged into a PX finding is settled there and only point
 - **PT-3 · The run's memory bound had no mechanism.** Accepted → library; acceptance measures it
   over ~/docs on all three tools first. Ran: a tool killed by a signal reported `exit code -1`.
   `Spec.MemoryLimit`: the container runner's `--memory`, the exec runner's `oom_score_adj` 1000
-  and `RLIMIT_AS` by `prlimit64`, or docproc-ooxml's collector limit through `Spec.Env` if it
-  can't start under it; its outcome is PX-1's, its way in PX-3's.
+  and `RLIMIT_AS`, set by util-linux's `prlimit` before exec; docproc-ooxml takes no .NET setting
+  under it (the goal record's `library (plan)` decisions); its outcome is PX-1's, its way in
+  PX-3's.
 - **PT-4 · Three copies of the line reader.** Accepted → library, relocated by PX-2: the envelope
   reader in `internal/cli`, `Warning` `dispatch`'s; its stand-in is PX-9's.
 - **PT-5 · Death by signal was lost below `internal/cli`.** Merged into PX-1.
@@ -669,9 +671,9 @@ form. An entry is carried by docproc unless it names another task; the command's
 
 Round 6, the architect's follow-up to DP-16's fix, looked across the artifacts for a shape, a
 vocabulary, or a rule stated in two places, or held by a package that isn't its owner, and
-accepted all nine findings as recommended. Each settles one home; its signatures and change-list
-lines are in `layers.md`, the section an entry names, and the docinfer goal's parts are pending
-edits in the goal record.
+accepted all nine findings as recommended. Each settles one home; its signatures are in
+`layers.md`, the section an entry names, the base module's parts are built, and the docinfer
+goal's parts are pending edits in the goal record.
 
 - **SH-1 · The Meta keys a consumer reads.** Accepted → library; the docinfer goal reads the
   constants. Refines PX-11, which put each key in the package whose stage writes it: decision 7
@@ -762,8 +764,8 @@ tools/onenote/v0.1.0   docproc-onenote   onenote    from spike-ai-pipeline-oneno
 tools/mail/v0.1.1      docproc-mail      onenote    fix: its Markdown reads back as written
 tools/ooxml/v0.1.1     docproc-ooxml     onenote    fix: its Markdown reads back as written
 v0.1.0                 docproc           library    from spike-ai-pipeline-processing v0.9.0
-storage/v0.1.0         docproc/storage   library    new
-postgres/v0.1.0        docproc/postgres  library    new
+storage/v0.1.0         docproc/storage   providers  new
+postgres/v0.1.0        docproc/postgres  providers  new
 v0.2.0                 docproc           docproc    rundir and rundir/schema landed
 cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's docproc at 6a631f1
 ```
@@ -771,8 +773,8 @@ cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's doc
 - **The tools.** `.github/workflows/release.yml` releases each `tools/*/v*` tag through
   `tools/pack.sh`, which runs the tool's `publish` task; each tool's README, "Install", lists
   its archives.
-- **The library.** `library` tags the base module, `storage`, and `postgres`, through the Go
-  module releases it adds to docproc's CI.
+- **The library.** `library` tags the base module, and `providers` tags `storage` and
+  `postgres`, through the Go module releases in `.github/workflows/release.yml`.
 - **docproc.** The `docproc` task tags the base module v0.2.0 when `rundir` lands (DP-3), and a
   committed `go.work` over the base module and `cmd/docproc` carries changes between tags.
 - **reports.** `reports` tags the base module again only if it changed `rundir`, then
