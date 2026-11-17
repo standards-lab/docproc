@@ -11,7 +11,9 @@
 //   - [Verify], which prepares the statements against a live schema, and [Statements], which
 //     lists them
 //
-// Index's Wait is not yet implemented: it fails matching errors.ErrUnsupported.
+// An Index holds one connection of its own from the host's pool while any Wait has run, its
+// listener, until [Index.Close]; a host sizes its pool to allow it, one per Index, beside the
+// connections the other methods take, and closes the Index when it is done with it.
 //
 // # Schema
 //
@@ -35,6 +37,22 @@
 // payload names the key as the lowercase hex SHA-256 of its SHA-256, name, version, and config
 // joined by NUL bytes: one channel keeps clear of PostgreSQL's 63-byte identifier limit, which a
 // channel per key would pass, and the digest keeps the payload short whatever the identity holds.
+//
+// # Waiting
+//
+// Record, Release, and Drop each notify the key's payload in their own statement, through
+// pg_notify in its RETURNING, so a notification is sent when, and only when, the statement
+// changed the key's row and committed. Wait LISTENs on a connection the Index takes from the
+// pool on the first Wait, reached through pgx's database/sql driver, and holds until Close; the
+// listener fans each notification out to the waits on its payload. A wait registers with the
+// listener, and the listener's LISTEN is in effect, before it reads the key's row, so a claim
+// that ends between the two is either read or notified. It wakes at the notification or at the
+// lease's expiry, which it times from the row's expires_at against the database's clock, so a
+// claimant that died is waited out; on waking it reads the row again, returning the entry when
+// one is recorded, none when the key is free or its lease ran out, and waiting on otherwise. A
+// listener whose connection fails wakes its waits, which read the row again on a new listener,
+// so a notification lost with the connection costs no wait its wakeup. The listener UNLISTENs
+// before its connection goes back to the pool, or has the pool discard it.
 //
 // # Claims and the log
 //

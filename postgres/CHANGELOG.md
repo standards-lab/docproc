@@ -26,5 +26,11 @@ each system tool under `tools/` keep their own.
   conditional on the entry's token, on the database's clock; a takeover deletes the old token's
   log, and the old token's calls fail matching `dispatch.ErrClaimLost`. `Record` commits the log
   whole with the entry and resets the entry's `created_at`, from which a retention counts its age.
-  A row of another `dispatch.Version` is refused. `Wait` is not implemented yet, failing matching
-  `errors.ErrUnsupported`.
+  A row of another `dispatch.Version` is refused. `Wait` waits on LISTEN/NOTIFY: `Record`,
+  `Release`, and `Drop` notify the channel `docproc_index` with the key's payload, the lowercase hex
+  SHA-256 of its SHA-256, name, version, and config joined by NUL bytes, in their own statement, and
+  a waiter wakes at the notification or at the claim's lease expiry, so a claimant that died is
+  waited out.
+- `Index.Close`, which stops the listener `Wait` starts on its first call: one connection held
+  from the host's pool per `Index` until `Close`, which a host's pool must allow. A `Wait` after
+  `Close` fails; the other methods are unaffected.

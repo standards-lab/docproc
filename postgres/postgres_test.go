@@ -56,8 +56,8 @@ func TestStatementsList(t *testing.T) {
 		}
 	}
 	want := []string{
-		"append_items", "claim_entry", "discard_items", "drop_entry", "list_items", "lookup_entry",
-		"lookup_log", "record_entry", "release_claim", "renew_claim",
+		"append_items", "claim_entry", "discard_items", "drop_entry", "list_items", "lookup_claim",
+		"lookup_entry", "lookup_log", "record_entry", "release_claim", "renew_claim",
 	}
 	if !slices.Equal(names, want) {
 		t.Fatalf("statements %v, want %v", names, want)

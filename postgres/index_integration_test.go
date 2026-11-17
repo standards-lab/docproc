@@ -3,7 +3,6 @@
 package postgres_test
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -19,44 +18,30 @@ import (
 // the takeover tests wait it out quickly.
 const lease = 500 * time.Millisecond
 
-// index returns an Index over db whose claims last lease and whose log flushes every flush items.
+// index returns an Index over db whose claims last lease and whose log flushes every flush items,
+// closed when the test ends, before its database is dropped.
 func index(t *testing.T, db *sqlate.DB, flush int) *postgres.Index {
 	t.Helper()
-	idx, err := postgres.New(t.Context(), postgres.Config{DB: db, Lease: lease, Flush: flush})
+	return indexLeased(t, db, flush, lease)
+}
+
+// indexLeased is index with claims that last l.
+func indexLeased(t *testing.T, db *sqlate.DB, flush int, l time.Duration) *postgres.Index {
+	t.Helper()
+	idx, err := postgres.New(t.Context(), postgres.Config{DB: db, Lease: l, Flush: flush})
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = idx.Close() })
 	return idx
 }
 
-// unwaited is an Index whose Wait skips the case that calls it while the Index's Wait is not
-// implemented, failing matching errors.ErrUnsupported: Wait arrives with the LISTEN/NOTIFY
-// scheme in slice 12 of the providers task, which completes these cases and removes the skips.
-type unwaited struct {
-	dispatch.Index
-	t *testing.T
-}
-
-func (u unwaited) Wait(ctx context.Context, key dispatch.Key) (dispatch.Entry, bool, error) {
-	e, ok, err := u.Index.Wait(ctx, key)
-	if errors.Is(err, errors.ErrUnsupported) {
-		u.t.Skip("Wait is not implemented yet")
-	}
-	return e, ok, err
-}
-
-// TestLive_Index runs dispatchtest's Index suite against a migrated database per case, with a
-// flush of two, so the suite's three-item log is written in two statements and read in two
-// pages. Until Wait is implemented, the cases skip where they reach it: "wait" at its start,
-// since it calls Wait on a goroutine of its own, where a skip can't end the case, and "empty",
-// "record", and "lease" at their Wait, after their checks before it. The tests below hold what
-// those cases check after it.
+// TestLive_Index runs dispatchtest's Index suite whole against a migrated database per case,
+// with a flush of two, so the suite's three-item log is written in two statements and read in
+// two pages.
 func TestLive_Index(t *testing.T) {
 	dispatchtest.Index(t, func(t *testing.T) dispatch.Index {
-		if strings.HasSuffix(t.Name(), "/wait") {
-			t.Skip("Wait is not implemented yet")
-		}
-		return unwaited{index(t, migrated(t), 2), t}
+		return index(t, migrated(t), 2)
 	})
 }
 
@@ -263,14 +248,10 @@ func TestLive_AnotherVersionIsRefused(t *testing.T) {
 	}
 }
 
-// Drop of a key with no row is no error, and Wait fails matching errors.ErrUnsupported until it
-// is implemented.
-func TestLive_DropAbsentAndWait(t *testing.T) {
+// Drop of a key with no row is no error.
+func TestLive_DropAbsent(t *testing.T) {
 	idx := index(t, migrated(t), 1)
 	if err := idx.Drop(t.Context(), fixtureKey); err != nil {
 		t.Errorf("drop of an absent entry: %v", err)
-	}
-	if _, _, err := idx.Wait(t.Context(), fixtureKey); !errors.Is(err, errors.ErrUnsupported) {
-		t.Errorf("wait: %v, want ErrUnsupported", err)
 	}
 }

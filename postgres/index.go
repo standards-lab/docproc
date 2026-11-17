@@ -42,6 +42,11 @@ type Config struct {
 // here, fails matching [dispatch.ErrClaimLost]. Record writes the buffer's remainder and the
 // entry in one statement, so an entry's log commits whole with it or not at all.
 //
+// Record, Release, and Drop each notify the key's waiters in their statement, so the
+// notification is sent when it commits. Wait listens for them on a connection of its own from the
+// pool, started by the first Wait and held until [Index.Close], so a host's pool must allow it
+// beside the connections the other methods take.
+//
 // It is safe for concurrent use. Its zero value is not ready; [New] makes one.
 type Index struct {
 	db    *sqlate.DB
@@ -50,6 +55,11 @@ type Index struct {
 
 	mu      sync.Mutex
 	buffers map[claimKey]*buffer
+
+	// lmu guards the listener Wait holds, started by the first Wait, and whether Close ended it.
+	lmu      sync.Mutex
+	listener *listener
+	closed   bool
 }
 
 // claimKey names a claim this Index issued: its key and its token.
@@ -73,8 +83,6 @@ var (
 	errNotClaimed = fmt.Errorf("postgres: index: the token doesn't hold the key's claim: %w", dispatch.ErrClaimLost)
 	// errReplaced ends a read of an entry's log that was replaced or dropped while it read.
 	errReplaced = errors.New("postgres: index: the entry was replaced or dropped while its log was read")
-	// errWait is Wait's, until it is implemented.
-	errWait = fmt.Errorf("postgres: index: Wait is not implemented yet: %w", errors.ErrUnsupported)
 )
 
 // The statements the index runs, bound once.
@@ -94,6 +102,10 @@ var (
 		var s stored
 		return s, r.Scan(&s.version, &s.data)
 	})
+	lookupClaim = statements.Statement("lookup_claim").Scan(func(r query.Row) (claimRow, error) {
+		var c claimRow
+		return c, r.Scan(&c.version, &c.entry, &c.expires, &c.now)
+	})
 	listItems = statements.Statement("list_items").Scan(func(r query.Row) (page, error) {
 		var p page
 		return p, r.Scan(&p.seq, &p.item)
@@ -104,6 +116,15 @@ var (
 type stored struct {
 	version string
 	data    []byte
+}
+
+// claimRow is key's row as a waiter reads it: its dispatch.Version, its entry's JSON, nil while
+// claimed, its lease's expiry, and the database's clock when it was read.
+type claimRow struct {
+	version string
+	entry   []byte
+	expires sql.NullTime
+	now     time.Time
 }
 
 // page is one item of a page of a log: its position and its JSON.
@@ -180,12 +201,18 @@ func (x *Index) Lookup(ctx context.Context, key dispatch.Key) (dispatch.Entry, b
 	if err != nil {
 		return dispatch.Entry{}, false, fmt.Errorf("postgres: index: lookup: %w", err)
 	}
-	if err := checkVersion(key, row.version); err != nil {
+	return decodeEntry(key, row.version, row.data)
+}
+
+// decodeEntry returns key's entry from its row's JSON, refusing a row written under another
+// dispatch.Version.
+func decodeEntry(key dispatch.Key, version string, data []byte) (dispatch.Entry, bool, error) {
+	if err := checkVersion(key, version); err != nil {
 		return dispatch.Entry{}, false, err
 	}
 	var e dispatch.Entry
-	if err := json.Unmarshal(row.data, &e); err != nil {
-		return dispatch.Entry{}, false, fmt.Errorf("postgres: index: lookup: %w", err)
+	if err := json.Unmarshal(data, &e); err != nil {
+		return dispatch.Entry{}, false, fmt.Errorf("postgres: index: %s %s: %w", key.SHA256, key.Stage, err)
 	}
 	return e, true, nil
 }
@@ -286,9 +313,66 @@ func (x *Index) Renew(ctx context.Context, key dispatch.Key, token string) error
 	return nil
 }
 
-// Wait is not implemented yet: it fails matching errors.ErrUnsupported.
-func (x *Index) Wait(context.Context, dispatch.Key) (dispatch.Entry, bool, error) {
-	return dispatch.Entry{}, false, errWait
+// Wait waits while key is claimed, then returns its entry and true if the claim was recorded, or
+// false if it ended without a record or its lease ran out, so a claimant that died is waited
+// out. It returns at once when key is recorded or unclaimed, and the context's error when ctx
+// ends first.
+//
+// The waiter subscribes to the Index's listener for key's notification, then reads key's row; it
+// wakes at the notification Record, Release, or Drop sends, or at the lease's expiry, which the
+// row gives on the database's clock, and reads the row again. The first Wait starts the
+// listener, which holds a connection from the pool until Close; a listener whose connection
+// fails wakes its waiters, and the next to subscribe starts another.
+func (x *Index) Wait(ctx context.Context, key dispatch.Key) (dispatch.Entry, bool, error) {
+	var w *waiter
+	defer func() {
+		if w != nil {
+			w.cancel()
+		}
+	}()
+	for {
+		if w == nil {
+			var err error
+			if w, err = x.subscribe(ctx, key); err != nil {
+				return dispatch.Entry{}, false, err
+			}
+		}
+		row, err := lookupClaim.One(ctx, x.db, args(key))
+		if errors.Is(err, sql.ErrNoRows) {
+			return dispatch.Entry{}, false, nil
+		}
+		if err != nil {
+			if ctx.Err() != nil {
+				return dispatch.Entry{}, false, ctx.Err()
+			}
+			return dispatch.Entry{}, false, fmt.Errorf("postgres: index: wait: %w", err)
+		}
+		if row.entry != nil {
+			return decodeEntry(key, row.version, row.entry)
+		}
+		var timer *time.Timer
+		var expired <-chan time.Time
+		if row.expires.Valid {
+			left := row.expires.Time.Sub(row.now)
+			if left <= 0 {
+				return dispatch.Entry{}, false, nil
+			}
+			timer = time.NewTimer(left)
+			expired = timer.C
+		}
+		err = w.await(ctx, expired)
+		if timer != nil {
+			timer.Stop()
+		}
+		if err != nil {
+			return dispatch.Entry{}, false, err
+		}
+		if isDone(w.l.done) {
+			// The listener ended: subscribe to the next before the row is read again.
+			w.cancel()
+			w = nil
+		}
+	}
 }
 
 // Append buffers r's JSON in token's claim's log, writing the buffer in one statement once it
@@ -344,7 +428,7 @@ func checkRecorded(r dispatch.Recorded) error {
 }
 
 // Record records e as key's entry, with the rest of token's buffered log, in one statement, and
-// ends the claim.
+// ends the claim, notifying the key's waiters.
 func (x *Index) Record(ctx context.Context, key dispatch.Key, token string, e dispatch.Entry) error {
 	b, err := json.Marshal(e)
 	if err != nil {
@@ -374,8 +458,8 @@ func (x *Index) Record(ctx context.Context, key dispatch.Key, token string, e di
 	return nil
 }
 
-// Release ends token's claim of key, discarding its buffer and its written log; a claim another
-// now holds, or a recorded entry, is left.
+// Release ends token's claim of key, discarding its buffer and its written log, and notifies the
+// key's waiters; a claim another now holds, or a recorded entry, is left.
 func (x *Index) Release(ctx context.Context, key dispatch.Key, token string) error {
 	x.forget(key, token)
 	if _, err := releaseClaim.Exec(ctx, x.db, args(key).With("token", token)); err != nil {
@@ -384,7 +468,7 @@ func (x *Index) Release(ctx context.Context, key dispatch.Key, token string) err
 	return nil
 }
 
-// Drop removes key's entry and its log.
+// Drop removes key's entry and its log, notifying the key's waiters.
 func (x *Index) Drop(ctx context.Context, key dispatch.Key) error {
 	if _, err := dropEntry.Exec(ctx, x.db, args(key)); err != nil {
 		return fmt.Errorf("postgres: index: drop: %w", err)
