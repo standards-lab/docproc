@@ -277,7 +277,10 @@ func TestResumeCursor(t *testing.T) {
 	}
 }
 
-// refusing is an index whose renewals are refused, each signalled on renewed.
+// refusing is an index whose renewals are refused, the first signalled on renewed. Its Record
+// waits for the dispatch to end, so the refused renewal, not a race between the renewer's cancel
+// and the walk's record, decides the outcome: a dispatch that a refusal didn't end records after
+// 10 s with an error that isn't ErrClaimLost.
 type refusing struct {
 	dispatch.Index
 	renewed chan struct{}
@@ -287,6 +290,15 @@ type refusing struct {
 func (r *refusing) Renew(context.Context, dispatch.Key, string) error {
 	r.once.Do(func() { close(r.renewed) })
 	return errors.New("the index refused the renewal")
+}
+
+func (r *refusing) Record(ctx context.Context, _ dispatch.Key, _ string, _ dispatch.Entry) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(10 * time.Second):
+		return errors.New("the dispatch went on to record after its renewal was refused")
+	}
 }
 
 // TestClaimLost: the dispatch's renewer renews a claim at a third of its lease while the caller's

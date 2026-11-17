@@ -187,12 +187,23 @@ func TestRunFixedEnvironmentLang(t *testing.T) {
 	}
 }
 
-// TestRunOOMScoreAdj checks that the exec runner's program takes an oom_score_adj of 1000.
+// TestRunOOMScoreAdj checks that the exec runner's program takes an oom_score_adj of 1000. The
+// runner writes it once the program has started, and the program inherits the test's own, which a
+// session's manager may have raised from 0, so the stand-in waits for 1000 rather than for a
+// change, and a runner that never writes it leaves the inherited value. A test already at 1000
+// can't tell the two apart, so it skips.
 func TestRunOOMScoreAdj(t *testing.T) {
 	t.Parallel()
+	own, err := os.ReadFile("/proc/self/oom_score_adj")
+	if err != nil {
+		t.Skipf("no oom_score_adj to read: %v", err)
+	}
+	if strings.TrimSpace(string(own)) == "1000" {
+		t.Skip("the test's own oom_score_adj is already 1000, which the program would inherit")
+	}
 	tl := newStandin(t)
 	var out bytes.Buffer
-	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"oom"}, Stdout: &out}); err != nil {
+	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"oom", "1000"}, Stdout: &out}); err != nil {
 		t.Fatal(err)
 	}
 	if got := strings.TrimSpace(out.String()); got != "1000" {

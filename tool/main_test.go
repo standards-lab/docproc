@@ -51,7 +51,8 @@ func TestMain(m *testing.M) {
 //	as-print N TEXT   writes TEXT to stdout when its RLIMIT_AS is N bytes; else exits 1, naming
 //	                  the limit it has
 //	env               writes its environment to stdout as a JSON array, sorted
-//	oom               writes its oom_score_adj to stdout once it is other than 0, or after 5 s
+//	oom N             writes its oom_score_adj to stdout once it is N, or after 5 s, whatever
+//	                  it is then
 //	tick N D          writes a line N times, D apart, then exits 0
 func standin(link string, args []string) int {
 	if len(args) == 0 {
@@ -163,7 +164,7 @@ func standin(link string, args []string) int {
 				fmt.Fprintln(os.Stderr, err)
 				return 2
 			}
-			if strings.TrimSpace(string(adj)) != "0" {
+			if strings.TrimSpace(string(adj)) == args[1] {
 				break
 			}
 		}

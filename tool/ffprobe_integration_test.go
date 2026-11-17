@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -56,17 +58,11 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 		return ffprobeTool{Tool: tl, running: func(*testing.T) {}, leftover: func(*testing.T) {}}
 	},
 	"container": func(t *testing.T) ffprobeTool {
-		// A run's container name isn't observable, so the checks are on containers named as the
-		// runner names its runs, of ffprobe's image, that weren't there before the build. Other
-		// packages' tests run their own images through the same runner, in parallel with these,
-		// so their containers start after the snapshot; the image leaves them out.
-		before := toolContainers(t, false)
-		added := func(t *testing.T, running bool) []string {
-			return slices.DeleteFunc(toolContainers(t, running), func(id string) bool {
-				return slices.Contains(before, id)
-			})
-		}
-		tl, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: ffmpegImage}, ffprobeSpec())
+		// A run's container name is the runner's own, so the runner's docker CLI is a script that
+		// logs each run's --name before it runs the host's docker; the checks are on the
+		// containers so named alone, whatever other packages' tests run at the same time.
+		docker, names := loggingDocker(t)
+		tl, err := tool.NewContainer(t.Context(), docker, tool.Image{Ref: ffmpegImage}, ffprobeSpec())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +74,7 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 			running: func(t *testing.T) {
 				t.Helper()
 				deadline := time.Now().Add(30 * time.Second)
-				for len(added(t, true)) == 0 {
+				for len(containers(t, names(t), true)) == 0 {
 					if time.Now().After(deadline) {
 						t.Fatal("no container of the run's was running after 30 s")
 					}
@@ -87,7 +83,11 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 			},
 			leftover: func(t *testing.T) {
 				t.Helper()
-				if left := added(t, false); len(left) != 0 {
+				run := names(t)
+				if len(run) == 0 {
+					t.Fatal("no docker run was logged")
+				}
+				if left := containers(t, run, false); len(left) != 0 {
 					t.Errorf("containers %q outlived the run", left)
 				}
 			},
@@ -95,21 +95,54 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 	},
 }
 
-// toolContainers returns the IDs of the containers of ffmpegImage whose name begins tool-, the
-// container runner's prefix: the running ones only, or with running false, every one. Only this
-// package's tests run ffmpegImage, so the containers that other packages' tests start through the
-// runner, which go test runs at the same time, aren't counted.
-func toolContainers(t *testing.T, running bool) []string {
+// loggingDocker returns a docker CLI that appends the --name of each docker run to a log, then
+// runs the host's docker on its arguments, and a function returning the names logged so far.
+func loggingDocker(t *testing.T) (string, func(t *testing.T) []string) {
 	t.Helper()
-	args := []string{"ps", "--quiet", "--no-trunc", "--filter=name=^tool-", "--filter=ancestor=" + ffmpegImage}
-	if !running {
-		args = append(args, "--all")
-	}
-	out, err := exec.CommandContext(t.Context(), "docker", args...).Output()
+	real, err := exec.LookPath("docker")
 	if err != nil {
-		t.Fatalf("docker ps: %v", err)
+		t.Fatal(err)
 	}
-	return strings.Fields(string(out))
+	dir := t.TempDir()
+	log := filepath.Join(dir, "names")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = run ]; then\n" +
+		"  for arg; do\n" +
+		"    case $arg in --name=*) printf '%s\\n' \"${arg#--name=}\" >>'" + log + "' ;; esac\n" +
+		"  done\n" +
+		"fi\n" +
+		"exec '" + real + "' \"$@\"\n"
+	docker := filepath.Join(dir, "docker")
+	if err := os.WriteFile(docker, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return docker, func(t *testing.T) []string {
+		t.Helper()
+		b, err := os.ReadFile(log)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			t.Fatal(err)
+		}
+		return strings.Fields(string(b))
+	}
+}
+
+// containers returns the IDs of the containers named names: the running ones only, or with
+// running false, every one.
+func containers(t *testing.T, names []string, running bool) []string {
+	t.Helper()
+	var ids []string
+	for _, name := range names {
+		args := []string{"ps", "--quiet", "--no-trunc", "--filter=name=^" + name + "$"}
+		if !running {
+			args = append(args, "--all")
+		}
+		out, err := exec.CommandContext(t.Context(), "docker", args...).Output()
+		if err != nil {
+			t.Fatalf("docker ps: %v", err)
+		}
+		ids = append(ids, strings.Fields(string(out))...)
+	}
+	return ids
 }
 
 // probeArgs are ffprobe's arguments for a JSON report of input's format and streams.
