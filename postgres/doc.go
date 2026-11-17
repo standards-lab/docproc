@@ -8,6 +8,9 @@
 //     must be on pgx's database/sql driver, every claim's lease, and the log's flush size
 //   - [Migrations], the index's tables and the index a retention reads, as a migration set,
 //     named [Source] and recorded in the history table [Table]
+//   - [Retention], made by [NewRetention] from the session and an age, which drops the entries
+//     older than the age, with their logs, a budget per [Retention.Pass]; the host drives it from
+//     a sweeper, and the age has no default
 //   - [Verify], which prepares the statements against a live schema, and [Statements], which
 //     lists them
 //
@@ -67,6 +70,18 @@
 // all. Items reads the log in pages of Flush items, by position, under the token the entry
 // holds, and fails when the entry is replaced or dropped while it reads. A row written under
 // another dispatch.Version is refused rather than read.
+//
+// # Retention
+//
+// The index keeps every entry until it is dropped, so a host bounds it with a [Retention], whose
+// age is how long a result is worth keeping: a dropped key's content is prepared again on its
+// next dispatch. Each pass is one statement that deletes at most its budget of entries created
+// more than the age ago, oldest first by docproc_ix_entry_created, their logs going with them,
+// and notifies each key's waiters as Drop does. A recorded entry counts its age from its record,
+// and a claim whose lease ran out from its claim; a claim under a live lease, or one that never
+// expires, is never dropped. The candidates are locked FOR UPDATE SKIP LOCKED, so a pass skips a
+// row a claim is taking over, and passes on several hosts skip each other's. A pass reports more
+// exactly when it dropped its whole budget, so a sweeper passes again until one reports none.
 //
 // # Statements
 //

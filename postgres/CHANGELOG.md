@@ -34,3 +34,10 @@ each system tool under `tools/` keep their own.
 - `Index.Close`, which stops the listener `Wait` starts on its first call: one connection held
   from the host's pool per `Index` until `Close`, which a host's pool must allow. A `Wait` after
   `Close` fails; the other methods are unaffected.
+- `Retention`, made by `NewRetention(db, age)`, whose `Pass(ctx, budget)` drops at most `budget`
+  entries created more than `age` ago on the database's clock, oldest first, with their logs, in
+  one statement that notifies each dropped key's waiters, and reports `more` exactly when it
+  dropped its whole budget. A claim under a live lease, or one that never expires, is never
+  dropped; a claim whose lease ran out is, once old enough. Rows another transaction holds are
+  skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
+  budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
