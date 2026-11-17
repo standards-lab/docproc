@@ -10,6 +10,13 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-11-17
+
+The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
+`dispatch.Index` it implements and whose `dispatchtest.Index` suite it passes;
+`github.com/standards-lab/sqlate` v0.7.0 and `sqlate/postgres` v0.8.0, whose `pgtest` its live
+tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must be on.
+
 ### Added
 
 - `Migrations`, the index's schema as a sqlate migration set named `Source`, `docproc`, recorded
@@ -41,3 +48,6 @@ each system tool under `tools/` keep their own.
   dropped; a claim whose lease ran out is, once old enough. Rows another transaction holds are
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
+
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/postgres/v0.1.0

@@ -10,6 +10,12 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-11-17
+
+The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
+`dispatch.Content` it implements and whose `dispatchtest.Content` suite it passes, and
+`github.com/standards-lab/go-storage` v0.8.0; its live tier runs over go-storage's `s3` v0.3.0.
+
 ### Added
 
 - `Content`, a `dispatch.Content` over a go-storage `Client`, made by `New(Config)` from the
@@ -27,3 +33,6 @@ each system tool under `tools/` keep their own.
   storagetest's `Fake`, with the renew age on the Fake's clock, a `Store`'s `MaxObjectSize`, and
   a missing container; the live tier, under `-tags integration`, runs it over go-storage's S3
   provider against the compose harness's SeaweedFS.
+
+[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/storage/v0.1.0

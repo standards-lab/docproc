@@ -511,16 +511,21 @@ concept: no model client, no inference, no embedding. Inference is docinfer's ("
 and the imports run one way: docinfer imports docproc, and no docproc package imports docinfer.
 The base module is built (`library`): each package's doc comment is the reference for its
 exported names, and the signatures below are the boundary other layers build against. The
-providers are planned (`providers`), and `rundir` and `cmd/docproc` too (`docproc`, `reports`).
+providers are built (`providers`), each module's README and package doc their reference; `rundir`
+and `cmd/docproc` are planned (`docproc`, `reports`).
 
 The modules:
 
 ```text
 github.com/standards-lab/docproc              the library below; requires golang.org/x/text only
-github.com/standards-lab/docproc/storage      Content over go-storage's Client; requires the
+github.com/standards-lab/docproc/storage      Content over go-storage's Client, built:
+                                              New(Config{Client, Prefix, Renew}); requires the
                                               library and go-storage
-github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqlate; requires the
-                                              library, sqlate, and sqlate/postgres
+github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqlate, built:
+                                              New(ctx, Config{DB *sqlate.DB, Lease, Flush}),
+                                              Index.Close, Migrations, Verify, Statements, and
+                                              NewRetention(db, age); requires the library,
+                                              sqlate, sqlate/postgres, and pgx
 github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the library,
                                               go-cli-sdk, go-core, and golang.org/x/sys
 ```
@@ -530,7 +535,8 @@ filesystem and a memory implementation in the base module on the standard librar
 provider is a nested sub-module named for its target system that implements one over a stack
 or adjacent library: `storage` the content store in object storage over go-storage's `Client`
 and its providers, and `postgres` the index in PostgreSQL ("Index"). `postgres` takes a
-`sqlate.Session`, as go-messaging's `postgres` does, and requires sqlate for its statements and
+`*sqlate.DB`, its pool on pgx's `database/sql` driver for `Wait`'s LISTEN, its `Verify` a
+`sqlate.Session` as go-messaging's `postgres` does, and requires sqlate for its statements and
 migrations and sqlate's `postgres` for the dialect; the pool behind the session is the host's,
 which Cerebro opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
 go-database. A provider over a tier pins only its own level, above that tier
@@ -1219,8 +1225,12 @@ and one row per log item, keyed by its entry, the token that appended it, and it
 log. A claim, a renewal, a flush of appends (multi-row), and a record are each one conditional
 statement on the entry's current token, so fencing is the database's. The module ships its schema's
 migrations, as go-messaging's `postgres` does, and the host applies them. The host sweeps entries
-by age, with `Drop`; the retention is the `state` task's, under "Content"'s bound. An entry's age
-runs from its creation, its first claim, and neither a replay nor `Record` refreshes it.
+by age: over `docproc/postgres` with its `Retention`, `NewRetention(db, age)`, whose `Pass(ctx,
+budget)` drops at most the budget of entries older than the age, oldest first, with their logs,
+and never a claim under a live lease, a pass from the host's sweeper; over `MemoryIndex` and
+`FileIndex` with `Drop`. The retention is the `state` task's, under "Content"'s bound. An entry's
+age runs from its creation, its first claim, and a replay never refreshes it; `docproc/postgres`
+counts a recorded entry's from its `Record`, and a claim taken over from the takeover.
 
 ### Event shapes
 
@@ -2214,12 +2224,17 @@ rundir,             moved from the root's internal/docproc/{rundir,schema} [docp
                     Europe/London; rundir/testdata one committed schema "2" run directory, read
                     through the reader's API and written again through the writer's, compared as
                     text
-storage (module)    new [providers]: dispatch.Content in object storage over go-storage's Client,
-                    go-storage's ErrTooLarge mapped to dispatch.ErrTooLarge
-postgres (module)   new [providers]: dispatch.Index in PostgreSQL over sqlate, an entry's row with
-                    its flags and its log items' rows, inserted in multi-row statements, its claims,
-                    leases, and fencing as conditional statements, Items read under the entry's
-                    token, and its migrations
+storage (module)    built [providers]: storage.New(Config{Client, Prefix, Renew}), dispatch.Content
+                    in object storage over go-storage's Client at <prefix>ab/<sha256>, go-storage's
+                    ErrTooLarge mapped to dispatch.ErrTooLarge; no sweeper, the host's lifecycle
+                    rule on age
+postgres (module)   built [providers]: postgres.New(ctx, Config{DB *sqlate.DB, Lease, Flush}),
+                    dispatch.Index in PostgreSQL over sqlate, an entry's row with its flags and its
+                    log items' rows, inserted in multi-row statements, its claims, leases, and
+                    fencing as conditional statements, Items read under the entry's token, Wait by
+                    LISTEN/NOTIFY on one listener connection per Index until Index.Close; its
+                    migrations, Migrations, with Verify and Statements; NewRetention(db, age),
+                    whose budgeted Pass drops aged entries oldest first
 ```
 
 The memory bound has no default: `tool.Spec.MemoryLimit` and `stages.Options.Memory` are none
