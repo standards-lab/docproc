@@ -4,10 +4,7 @@ package postgres_test
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -174,8 +171,6 @@ func TestLive_RetentionNotifies(t *testing.T) {
 	if _, err := conn.Exec(ctx, "LISTEN docproc_index"); err != nil {
 		t.Fatal(err)
 	}
-	k := aged("swept")
-	h := sha256.Sum256([]byte(strings.Join([]string{k.SHA256, k.Stage.Name, k.Stage.Version, k.Stage.Config}, "\x00")))
 	recordAged(t, a, index(t, a, 1), "swept", 0, "2 hours")
 	r, err := postgres.NewRetention(a, time.Hour)
 	if err != nil {
@@ -194,7 +189,7 @@ func TestLive_RetentionNotifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pass: %v", err)
 	}
-	if want := hex.EncodeToString(h[:]); n.Channel != "docproc_index" || n.Payload != want {
+	if want := payloadOf(aged("swept")); n.Channel != "docproc_index" || n.Payload != want {
 		t.Errorf("pass notified %s %q, want docproc_index %q", n.Channel, n.Payload, want)
 	}
 }

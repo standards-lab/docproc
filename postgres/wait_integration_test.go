@@ -23,11 +23,14 @@ import (
 
 // The wake tests' timings. A claim the waiter is woken from by a notification lasts held, so a
 // waiter that returns within prompt was woken by the notification, not the lease's expiry; quiet
-// is how long a waiter is given to return early, wrongly, before the claim ends.
+// is how long a waiter is given to return early, wrongly, before the claim ends, and unprompted
+// how long one whose claim ended without a notification is watched for a return no notification
+// caused.
 const (
-	held   = time.Minute
-	prompt = 10 * time.Second
-	quiet  = 100 * time.Millisecond
+	held       = time.Minute
+	prompt     = 10 * time.Second
+	quiet      = 100 * time.Millisecond
+	unprompted = 2 * time.Second
 )
 
 // hosts returns two sessions on one migrated database, each over a pool of its own, as two hosts
@@ -153,34 +156,71 @@ func claimAny(t *testing.T, idx *postgres.Index) string {
 	return token
 }
 
+// listenerPID polls until exactly one backend of db's database other than except is listening
+// on docproc_index, and returns its pid, failing the test unless one is within prompt.
+func listenerPID(t *testing.T, db *sqlate.DB, except int) int {
+	t.Helper()
+	for deadline := time.Now().Add(prompt); ; time.Sleep(quiet / 10) {
+		if time.Now().After(deadline) {
+			t.Fatalf("no listener but %d within %s", except, prompt)
+		}
+		if pid := scalar[int](t, db, `SELECT CASE WHEN count(*) = 1 THEN min(pid) ELSE 0 END
+			FROM pg_stat_activity WHERE datname = current_database()
+			AND query = 'LISTEN docproc_index' AND pid <> $1`, except); pid != 0 {
+			return pid
+		}
+	}
+}
+
 // A waiter whose listener's connection is ended by the server subscribes again on a new one, and
-// still wakes at the claim's record rather than at its lease's expiry.
+// still wakes at the claim's record rather than at its lease's expiry. The new listener is told
+// from the old by its pid, since a terminated backend can linger in pg_stat_activity.
 func TestLive_WaitSurvivesItsListenersEnd(t *testing.T) {
 	a, b, _ := hosts(t)
 	ctx := t.Context()
 	claimant, waiter := indexLeased(t, a, 1, held), indexLeased(t, b, 1, held)
 	token := claimAny(t, claimant)
 	done := waitOn(t, ctx, waiter)
-	if n := scalar[int](t, a, `SELECT count(pg_terminate_backend(pid)) FROM pg_stat_activity
-		WHERE datname = current_database() AND query = 'LISTEN docproc_index'`); n != 1 {
-		t.Fatalf("terminated %d listeners, want 1", n)
+	old := listenerPID(t, a, 0)
+	if !scalar[bool](t, a, `SELECT pg_terminate_backend($1)`, old) {
+		t.Fatalf("listener %d wasn't terminated", old)
 	}
-	// The waiter reads the row again once its listener ends; give it time to listen anew.
-	for deadline := time.Now().Add(prompt); ; time.Sleep(quiet / 10) {
-		if time.Now().After(deadline) {
-			t.Fatal("no new listener within the deadline")
-		}
-		if scalar[int](t, a, `SELECT count(*) FROM pg_stat_activity
-			WHERE datname = current_database() AND query = 'LISTEN docproc_index'`) == 1 {
-			break
-		}
-	}
+	listenerPID(t, a, old)
 	if err := claimant.Record(ctx, fixtureKey, token, fixture); err != nil {
 		t.Fatal(err)
 	}
 	if w := result(t, done); w.err != nil || !w.ok {
 		t.Errorf("wait after its listener ended and the claim was recorded: %v, %v, want the entry", w.ok, w.err)
 	}
+}
+
+// A waiter wakes at a notification, never by reading the row again unprompted: a claim ended
+// under it without one, its row deleted by hand, leaves it waiting until the key's payload is
+// notified, though its lease is far from running out.
+func TestLive_WaitWakesOnlyWhenNotified(t *testing.T) {
+	a, b, _ := hosts(t)
+	ctx := t.Context()
+	claimant, waiter := indexLeased(t, a, 1, held), indexLeased(t, b, 1, held)
+	claimAny(t, claimant)
+	done := waitOn(t, ctx, waiter)
+	exec(t, a, `DELETE FROM docproc_entry WHERE sha256 = $1`, fixtureKey.SHA256)
+	select {
+	case w := <-done:
+		t.Fatalf("wait returned with no notification: %+v", w)
+	case <-time.After(unprompted):
+	}
+	exec(t, a, `SELECT pg_notify('docproc_index', $1)`, payloadOf(fixtureKey))
+	if w := result(t, done); w.err != nil || w.ok {
+		t.Errorf("wait after the notification: %v, %v, want no entry", w.ok, w.err)
+	}
+}
+
+// payloadOf is k's notification payload, the lowercase hex SHA-256 of its SHA-256, name,
+// version, and config joined by NUL bytes, computed here apart from the package, as a listener
+// of the host's own would.
+func payloadOf(k dispatch.Key) string {
+	h := sha256.Sum256([]byte(strings.Join([]string{k.SHA256, k.Stage.Name, k.Stage.Version, k.Stage.Config}, "\x00")))
+	return hex.EncodeToString(h[:])
 }
 
 // Close ends a Wait in flight with an error, and a Wait after it fails; the Index's other
@@ -209,8 +249,7 @@ func TestLive_CloseEndsTheWaits(t *testing.T) {
 }
 
 // Release, Record, and Drop notify docproc_index with the key's payload, the lowercase hex
-// SHA-256 of its SHA-256, name, version, and config joined by NUL bytes, computed here apart from
-// the package, as a listener of the host's own would.
+// SHA-256 of its SHA-256, name, version, and config joined by NUL bytes, as payloadOf computes it.
 func TestLive_NotifyPayload(t *testing.T) {
 	a, _, dsn := hosts(t)
 	ctx := t.Context()
@@ -222,8 +261,7 @@ func TestLive_NotifyPayload(t *testing.T) {
 	if _, err := conn.Exec(ctx, "LISTEN docproc_index"); err != nil {
 		t.Fatal(err)
 	}
-	h := sha256.Sum256([]byte(strings.Join([]string{fixtureKey.SHA256, fixtureKey.Stage.Name, fixtureKey.Stage.Version, fixtureKey.Stage.Config}, "\x00")))
-	want := hex.EncodeToString(h[:])
+	want := payloadOf(fixtureKey)
 	idx := index(t, a, 1)
 	next := func(what string) {
 		t.Helper()

@@ -267,10 +267,12 @@ func TestLive_AnotherVersionIsRefused(t *testing.T) {
 	if _, _, err := idx.Lookup(ctx, fixtureKey); err == nil || !strings.Contains(err.Error(), `dispatch version "0"`) {
 		t.Errorf("lookup of a version 0 row: %v, want it refused", err)
 	}
+	var errs []error
 	for _, err := range idx.Items(ctx, fixtureKey) {
-		if err == nil || !strings.Contains(err.Error(), `dispatch version "0"`) {
-			t.Errorf("items of a version 0 row: %v, want it refused", err)
-		}
+		errs = append(errs, err)
+	}
+	if len(errs) != 1 || errs[0] == nil || !strings.Contains(errs[0].Error(), `dispatch version "0"`) {
+		t.Errorf("items of a version 0 row: %v, want one error refusing it", errs)
 	}
 }
 
