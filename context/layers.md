@@ -2397,12 +2397,14 @@ postgres (module)   new: dispatch.Index in PostgreSQL over sqlate, an entry's ro
 docproc's root `mise run check` runs each tool's check through `TOOLS` beside `GO_MODULES`; this
 task adds CI's Go job and the releases of the Go modules beside the `tools/*/v*` workflow. Its check lints the unit tier and the `integration` tag alone.
 
-The acceptance task dispatches PI-1's two bombs, a many-entry one and a 999:1 one, through
-`cmd/docproc`; counts recorded failures by class over ~/docs; measures `tool`'s memory bound on
-all three tools before the library adopts it; measures word error rate on ~/docs' audio under the
-tracker before the tag; and times the 1,823-page PDF per page and by ranges of pages in one gs
-process, which the library adopts only if the per-process cost matters at that size
-(`design.md`, "processing").
+The memory bound lands in this task with no default: `tool.Spec.MemoryLimit` and
+`stages.Options.Memory` are none until the host sets them. The acceptance task dispatches PI-1's
+two bombs, a many-entry one and a 999:1 one, through `cmd/docproc`; counts recorded failures by
+class over ~/docs; measures each of the three tools' peak memory under the bound, for
+`cmd/docproc`'s starting value of it; measures word error rate on ~/docs' audio under the tracker
+before the tag; and times the 1,823-page PDF per page and by ranges of pages in one gs process,
+which the library adopts only if the per-process cost matters at that size (`design.md`,
+"processing").
 
 ### docinfer's packages [the docinfer goal]
 

@@ -2,8 +2,8 @@
 # once per runner, natively on x64 and arm64, followed by its third-party notices, but only when
 # the tool's directory or the wiring every tool shares changed; the Go job runs the root's
 # check:go on both runners only when what the Go modules build or read changed; the lint job runs
-# the root's shellcheck and actionlint only when a script, a workflow, or the root mise.toml
-# changed. The `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
+# the root's lint, shellcheck, actionlint, and the release workflow's tag-routing test, only when
+# a script, a workflow, or the root mise.toml changed. The `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
 # any job it needs failed or was cancelled, and passes when they succeeded or their paths skipped
 # them, so a skipped job never blocks a merge. Actions are pinned by their exact release tag,
 # which `mise run currency` compares with each action's latest release. A newer run on the same
@@ -22,6 +22,11 @@ concurrency:
 
 permissions:
   contents: read
+
+# The root mise.toml's 7zz is the integration tier's, which runs on the developer's machine alone,
+# so no job installs it, through mise-action or a task's auto-install.
+env:
+  MISE_DISABLE_TOOLS: github:ip7z/7zip
 
 jobs:
   changes:
@@ -97,7 +102,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # The lint needs only the root's shellcheck and actionlint, not its Go toolchain.
+      # The lint needs only the root's shellcheck and actionlint, not its Go toolchain; the
+      # routing test needs bash alone.
       - uses: jdx/mise-action@v5.2.9
         with:
           install_args: actionlint shellcheck

@@ -1,4 +1,9 @@
+# The integration tier's 7-Zip, 7zz, pinned here so currency and upgrade keep it current: sevenzip
+# requires 24.07 or later. The test:integration task runs under it; CI never needs it, so its
+# workflows set MISE_DISABLE_TOOLS to it, and no job installs it. The tier's other system tools
+# are the host's (README.md, "Development").
 [tools]
+"github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"
 golangci-lint = "2.15.0"
@@ -64,15 +69,48 @@ for mod in $GO_MODULES; do
 done
 '''
 
-# actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. CI's
-# lint job runs this task; the check runs it first.
+# actionlint shellchecks each workflow's run: blocks too, with the shellcheck pinned above. The
+# release workflow's tag routing is a script, so its test runs here, beside the workflow it
+# routes. CI's lint job runs this task; the check runs it first.
 [tasks.lint]
-description = "Shellcheck every committed shell script and lint the GitHub Actions workflows with actionlint; reads no network, writes nothing"
+description = "Shellcheck every committed shell script, lint the GitHub Actions workflows with actionlint, and test the release workflow's tag routing; reads no network, writes only a temporary tree"
 dir = "{{config_root}}"
 run = '''
 set -eu
 git ls-files -z '*.sh' | xargs -0 -r shellcheck
 actionlint
+scripts/release-tag-test.sh
+'''
+
+# The integration tier, on the developer's machine before each Go tag; CI never runs it. Each
+# docproc tool is built from this checkout through its own publish task, and the three binaries
+# alone are linked into a directory put ahead of everything else on PATH, so no released or
+# installed docproc tool stands in for them. 7zz is the root's pin above; gs, qpdf, pdfdetach,
+# ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run one at a
+# time, -p 1: tool's container tests count the containers of FFmpeg's image, which audio's and
+# media's tests also run, so in parallel they find another package's containers as their own.
+[tasks."test:integration"]
+description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier, one package at a time; writes only the tools' build output and a temporary directory"
+run = '''
+set -eu
+export GOWORK=off
+bin=$(mktemp -d)
+trap 'rm -rf "$bin"' EXIT
+for tool in $TOOLS; do
+  echo "test:integration: building tools/$tool"
+  mise -C "$MISE_PROJECT_ROOT/tools/$tool" run publish
+  ln -s "$MISE_PROJECT_ROOT/tools/$tool/.state/publish/docproc-$tool" "$bin/docproc-$tool"
+done
+export PATH="$bin:$PATH"
+for tool in $TOOLS; do
+  echo "test:integration: $(command -v "docproc-$tool"): $("docproc-$tool" --version | head -n 1)"
+done
+echo "test:integration: $(command -v 7zz)"
+for mod in $GO_MODULES; do
+  echo "test:integration: $mod"
+  cd "$MISE_PROJECT_ROOT/$mod"
+  go test -tags integration -p 1 ./...
+done
 '''
 
 # Read-only and development-time: it reads the network, so CI never runs it.

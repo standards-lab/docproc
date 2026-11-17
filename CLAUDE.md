@@ -3,6 +3,8 @@
 The extraction library adjacent to Go Elemental, with the system tools it runs nested under
 `tools/`, a `code` project managed with the marathon workflow.
 
+- [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its packages,
+  the system tools each stage needs, its limits, and its development tasks.
 - [`context/README.md`](context/README.md): the working context.
 - [`STANDARDS.md`](STANDARDS.md): the judgement calls the standards-reviewer applies.
 - [`tools/ooxml/README.md`](tools/ooxml/README.md): docproc-ooxml, its tasks run from
