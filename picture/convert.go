@@ -123,26 +123,26 @@ type Request struct {
 	// of its own made in it, picture-*, which is removed when the conversion ends, and the PNGs
 	// are written into it and left. It is required; an empty Dir is refused rather than taken as
 	// the system's temporary directory.
-	Dir string
+	Dir string `json:"-"`
 	// Path is the picture's file, which is read and never changed.
-	Path string
+	Path string `json:"-"`
 	// Kind is how the picture is read, as the caller identified it, whatever its name and
 	// content: route.TIFF, route.EMF, route.WMF, route.SVG, route.HEIC, route.WebP, or
 	// route.AVIF. A picture of the wrong kind fails in its converter; a kind of no other is
 	// refused.
-	Kind route.Kind
+	Kind route.Kind `json:"-"`
 	// Stem names the PNGs: Dir's Stem and .png, or for a TIFF each page's Stem, "-page", its
 	// number from 1, and .png. It is required, and is a plain name of ASCII letters, digits, '.',
 	// '-', and '_', beginning with a letter or digit, such as the picture's SHA-256, so magick
 	// reads no part of it as a format, a frame, or a pattern.
-	Stem string
+	Stem string `json:"-"`
 	// MetafileScale is the scale an EMF or WMF is rendered at, a multiple of its size at 96 dpi:
 	// zero is DefaultMetafileScale, 3, and it may be at most MaxMetafileScale, 8. Every other
 	// kind ignores it.
-	MetafileScale int
+	MetafileScale int `json:"metafile_scale"`
 	// Density is the density an SVG is rendered at, in dots per inch: zero is DefaultDensity,
 	// 150. Every other kind ignores it.
-	Density int
+	Density int `json:"density"`
 }
 
 // kinds are the picture kinds the package converts, with each one's extension, which a copy is

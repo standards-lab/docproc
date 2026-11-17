@@ -66,17 +66,17 @@ type Request struct {
 	// read, the .onetoc2 notebook or notebook directory, which the caller owns; docproc-onenote
 	// sniffs its kind from its content, never its name, and reads it in place. Read makes it
 	// absolute, so a name that begins with "-" is never taken as an option. It is required.
-	Input string
+	Input string `json:"-"`
 	// Media is the directory docproc-onenote writes each distinct image, embedded file, and ink
 	// drawing into once, named by its media name, created once the input is read; the caller owns
 	// it. Each Medium's Path then names its file there. Read makes it absolute. "" writes nothing,
 	// and the lines name the files all the same.
-	Media string
+	Media string `json:"-"`
 	// FileOnly passes --file-only, under which docproc-onenote refuses a table of contents, a
 	// .onetoc2 or a notebook directory, before any section is read, with its fixed reason,
 	// cli.TableOfContents, since each section is read as its own input; a section and a package
 	// read as they do without it.
-	FileOnly bool
+	FileOnly bool `json:"file_only"`
 }
 
 // ErrRequest is the cause of every refused request, one with no Input or whose Input or Media

@@ -481,23 +481,6 @@ func (o *other) Identity() dispatch.Identity {
 	return id
 }
 
-// TestStagesPanic: each stage constructor panics on a config whose required field is nil, naming
-// the field, the caller's mistake.
-func TestStagesPanic(t *testing.T) {
-	t.Parallel()
-	for want, build := range map[string]func(){
-		"dispatch: DocumentConfig.Preparer is nil": func() { _, _ = dispatch.NewDocumentStage(dispatch.DocumentConfig{Version: "gs 10.5"}) },
-		"dispatch: OfficeConfig.Converter is nil":  func() { _, _ = dispatch.NewOfficeStage(dispatch.OfficeConfig{Version: "x"}) },
-		"dispatch: PictureConfig.Converter is nil": func() { _, _ = dispatch.NewPictureStage(dispatch.PictureConfig{Version: "x"}) },
-		"dispatch: EmailConfig.Reader is nil":      func() { _, _ = dispatch.NewEmailStage(dispatch.EmailConfig{Version: "x"}) },
-		"dispatch: OneNoteConfig.Reader is nil":    func() { _, _ = dispatch.NewOneNoteStage(dispatch.OneNoteConfig{Version: "x"}) },
-		"dispatch: AudioConfig.Splitter is nil":    func() { _, _ = dispatch.NewAudioStage(dispatch.AudioConfig{Version: "x"}) },
-		"dispatch: VideoConfig.Streamer is nil":    func() { _, _ = dispatch.NewVideoStage(dispatch.VideoConfig{Version: "x"}) },
-	} {
-		wantPanic(t, want, build)
-	}
-}
-
 // TestHashConfig: the same configuration hashes the same, whatever its map's order, and another
 // differently.
 func TestHashConfig(t *testing.T) {

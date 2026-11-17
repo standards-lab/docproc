@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
@@ -158,10 +159,7 @@ type Skipped struct {
 // tool's name, where in the input, a section by its path from the notebook's root followed by its
 // page and the record on it, "/OneNote_RecycleBin" for the recycle bin, or "/" for the notebook,
 // and what. A read with warnings still succeeds.
-//
-// Interim until slice 15: onenote can't import dispatch while dispatch holds the stage adapters,
-// so Warning is internal/cli's, which stands for dispatch.Warning.
-type Warning cli.Warning
+type Warning dispatch.Warning
 
 // UnknownRecord is a line of a kind the package doesn't know, kept with its kind and its JSON as
 // docproc-onenote wrote it, so a later addition to the contract is never an error.

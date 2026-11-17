@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/office"
@@ -267,13 +268,13 @@ func TestConvertExits(t *testing.T) {
 		code    string
 		want    error
 		message string
-		refusal cli.Refusal
+		refusal error
 	}{
-		{"1", office.ErrMediaNotWritten, "writing stdout: Broken pipe", cli.Unclassed},
-		{"2", office.ErrUsage, "unknown option --bogus", cli.Unclassed},
-		{"3", office.ErrRefused, "encrypted package (an OLE compound file holding an EncryptedPackage stream); decrypt it first", cli.Encrypted},
-		{"3", office.ErrRefused, "an OLE compound file, such as a legacy binary document (doc, xls, ppt); convert it to docx, xlsx, or pptx first", cli.Unclassed},
-		{"4", office.ErrFailed, "an unexpected System.NullReferenceException", cli.Unclassed},
+		{"1", office.ErrMediaNotWritten, "writing stdout: Broken pipe", nil},
+		{"2", office.ErrUsage, "unknown option --bogus", nil},
+		{"3", office.ErrRefused, "encrypted package (an OLE compound file holding an EncryptedPackage stream); decrypt it first", dispatch.ErrEncrypted},
+		{"3", office.ErrRefused, "an OLE compound file, such as a legacy binary document (doc, xls, ppt); convert it to docx, xlsx, or pptx first", nil},
+		{"4", office.ErrFailed, "an unexpected System.NullReferenceException", nil},
 	} {
 		t.Run(tc.code+" "+tc.message[:9], func(t *testing.T) {
 			ins.setFor(t, exitKey, tc.code)

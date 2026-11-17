@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
@@ -127,15 +128,15 @@ func TestVersionPattern(t *testing.T) {
 // them, Unclassed.
 func TestRefusalClass(t *testing.T) {
 	t.Parallel()
-	for reason, want := range map[string]cli.Refusal{
-		"encrypted package; decrypt it first": cli.Encrypted,
-		"encrypted":                           cli.Encrypted,
-		cli.TableOfContents:                   cli.ReadElsewhere,
-		"a table of contents; its sections are read on their own.": cli.Unclassed,
-		"not encrypted":     cli.Unclassed,
-		"Encrypted section": cli.Unclassed,
-		"an OLE compound file, such as a legacy document": cli.Unclassed,
-		"": cli.Unclassed,
+	for reason, want := range map[string]error{
+		"encrypted package; decrypt it first": dispatch.ErrEncrypted,
+		"encrypted":                           dispatch.ErrEncrypted,
+		cli.TableOfContents:                   dispatch.ErrReadElsewhere,
+		"a table of contents; its sections are read on their own.": nil,
+		"not encrypted":     nil,
+		"Encrypted section": nil,
+		"an OLE compound file, such as a legacy document": nil,
+		"": nil,
 	} {
 		if got := cli.RefusalClass(reason); got != want {
 			t.Errorf("RefusalClass(%q) = %v, want %v", reason, got, want)

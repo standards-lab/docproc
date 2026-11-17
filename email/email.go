@@ -69,12 +69,12 @@ type Request struct {
 	// docproc-mail sniffs its format from its content, never its name, and reads it in place. Read
 	// makes it absolute, so a name that begins with "-" is never taken as an option. It is
 	// required.
-	Input string
+	Input string `json:"-"`
 	// Media is the directory docproc-mail writes each distinct attachment content, and each data:
 	// image the Markdown links, into once, named by its media name, created if missing; the caller
 	// owns it. Each Attachment's and Medium's Path then names its file there. Read makes it
 	// absolute. "" writes nothing, and the lines name the files all the same.
-	Media string
+	Media string `json:"-"`
 	// After, when not zero, resumes the read of a .pst or an mbox after the message whose
 	// Message.ID it is: in a .pst its node id, in an mbox its 1-based ordinal. The resumed read is
 	// the tail of the whole read, as docproc-mail writes it byte for byte: the store, every folder,
@@ -83,7 +83,7 @@ type Request struct {
 	// it. docproc-mail refuses After with a .msg or an .eml, a single message, as a usage error, a
 	// *cli.ExitError matching ErrUsage, and an id that names no message as a refusal, matching
 	// ErrRefused.
-	After uint64
+	After uint64 `json:"-"`
 }
 
 // ErrRequest is the cause of every refused request: one with no Input, whose Input or Media can't

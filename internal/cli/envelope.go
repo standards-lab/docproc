@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -53,7 +54,7 @@ type Line struct {
 	// Raw is the line's JSON object, its line feed left out, the reader's to keep.
 	Raw jsontext.Value
 	// Warning is a warning, parsed from its stderr line, with the tool's name.
-	Warning *Warning
+	Warning *dispatch.Warning
 }
 
 // Read runs a tool with its stdout and stderr on pipes and yields what it writes, as it writes

@@ -28,7 +28,7 @@ linters:
       rules:
         # The module depends on nothing but the standard library (unsafe
         # among it, which waitid in tool/exec.go uses) and golang.org/x/text's
-        # packages, which the text stage decodes through (dispatch/text.go),
+        # packages, which the text stage decodes through (stages/text.go),
         # so no package imports a model client. The rule covers
         # every Go file, tests included: they drive the API with the same
         # imports plus the module itself. Allow entries match by prefix

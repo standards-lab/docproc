@@ -265,7 +265,7 @@ func TestRealRefused(t *testing.T) {
 			}
 			recs, err := collect(r.Read(t.Context(), email.Request{Input: path}))
 			exit, ok := errors.AsType[*cli.ExitError](err)
-			if !errors.Is(err, email.ErrRefused) || !ok || exit.Code != 3 || exit.Refusal() != cli.Unclassed {
+			if !errors.Is(err, email.ErrRefused) || !ok || exit.Code != 3 || exit.Refusal() != nil {
 				t.Fatalf("got %v, want an unclassed refusal, exit code 3", err)
 			}
 			if len(recs) != 0 {

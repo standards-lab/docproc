@@ -71,33 +71,33 @@ type Request struct {
 	// Dir is the media directory the windows are written into and left, which the caller owns. It
 	// is required by Splitter.Windows, and must be a directory; an empty Dir is refused rather than
 	// taken as the system's temporary directory.
-	Dir string
+	Dir string `json:"-"`
 	// Concurrency is how many windows are held at once, each from its cut until the consumer
 	// takes it: the decode waits while that many wait for the consumer. Splitter.Windows requires
 	// at least 1, and refuses anything less.
-	Concurrency int
+	Concurrency int `json:"-"`
 	// Limit is the longest a window may be, its overlaps included: zero is DefaultWindowLimit,
 	// 30 s; below zero is refused.
-	Limit time.Duration
+	Limit time.Duration `json:"limit"`
 	// Overlap is how long before a window's end the next window starts: zero is DefaultOverlap,
 	// 2 s, and it must be under Limit/2.
-	Overlap time.Duration
+	Overlap time.Duration `json:"overlap"`
 	// MinSilence is the shortest silence a window may end in: zero is DefaultMinSilence, 0.3 s.
 	// Below zero is refused.
-	MinSilence time.Duration
+	MinSilence time.Duration `json:"min_silence"`
 	// Threshold, when not zero, is a fixed silence threshold in dB relative to full scale, such
 	// as -40, in place of the tracker's rolling one. It must be from -120 dB to below zero, and
 	// Percentile, FloorWindow, and Margin zero with it.
-	Threshold float64
+	Threshold float64 `json:"threshold"`
 	// Percentile is the tracker's percentile of frame energy, as a Tracker says: zero is
 	// DefaultPercentile, the 10th; it must be under 100.
-	Percentile float64
+	Percentile float64 `json:"percentile"`
 	// FloorWindow is the tracker's rolling window, the frames the percentile is taken over: zero
 	// is DefaultFloorWindow, 4 s; it must otherwise be from 1 s to 10 minutes.
-	FloorWindow time.Duration
+	FloorWindow time.Duration `json:"floor_window"`
 	// Margin is how far above the percentile, in dB, the tracker's threshold is: zero is
 	// DefaultMargin, 12 dB; below zero is refused.
-	Margin float64
+	Margin float64 `json:"margin"`
 }
 
 // finite reports whether f is neither NaN nor infinite.

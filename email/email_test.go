@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/email"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
@@ -432,13 +433,13 @@ func TestReadExit(t *testing.T) {
 		want    error
 		stderr  string
 		msg     string
-		refusal cli.Refusal
+		refusal error
 	}{
-		{1, email.ErrNotWritten, "docproc-mail: error: writing stdout: Broken pipe\n", "writing stdout: Broken pipe", cli.Unclassed},
-		{2, email.ErrUsage, "docproc-mail: error: unknown option --bogus\nusage: docproc-mail [--media <dir>] [--after <id>] <input>\n", "unknown option --bogus", cli.Unclassed},
-		{3, email.ErrRefused, "docproc-mail: error: an .ost, the offline cache of a server mailbox; export it from Outlook as a .pst\n", "an .ost, the offline cache of a server mailbox; export it from Outlook as a .pst", cli.Unclassed},
-		{3, email.ErrRefused, "docproc-mail: error: encrypted message; decrypt it first\n", "encrypted message; decrypt it first", cli.Encrypted},
-		{4, email.ErrFailed, "docproc-mail: warning: store: odd\ndocproc-mail: error: internal\n", "internal", cli.Unclassed},
+		{1, email.ErrNotWritten, "docproc-mail: error: writing stdout: Broken pipe\n", "writing stdout: Broken pipe", nil},
+		{2, email.ErrUsage, "docproc-mail: error: unknown option --bogus\nusage: docproc-mail [--media <dir>] [--after <id>] <input>\n", "unknown option --bogus", nil},
+		{3, email.ErrRefused, "docproc-mail: error: an .ost, the offline cache of a server mailbox; export it from Outlook as a .pst\n", "an .ost, the offline cache of a server mailbox; export it from Outlook as a .pst", nil},
+		{3, email.ErrRefused, "docproc-mail: error: encrypted message; decrypt it first\n", "encrypted message; decrypt it first", dispatch.ErrEncrypted},
+		{4, email.ErrFailed, "docproc-mail: warning: store: odd\ndocproc-mail: error: internal\n", "internal", nil},
 	}
 	for _, c := range cases {
 		t.Run(strconv.Itoa(c.code)+" "+c.msg, func(t *testing.T) {

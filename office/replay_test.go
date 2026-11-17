@@ -17,6 +17,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/office"
@@ -245,7 +246,7 @@ func checkRefused(t *testing.T, stem string, recs []office.Record, err error) {
 	if want := cli.RefusalClass(reason); exit.Refusal() != want {
 		t.Errorf("refusal %v, want %v", exit.Refusal(), want)
 	}
-	if strings.HasPrefix(reason, "encrypted") != (exit.Refusal() == cli.Encrypted) {
+	if strings.HasPrefix(reason, "encrypted") != (exit.Refusal() == dispatch.ErrEncrypted) {
 		t.Errorf("reason %q classed %v", reason, exit.Refusal())
 	}
 }

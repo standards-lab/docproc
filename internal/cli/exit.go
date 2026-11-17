@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -16,7 +17,8 @@ import (
 //
 // Exit codes 1 to 4 match their errors, [ErrNotWritten], [ErrUsage], [ErrRefused], and
 // [ErrFailed]; a death by a signal matches ErrFailed; any other code matches none. A refusal, exit
-// code 3, names its class by [ExitError.Refusal].
+// code 3, whose reason names its class by [RefusalClass] matches that class too,
+// dispatch.ErrEncrypted or dispatch.ErrReadElsewhere, so a stage ends with it as it is.
 type ExitError struct {
 	*tool.ExitError
 }
@@ -42,20 +44,23 @@ func (e *ExitError) Error() string {
 	return msg
 }
 
-// Is reports whether target is the run's outcome's error.
+// Is reports whether target is the run's outcome's error, or its refusal's class.
 func (e *ExitError) Is(target error) bool {
 	if e.Signal != "" {
 		return target == ErrFailed
+	}
+	if class := e.Refusal(); class != nil && class == target {
+		return true
 	}
 	outcome := outcomes[e.Code]
 	return outcome != nil && outcome == target
 }
 
-// Refusal returns the class of a refusal's reason by [RefusalClass]; [Unclassed] for a run that
-// wasn't refused, exit code 3, or died by a signal.
-func (e *ExitError) Refusal() Refusal {
+// Refusal returns the class of a refusal's reason by [RefusalClass]; nil for a run that wasn't
+// refused, exit code 3, or died by a signal.
+func (e *ExitError) Refusal() error {
 	if e.Code != 3 || e.Signal != "" {
-		return Unclassed
+		return nil
 	}
 	return RefusalClass(e.Message)
 }
@@ -67,34 +72,19 @@ func (e *ExitError) Unwrap() error { return e.ExitError }
 // --file-only, its sections being read as their own inputs.
 const TableOfContents = "a table of contents; its sections are read on their own"
 
-// Refusal is the class a refusal's reason names. The stage that reads the tool maps it to
-// dispatch's class: Encrypted to dispatch.ErrEncrypted, ReadElsewhere to dispatch.ErrReadElsewhere.
-//
-// Interim until slice 15: internal/cli can't import dispatch while dispatch holds the stage
-// adapters, which import the readers and so internal/cli. Once they move to stages, RefusalClass
-// returns dispatch's errors and this type goes.
-type Refusal int
-
-const (
-	// Unclassed is a reason that is prose for a person alone, and docproc reads nothing from it.
-	Unclassed Refusal = iota
-	// Encrypted is a reason beginning "encrypted", whichever tool gave it: the input is encrypted.
-	Encrypted
-	// ReadElsewhere is docproc-onenote's [TableOfContents]: its sections are read as their own.
-	ReadElsewhere
-)
-
 // RefusalClass is the one mapping of a refusal's reason, a tool's `error:` line on exit code 3,
-// to its class: a reason beginning "encrypted" is [Encrypted], docproc-onenote's
-// [TableOfContents] is [ReadElsewhere], and any other is [Unclassed].
-func RefusalClass(reason string) Refusal {
+// to dispatch's class: a reason beginning "encrypted", whichever tool gave it, is
+// dispatch.ErrEncrypted, the input encrypted; docproc-onenote's [TableOfContents] is
+// dispatch.ErrReadElsewhere, its sections read as their own inputs; and any other, prose for a
+// person alone, is nil.
+func RefusalClass(reason string) error {
 	switch {
 	case strings.HasPrefix(reason, "encrypted"):
-		return Encrypted
+		return dispatch.ErrEncrypted
 	case reason == TableOfContents:
-		return ReadElsewhere
+		return dispatch.ErrReadElsewhere
 	}
-	return Unclassed
+	return nil
 }
 
 // exitError returns err, a run's error, as the envelope reader reports it: a *tool.ExitError

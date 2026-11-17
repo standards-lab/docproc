@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"iter"
 	"os"
 	"path/filepath"
@@ -292,29 +293,6 @@ func byName(t *testing.T, events []dispatched, name string) dispatched {
 	return dispatched{}
 }
 
-// outputNamed returns ev's first output of kind named name.
-func outputNamed(t *testing.T, ev dispatched, kind dispatch.OutputKind, name string) dispatch.Output {
-	t.Helper()
-	for _, o := range ev.Outputs {
-		if o.Kind == kind && o.Name == name {
-			return o
-		}
-	}
-	t.Fatalf("%s: no %s output named %q among %d", ev.Part.Name, kind, name, len(ev.Outputs))
-	return dispatch.Output{}
-}
-
-// wheres returns the Where of each event below the input, in order.
-func wheres(events []dispatched) []string {
-	var out []string
-	for _, ev := range events {
-		if ev.Part.Depth > 0 {
-			out = append(out, ev.Part.Where)
-		}
-	}
-	return out
-}
-
 // logged reads key's log from index whole.
 func logged(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Recorded {
 	t.Helper()
@@ -338,4 +316,28 @@ func children(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.C
 		}
 	}
 	return got
+}
+
+// files returns every file under dir.
+func files(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
+		if err == nil && !e.IsDir() {
+			out = append(out, p)
+		}
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// wantEmpty fails the test when work, the dispatcher's working directory, holds any file.
+func wantEmpty(t *testing.T, work string) {
+	t.Helper()
+	if left := files(t, work); len(left) > 0 {
+		t.Errorf("files left in the working directory: %q", left)
+	}
 }

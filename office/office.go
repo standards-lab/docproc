@@ -78,22 +78,22 @@ type Request struct {
 	// Path is the document's file, which the caller owns: docproc-ooxml reads it in place, and only
 	// a legacy document or an RTF is copied, into the LibreOffice runner's directory. It is
 	// required.
-	Path string
+	Path string `json:"-"`
 	// Dir is the working directory, which the caller owns: the media directory is made in it and
 	// left, and a legacy document's or an RTF's conversion is made and removed in it. It is
 	// required; an empty Dir is refused rather than taken as the system's temporary directory.
-	Dir string
+	Dir string `json:"-"`
 	// Name is the document's file name, or a path ending in it; only its extension is read, never
 	// Path's. A document with the OLE2 compound-file signature whose Name has a legacy extension,
 	// as route.LegacyTarget gives them, in any case, is a legacy document, converted to docx,
 	// xlsx, or pptx before docproc-ooxml runs. An RTF, found by its signature, is converted to
 	// docx whatever Name says. "" names no extension.
-	Name string
+	Name string `json:"-"`
 	// MetafileScale is the scale the document's EMF and WMF pictures are rendered at, a multiple
 	// of their size at 96 dpi: zero is picture.DefaultMetafileScale, 3, and it may be at most
 	// picture.MaxMetafileScale, 8. A negative scale, or one above picture.MaxMetafileScale, is
 	// refused before anything runs, with an error matching ErrRequest.
-	MetafileScale int
+	MetafileScale int `json:"metafile_scale"`
 }
 
 // ErrRequest is the cause of every refused request: a MetafileScale out of range, an empty Path

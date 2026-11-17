@@ -7,7 +7,7 @@
 // [Read] runs a tool with its stdout and stderr on pipes. stdout is JSON Lines: Read yields each
 // line's kind and raw JSON, the reader decoding it, and checks that the first line is the
 // reader's kind and carries [Schema]. stderr is parsed as it arrives: `<tool>: warning: <where>:
-// <what>` is split at its first three ": " and unescaped into a [Warning], yielded among
+// <what>` is split at its first three ": " and unescaped into a dispatch.Warning, yielded among
 // the lines and always before the read's final error, and the run's message is the reason of the
 // last `<tool>: error: <reason>` line. The exit codes are the envelope's: 0 read; 1 stdout or media
 // not written; 2 usage; 3 refused before any output; 4 a fault of the tool's own. A run that
@@ -26,12 +26,9 @@
 //   - [ExitError] is a run that exited nonzero or died by a signal; [ErrNotWritten], [ErrUsage],
 //     [ErrRefused], and [ErrFailed] are exit codes 1 to 4, ErrFailed a signal's too.
 //   - [Outcome] returns an exit code's error.
-//   - [Warning] is a warning a tool wrote to stderr.
-//   - [RefusalClass] maps a refusal's reason to its [Refusal]: one beginning "encrypted" to
-//     [Encrypted], onenote's [TableOfContents] to [ReadElsewhere]; [ExitError.Refusal] gives a
-//     run's. Until slice 15 moves the stage adapters out of dispatch, internal/cli can't import
-//     dispatch, so the stage maps a Refusal to dispatch's class, and Warning stands for
-//     dispatch.Warning.
+//   - [RefusalClass] maps a refusal's reason to dispatch's class: one beginning "encrypted" to
+//     dispatch.ErrEncrypted, onenote's [TableOfContents] to dispatch.ErrReadElsewhere;
+//     [ExitError.Refusal] gives a run's, and the ExitError matches it.
 //   - [ResolveMedium] resolves a line's media name to its [Medium], its file and SHA-256.
 //   - [LimitedBuffer] keeps the first bytes written to it, for a tool's output read only in
 //     part.

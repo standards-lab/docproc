@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/onenote"
@@ -296,14 +297,14 @@ func TestReadExit(t *testing.T) {
 		want    error
 		stderr  string
 		msg     string
-		refusal cli.Refusal
+		refusal error
 	}{
-		{1, onenote.ErrNotWritten, errorPrefix + "writing stdout: Broken pipe\n", "writing stdout: Broken pipe", cli.Unclassed},
-		{2, onenote.ErrUsage, errorPrefix + "unknown option --bogus\nusage: docproc-onenote [--media <dir>] [--file-only] <input>\n", "unknown option --bogus", cli.Unclassed},
-		{3, onenote.ErrRefused, errorPrefix + "a ZIP archive; extract the OneDrive download first\n", "a ZIP archive; extract the OneDrive download first", cli.Unclassed},
-		{3, onenote.ErrRefused, errorPrefix + encrypted + "\n", encrypted, cli.Encrypted},
-		{3, onenote.ErrRefused, errorPrefix + cli.TableOfContents + "\n", cli.TableOfContents, cli.ReadElsewhere},
-		{4, onenote.ErrFailed, "docproc-onenote: warning: /: odd\n" + errorPrefix + "internal fault: the read thread can't start\n", "internal fault: the read thread can't start", cli.Unclassed},
+		{1, onenote.ErrNotWritten, errorPrefix + "writing stdout: Broken pipe\n", "writing stdout: Broken pipe", nil},
+		{2, onenote.ErrUsage, errorPrefix + "unknown option --bogus\nusage: docproc-onenote [--media <dir>] [--file-only] <input>\n", "unknown option --bogus", nil},
+		{3, onenote.ErrRefused, errorPrefix + "a ZIP archive; extract the OneDrive download first\n", "a ZIP archive; extract the OneDrive download first", nil},
+		{3, onenote.ErrRefused, errorPrefix + encrypted + "\n", encrypted, dispatch.ErrEncrypted},
+		{3, onenote.ErrRefused, errorPrefix + cli.TableOfContents + "\n", cli.TableOfContents, dispatch.ErrReadElsewhere},
+		{4, onenote.ErrFailed, "docproc-onenote: warning: /: odd\n" + errorPrefix + "internal fault: the read thread can't start\n", "internal fault: the read thread can't start", nil},
 	}
 	for _, c := range cases {
 		t.Run(strconv.Itoa(c.code)+" "+c.msg, func(t *testing.T) {

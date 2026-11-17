@@ -1,5 +1,3 @@
-//go:build linux
-
 package dispatch_test
 
 import (
@@ -8,18 +6,9 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// TestMain runs the tests, or, through a stand-in's link, the stand-in: ffmpeg and ffprobe for the
-// audio and video stages, magick for the picture stage, docproc-onenote for the onenote stage, and
-// gs for the document stage.
+// TestMain runs the tests in a local zone that isn't UTC; they run no tool.
 func TestMain(m *testing.M) {
-	tooltest.Main(m, map[string]tooltest.Program{
-		"gs":              gsStandin,
-		"ffmpeg":          ffmpegStandin,
-		"ffprobe":         ffprobeStandin,
-		"magick":          pictureStandin,
-		"soffice":         sofficeStandin,
-		"docproc-onenote": onenoteStandin,
-	})
+	tooltest.Main(m, nil)
 }
 
 // wantPanic fails the test unless build panics with want, a constructor's naming of the nil field

@@ -5,19 +5,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-)
 
-// Warning is a warning a tool wrote to stderr: the tool's name, where in the input, and what went
-// wrong, as dispatch.Warning holds one.
-//
-// Interim until slice 15: internal/cli can't import dispatch while dispatch holds the stage
-// adapters, which import the readers and so internal/cli. Once they move to stages, Read yields
-// dispatch.Warning and this type goes.
-type Warning struct {
-	Tool  string
-	Where string
-	What  string
-}
+	"github.com/standards-lab/docproc/dispatch"
+)
 
 // pendingMax is how many parsed warnings a run's stderr holds for its reader before the tool's
 // writes to stderr wait for the reader to take them. It bounds no output, only the buffer between
@@ -35,7 +25,7 @@ type stderrReader struct {
 	cond *sync.Cond
 	// partial is a line written in part, its line feed yet to come.
 	partial []byte
-	pending []Warning
+	pending []dispatch.Warning
 	message string
 	// closed is set once the run has returned; a write after it, a copy os/exec left running, is
 	// dropped. unbounded lets pending grow past pendingMax, once the run is being ended, and
@@ -97,7 +87,7 @@ func (s *stderrReader) line(line string) {
 }
 
 // take returns the pending warnings, in order, and lets a waiting write go on.
-func (s *stderrReader) take() []Warning {
+func (s *stderrReader) take() []dispatch.Warning {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	taken := s.pending
@@ -142,11 +132,11 @@ func (s *stderrReader) drop() {
 // <where>: <what>`, split at its first three ": " and each part unescaped, or `<tool>: error:
 // <reason>`, its reason unescaped, which reports isError. A line that fits neither is a warning
 // whose What is the line alone, as written.
-func parseStderr(tool, line string) (w Warning, reason string, isError bool) {
+func parseStderr(tool, line string) (w dispatch.Warning, reason string, isError bool) {
 	w.Tool = tool
 	if rest, ok := strings.CutPrefix(line, tool+": "); ok {
 		if r, ok := strings.CutPrefix(rest, "error: "); ok {
-			return Warning{}, unescape(r), true
+			return dispatch.Warning{}, unescape(r), true
 		}
 		if r, ok := strings.CutPrefix(rest, "warning: "); ok {
 			if where, what, ok := strings.Cut(r, ": "); ok {

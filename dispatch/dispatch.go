@@ -206,12 +206,12 @@ func (d *Dispatcher) Index() Index { return d.cfg.Index }
 //
 // After, when not zero, resumes the input's read after the message whose store id it is, mail's
 // --after: opaque, compared by equality alone. The input's [Part] carries it to its stage, and
-// [EmailStage] reads a .pst or an mbox from the message after it; every other stage, and every
-// part found below the input, reads whole. A resumed input whose content the index holds replays
-// its log past the item whose After equals it, an error ending the dispatch when no item's does. A
-// resumed input's own entry is never recorded, its outputs being the read's tail alone, so a
-// later dispatch of the same content prepares it whole; the parts found in it are recorded as any
-// part is. The package doc's "Resuming a store" says how a caller resumes after a crash.
+// the stages package's email stage reads a .pst or an mbox from the message after it; every other
+// stage, and every part found below the input, reads whole. A resumed input whose content the
+// index holds replays its log past the item whose After equals it, an error ending the dispatch
+// when no item's does. A resumed input's own entry is never recorded, its outputs being the read's
+// tail alone, so a later dispatch of the same content prepares it whole; the parts found in it are
+// recorded as any part is. The package doc's "Resuming a store" says how a caller resumes after a crash.
 type Input struct {
 	Path   string
 	Reader io.Reader

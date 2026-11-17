@@ -53,7 +53,7 @@ func TestRealGoldens(t *testing.T) {
 			media := t.TempDir()
 			recs, err := collect(r.Read(t.Context(), onenote.Request{Input: filepath.Join(in, input), Media: media, FileOnly: only}))
 			if _, ok := errors.AsType[*cli.ExitError](err); ok {
-				checkRefused(t, stem, recs, err)
+				_ = checkRefused(t, stem, recs, err)
 				return
 			}
 			if err != nil {

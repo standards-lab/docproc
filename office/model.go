@@ -5,7 +5,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 
-	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/dispatch"
 )
 
 // Record is one item of a conversion, by its kind: *Document, *Sheet, or *Rows for docproc-ooxml's
@@ -221,10 +221,7 @@ const (
 // Warning is a warning docproc-ooxml wrote to stderr, what it skipped and read the rest without:
 // its tool's name, where in the document, such as "sheet 2", and what. A conversion with warnings
 // still succeeds.
-//
-// Interim until slice 15: office can't import dispatch while dispatch holds the stage adapters,
-// so Warning is internal/cli's, which stands for dispatch.Warning.
-type Warning cli.Warning
+type Warning dispatch.Warning
 
 // UnknownRecord is a line of a kind the package doesn't know, kept with its kind and its JSON as
 // docproc-ooxml wrote it, so a later addition to the contract is never an error.

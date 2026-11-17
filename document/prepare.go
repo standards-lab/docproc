@@ -36,18 +36,18 @@ type ImagesRequest struct {
 	// Dir is the directory each page's PNG is written into, as page-N.png, N its number, which
 	// the caller owns. It is required; an empty Dir is refused rather than taken as the system's
 	// temporary directory.
-	Dir string
+	Dir string `json:"-"`
 	// DPI is the DPI each page is rendered at. Zero means DefaultDPI; a negative DPI is refused.
-	DPI int
+	DPI int `json:"dpi"`
 	// Concurrency is how many pages are held at once, each from the start of its preparation
 	// until the consumer takes its outcome; it is at least 1, and anything less is refused.
-	Concurrency int
+	Concurrency int `json:"-"`
 	// Text reads each page's text layer, before rendering it, into its PageImage's Text.
-	Text bool
+	Text bool `json:"text"`
 	// MaxPixels is the most pixels a page's PNG may hold, its width times its height: a page that
 	// would hold more at DPI is rendered at the largest DPI at which it holds no more, and fails
 	// when not even 1 dpi does. Zero is no bound; a negative MaxPixels is refused.
-	MaxPixels int64
+	MaxPixels int64 `json:"max_pixels"`
 }
 
 // PageImage is one prepared page: its number, 1-based, the PDF's page count, the path of its PNG

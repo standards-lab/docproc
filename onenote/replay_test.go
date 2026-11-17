@@ -15,6 +15,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/onenote"
@@ -49,7 +50,7 @@ func TestReplayGoldens(t *testing.T) {
 	}
 	var mu sync.Mutex
 	kinds := map[string]bool{}
-	refusals := map[cli.Refusal]bool{}
+	refusals := map[error]bool{}
 	for _, jsonl := range outputs {
 		rel, _ := filepath.Rel(root, jsonl)
 		t.Run(rel, func(t *testing.T) {
@@ -88,7 +89,7 @@ func TestReplayGoldens(t *testing.T) {
 				t.Errorf("no golden holds a %s line", k)
 			}
 		}
-		for _, r := range []cli.Refusal{cli.Encrypted, cli.ReadElsewhere} {
+		for _, r := range []error{dispatch.ErrEncrypted, dispatch.ErrReadElsewhere} {
 			if !refusals[r] {
 				t.Errorf("no golden is a refusal classed %v", r)
 			}
@@ -152,7 +153,7 @@ func checkReplay(t *testing.T, stem, media string, recs []onenote.Record) (kinds
 // checkRefused checks a refused golden's outcome against stem's .jsonl and .stderr: no line, no
 // record, and a *cli.ExitError of exit code 3, matching ErrRefused, its message the error line's
 // reason, its refusal classed by it, and either Encrypted or ReadElsewhere, which it returns.
-func checkRefused(t *testing.T, stem string, recs []onenote.Record, err error) cli.Refusal {
+func checkRefused(t *testing.T, stem string, recs []onenote.Record, err error) error {
 	t.Helper()
 	if lines := readLines(t, stem+".jsonl"); len(lines) != 0 {
 		t.Errorf("a refusal's golden has %d lines", len(lines))
@@ -173,7 +174,7 @@ func checkRefused(t *testing.T, stem string, recs []onenote.Record, err error) c
 		t.Errorf("message %q, want %q", exit.Message, reason)
 	}
 	refusal := exit.Refusal()
-	if refusal != cli.RefusalClass(reason) || (refusal != cli.Encrypted && refusal != cli.ReadElsewhere) {
+	if refusal != cli.RefusalClass(reason) || (refusal != dispatch.ErrEncrypted && refusal != dispatch.ErrReadElsewhere) {
 		t.Errorf("reason %q classed %v", reason, refusal)
 	}
 	return refusal

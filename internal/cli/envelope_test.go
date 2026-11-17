@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/tool"
@@ -33,7 +34,7 @@ func standinTool(t *testing.T, name string, settings standinSettings) *tool.Tool
 
 // read ranges over a run of tl whose first line is a "document", returning its lines' kinds,
 // its warnings, and its final error; it fails the test on a warning that follows the error.
-func read(t *testing.T, tl *tool.Tool) (kinds []string, warnings []cli.Warning, err error) {
+func read(t *testing.T, tl *tool.Tool) (kinds []string, warnings []dispatch.Warning, err error) {
 	t.Helper()
 	for line, lerr := range cli.Read(t.Context(), cli.Run{Tool: tl, Args: []string{"input"}, First: "document"}) {
 		switch {
@@ -110,18 +111,18 @@ func TestReadWarnings(t *testing.T) {
 	t.Parallel()
 	cases := readCases(t)
 	var stderr strings.Builder
-	var want []cli.Warning
+	var want []dispatch.Warning
 	for _, c := range cases.Warnings {
 		stderr.WriteString(c.Line + "\n")
-		want = append(want, cli.Warning{Tool: "tool", Where: c.Where, What: c.What})
+		want = append(want, dispatch.Warning{Tool: "tool", Where: c.Where, What: c.What})
 	}
 	stderr.WriteString("tool: warning: tab\\u{9}here:\\ \\u{1b}[0m: bell\\u{7} and next line\\u{85}\n")
-	want = append(want, cli.Warning{Tool: "tool", Where: "tab\there: \x1b[0m", What: "bell\a and next line\u0085"})
+	want = append(want, dispatch.Warning{Tool: "tool", Where: "tab\there: \x1b[0m", What: "bell\a and next line\u0085"})
 	stderr.WriteString("\n" + "thread 'main' panicked at src/main.rs:1:1\n" + "tool: warning: no where\n" + "tool: warning: ends unended")
 	want = append(want,
-		cli.Warning{Tool: "tool", What: "thread 'main' panicked at src/main.rs:1:1"},
-		cli.Warning{Tool: "tool", What: "tool: warning: no where"},
-		cli.Warning{Tool: "tool", What: "tool: warning: ends unended"},
+		dispatch.Warning{Tool: "tool", What: "thread 'main' panicked at src/main.rs:1:1"},
+		dispatch.Warning{Tool: "tool", What: "tool: warning: no where"},
+		dispatch.Warning{Tool: "tool", What: "tool: warning: ends unended"},
 	)
 	tl := standinTool(t, "tool", standinSettings{Stdout: `{"line":"document","schema":"2"}` + "\n", Stderr: stderr.String()})
 	_, warnings, err := read(t, tl)
@@ -155,7 +156,7 @@ func TestReadExitCodes(t *testing.T) {
 			if _, ok := errors.AsType[*tool.ExitError](err); !ok {
 				t.Errorf("%v doesn't unwrap to a *tool.ExitError", err)
 			}
-			if exit.Refusal() != cli.Unclassed {
+			if exit.Refusal() != nil {
 				t.Errorf("%v with no reason: refusal class %v", err, exit.Refusal())
 			}
 			for i, target := range all {
@@ -243,12 +244,12 @@ func TestReadRefusals(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		tool, golden string
-		want         cli.Refusal
+		want         error
 	}{
-		{"docproc-onenote", "onenote/tests/golden/interop/SUT/Open Notebook.onetoc2.file-only.stderr", cli.ReadElsewhere},
-		{"docproc-onenote", "onenote/tests/golden/interop/SUT/Encryption.one.stderr", cli.Encrypted},
-		{"docproc-ooxml", "ooxml/test/Docproc.Ooxml.Tests/Expected/generated/refused/encrypted.libreoffice.stderr", cli.Encrypted},
-		{"docproc-ooxml", "ooxml/test/Docproc.Ooxml.Tests/Expected/generated/refused/legacy.libreoffice.stderr", cli.Unclassed},
+		{"docproc-onenote", "onenote/tests/golden/interop/SUT/Open Notebook.onetoc2.file-only.stderr", dispatch.ErrReadElsewhere},
+		{"docproc-onenote", "onenote/tests/golden/interop/SUT/Encryption.one.stderr", dispatch.ErrEncrypted},
+		{"docproc-ooxml", "ooxml/test/Docproc.Ooxml.Tests/Expected/generated/refused/encrypted.libreoffice.stderr", dispatch.ErrEncrypted},
+		{"docproc-ooxml", "ooxml/test/Docproc.Ooxml.Tests/Expected/generated/refused/legacy.libreoffice.stderr", nil},
 	} {
 		t.Run(c.golden, func(t *testing.T) {
 			t.Parallel()

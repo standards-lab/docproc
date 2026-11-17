@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
@@ -267,10 +268,7 @@ type Skipped struct {
 // tool's name, where in the input, and what. A .pst's Where names a folder by its path, the
 // folder's display names joined by "/", in place of the node id docproc-mail writes, once the
 // folder's line has been read. A read with warnings still succeeds.
-//
-// Interim until slice 15: email can't import dispatch while dispatch holds the stage adapters,
-// so Warning is internal/cli's, which stands for dispatch.Warning.
-type Warning cli.Warning
+type Warning dispatch.Warning
 
 // UnknownRecord is a line of a kind the package doesn't know, kept with its kind and its JSON as
 // docproc-mail wrote it, so a later addition to the contract is never an error.
