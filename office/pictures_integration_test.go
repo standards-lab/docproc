@@ -36,14 +36,12 @@ var pictureFixtures = []string{
 // soffice's, and magick writes no time into it. Between them the fixtures hold all three kinds.
 //
 // It logs a line per picture: its fixture, kind, stored size, and its PNG's dimensions, an EMF's
-// or WMF's as trimmed, and size, with its document's picture-conversion wall time and the
-// pictures that shared it, since a document's EMF and WMF convert in one soffice run and are
-// trimmed one magick run each. For an OOXML fixture that time is the full conversion's less
-// docproc-ooxml's alone, each the faster of two runs; a legacy fixture's pictures can't be timed apart
-// from its legacy conversion, so its line gives the whole conversion's.
+// or WMF's as trimmed, and size, with its document's whole conversion's wall time, the faster of
+// two runs, and the pictures that shared it, since a document's EMF and WMF convert in one soffice
+// run and are trimmed one magick run each. The office Converter always converts its pictures, so
+// no run of docproc-ooxml alone times them apart.
 func TestPictures(t *testing.T) {
 	full := fullConverter(t)
-	alone := realConverter(t)
 
 	var paths []string
 	for _, pattern := range pictureFixtures {
@@ -57,14 +55,8 @@ func TestPictures(t *testing.T) {
 	for _, path := range paths {
 		name := filepath.Base(path)
 		t.Run(name, func(t *testing.T) {
-			legacy := legacyTargets[filepath.Ext(path)] != ""
 			res, again, elapsed := convertTimed(t, full, path)
 			timing := "conversion"
-			if !legacy {
-				_, _, base := convertTimed(t, alone, path)
-				elapsed -= base
-				timing = "pictures"
-			}
 			var converted []office.Medium
 			seen := map[string]bool{}
 			for _, m := range res.doc.Media {
@@ -131,11 +123,11 @@ func fullConverters(t *testing.T) (*office.Converter, *picture.Converter) {
 		t.Fatalf("magick, a host prerequisite for TIFF: %v", err)
 	}
 	t.Logf("soffice %s in %s, magick %s", lo.Version(), picture.LibreOfficeImage, mg.Version())
-	c, err := office.NewConverter(t.Context(), office.Config{Office: o, LibreOffice: lo, Magick: mg})
+	pc, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
 	if err != nil {
 		t.Fatal(err)
 	}
-	pc, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
+	c, err := office.NewConverter(t.Context(), office.Config{Office: o, Pictures: pc})
 	if err != nil {
 		t.Fatal(err)
 	}

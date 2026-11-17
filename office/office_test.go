@@ -33,7 +33,7 @@ func dockerStandin(args []string) int {
 }
 
 // TestNewConverter: the constructor takes a docproc-ooxml at or past 0.1.0, a development build's
-// version included, panics naming Config.Office given none, and refuses an older one, whatever
+// version included, panics naming Config.Office or Config.Pictures given none, and refuses an older one, whatever
 // minimum the Tool's own Spec declared; the spec's own minimum refuses an older one at the Tool's
 // construction, and its version pattern one with no schema "2" line. A docproc-ooxml the
 // container runner built is refused with ErrRequest.
@@ -50,6 +50,7 @@ func TestNewConverter(t *testing.T) {
 	}()
 
 	ins := installStandin(t, "0.1.0+b9bb1a2")
+	pictures := ins.pictures()
 	tl, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
@@ -57,7 +58,16 @@ func TestNewConverter(t *testing.T) {
 	if got := tl.Version().String(); got != "0.1.0" {
 		t.Errorf("version: got %s, want 0.1.0", got)
 	}
-	if _, err := office.NewConverter(t.Context(), office.Config{Office: tl}); err != nil {
+	func() {
+		defer func() {
+			if r := recover(); r != "office: Config.Pictures is nil" {
+				t.Errorf("NewConverter with no pictures: recovered %v, want the panic naming Config.Pictures", r)
+			}
+		}()
+		_, _ = office.NewConverter(t.Context(), office.Config{Office: tl})
+		t.Error("NewConverter with no pictures returned")
+	}()
+	if _, err := office.NewConverter(t.Context(), office.Config{Office: tl, Pictures: pictures}); err != nil {
 		t.Errorf("NewConverter over 0.1.0+b9bb1a2: %v", err)
 	}
 
@@ -71,7 +81,7 @@ func TestNewConverter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = office.NewConverter(t.Context(), office.Config{Office: old})
+	_, err = office.NewConverter(t.Context(), office.Config{Office: old, Pictures: pictures})
 	var verr *tool.VersionError
 	if !errors.As(err, &verr) || !errors.Is(err, tool.ErrTooOld) {
 		t.Fatalf("NewConverter over 0.0.9: got %v, want a VersionError wrapping ErrTooOld", err)
@@ -93,7 +103,7 @@ func TestNewConverter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := office.NewConverter(t.Context(), office.Config{Office: boxed}); !errors.Is(err, office.ErrRequest) {
+	if _, err := office.NewConverter(t.Context(), office.Config{Office: boxed, Pictures: pictures}); !errors.Is(err, office.ErrRequest) {
 		t.Errorf("NewConverter over a container's docproc-ooxml: got %v, want ErrRequest", err)
 	}
 }
@@ -384,18 +394,18 @@ func TestConvertRefuses(t *testing.T) {
 }
 
 // TestConvertMedia: each medium with a file is resolved in the media directory, its Path the file
-// as stored and its SHA256 its name's, without converters; a linked picture has neither, and an
+// as stored and its SHA256 its name's, a PNG and a JPEG needing no conversion; a linked picture has neither, and an
 // embedded package and an OLE object keep their kinds and ProgIDs. A name the envelope's rule
 // can't have made fails the conversion.
 func TestConvertMedia(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
-	png, emf, bin := mediaName("a", ".png"), mediaName("b", ".emf"), mediaName("c", ".bin")
-	ins.set(mediaKey, strings.Join([]string{png, emf, bin}, ","))
+	png, jpeg, bin := mediaName("a", ".png"), mediaName("b", ".jpeg"), mediaName("c", ".bin")
+	ins.set(mediaKey, strings.Join([]string{png, jpeg, bin}, ","))
 	ins.set(stdoutKey, `{"line":"document","schema":"2","format":"docx","media":[`+
 		`{"kind":"picture","file":"`+png+`","content_type":"image/png","part":"/word/media/image1.png","section":0},`+
 		`{"kind":"picture","target":"https://example.invalid/a.png","section":1},`+
-		`{"kind":"picture","file":"`+emf+`","content_type":"image/x-emf","part":"/word/media/image2.emf","section":0},`+
+		`{"kind":"picture","file":"`+jpeg+`","content_type":"image/jpeg","part":"/word/media/image2.jpeg","section":0},`+
 		`{"kind":"ole","file":"`+bin+`","part":"/word/embeddings/oleObject1.bin","prog_id":"Excel.Sheet.8","section":0}]}`+"\n")
 	recs, err := collect(t, c, office.Request{Path: writeDocument(t, "", "doc"), Dir: t.TempDir()})
 	if err != nil {
@@ -412,7 +422,7 @@ func TestConvertMedia(t *testing.T) {
 	for i, want := range []struct {
 		kind office.MediumKind
 		file string
-	}{{office.Picture, png}, {office.Picture, ""}, {office.Picture, emf}, {office.OLE, bin}} {
+	}{{office.Picture, png}, {office.Picture, ""}, {office.Picture, jpeg}, {office.OLE, bin}} {
 		m := doc.Media[i]
 		path, sum := "", ""
 		if want.file != "" {

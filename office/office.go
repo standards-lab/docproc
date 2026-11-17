@@ -37,40 +37,32 @@ type Config struct {
 	// Office is docproc-ooxml, built from OfficeSpec through the exec runner. It is required, and
 	// a container runner's is refused.
 	Office *tool.Tool
-	// LibreOffice is LibreOffice's soffice, typically built from picture.LibreOfficeSpec through
-	// the container runner in picture.LibreOfficeImage. It converts legacy documents to OOXML, and
-	// RTFs to docx; nil leaves the Converter without one, and a legacy document or an RTF is then
-	// refused with ErrNoLibreOffice. It renders EMF and WMF pictures to PNG too, through the
-	// picture package, with Magick; without either, they are handed on as stored.
-	LibreOffice *tool.Tool
-	// Magick is ImageMagick's magick, typically built from picture.MagickSpec. It converts TIFF
-	// pictures to PNG, and trims an EMF or WMF picture's rendered page to the picture, through
-	// the picture package; nil leaves the Converter without one, and a TIFF, EMF, or WMF is then
-	// handed on as stored.
-	Magick *tool.Tool
+	// Pictures is the picture package's Converter, over LibreOffice's soffice and ImageMagick's
+	// magick. Its LibreOffice runner converts legacy documents to OOXML, and RTFs to docx, and its
+	// ConvertBatch converts a document's TIFF, EMF, and WMF pictures to PNG. It is required.
+	Pictures *picture.Converter
 }
 
 // Converter prepares office documents for a model through docproc-ooxml: a document in, its
 // records out, streamed, with the media the document embeds. It runs no inference. Its methods are
 // safe for concurrent use.
 type Converter struct {
-	office      *tool.Tool
-	libreoffice *tool.Tool
-	magick      *tool.Tool
-	pictures    *picture.Converter
+	office   *tool.Tool
+	pictures *picture.Converter
 }
 
-// NewConverter builds a Converter over cfg's Tools, and the picture package's Converter over its
-// LibreOffice and Magick. A nil Office is the caller's mistake, and panics naming the field; an
-// Office the container runner built is refused with an error matching ErrRequest, since the
-// reader reads a part's path in place. It refuses an Office whose version is older than
-// OfficeMinimum, a LibreOffice older than picture.LibreOfficeMinimum, or a Magick older than
-// picture.MagickMinimum, whatever minimum the Tool's own Spec declared, with a *tool.VersionError
-// wrapping tool.ErrTooOld. Given a Magick, the picture package's Converter runs magick's format
-// listing under ctx, and its failure is an error.
-func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
+// NewConverter builds a Converter over cfg's Office and Pictures. A nil Office or Pictures is the
+// caller's mistake, and panics naming the field; an Office the container runner built is refused
+// with an error matching ErrRequest, since the reader reads a part's path in place. It refuses an
+// Office whose version is older than OfficeMinimum, whatever minimum the Tool's own Spec declared,
+// with a *tool.VersionError wrapping tool.ErrTooOld. It runs nothing, so its context is unused:
+// Pictures ran magick's format listing when it was built.
+func NewConverter(_ context.Context, cfg Config) (*Converter, error) {
 	if cfg.Office == nil {
 		panic("office: Config.Office is nil")
+	}
+	if cfg.Pictures == nil {
+		panic("office: Config.Pictures is nil")
 	}
 	if _, ok := cfg.Office.Image(); ok {
 		return nil, fmt.Errorf("office: %s runs in a container; it runs on the exec runner alone: %w", cfg.Office.Name(), ErrRequest)
@@ -78,17 +70,14 @@ func NewConverter(ctx context.Context, cfg Config) (*Converter, error) {
 	if err := cfg.Office.AtLeast(OfficeMinimum); err != nil {
 		return nil, err
 	}
-	pictures, err := picture.NewConverter(ctx, picture.Config{Magick: cfg.Magick, LibreOffice: cfg.LibreOffice})
-	if err != nil {
-		return nil, err
-	}
-	return &Converter{office: cfg.Office, libreoffice: cfg.LibreOffice, magick: cfg.Magick, pictures: pictures}, nil
+	return &Converter{office: cfg.Office, pictures: cfg.Pictures}, nil
 }
 
 // Request is one document's conversion.
 type Request struct {
 	// Path is the document's file, which the caller owns: docproc-ooxml reads it in place, and only
-	// a legacy document or an RTF is copied, into LibreOffice's conversion. It is required.
+	// a legacy document or an RTF is copied, into the LibreOffice runner's directory. It is
+	// required.
 	Path string
 	// Dir is the working directory, which the caller owns: the media directory is made in it and
 	// left, and a legacy document's or an RTF's conversion is made and removed in it. It is
@@ -135,12 +124,11 @@ var ErrSchema = cli.ErrSchema
 // LibreOffice, docproc-ooxml, the picture batch, and every removal run inside it. Stopping the
 // range ends the run.
 //
-// A legacy document, as Request.Name says, is copied into req.Dir with its legacy extension and
-// converted first, through the LibreOffice converter in req.Dir, to the OOXML format its extension
-// names; docproc-ooxml runs on the converted document, which is removed with the copy and
-// soffice's profile when the run ends, and the Document's ConvertedFrom names the legacy format.
-// Without a LibreOffice converter, a legacy document is an error matching ErrNoLibreOffice, before
-// anything is copied or run. Any other OLE2 file, such as an encrypted OOXML package, goes to
+// A legacy document, as Request.Name says, is converted first, through the picture package's
+// LibreOffice runner in req.Dir, which copies it in with its legacy extension, to the OOXML format
+// its extension names; docproc-ooxml runs on the converted document, which is removed with the
+// run's directory when the run ends, and the Document's ConvertedFrom names the legacy format.
+// Any other OLE2 file, such as an encrypted OOXML package, goes to
 // docproc-ooxml as it is, which refuses it. An RTF, by its signature, whatever Request.Name's
 // extension, is converted as a .doc is, to docx, through Writer's docx export filter;
 // ConvertedFrom is "rtf".
@@ -148,12 +136,10 @@ var ErrSchema = cli.ErrSchema
 // The Document's Media are resolved in the media directory by the envelope's media name rule, each
 // Path the file handed onward. Before the Document is yielded, its pictures follow the picture
 // standard, in one batch through the picture package: an EMF or WMF is rendered to PNG at
-// req.MetafileScale through the LibreOffice converter, all of a document's in one soffice run, and
-// trimmed through magick, and a TIFF is converted through magick; any other picture, an embedded
-// package, and an OLE object are handed on as stored. Each PNG is named by the stored name's
-// SHA-256 and .png, beside the stored file, which stays. A picture whose converter the Converter
-// wasn't given, for EMF and WMF either of LibreOffice and magick, is handed on as stored; a picture
-// conversion that fails ends the sequence with its error. In each record's Markdown, each
+// req.MetafileScale through soffice, all of a document's in one soffice run, and trimmed through
+// magick, and a TIFF is converted through magick; any other picture, an embedded package, and an
+// OLE object are handed on as stored. Each PNG is named by the stored name's SHA-256 and .png,
+// beside the stored file, which stays. A picture conversion that fails ends the sequence with its error. In each record's Markdown, each
 // converted picture's stored name is swapped for its PNG's wherever it appears, which rewrites its
 // links without parsing the Markdown.
 //
@@ -208,17 +194,7 @@ func (c *Converter) convert(ctx context.Context, req Request, yield func(Record,
 	}
 	from, to := legacyFormat(head, req.Name)
 	if from != "" {
-		if c.libreoffice == nil {
-			name, what := filepath.Base(req.Name), "a legacy "+from+" document"
-			if from == "rtf" {
-				what = "an RTF document"
-			}
-			if req.Name == "" {
-				name = "the document"
-			}
-			return fmt.Errorf("office: %s is %s: %w", name, what, ErrNoLibreOffice)
-		}
-		converted, remove, err := c.copyToOOXML(ctx, dir, path, from, to)
+		converted, remove, err := c.toOOXML(ctx, dir, path, from, to)
 		if err != nil {
 			return err
 		}
@@ -255,33 +231,6 @@ func readHead(path string) ([]byte, error) {
 		return nil, fmt.Errorf("office: %w", err)
 	}
 	return head[:n], nil
-}
-
-// copyToOOXML copies the legacy document or RTF at path into dir with from's extension, which
-// LibreOffice reads, and converts the copy to the OOXML format to, as toOOXML does. The copy is
-// removed once soffice has run; the function returned removes the converted document and
-// soffice's profile.
-func (c *Converter) copyToOOXML(ctx context.Context, dir, path, from, to string) (string, func() error, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", nil, fmt.Errorf("office: %w", err)
-	}
-	copied, remove, err := cli.Spool(dir, f, "."+from)
-	_ = f.Close()
-	if err != nil {
-		return "", nil, fmt.Errorf("office: %w", err)
-	}
-	converted, removeConverted, err := c.toOOXML(ctx, dir, copied, to)
-	if rerr := remove(); rerr != nil {
-		err = errors.Join(err, fmt.Errorf("office: removing the copied document: %w", rerr))
-		if removeConverted != nil {
-			err = errors.Join(err, removeConverted())
-		}
-	}
-	if err != nil {
-		return "", nil, err
-	}
-	return converted, removeConverted, nil
 }
 
 // read runs docproc-ooxml on the document at path, in dir, with media as its media directory, and

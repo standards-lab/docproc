@@ -1,7 +1,7 @@
 # testdata
 
 The picture package's fixtures, for the integration tier's conversions on the host's magick: its
-SVGs, and its TIFF, HEIC, WebP, and AVIF pictures. They are committed and never generated in the
+SVGs, and its TIFF, HEIC, WebP, and AVIF pictures. The tier reads these alone, never `~/docs`. They are committed and never generated in the
 check.
 
 | File | Source | License | Bytes | SHA-256 |
@@ -10,6 +10,8 @@ check.
 | `ink.svg` | written for this package | Apache-2.0, this repository's | 1073 | `293e12c802db06a0ae032a401f335e394a4ff62f69fa90ab7242acd77b58b826` |
 | `script-bearing.svg` | `~/docs`' `image/vector/script-bearing.svg` | ~/docs' "Generated for this pool", redistributable | 648 | `a44d794e6708452ed62b56b8066b5c886d859feb395e7b97d300724eb7607950` |
 | `pages.tiff` | generated for this package | Apache-2.0, this repository's | 840 | `5828cfd89abfcce70cc77a385da33b2ecbcae257e4cf0c9fc3b0da182e49eb3e` |
+| `scanned-g4.tiff` | generated for this package | Apache-2.0, this repository's | 600 | `7b9d0f6ae864973668b5decb5fa8b969530980e896a573c4670b76ecb3089b7c` |
+| `lzw-gray.tiff` | generated for this package | Apache-2.0, this repository's | 532 | `651a53fdff1472c9a25119d8f06319c75aff7deac7d43c2589d8b3bc2846dc10` |
 | `two-images.heic` | generated for this package | Apache-2.0, this repository's | 1488 | `4029abf08a0f58f3c8f7e33f5d7f2eb9d1e4d8cb0aefe684768d341618c377cc` |
 | `oriented.webp` | generated for this package | Apache-2.0, this repository's | 100 | `26af1e195bf5ab390081b5a21a9fd9eada865baf752afab8be7689142d098dfc` |
 | `animated.webp` | generated for this package | Apache-2.0, this repository's | 188 | `7f00b22baa77f7b7b522bb63eda272112c5efc8b968392cd05017ae3c527e4b6` |
@@ -27,6 +29,11 @@ check.
   `Visible text: SAFE-SVG-MARKER`, is all a safe conversion draws.
 - `pages.tiff`: three pages, 40x30 white, 50x30 mid-gray, and 60x30 black, so each page's size
   tells its place.
+- `scanned-g4.tiff`: three bilevel pages compressed with CCITT Group 4, as a fax or a scanner
+  writes them: 64x48 with a black block at its left, 72x48 with one at its right, and 80x48
+  black. It stands in for `~/docs`' scans, which the tier no longer reads.
+- `lzw-gray.tiff`: two 8-bit grayscale pages compressed with LZW, 30x20 of gray 64 and a 40x20
+  gradient.
 - `two-images.heic`: two top-level images, each with a thumbnail. The primary, item 1, is stored
   48x32, its left half white and its right red, with an irot box turning it a quarter turn
   clockwise, so upright it is 32x48, white above red; the other, item 4, is 32x32 blue.
@@ -40,6 +47,11 @@ heif-enc, and libavif 1.4.2's avifenc, in an empty directory:
 
 ```sh
 magick -size 40x30 xc:white -size 50x30 xc:gray50 -size 60x30 xc:black -compress zip pages.tiff
+magick \( -size 64x48 xc:white -fill black -draw "rectangle 8,8 31,39" \) \
+  \( -size 72x48 xc:white -fill black -draw "rectangle 40,8 63,39" \) -size 80x48 xc:black \
+  -monochrome -compress group4 scanned-g4.tiff
+magick -size 30x20 xc:gray25 -size 40x20 gradient:white-black -colorspace gray -depth 8 \
+  -compress lzw lzw-gray.tiff
 # primary.jpg: plain.jpg with an APP1 Exif segment, written by hand after its SOI marker, whose
 # IFD holds one entry, Orientation (0x0112), SHORT, 6.
 magick -size 48x32 xc:red -fill white -draw "rectangle 0,0 23,31" -quality 100 plain.jpg

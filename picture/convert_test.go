@@ -54,11 +54,11 @@ func sha(content string) string {
 }
 
 // writePicture writes content into a directory of its own, outside any working directory, as
-// name, and returns its path; a name of "" is the content's SHA-256 and ext, as mail names it.
-func writePicture(t *testing.T, content, name, ext string) string {
+// name, and returns its path; a name of "" is the content's SHA-256.
+func writePicture(t *testing.T, content, name string) string {
 	t.Helper()
 	if name == "" {
-		name = sha(content) + ext
+		name = sha(content)
 	}
 	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
@@ -106,94 +106,57 @@ func drawFilter(width, height int) string {
 // own matches a picture's directory of its own in the working directory dir.
 func own(dir string) string { return regexp.QuoteMeta(dir) + `/picture-[^/]+/[0-9]+/` }
 
-// TestConvertTIFF: a TIFF, told by either byte order's signature whatever its name, is copied
-// under its SHA-256 and .tiff into a directory of its own in the working directory and converted
-// through one magick run in the working directory, its first image read as TIFF and written as
-// PNG without the run's time. The PNG is the working directory's file named by the picture's
-// SHA-256 and .png, computed when the name isn't it; the original is kept, and the copy's
-// directory removed.
-func TestConvertTIFF(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		desc, content, name, ext string
-	}{
-		{"named by its SHA-256, .tif", tiffLE, "", ".tif"},
-		{"named by its SHA-256, no extension", tiffBE, "", ""},
-		{"named otherwise", tiffLE, "scan.dat", ""},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			t.Parallel()
-			c, st := standinConverter(t, false, true)
-			path := writePicture(t, tc.content, tc.name, tc.ext)
-			dir := t.TempDir()
-			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path})
-			if err != nil {
-				t.Fatal(err)
-			}
-			stem := sha(tc.content)
-			if want := filepath.Join(dir, stem+".png"); png != want {
-				t.Errorf("PNG: got %s, want %s", png, want)
-			}
-			if b, err := os.ReadFile(png); err != nil || string(b) != pngSignature+convertedPrefix+tc.content {
-				t.Errorf("PNG holds %q, %v", b, err)
-			}
-			unchanged(t, path, tc.content)
-			if got := entries(t, dir); !slices.Equal(got, []string{stem + ".png"}) {
-				t.Errorf("working directory holds %q, want the PNG alone", got)
-			}
-			all := st.runs()
-			if got := programs(all); !slices.Equal(got, []string{"magick"}) {
-				t.Fatalf("runs: got %q, want magick alone", got)
-			}
-			want := []string{`tiff:` + own(dir) + stem + `\.tiff\[0\]`, `-define`, `png:exclude-chunks=date,time`, `png:` + own(dir) + stem + `\.png`}
-			if !matchArgs(all[0].Args, want) {
-				t.Errorf("magick's arguments: got %q, want %q", all[0].Args, want)
-			}
-			if all[0].Dir != dir || all[0].Input != tc.content {
-				t.Errorf("magick ran in %s on %q; want in %s on the picture", all[0].Dir, all[0].Input, dir)
-			}
-		})
-	}
-}
+// lo matches a RunLibreOffice run's directory in the working directory dir.
+func lo(dir string) string { return regexp.QuoteMeta(dir) + `/libreoffice-[^/]+` }
 
-// TestConvertSVG: an SVG, told by its root element whatever its name, is copied under its
-// SHA-256 and .svg into a directory of its own, holding nothing else, and rendered through one
-// magick run, at 150 dpi through the rsvg coder, flattened onto white, and written as PNG
-// without the run's time. The PNG is named by the SVG's SHA-256 and .png.
+// enGB is the profile registry's item that gives a metafiles' run LibreOffice's en-GB locale.
+const enGB = `<item oor:path="/org.openoffice.Setup/L10N"><prop oor:name="ooSetupSystemLocale" oor:op="fuse"><value>en-GB</value></prop></item>`
+
+// TestConvertSVG: an SVG, read as the Kind its request names whatever its name, is copied under
+// its stem and .svg into a directory of its own, holding nothing else, and rendered through one
+// magick run in the working directory, at the request's Density, 150 dpi when it is zero,
+// through the rsvg coder, flattened onto white, and written as PNG without the run's time. The PNG
+// is the working directory's file named by the request's stem and .png, and the original is kept.
 func TestConvertSVG(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct{ desc, name string }{
-		{"named by its SHA-256, .svg", sha(svgData) + ".svg"},
-		{"named .xml", "diagram.xml"},
+	for _, tc := range []struct {
+		desc, name string
+		density    int
+		want       string
+	}{
+		{"the default density", "diagram.xml", 0, "150"},
+		{"a set density", "diagram.svg", 300, "300"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c, st := standinConverter(t, false, true)
-			path := writePicture(t, svgData, tc.name, "")
+			c, st := standinConverter(t, picture.Limits{})
+			path := writePicture(t, svgData, tc.name)
 			// A file beside the original, which an SVG's relative reference would name, isn't
 			// copied with it.
 			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "beside.png"), []byte(pngData), 0o600); err != nil {
 				t.Fatal(err)
 			}
 			dir := t.TempDir()
-			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path})
+			pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path, Kind: route.SVG, Stem: "drawing", Density: tc.density})
 			if err != nil {
 				t.Fatal(err)
 			}
-			stem := sha(svgData)
-			if want := filepath.Join(dir, stem+".png"); png != want {
-				t.Errorf("PNG: got %s, want %s", png, want)
+			if want := []string{filepath.Join(dir, "drawing.png")}; !slices.Equal(pngs, want) {
+				t.Errorf("PNGs: got %q, want %q", pngs, want)
 			}
-			if b, err := os.ReadFile(png); err != nil || string(b) != pngSignature+convertedPrefix+svgData {
+			if b, err := os.ReadFile(pngs[0]); err != nil || string(b) != pngSignature+convertedPrefix+svgData {
 				t.Errorf("PNG holds %q, %v", b, err)
 			}
 			unchanged(t, path, svgData)
+			if got := entries(t, dir); !slices.Equal(got, []string{"drawing.png"}) {
+				t.Errorf("working directory holds %q, want the PNG alone", got)
+			}
 			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"magick"}) {
 				t.Fatalf("runs: got %q, want magick alone", got)
 			}
-			want := []string{`-density`, `150`, `-background`, `white`, `rsvg:` + own(dir) + stem + `\.svg`,
-				`-alpha`, `remove`, `-alpha`, `off`, `-define`, `png:exclude-chunks=date,time`, `png:` + own(dir) + stem + `\.png`}
+			want := []string{`-density`, tc.want, `-background`, `white`, `rsvg:` + own(dir) + `drawing\.svg`,
+				`-alpha`, `remove`, `-alpha`, `off`, `-define`, `png:exclude-chunks=date,time`, `png:` + own(dir) + `drawing\.png`}
 			if !matchArgs(all[0].Args, want) {
 				t.Errorf("magick's arguments: got %q, want %q", all[0].Args, want)
 			}
@@ -204,64 +167,64 @@ func TestConvertSVG(t *testing.T) {
 	}
 }
 
-// TestConvertMetafile: an EMF or WMF, told by its signature, a WMF's placeable key or standard
-// header, whatever its name, is rendered through one soffice run in the working directory, read
-// under its SHA-256 and its kind's extension in a directory of its own, with the profile's
-// British English locale and the Draw PNG export at the request's scale, and its page trimmed
-// through magick. The PNG is the working directory's file named by the picture's SHA-256 and
-// .png, and the original is kept.
+// TestConvertMetafile: an EMF or WMF, read as the Kind its request names, is rendered through one
+// soffice run in a libreoffice-* directory of its own in the working directory, read from a copy
+// there under the request's stem and its kind's extension, with the profile's British English
+// locale and the Draw PNG export at the request's scale, and its page trimmed through magick. The
+// PNG is the working directory's file named by the stem and .png, the original is kept, and
+// nothing else is left.
 func TestConvertMetafile(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
-		desc, content, name, ext, kind string
-		scale, width, height           int
+		desc, content string
+		kind          route.Kind
+		ext           string
+		scale         int
+		width, height int
 	}{
-		{"EMF at the default scale", emfData(), "", ".emf", ".emf", 0, 2382, 3369},
-		{"placeable WMF at scale 1", wmfKey, "", ".wmf", ".wmf", 1, 794, 1123},
-		{"standard WMF, named otherwise", wmfStandard(), "logo", "", ".wmf", 5, 3970, 5615},
-		{"EMF at the largest scale", emfData(), "", "", ".emf", picture.MaxMetafileScale, 6352, 8984},
+		{"EMF at the default scale", emfData(), route.EMF, ".emf", 0, 2382, 3369},
+		{"placeable WMF at scale 1", wmfKey, route.WMF, ".wmf", 1, 794, 1123},
+		{"standard WMF", wmfStandard(), route.WMF, ".wmf", 5, 3970, 5615},
+		{"EMF at the largest scale", emfData(), route.EMF, ".emf", picture.MaxMetafileScale, 6352, 8984},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c, st := standinConverter(t, true, true)
-			path := writePicture(t, tc.content, tc.name, tc.ext)
+			c, st := standinConverter(t, picture.Limits{})
+			path := writePicture(t, tc.content, "logo.bin")
 			dir := t.TempDir()
-			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path, MetafileScale: tc.scale})
+			pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path, Kind: tc.kind, Stem: "logo", MetafileScale: tc.scale})
 			if err != nil {
 				t.Fatal(err)
 			}
-			stem := sha(tc.content)
-			if want := filepath.Join(dir, stem+".png"); png != want {
-				t.Errorf("PNG: got %s, want %s", png, want)
+			if want := []string{filepath.Join(dir, "logo.png")}; !slices.Equal(pngs, want) {
+				t.Errorf("PNGs: got %q, want %q", pngs, want)
 			}
-			if b, err := os.ReadFile(png); err != nil || string(b) != pngSignature+convertedPrefix+convertedPrefix+tc.content {
+			if b, err := os.ReadFile(pngs[0]); err != nil || string(b) != pngSignature+convertedPrefix+convertedPrefix+tc.content {
 				t.Errorf("PNG holds %q, %v", b, err)
 			}
 			unchanged(t, path, tc.content)
-			if got := entries(t, dir); !slices.Equal(got, []string{stem + ".png"}) {
+			if got := entries(t, dir); !slices.Equal(got, []string{"logo.png"}) {
 				t.Errorf("working directory holds %q, want the PNG alone", got)
 			}
 			all := st.runs()
 			if got := programs(all); !slices.Equal(got, []string{"soffice", "magick"}) {
 				t.Fatalf("runs: got %q, want soffice and magick", got)
 			}
-			lo := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+`
 			wantArgs := []string{
-				`-env:UserInstallation=file://` + lo + `/profile`,
+				`-env:UserInstallation=file://` + lo(dir) + `/profile`,
 				`--headless`, `--norestore`,
 				`--convert-to`, regexp.QuoteMeta(drawFilter(tc.width, tc.height)),
-				`--outdir`, lo + `/out`,
-				own(dir) + stem + regexp.QuoteMeta(tc.kind),
+				`--outdir`, lo(dir) + `/out`,
+				lo(dir) + `/in/logo` + regexp.QuoteMeta(tc.ext),
 			}
 			if !matchArgs(all[0].Args, wantArgs) {
 				t.Errorf("soffice's arguments: got %q, want %q", all[0].Args, wantArgs)
 			}
-			locale := `<item oor:path="/org.openoffice.Setup/L10N"><prop oor:name="ooSetupSystemLocale" oor:op="fuse"><value>en-GB</value></prop></item>`
-			if all[0].Dir != dir || !strings.Contains(all[0].Registry, locale) {
-				t.Errorf("soffice ran in %s with profile %q; want in %s with the en-GB locale", all[0].Dir, all[0].Registry, dir)
+			if !regexp.MustCompile(`^`+lo(dir)+`$`).MatchString(all[0].Dir) || !strings.Contains(all[0].Registry, enGB) {
+				t.Errorf("soffice ran in %s with profile %q; want in its own directory with the en-GB locale", all[0].Dir, all[0].Registry)
 			}
-			trim := []string{`png:` + lo + `/out/` + stem + `\.png`, `-trim`, `\+repage`, `-define`, `png:exclude-chunks=date,time`,
-				`png:` + own(dir) + stem + `\.png`}
+			trim := []string{`png:` + lo(dir) + `/out/logo\.png`, `-trim`, `\+repage`, `-define`, `png:exclude-chunks=date,time`,
+				`png:` + own(dir) + `logo\.png`}
 			if !matchArgs(all[1].Args, trim) {
 				t.Errorf("magick's trim arguments: got %q, want %q", all[1].Args, trim)
 			}
@@ -269,57 +232,51 @@ func TestConvertMetafile(t *testing.T) {
 	}
 }
 
-// TestConvertRefused: content of no converted kind, a picture whose converter the Converter
-// wasn't given, a scale out of range, no working directory, and a missing file are each an error
-// before anything runs, leaving the working directory empty; a missing converter's matches
-// ErrNoLibreOffice or ErrNoMagick, and a scale's ErrRequest.
+// TestConvertRefused: a kind the package doesn't convert, a stem that isn't a plain name, a scale
+// out of range, a negative density, and no working directory are each an error matching
+// ErrRequest before anything runs, and a missing file an error before any converter runs, each
+// leaving the working directory empty.
 func TestConvertRefused(t *testing.T) {
 	t.Parallel()
+	req := func(f func(*picture.Request)) func(dir, path string) picture.Request {
+		return func(dir, path string) picture.Request {
+			r := picture.Request{Dir: dir, Path: path, Kind: route.TIFF, Stem: "scan"}
+			f(&r)
+			return r
+		}
+	}
 	for _, tc := range []struct {
-		desc                string
-		libreoffice, magick bool
-		content             string
-		req                 func(dir, path string) picture.Request
-		is                  error
-		want                string
+		desc string
+		req  func(dir, path string) picture.Request
+		is   error
+		want string
 	}{
-		{"a PNG", true, true, pngData, nil, nil, "isn't a TIFF, EMF, WMF, SVG, HEIC, WebP, or AVIF picture"},
-		{"empty content", true, true, "", nil, nil, "isn't a TIFF, EMF, WMF, SVG, HEIC, WebP, or AVIF picture"},
-		{"html with an inline svg", true, true, "<html><svg/></html>", nil, nil, "isn't a TIFF, EMF, WMF, SVG, HEIC, WebP, or AVIF picture"},
-		{"a TIFF without magick", true, false, tiffLE, nil, picture.ErrNoMagick, "is a TIFF picture: no magick converter"},
-		{"an SVG without magick", true, false, svgData, nil, picture.ErrNoMagick, "is an SVG picture: no magick converter"},
-		{"an EMF without libreoffice", false, true, emfData(), nil, picture.ErrNoLibreOffice, "is an EMF picture: no LibreOffice converter"},
-		{"a WMF without magick", true, false, wmfKey, nil, picture.ErrNoMagick, "is a WMF picture: no magick converter"},
-		{"a scale above 8", true, true, emfData(),
-			func(dir, path string) picture.Request {
-				return picture.Request{Dir: dir, Path: path, MetafileScale: 9}
-			}, picture.ErrRequest, "picture: metafile scale 9 isn't from 1 to 8"},
-		{"a scale below 0", true, true, tiffLE,
-			func(dir, path string) picture.Request {
-				return picture.Request{Dir: dir, Path: path, MetafileScale: -1}
-			}, picture.ErrRequest, "picture: metafile scale -1 isn't from 1 to 8"},
-		{"no working directory", true, true, tiffLE,
-			func(_, path string) picture.Request { return picture.Request{Path: path} },
-			nil, "picture: no working directory"},
-		{"a missing file", true, true, tiffLE,
-			func(dir, path string) picture.Request {
-				return picture.Request{Dir: dir, Path: path + ".missing"}
-			}, os.ErrNotExist, "picture: open "},
+		{"a PNG", req(func(r *picture.Request) { r.Kind = route.PNG }), picture.ErrRequest, `picture: content: no converter for kind "png"`},
+		{"no kind", req(func(r *picture.Request) { r.Kind = route.Unknown }), picture.ErrRequest, `no converter for kind ""`},
+		{"no stem", req(func(r *picture.Request) { r.Stem = "" }), picture.ErrRequest, `picture: output stem "" isn't a plain name`},
+		{"a stem with a path", req(func(r *picture.Request) { r.Stem = "../scan" }), picture.ErrRequest, `output stem "../scan" isn't a plain name`},
+		{"a stem with a pattern", req(func(r *picture.Request) { r.Stem = "scan%d" }), picture.ErrRequest, `output stem "scan%d" isn't a plain name`},
+		{"a stem with a frame", req(func(r *picture.Request) { r.Stem, r.Kind = "scan[1]", route.SVG }), picture.ErrRequest, `output stem "scan[1]" isn't a plain name`},
+		{"a stem beginning with a dot", req(func(r *picture.Request) { r.Stem = ".scan" }), picture.ErrRequest, `output stem ".scan" isn't a plain name`},
+		{"a scale above 8", req(func(r *picture.Request) { r.Kind, r.MetafileScale = route.EMF, 9 }), picture.ErrRequest, "picture: metafile scale 9 isn't from 1 to 8"},
+		{"a scale below 0", req(func(r *picture.Request) { r.MetafileScale = -1 }), picture.ErrRequest, "picture: metafile scale -1 isn't from 1 to 8"},
+		{"a negative density", req(func(r *picture.Request) { r.Kind, r.Density = route.SVG, -1 }), picture.ErrRequest, "picture: density -1 is negative"},
+		{"a TIFF's negative density", req(func(r *picture.Request) { r.Density = -1 }), picture.ErrRequest, "picture: density -1 is negative"},
+		{"no working directory", req(func(r *picture.Request) { r.Dir = "" }), picture.ErrRequest, "picture: no working directory"},
+		{"a missing TIFF", req(func(r *picture.Request) { r.Path += ".missing" }), os.ErrNotExist, "picture: scan.tiff: open "},
+		{"a missing SVG", req(func(r *picture.Request) { r.Path, r.Kind = r.Path+".missing", route.SVG }), os.ErrNotExist, "picture: scan.svg: open "},
+		{"a missing EMF", req(func(r *picture.Request) { r.Path, r.Kind = r.Path+".missing", route.EMF }), os.ErrNotExist, "picture: libreoffice: scan.emf: open "},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c, st := standinConverter(t, tc.libreoffice, tc.magick)
-			path := writePicture(t, tc.content, "", "")
+			c, st := standinConverter(t, picture.Limits{})
+			path := writePicture(t, tiffLE, "content")
 			dir := t.TempDir()
-			req := picture.Request{Dir: dir, Path: path}
-			if tc.req != nil {
-				req = tc.req(dir, path)
+			pngs, err := c.ConvertPages(t.Context(), tc.req(dir, path))
+			if pngs != nil || err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %q, %v; want an error saying %q", pngs, err, tc.want)
 			}
-			png, err := c.Convert(t.Context(), req)
-			if png != "" || err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("got %q, %v; want an error saying %q", png, err, tc.want)
-			}
-			if tc.is != nil && !errors.Is(err, tc.is) {
+			if !errors.Is(err, tc.is) {
 				t.Errorf("error %v doesn't match %v", err, tc.is)
 			}
 			if got := st.runs(); len(got) != 0 {
@@ -328,52 +285,49 @@ func TestConvertRefused(t *testing.T) {
 			if got := entries(t, dir); len(got) != 0 {
 				t.Errorf("working directory holds %q, want nothing", got)
 			}
-			unchanged(t, path, tc.content)
+			unchanged(t, path, tiffLE)
 		})
 	}
 }
 
 // TestConvertFails: soffice exiting nonzero or writing no page, magick exiting nonzero, and
 // magick writing something that isn't a PNG each fail the conversion with the converter's
-// message or the picture's copied name, its SHA-256 and kind, and leave nothing in the working
+// message or the picture's copied name, its stem and kind, and leave nothing in the working
 // directory and the original as it was.
 func TestConvertFails(t *testing.T) {
 	t.Parallel()
-	emf := emfData()
 	for _, tc := range []struct {
 		desc    string
 		content string
+		kind    route.Kind
 		set     func(*settings)
 		want    string
 	}{
-		{"soffice exits 1", emf,
+		{"soffice exits 1", emfData(), route.EMF,
 			func(s *settings) { s.SofficeFail = "Error: source file could not be loaded\n" },
 			"picture: libreoffice: tool: soffice: exit code 1: Error: source file could not be loaded"},
-		{"soffice writes nothing", emf,
+		{"soffice writes nothing", emfData(), route.EMF,
 			func(s *settings) { s.SofficeNothing = true },
-			"picture: libreoffice: " + sha(emf) + ".emf: no PNG written"},
-		{"the trim exits 1", emf,
+			"picture: libreoffice: pic.emf: no PNG written"},
+		{"the trim exits 1", emfData(), route.EMF,
 			func(s *settings) { s.Fail = "magick: insufficient image data\n" },
-			"picture: magick: " + sha(emf) + ".emf: tool: magick: exit code 1: magick: insufficient image data"},
-		{"magick exits 1 on a TIFF", tiffLE,
-			func(s *settings) { s.Fail = "magick: improper image header\n" },
-			"picture: magick: " + sha(tiffLE) + ".tiff: tool: magick: exit code 1: magick: improper image header"},
-		{"magick exits 1 on an SVG", svgData,
+			"picture: magick: pic.emf: tool: magick: exit code 1: magick: insufficient image data"},
+		{"magick exits 1 on an SVG", svgData, route.SVG,
 			func(s *settings) { s.Fail = "magick: unable to read image data\n" },
-			"picture: magick: " + sha(svgData) + ".svg: tool: magick: exit code 1: magick: unable to read image data"},
-		{"magick writes no PNG", tiffLE,
+			"picture: magick: pic.svg: tool: magick: exit code 1: magick: unable to read image data"},
+		{"magick writes no PNG", svgData, route.SVG,
 			func(s *settings) { s.Raw = true },
-			"picture: magick: " + sha(tiffLE) + ".tiff: " + sha(tiffLE) + ".png isn't a PNG"},
+			"picture: magick: pic.svg: pic.png isn't a PNG"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c, st := standinConverter(t, true, true)
+			c, st := standinConverter(t, picture.Limits{})
 			st.set(tc.set)
-			path := writePicture(t, tc.content, "", "")
+			path := writePicture(t, tc.content, "")
 			dir := t.TempDir()
-			png, err := c.Convert(t.Context(), picture.Request{Dir: dir, Path: path})
-			if png != "" || err == nil {
-				t.Fatalf("got %q, %v; want an error", png, err)
+			pngs, err := c.ConvertPages(t.Context(), picture.Request{Dir: dir, Path: path, Kind: tc.kind, Stem: "pic"})
+			if pngs != nil || err == nil {
+				t.Fatalf("got %q, %v; want an error", pngs, err)
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("error %q doesn't say %q", err, tc.want)
@@ -388,12 +342,12 @@ func TestConvertFails(t *testing.T) {
 
 // TestConvertBatch: a batch's TIFFs and SVGs go to magick in order, one run each, and its EMFs
 // and WMFs after them to one soffice run, in order, then each page to magick; every picture is
-// read as its Picture's kind, from a copy in a directory of its own, numbered by its place in the
-// batch, under its PNG's stem; each PNG is written to its Picture's PNG, anywhere the caller
-// names, and only the PNGs are left.
+// read as its Picture's kind, a TIFF's first image alone, from a copy, numbered by its place in
+// the batch, under its PNG's stem; each PNG is written to its Picture's PNG, anywhere the caller
+// names, and only the PNGs are left. The batch's SVGs are rendered at its Density.
 func TestConvertBatch(t *testing.T) {
 	t.Parallel()
-	c, st := standinConverter(t, true, true)
+	c, st := standinConverter(t, picture.Limits{})
 	dir := t.TempDir()
 	out := t.TempDir()
 	src := t.TempDir()
@@ -417,7 +371,7 @@ func TestConvertBatch(t *testing.T) {
 		stem := strings.TrimSuffix(p.name, filepath.Ext(p.name))
 		batch = append(batch, picture.Picture{Path: path, Kind: p.kind, PNG: filepath.Join(out, stem+".png")})
 	}
-	if err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir, MetafileScale: 1, Pictures: batch}); err != nil {
+	if err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir, MetafileScale: 1, Density: 72, Pictures: batch}); err != nil {
 		t.Fatal(err)
 	}
 	for i, p := range pictures {
@@ -446,27 +400,26 @@ func TestConvertBatch(t *testing.T) {
 	if want := []string{`tiff:` + at(1, "b2.tiff") + `\[0\]`, `-define`, `png:exclude-chunks=date,time`, `png:` + at(1, "b2.png")}; !matchArgs(all[0].Args, want) {
 		t.Errorf("b2's arguments: got %q, want %q", all[0].Args, want)
 	}
-	if !matchArgs(all[1].Args[4:5], []string{`rsvg:` + at(3, "d4.svg")}) {
-		t.Errorf("d4's arguments: got %q, want its copy read through rsvg", all[1].Args)
+	if !matchArgs(all[1].Args[:5], []string{`-density`, `72`, `-background`, `white`, `rsvg:` + at(3, "d4.svg")}) {
+		t.Errorf("d4's arguments: got %q, want its copy read through rsvg at 72 dpi", all[1].Args)
 	}
 	if want := []string{`tiff:` + at(4, "e5.tiff") + `\[0\]`, `-define`, `png:exclude-chunks=date,time`, `png:` + at(4, "e5.png")}; !matchArgs(all[2].Args, want) {
 		t.Errorf("e5's arguments: got %q, want %q", all[2].Args, want)
 	}
-	if got := all[3].Args[len(all[3].Args)-2:]; !matchArgs(got, []string{at(0, "a1.emf"), at(2, "c3.wmf")}) {
+	if got := all[3].Args[len(all[3].Args)-2:]; !matchArgs(got, []string{lo(dir) + `/in/a1\.emf`, lo(dir) + `/in/c3\.wmf`}) {
 		t.Errorf("soffice's inputs: got %q, want a1's and c3's copies", got)
 	}
 	for i, name := range []string{"a1", "c3"} {
-		lo := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+/out/`
-		want := []string{`png:` + lo + name + `\.png`, `-trim`, `\+repage`, `-define`, `png:exclude-chunks=date,time`, `png:` + at(2*i, name+".png")}
+		want := []string{`png:` + lo(dir) + `/out/` + name + `\.png`, `-trim`, `\+repage`, `-define`, `png:exclude-chunks=date,time`, `png:` + at(2*i, name+".png")}
 		if !matchArgs(all[4+i].Args, want) {
 			t.Errorf("%s's trim: got %q, want %q", name, all[4+i].Args, want)
 		}
 	}
 }
 
-// TestConvertBatchRefused: a kind the package doesn't convert, two pictures that share a PNG's
-// stem, and a picture whose converter is missing are each an error before anything runs; an
-// empty batch runs nothing and succeeds.
+// TestConvertBatchRefused: a kind the package doesn't convert, a PNG stem that isn't a plain
+// name, two pictures that share a PNG's stem, and a negative density are each an error matching
+// ErrRequest before anything runs; an empty batch runs nothing and succeeds.
 func TestConvertBatchRefused(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()
@@ -476,32 +429,28 @@ func TestConvertBatchRefused(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		desc     string
-		magick   bool
+		density  int
 		pictures []picture.Picture
-		is       error
 		want     string
 	}{
-		{"a PNG", true, []picture.Picture{{Path: path, Kind: route.PNG, PNG: filepath.Join(src, "a.png")}},
-			nil, `picture: a.tiff: no converter for kind "png"`},
-		{"two PNGs of one stem", true, []picture.Picture{
+		{"a PNG", 0, []picture.Picture{{Path: path, Kind: route.PNG, PNG: filepath.Join(src, "a.png")}},
+			`picture: a.tiff: no converter for kind "png"`},
+		{"a stem with a pattern", 0, []picture.Picture{{Path: path, Kind: route.TIFF, PNG: filepath.Join(src, "a%d.png")}},
+			`picture: output stem "a%d" isn't a plain name`},
+		{"two PNGs of one stem", 0, []picture.Picture{
 			{Path: path, Kind: route.TIFF, PNG: filepath.Join(src, "a.png")},
 			{Path: path, Kind: route.TIFF, PNG: filepath.Join(t.TempDir(), "a.png")},
-		}, nil, "picture: two pictures' PNGs are named a.png"},
-		{"an EMF without libreoffice", true, []picture.Picture{{Path: path, Kind: route.EMF, PNG: filepath.Join(src, "a.png")}},
-			picture.ErrNoLibreOffice, "picture: a.tiff is an EMF picture: no LibreOffice converter"},
-		{"a TIFF without magick", false, []picture.Picture{{Path: path, Kind: route.TIFF, PNG: filepath.Join(src, "a.png")}},
-			picture.ErrNoMagick, "picture: a.tiff is a TIFF picture: no magick converter"},
+		}, "picture: two pictures' PNGs are named a.png"},
+		{"a negative density", -5, []picture.Picture{{Path: path, Kind: route.SVG, PNG: filepath.Join(src, "a.png")}},
+			"picture: density -5 is negative"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			c, st := standinConverter(t, false, tc.magick)
+			c, st := standinConverter(t, picture.Limits{})
 			dir := t.TempDir()
-			err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir, Pictures: tc.pictures})
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatalf("got %v; want an error saying %q", err, tc.want)
-			}
-			if tc.is != nil && !errors.Is(err, tc.is) {
-				t.Errorf("error %v doesn't match %v", err, tc.is)
+			err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir, Density: tc.density, Pictures: tc.pictures})
+			if err == nil || !strings.Contains(err.Error(), tc.want) || !errors.Is(err, picture.ErrRequest) {
+				t.Fatalf("got %v; want ErrRequest saying %q", err, tc.want)
 			}
 			if got := st.runs(); len(got) != 0 {
 				t.Errorf("runs: got %q, want none", programs(got))
@@ -513,7 +462,7 @@ func TestConvertBatchRefused(t *testing.T) {
 	}
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		c, st := standinConverter(t, false, false)
+		c, st := standinConverter(t, picture.Limits{})
 		dir := t.TempDir()
 		if err := c.ConvertBatch(t.Context(), picture.Batch{Dir: dir}); err != nil {
 			t.Fatal(err)
@@ -531,7 +480,7 @@ func TestConvertBatchRefused(t *testing.T) {
 // written removes that PNG too, so a failed batch leaves no PNG of its own.
 func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
 	t.Parallel()
-	c, st := standinConverter(t, true, true)
+	c, st := standinConverter(t, picture.Limits{})
 	st.set(func(s *settings) { s.SofficeNothing = true })
 	src, out := t.TempDir(), t.TempDir()
 	tiff, emf := filepath.Join(src, "a.tiff"), filepath.Join(src, "b.emf")
@@ -552,6 +501,188 @@ func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
 	}
 }
 
+// TestLimits: the configured limits begin every magick run, as -limit options in a fixed order,
+// the format listing, a TIFF's pages, a batch's TIFF, SVG, and raster, and a metafile's trim
+// alike, a zero limit leaving its option out; soffice's run carries none. Zero Limits pass no
+// -limit at all.
+func TestLimits(t *testing.T) {
+	t.Parallel()
+	limits := picture.Limits{Area: 4000000, Width: 8000, Height: 9000, Memory: 256 << 20, Disk: 1 << 30}
+	want := []string{"-limit", "area", "4000000", "-limit", "width", "8000", "-limit", "height", "9000",
+		"-limit", "memory", "268435456", "-limit", "disk", "1073741824"}
+	for _, tc := range []struct {
+		desc   string
+		limits picture.Limits
+		want   []string
+	}{
+		{"set", limits, want},
+		{"zero", picture.Limits{}, nil},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			c, st := standinConverter(t, tc.limits)
+			src := t.TempDir()
+			var batch []picture.Picture
+			for name, content := range map[string]string{"a.tiff": tiffLE, "b.svg": svgData, "c.webp": "RIFF\x10\x00\x00\x00WEBPVP8 ", "d.emf": emfData()} {
+				path := filepath.Join(src, name)
+				if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				kind := map[string]route.Kind{".tiff": route.TIFF, ".svg": route.SVG, ".webp": route.WebP, ".emf": route.EMF}[filepath.Ext(name)]
+				batch = append(batch, picture.Picture{Path: path, Kind: kind, PNG: filepath.Join(t.TempDir(), strings.TrimSuffix(name, filepath.Ext(name))+".png")})
+			}
+			if err := c.ConvertBatch(t.Context(), picture.Batch{Dir: t.TempDir(), Pictures: batch}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.ConvertPages(t.Context(), picture.Request{Dir: t.TempDir(), Path: batch[0].Path, Kind: route.TIFF, Stem: "pages"}); err != nil {
+				t.Fatal(err)
+			}
+			listings := st.listings()
+			if len(listings) != 1 || !slices.Equal(listings[0].Args, slices.Concat(tc.want, []string{"-list", "format", "null:"})) {
+				t.Errorf("format listings: got %q, want one beginning %q", listings, tc.want)
+			}
+			magick := 0
+			for _, r := range st.runs() {
+				if r.Program == "soffice" {
+					if slices.Contains(r.Args, "-limit") {
+						t.Errorf("soffice's run carries -limit: %q", r.Args)
+					}
+					continue
+				}
+				magick++
+				if !slices.Equal(r.Args[:len(tc.want)], tc.want) || slices.Contains(r.Args[len(tc.want):], "-limit") {
+					t.Errorf("magick run %q doesn't begin with the limits %q alone", r.Args, tc.want)
+				}
+			}
+			// The batch's TIFF, SVG, WebP, and EMF's trim, and the pages run.
+			if magick != 5 {
+				t.Errorf("%d magick runs, want 5", magick)
+			}
+		})
+	}
+}
+
+// TestLimitsNegative: a negative limit is NewConverter's error matching ErrRequest, naming it,
+// before magick's format listing runs.
+func TestLimitsNegative(t *testing.T) {
+	t.Parallel()
+	st := newStandins(t, "7.1.2-34")
+	c, err := picture.NewConverter(t.Context(), picture.Config{
+		Magick:      st.mustTool(picture.MagickSpec()),
+		LibreOffice: st.mustTool(picture.LibreOfficeSpec()),
+		Limits:      picture.Limits{Map: -1},
+	})
+	if c != nil || !errors.Is(err, picture.ErrRequest) || !strings.Contains(err.Error(), "picture: magick's map limit -1 is negative") {
+		t.Errorf("got %v, %v; want ErrRequest naming the map limit", c, err)
+	}
+	if got := st.listings(); len(got) != 0 {
+		t.Errorf("format listings: got %q, want none", got)
+	}
+}
+
+// TestRunLibreOffice: a run copies each input into a libreoffice-* directory of its own under its
+// Name and runs soffice there once, its profile there too, started with the run's Registry and
+// left empty without one, and its output directory there, which the output names; the
+// originals are kept, and Remove removes the run's directory, leaving the working directory
+// empty.
+func TestRunLibreOffice(t *testing.T) {
+	t.Parallel()
+	for _, registry := range []string{"", "<oor:items/>\n"} {
+		t.Run(fmt.Sprintf("registry %q", registry), func(t *testing.T) {
+			t.Parallel()
+			c, st := standinConverter(t, picture.Limits{})
+			first, second := writePicture(t, "a document", "report.bin"), writePicture(t, "a memo", "memo")
+			dir := t.TempDir()
+			out, err := c.RunLibreOffice(t.Context(), picture.LibreOfficeRun{
+				Dir: dir, ConvertTo: "png:writer_png_Export", Registry: registry,
+				Inputs: []picture.LibreOfficeInput{{Path: first, Name: "report.doc"}, {Path: second, Name: "memo.rtf"}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !regexp.MustCompile(`^` + lo(dir) + `/out$`).MatchString(out.Dir) {
+				t.Errorf("output directory %s, want the run's own", out.Dir)
+			}
+			if got := entries(t, out.Dir); !slices.Equal(got, []string{"memo.png", "report.png"}) {
+				t.Errorf("output holds %q, want each input's page", got)
+			}
+			all := st.runs()
+			if len(all) != 1 || all[0].Program != "soffice" {
+				t.Fatalf("runs: got %q, want soffice once", programs(all))
+			}
+			want := []string{`-env:UserInstallation=file://` + lo(dir) + `/profile`, `--headless`, `--norestore`,
+				`--convert-to`, `png:writer_png_Export`, `--outdir`, lo(dir) + `/out`, lo(dir) + `/in/report\.doc`, lo(dir) + `/in/memo\.rtf`}
+			if !matchArgs(all[0].Args, want) {
+				t.Errorf("soffice's arguments: got %q, want %q", all[0].Args, want)
+			}
+			if filepath.Dir(out.Dir) != all[0].Dir || all[0].Input != "a document" || all[0].Registry != registry {
+				t.Errorf("soffice ran in %s on %q with registry %q; want in the run's directory on the copy with %q", all[0].Dir, all[0].Input, all[0].Registry, registry)
+			}
+			unchanged(t, first, "a document")
+			unchanged(t, second, "a memo")
+			if err := out.Remove(); err != nil {
+				t.Fatal(err)
+			}
+			if got := entries(t, dir); len(got) != 0 {
+				t.Errorf("working directory holds %q after Remove, want nothing", got)
+			}
+		})
+	}
+}
+
+// TestRunLibreOfficeRefused: no working directory, no --convert-to, no inputs, a Name that is no
+// file name, and two Names of one stem are each an error matching ErrRequest before anything
+// runs; soffice failing removes the run's directory, its error carrying soffice's message.
+func TestRunLibreOfficeRefused(t *testing.T) {
+	t.Parallel()
+	in := picture.LibreOfficeInput{Name: "a.doc"}
+	for _, tc := range []struct {
+		desc string
+		run  picture.LibreOfficeRun
+		want string
+	}{
+		{"no working directory", picture.LibreOfficeRun{ConvertTo: "docx", Inputs: []picture.LibreOfficeInput{in}}, "picture: no working directory"},
+		{"no convert-to", picture.LibreOfficeRun{Dir: "d", Inputs: []picture.LibreOfficeInput{in}}, "picture: libreoffice: no --convert-to"},
+		{"no inputs", picture.LibreOfficeRun{Dir: "d", ConvertTo: "docx"}, "picture: libreoffice: no inputs"},
+		{"a path", picture.LibreOfficeRun{Dir: "d", ConvertTo: "docx", Inputs: []picture.LibreOfficeInput{{Name: "x/a.doc"}}},
+			`picture: libreoffice: input name "x/a.doc" isn't a file name`},
+		{"no name", picture.LibreOfficeRun{Dir: "d", ConvertTo: "docx", Inputs: []picture.LibreOfficeInput{{}}},
+			`picture: libreoffice: input name "" isn't a file name`},
+		{"one stem", picture.LibreOfficeRun{Dir: "d", ConvertTo: "docx", Inputs: []picture.LibreOfficeInput{in, {Name: "a.rtf"}}},
+			`picture: libreoffice: two inputs' names have the stem "a"`},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			c, st := standinConverter(t, picture.Limits{})
+			dir := t.TempDir()
+			if tc.run.Dir != "" {
+				tc.run.Dir = dir
+			}
+			out, err := c.RunLibreOffice(t.Context(), tc.run)
+			if out != nil || !errors.Is(err, picture.ErrRequest) || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("got %v, %v; want ErrRequest saying %q", out, err, tc.want)
+			}
+			if got := st.runs(); len(got) != 0 || len(entries(t, dir)) != 0 {
+				t.Errorf("runs %q, working directory %q; want neither", programs(got), entries(t, dir))
+			}
+		})
+	}
+	t.Run("soffice fails", func(t *testing.T) {
+		t.Parallel()
+		c, st := standinConverter(t, picture.Limits{}, func(s *settings) { s.SofficeFail = "Error: source file could not be loaded\n" })
+		dir := t.TempDir()
+		out, err := c.RunLibreOffice(t.Context(), picture.LibreOfficeRun{
+			Dir: dir, ConvertTo: "docx", Inputs: []picture.LibreOfficeInput{{Path: writePicture(t, "x", ""), Name: "a.doc"}},
+		})
+		if out != nil || err == nil || !strings.Contains(err.Error(), "picture: libreoffice: tool: soffice: exit code 1: Error: source file could not be loaded") {
+			t.Fatalf("got %v, %v; want soffice's error", out, err)
+		}
+		if got := entries(t, dir); len(got) != 0 || len(st.runs()) != 1 {
+			t.Errorf("working directory holds %q after %d runs, want nothing after one", got, len(st.runs()))
+		}
+	})
+}
+
 // TestCheckMetafileScale: zero is the default, 3; 1 to 8 are themselves; below zero and above 8
 // are refused with ErrRequest.
 func TestCheckMetafileScale(t *testing.T) {
@@ -569,37 +700,45 @@ func TestCheckMetafileScale(t *testing.T) {
 }
 
 // TestNewConverterVersion: NewConverter refuses a magick older than 7.1 and a soffice older than
-// 24.2, whatever their Specs declared, with a *tool.VersionError wrapping ErrTooOld; with no
-// Tools it builds a Converter that refuses every picture.
+// 24.2, whatever their Specs declared, with a *tool.VersionError wrapping ErrTooOld.
 func TestNewConverterVersion(t *testing.T) {
 	t.Parallel()
-	st := newStandins(t, "7.0.11-14", func(s *settings) { s.SofficeVersion = "7.6.4.1" })
+	old := newStandins(t, "7.0.11-14", func(s *settings) { s.SofficeVersion = "7.6.4.1" })
+	current := newStandins(t, "7.1.2-34")
 	lenient := picture.MagickSpec()
 	lenient.Minimum = "6"
-	mg, err := st.tool(lenient)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var verr *tool.VersionError
-	if _, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg}); !errors.As(err, &verr) || verr.Minimum != picture.MagickMinimum || !errors.Is(err, tool.ErrTooOld) {
-		t.Errorf("NewConverter over magick 7.0.11-14 returned %v, want a VersionError of minimum %s", err, picture.MagickMinimum)
-	}
 	lo := picture.LibreOfficeSpec()
 	lo.Minimum = "7"
-	so, err := st.tool(lo)
-	if err != nil {
-		t.Fatal(err)
+	var verr *tool.VersionError
+	_, err := picture.NewConverter(t.Context(), picture.Config{Magick: old.mustTool(lenient), LibreOffice: current.mustTool(lo)})
+	if !errors.As(err, &verr) || verr.Minimum != picture.MagickMinimum || !errors.Is(err, tool.ErrTooOld) {
+		t.Errorf("NewConverter over magick 7.0.11-14 returned %v, want a VersionError of minimum %s", err, picture.MagickMinimum)
 	}
-	if _, err := picture.NewConverter(t.Context(), picture.Config{LibreOffice: so}); !errors.As(err, &verr) || verr.Minimum != picture.LibreOfficeMinimum || !errors.Is(err, tool.ErrTooOld) {
+	_, err = picture.NewConverter(t.Context(), picture.Config{Magick: current.mustTool(lenient), LibreOffice: old.mustTool(lo)})
+	if !errors.As(err, &verr) || verr.Minimum != picture.LibreOfficeMinimum || !errors.Is(err, tool.ErrTooOld) {
 		t.Errorf("NewConverter over soffice 7.6.4.1 returned %v, want a VersionError of minimum %s", err, picture.LibreOfficeMinimum)
 	}
-	c, err := picture.NewConverter(t.Context(), picture.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	path := writePicture(t, tiffLE, "", "")
-	if _, err := c.Convert(t.Context(), picture.Request{Dir: t.TempDir(), Path: path}); !errors.Is(err, picture.ErrNoMagick) {
-		t.Errorf("Convert without magick returned %v, want ErrNoMagick", err)
+}
+
+// TestNewConverterNil: a Config with no Magick or no LibreOffice is the caller's mistake, and
+// panics naming the field.
+func TestNewConverterNil(t *testing.T) {
+	t.Parallel()
+	st := newStandins(t, "7.1.2-34")
+	mg, so := st.mustTool(picture.MagickSpec()), st.mustTool(picture.LibreOfficeSpec())
+	for want, cfg := range map[string]picture.Config{
+		"picture: Config.Magick is nil":      {LibreOffice: so},
+		"picture: Config.LibreOffice is nil": {Magick: mg},
+	} {
+		func() {
+			defer func() {
+				if r := recover(); r != want {
+					t.Errorf("NewConverter panicked with %v, want %q", r, want)
+				}
+			}()
+			_, _ = picture.NewConverter(t.Context(), cfg)
+			t.Errorf("NewConverter returned, want a panic %q", want)
+		}()
 	}
 }
 

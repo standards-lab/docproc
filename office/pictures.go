@@ -29,14 +29,10 @@ var convertKinds = map[route.Kind]bool{route.EMF: true, route.WMF: true, route.T
 // converted, by its stored file's signature; an embedded package and an OLE object are handed on
 // as stored. A converted picture's PNG is named by its stored file's stem, the SHA-256, and .png,
 // and written into the media directory beside the stored file, which stays; its media's Path
-// becomes the PNG and Converted true. A picture whose converter the Converter wasn't given, for a
-// metafile either of LibreOffice and magick, is handed on as stored. A file named by several media,
+// becomes the PNG and Converted true. A file named by several media,
 // or two stored files of the same bytes under two extensions, is converted once. A conversion that
 // fails is an error.
 func (c *Converter) convertPictures(ctx context.Context, dir string, scale int, media []Medium) error {
-	if c.magick == nil {
-		return nil
-	}
 	var batch []picture.Picture
 	// converted holds each PNG's media, and kept each stored file handed on as it is.
 	converted := map[string][]int{}
@@ -54,7 +50,7 @@ func (c *Converter) convertPictures(ctx context.Context, dir string, scale int, 
 		if err != nil {
 			return err
 		}
-		if !convertKinds[kind] || kind != route.TIFF && c.libreoffice == nil {
+		if !convertKinds[kind] {
 			kept[m.Path] = true
 			continue
 		}

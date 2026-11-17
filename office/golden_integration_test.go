@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/standards-lab/docproc/internal/goldentest"
-	"github.com/standards-lab/docproc/picture"
 )
 
 // goldenPictures is the golden file of the converted pictures' sums, recorded before the
@@ -18,7 +17,7 @@ const goldenPictures = "testdata/golden/pictures.sha256"
 
 // TestGoldenPictures converts every fixture that may hold pictures through the real docproc-ooxml,
 // soffice in the default image, and the host's magick, and every picture of exportPictures
-// through the picture package's Convert, office's ConvertPicture before, at the default scale and
+// through the picture package's ConvertBatch alone, office's ConvertPicture before, at the default scale and
 // at 1, and asserts that each converted picture's PNG is byte for byte what it was when the golden
 // file was recorded, at the commit before the picture package took the conversion over, or for a
 // metafile's PNG, when the image moved to Gotenberg 9.0.0. The PNGs are compared whole: magick
@@ -54,7 +53,7 @@ func TestGoldenPictures(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, scale := range []int{0, 1} {
-			out, err := pc.Convert(t.Context(), picture.Request{Dir: t.TempDir(), Path: path, MetafileScale: scale})
+			out, err := convertOne(t, pc, t.TempDir(), path, scale)
 			if err != nil {
 				t.Fatalf("%s: %v", p.entry, err)
 			}

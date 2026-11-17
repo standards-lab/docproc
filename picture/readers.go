@@ -35,8 +35,9 @@ func raster(kind route.Kind) bool {
 }
 
 // listFormatArgs are magick's arguments for its format listing, which marks each format's
-// coder's modes: r when it reads the format, w when it writes it.
-var listFormatArgs = []string{"-list", "format"}
+// coder's modes: r when it reads the format, w when it writes it. The null: output, which writes
+// nothing, lets magick take -limit options before the listing, which it refuses without one.
+var listFormatArgs = []string{"-list", "format", "null:"}
 
 // listFormatLimit is the most of magick's format listing a Converter reads: 1 MiB, some fifty
 // times what ImageMagick 7.1.2 prints.
@@ -47,12 +48,13 @@ const listFormatLimit = 1 << 20
 // Image Format (libwebp 1.6.0 [0210])".
 var formatLine = regexp.MustCompile(`^\s*([A-Z0-9-]+)\*?\s+\S+\s+([r-])[w-][+-](?:\s|$)`)
 
-// listReaders runs magick's format listing and returns the kinds of rasterFormats whose format
-// it marks readable. A listing that fails is an error naming magick's message.
-func listReaders(ctx context.Context, magick *tool.Tool) (map[route.Kind]bool, error) {
+// listReaders runs magick's format listing, with limits, magick's -limit options, before it, and
+// returns the kinds of rasterFormats whose format it marks readable. A listing that fails is an
+// error naming magick's message.
+func listReaders(ctx context.Context, magick *tool.Tool, limits []string) (map[route.Kind]bool, error) {
 	out := &cli.LimitedBuffer{Limit: listFormatLimit}
 	var stderr strings.Builder
-	if err := magick.Run(ctx, tool.Invocation{Args: slices.Clone(listFormatArgs), Stdout: out, Stderr: &stderr}); err != nil {
+	if err := magick.Run(ctx, tool.Invocation{Args: slices.Concat(limits, listFormatArgs), Stdout: out, Stderr: &stderr}); err != nil {
 		err = fmt.Errorf("picture: magick's format listing: %w", err)
 		if msg := firstLine(stderr.String()); msg != "" {
 			err = fmt.Errorf("%w: %s", err, msg)

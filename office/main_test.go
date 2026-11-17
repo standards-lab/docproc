@@ -4,12 +4,14 @@ package office_test
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -191,7 +193,7 @@ func standin(args []string) int {
 		}
 	}
 	if replay := setting(replayKey); replay != "" {
-		return replayRun(replay)
+		return replayRun(replay, media)
 	}
 	fmt.Fprint(os.Stderr, setting(stderrKey))
 	if code := setting(exitKey); code != "" {
@@ -214,13 +216,40 @@ func standin(args []string) int {
 }
 
 // replayRun writes the expected output jsonl to stdout and the .stderr beside it to stderr, and
-// returns the exit code the .exit beside it holds, 0 when there is none.
-func replayRun(jsonl string) int {
+// returns the exit code the .exit beside it holds, 0 when there is none. Each file its document
+// line's media name is written into media holding its name alone, no signature, so the picture
+// package converts none of them and the replay is the decoding alone.
+func replayRun(jsonl, media string) int {
 	stem := strings.TrimSuffix(jsonl, ".jsonl")
 	stdout, err := os.ReadFile(jsonl)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	first, _, _ := bytes.Cut(stdout, []byte("\n"))
+	var doc struct {
+		Media []struct {
+			File string `json:"file"`
+		} `json:"media"`
+	}
+	if len(first) > 0 {
+		if err := json.Unmarshal(first, &doc); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+	}
+	for _, m := range doc.Media {
+		if m.File == "" {
+			continue
+		}
+		if err := os.MkdirAll(media, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		if err := os.WriteFile(filepath.Join(media, m.File), []byte(m.File), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 	}
 	stderr, err := os.ReadFile(stem + ".stderr")
 	if err != nil {
@@ -331,7 +360,7 @@ func sofficeStandin(args []string) int {
 }
 
 // magickStandin is the stand-in magick. With -version alone it prints the version line the real one
-// prints first, and with -list format a listing of no formats, which the picture package's
+// prints first, and with -list format null: a listing of no formats, which the picture package's
 // Converter reads when it is built; neither is logged. Otherwise it takes its first argument as its
 // input, with any format prefix and frame suffix, "tiff:path[0]", and its last as its output,
 // "png:path". It appends its working directory, arguments, and its input's content to the log file;
@@ -344,7 +373,7 @@ func magickStandin(args []string) int {
 		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", setting(magickVersionKey))
 		return 0
 	}
-	if len(args) == 2 && args[0] == "-list" && args[1] == "format" {
+	if slices.Equal(args, []string{"-list", "format", "null:"}) {
 		fmt.Println("   Format  Module    Mode  Description")
 		return 0
 	}
@@ -513,41 +542,40 @@ func (s *standins) runs() []standinRun {
 	return runs
 }
 
-// standinConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0, built from OfficeSpec
-// through the exec runner, and returns it with the stand-ins.
+// standinConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0 and the picture
+// package's Converter over the stand-in soffice at 26.8.1.1 and the stand-in magick at 7.1.2-34,
+// each built from its Spec through the exec runner, and returns it with the stand-ins.
 func standinConverter(t *testing.T) (*office.Converter, *standins) {
-	t.Helper()
-	s := installStandin(t, "0.1.0")
-	tl, err := tool.NewExec(t.Context(), s.spec(office.OfficeSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := office.NewConverter(t.Context(), office.Config{Office: tl})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c, s
-}
-
-// legacyConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0 and the stand-in soffice
-// at 26.8.1.1, built from OfficeSpec and LibreOfficeSpec through the exec runner, and returns it
-// with the stand-ins.
-func legacyConverter(t *testing.T) (*office.Converter, *standins) {
 	t.Helper()
 	s := installStandin(t, "0.1.0")
 	o, err := tool.NewExec(t.Context(), s.spec(office.OfficeSpec()))
 	if err != nil {
 		t.Fatal(err)
 	}
-	lo, err := tool.NewExec(t.Context(), s.spec(picture.LibreOfficeSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	c, err := office.NewConverter(t.Context(), office.Config{Office: o, LibreOffice: lo})
+	c, err := office.NewConverter(t.Context(), office.Config{Office: o, Pictures: s.pictures()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return c, s
+}
+
+// pictures builds the picture package's Converter over the stand-in soffice and magick, each
+// built from its Spec through the exec runner.
+func (s *standins) pictures() *picture.Converter {
+	s.t.Helper()
+	lo, err := tool.NewExec(s.t.Context(), s.spec(picture.LibreOfficeSpec()))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	mg, err := tool.NewExec(s.t.Context(), s.spec(picture.MagickSpec()))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	c, err := picture.NewConverter(s.t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	return c
 }
 
 // entries returns the names in dir, in name order.

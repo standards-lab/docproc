@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/standards-lab/docproc/office"
-	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -22,14 +21,15 @@ const ole2 = "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 const rtf = `{\rtf1\ansi `
 
 // TestConvertLegacy: a document with the OLE2 signature whose name has a legacy extension, in
-// any case, is copied into the working directory with that extension, lowercased, and converted by
-// soffice to its OOXML format, there, with a fresh profile and its output in a directory of its
-// own; docproc-ooxml then runs once on the converted document. The Document records the legacy
+// any case, is copied by the picture package's LibreOffice runner into a libreoffice-* directory
+// of its own in the working directory, as "document" with that extension, lowercased, and
+// converted by soffice to its OOXML format, there, with a fresh profile and its output in that
+// directory; docproc-ooxml then runs once, in the working directory, on the converted document. The Document records the legacy
 // format, and only the media directory is left. An RTF, by its signature, whatever its name says,
 // is copied as .rtf and converted to docx by Writer's filter, as a .doc is, and recorded as "rtf".
 func TestConvertLegacy(t *testing.T) {
 	t.Parallel()
-	c, ins := legacyConverter(t)
+	c, ins := standinConverter(t)
 	for _, tc := range []struct {
 		desc, head, name, from, to, filter string
 	}{
@@ -62,8 +62,9 @@ func TestConvertLegacy(t *testing.T) {
 				t.Fatalf("runs: got %+v, want soffice, then docproc-ooxml", all)
 			}
 			ins, of := all[0], all[1]
-			if ins.Dir != dir || of.Dir != dir {
-				t.Errorf("working directories: soffice %s, docproc-ooxml %s, want %s", ins.Dir, of.Dir, dir)
+			work := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+`
+			if !regexp.MustCompile(`^`+work+`$`).MatchString(ins.Dir) || of.Dir != dir {
+				t.Errorf("working directories: soffice %s, docproc-ooxml %s, want the run's own and %s", ins.Dir, of.Dir, dir)
 			}
 			if ins.Input != doc {
 				t.Errorf("soffice's input: got %q, want %q", ins.Input, doc)
@@ -71,25 +72,20 @@ func TestConvertLegacy(t *testing.T) {
 			if ins.Registry != "" {
 				t.Errorf("soffice's profile started with %q, want a fresh one", ins.Registry)
 			}
-			work := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+`
-			spooled := regexp.QuoteMeta(dir) + `/(spool-[^/]+)\.` + tc.from
+			copied := work + `/in/document\.` + tc.from
 			want := []string{
 				`-env:UserInstallation=file://` + work + `/profile`,
 				`--headless`, `--norestore`,
 				`--convert-to`, regexp.QuoteMeta(tc.to + ":" + tc.filter),
 				`--outdir`, work + `/out`,
-				spooled,
+				copied,
 			}
 			if !matchArgs(ins.Args, want) {
 				t.Errorf("soffice's arguments: got %q, want %q", ins.Args, want)
 			}
-			base := regexp.MustCompile(spooled).FindStringSubmatch(ins.Args[len(ins.Args)-1])
-			if base == nil {
-				t.Fatalf("soffice's input %s isn't the spooled document", ins.Args[len(ins.Args)-1])
-			}
 			outdir := ins.Args[slices.Index(ins.Args, "--outdir")+1]
-			if input := of.Args[len(of.Args)-1]; input != filepath.Join(outdir, base[1]+"."+tc.to) {
-				t.Errorf("docproc-ooxml's input: got %s, want soffice's output %s", input, filepath.Join(outdir, base[1]+"."+tc.to))
+			if input := of.Args[len(of.Args)-1]; input != filepath.Join(outdir, "document."+tc.to) {
+				t.Errorf("docproc-ooxml's input: got %s, want soffice's output %s", input, filepath.Join(outdir, "document."+tc.to))
 			}
 			if of.Input != convertedPrefix+doc {
 				t.Errorf("docproc-ooxml's input: got %q, want soffice's output", of.Input)
@@ -114,41 +110,13 @@ func matchArgs(args, want []string) bool {
 	return true
 }
 
-// TestConvertLegacyNoConverter: without a LibreOffice converter, a legacy document or an RTF is
-// refused with ErrNoLibreOffice, naming the file and its format, before anything is copied or
-// run.
-func TestConvertLegacyNoConverter(t *testing.T) {
-	t.Parallel()
-	c, ins := standinConverter(t)
-	for _, tc := range []struct{ doc, name, want string }{
-		{ole2 + "a doc", "/in/report.doc", "office: report.doc is a legacy doc document: no LibreOffice converter"},
-		{rtf + "a memo}", "/in/memo.rtf", "office: memo.rtf is an RTF document: no LibreOffice converter"},
-		{rtf + "a memo}", "", "office: the document is an RTF document: no LibreOffice converter"},
-	} {
-		dir := t.TempDir()
-		_, err := collect(t, c, office.Request{Path: writeDocument(t, "", tc.doc), Dir: dir, Name: tc.name})
-		if !errors.Is(err, office.ErrNoLibreOffice) {
-			t.Fatalf("%q: got %v, want ErrNoLibreOffice", tc.name, err)
-		}
-		if err.Error() != tc.want {
-			t.Errorf("error: got %q, want %q", err.Error(), tc.want)
-		}
-		if n := len(ins.runs()); n != 0 {
-			t.Errorf("%q: %d runs, want none", tc.name, n)
-		}
-		if got := entries(t, dir); len(got) != 0 {
-			t.Errorf("%q: working directory holds %q, want nothing", tc.name, got)
-		}
-	}
-}
-
 // TestConvertNotLegacy: an OLE2 file whose name has no legacy extension, such as an encrypted
 // OOXML package, a legacy name on a file without the signature, and an .rtf without RTF's
 // signature, go to docproc-ooxml as they are, read in place, and soffice never runs;
 // docproc-ooxml refusing the OLE2 file is its refusal.
 func TestConvertNotLegacy(t *testing.T) {
 	t.Parallel()
-	c, ins := legacyConverter(t)
+	c, ins := standinConverter(t)
 	for _, tc := range []struct{ desc, doc, name string }{
 		{"encrypted docx", ole2 + "an encrypted package", "secret.docx"},
 		{"no name", ole2 + "a doc", ""},
@@ -190,7 +158,7 @@ func TestConvertNotLegacy(t *testing.T) {
 // failing on the converted document is its error. Each leaves nothing in the working directory.
 func TestConvertLegacyFails(t *testing.T) {
 	t.Parallel()
-	c, ins := legacyConverter(t)
+	c, ins := standinConverter(t)
 	noise := "(process:22): dconf-CRITICAL **: unable to create directory '/.cache/dconf'\nFontconfig error: No writable cache directories\n"
 	for _, tc := range []struct {
 		desc     string
@@ -239,43 +207,5 @@ func TestConvertLegacyFails(t *testing.T) {
 				t.Errorf("working directory holds %q, want nothing", got)
 			}
 		})
-	}
-}
-
-// TestNewConverterLibreOffice: LibreOfficeSpec finds soffice's version after the noise on its
-// stderr, and refuses an older soffice at the Tool's construction; the constructor refuses one a
-// laxer Spec built, whatever minimum the Tool's own Spec declared.
-func TestNewConverterLibreOffice(t *testing.T) {
-	t.Parallel()
-	ins := installStandin(t, "0.1.0")
-	o, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	lo, err := tool.NewExec(t.Context(), ins.spec(picture.LibreOfficeSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := lo.Version().String(); got != "26.8.1.1" {
-		t.Errorf("version: got %s, want 26.8.1.1", got)
-	}
-
-	ins.set(sofficeVersionKey, "7.6.4.1")
-	if _, err := tool.NewExec(t.Context(), ins.spec(picture.LibreOfficeSpec())); !errors.Is(err, tool.ErrTooOld) {
-		t.Errorf("NewExec over 7.6.4.1: got %v, want ErrTooOld", err)
-	}
-	lax := ins.spec(picture.LibreOfficeSpec())
-	lax.Minimum = "7.0"
-	old, err := tool.NewExec(t.Context(), lax)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = office.NewConverter(t.Context(), office.Config{Office: o, LibreOffice: old})
-	var verr *tool.VersionError
-	if !errors.As(err, &verr) || !errors.Is(err, tool.ErrTooOld) {
-		t.Fatalf("NewConverter over 7.6.4.1: got %v, want a VersionError wrapping ErrTooOld", err)
-	}
-	if verr.Program != "soffice" || verr.Found != "7.6.4.1" || verr.Minimum != picture.LibreOfficeMinimum {
-		t.Errorf("VersionError: %+v", verr)
 	}
 }

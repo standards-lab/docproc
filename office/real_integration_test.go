@@ -6,8 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/office"
+	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -34,15 +37,80 @@ var fixtures = []string{
 // docproc-ooxml's Markdown links it.
 var mediaLink = regexp.MustCompile(`\]\(([0-9a-f]{64}\.[A-Za-z0-9]+)[) ]`)
 
+// hostLimits are the limits realConverter's picture Converter passes every magick run, far past
+// what the fixtures' pictures need, and hostLimitArgs them as magick's -limit options.
+var (
+	hostLimits    = picture.Limits{Area: 256 << 20, Width: 32768, Height: 32768, Memory: 1 << 30, Disk: 4 << 30}
+	hostLimitArgs = []string{"-limit", "area", "268435456", "-limit", "width", "32768", "-limit", "height", "32768",
+		"-limit", "memory", "1073741824", "-limit", "disk", "4294967296"}
+)
+
+// recordingMagick returns a Spec running the host's magick behind a shell script that appends
+// each run's first arguments, as many as hostLimitArgs holds, NUL-separated, to a log, a line a
+// run, and a function that fails the test unless every run but the version probe began with
+// hostLimitArgs, returning how many there were.
+func recordingMagick(t *testing.T) (tool.Spec, func() int) {
+	t.Helper()
+	magick, err := exec.LookPath("magick")
+	if err != nil {
+		t.Fatalf("magick, a host prerequisite: %v", err)
+	}
+	dir := t.TempDir()
+	log := filepath.Join(dir, "runs.log")
+	script := fmt.Sprintf("#!/bin/sh\nfor a in \"$@\"; do printf '%%s\\0' \"$a\"; done >> '%s'\necho >> '%s'\nexec '%s' \"$@\"\n", log, log, magick)
+	path := filepath.Join(dir, "magick")
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	spec := picture.MagickSpec()
+	spec.Program = path
+	return spec, func() int {
+		t.Helper()
+		b, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for line := range strings.Lines(string(b)) {
+			args := strings.Split(strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\x00"), "\x00")
+			if len(args) == 1 && args[0] == "-version" {
+				continue
+			}
+			n++
+			if len(args) < len(hostLimitArgs) || !slices.Equal(args[:len(hostLimitArgs)], hostLimitArgs) {
+				t.Errorf("magick ran with %q, not beginning with the configured limits", args)
+			}
+		}
+		return n
+	}
+}
+
 // realConverter builds a Converter over the real docproc-ooxml, built from tools/ooxml and found
-// on PATH through the exec runner.
+// on PATH, and the picture package's Converter over the host's soffice and magick, with
+// hostLimits, all through the exec runner, and logs soffice's and magick's versions. When the test
+// ends it checks that every magick run carried the limits.
 func realConverter(t *testing.T) *office.Converter {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), office.OfficeSpec())
 	if err != nil {
 		t.Fatalf("docproc-ooxml, built from tools/ooxml, on PATH: %v", err)
 	}
-	c, err := office.NewConverter(t.Context(), office.Config{Office: tl})
+	lo, err := tool.NewExec(t.Context(), picture.LibreOfficeSpec())
+	if err != nil {
+		t.Fatalf("soffice, a host prerequisite: %v", err)
+	}
+	spec, limited := recordingMagick(t)
+	mg, err := tool.NewExec(t.Context(), spec)
+	if err != nil {
+		t.Fatalf("magick, a host prerequisite: %v", err)
+	}
+	t.Logf("soffice %s and magick %s on the host", lo.Version(), mg.Version())
+	pc, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo, Limits: hostLimits})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { t.Logf("recorded: %d magick runs, each beginning with the configured limits", limited()) })
+	c, err := office.NewConverter(t.Context(), office.Config{Office: tl, Pictures: pc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,8 +164,9 @@ func convertPath(t *testing.T, c *office.Converter, path string) converted {
 
 // TestReal runs the real docproc-ooxml over the fixtures. Each yields a schema "2" Document in the
 // fixture's format first, and no record of a kind the package doesn't know. Each medium with a
-// file is resolved in the media directory, its SHA-256 its name's, handed on as stored without
-// converters; the media names are exactly the Markdown's links to media; a linked picture has a
+// file is resolved in the media directory, its SHA-256 its name's, handed on as stored, but for a
+// TIFF, EMF, or WMF, handed on as its PNG; the names handed on are exactly the Markdown's links
+// to media; a linked picture has a
 // target and no file. Together the fixtures hold a sheet, rows, and pictures of every kind the
 // picture standard converts or hands on.
 func TestReal(t *testing.T) {
@@ -129,12 +198,17 @@ func TestReal(t *testing.T) {
 					}
 					continue
 				}
-				files[m.File] = true
-				extensions[strings.ToLower(filepath.Ext(m.File))] = true
-				if m.Converted || filepath.Base(m.Path) != m.File {
-					t.Errorf("%s: handed on as %q, converted %t; want as stored", m.File, m.Path, m.Converted)
+				ext := strings.ToLower(filepath.Ext(m.File))
+				extensions[ext] = true
+				want := m.File
+				if ext == ".emf" || ext == ".wmf" || ext == ".tif" || ext == ".tiff" {
+					want = m.File[:64] + ".png"
 				}
-				data, err := os.ReadFile(m.Path)
+				files[want] = true
+				if m.Converted != (want != m.File) || filepath.Base(m.Path) != want {
+					t.Errorf("%s: handed on as %q, converted %t; want %s", m.File, m.Path, m.Converted, want)
+				}
+				data, err := os.ReadFile(filepath.Join(filepath.Dir(m.Path), m.File))
 				if err != nil {
 					t.Fatal(err)
 				}

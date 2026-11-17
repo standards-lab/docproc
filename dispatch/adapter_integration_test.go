@@ -56,15 +56,15 @@ func allStages(t *testing.T) dispatch.Stages {
 	}
 	prep := document.NewPreparer(document.Config{Renderer: render})
 	docs := pdfStage(t, prep, gs, inspect.Options{})
-	oc, err := office.NewConverter(t.Context(), office.Config{Office: of, LibreOffice: lo, Magick: mg})
+	pc, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	oc, err := office.NewConverter(t.Context(), office.Config{Office: of, Pictures: pc})
 	if err != nil {
 		t.Fatal(err)
 	}
 	offices, err := dispatch.NewOfficeStage(dispatch.OfficeConfig{Converter: oc, Version: dispatch.Versions(of, lo, mg)})
-	if err != nil {
-		t.Fatal(err)
-	}
-	pc, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,11 +337,12 @@ func TestAdapterIdentities(t *testing.T) {
 	if got, want := dispatch.Versions(officeTool, nil), "docproc-ooxml "+officeTool.Version().String(); got != want {
 		t.Errorf("Versions %q, want %q", got, want)
 	}
+	pc, lo, mg := hostPictures(t)
 	o := officeStage(t).Identity()
-	if o.Name != "office" || o.Version != dispatch.Versions(officeTool) {
+	if o.Name != "office" || o.Version != dispatch.Versions(officeTool, lo, mg) {
 		t.Errorf("office identity %v", o)
 	}
-	c, err := office.NewConverter(t.Context(), office.Config{Office: officeTool})
+	c, err := office.NewConverter(t.Context(), office.Config{Office: officeTool, Pictures: pc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +357,8 @@ func TestAdapterIdentities(t *testing.T) {
 		t.Error("a metafile scale left the office identity's config unchanged")
 	}
 
-	p := toollessPicture(t).Identity()
-	if p.Name != "picture" || p.Version != "none" {
+	p := pictureStage(t).Identity()
+	if p.Name != "picture" || p.Version != dispatch.Versions(mg, lo) {
 		t.Errorf("picture identity %v", p)
 	}
 	for prefix, id := range map[string]dispatch.Identity{"docproc-mail ": emailStage(t).Identity(), "docproc-onenote ": onenoteStage(t).Identity()} {
@@ -372,16 +373,13 @@ func TestAdapterIdentities(t *testing.T) {
 }
 
 // TestOfficeNoProcessor: a WordPerfect document, an ODF package, and an Excel binary workbook
-// have no processor yet, nor a legacy document or an RTF for a Converter with no LibreOffice;
-// each reason names the kind.
+// have no processor yet; each reason names the kind.
 func TestOfficeNoProcessor(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Office: officeStage(t)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct{ content, reason string }{
-		"x.rtf":  {`{\rtf1\ansi hello}`, "x.rtf is an RTF document: no LibreOffice converter"},
 		"x.wpd":  {"\xffWPC\x10\x00\x00\x00\x01\x0a", "office stage: no processor yet for a WordPerfect document"},
 		"x.odt":  {zipOf(t, "mimetype", "application/vnd.oasis.opendocument.text", "content.xml", "<x/>"), "office stage: no processor yet for an ODF package"},
 		"x.xlsb": {zipOf(t, "[Content_Types].xml", "<x/>"), "office stage: no processor yet for an Excel binary workbook"},
-		"x.doc":  {"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + strings.Repeat("\x00", 504), "no LibreOffice converter"},
 	} {
 		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
 		if ev.Part.ContentType.Route != route.Office || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
@@ -417,13 +415,14 @@ func TestOfficeEncrypted(t *testing.T) {
 	}
 }
 
-// TestOfficeStage runs the pinned office alone over a document holding PNGs and an EMF: its
-// Markdown is the document's output, and each medium office wrote is a part of its own, found
-// at its office name, the PNGs prepared by the vision stage, the EMF, with no converter, routed
-// to the picture stage, which has none either. Every part's event comes before the document's.
+// TestOfficeStage runs the pinned office, with the host's soffice and magick, over a document
+// holding PNGs and an EMF: its Markdown is the document's output, and each medium office wrote is
+// a part of its own, found at its office name, the PNGs prepared by the vision stage, and the
+// EMF, which office converted, found as its PNG and prepared by the vision stage too. Every
+// part's event comes before the document's.
 func TestOfficeStage(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{
-		route.Office: officeStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: toollessPicture(t),
+		route.Office: officeStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: pictureStage(t),
 	}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
 	const (
@@ -435,17 +434,17 @@ func TestOfficeStage(t *testing.T) {
 	wantSteps(t, events, []step{
 		{red + ".png", 1, dispatch.Prepared},
 		{blue + ".png", 1, dispatch.Prepared},
-		{emf + ".emf", 1, dispatch.NoProcessor},
+		{emf + ".png", 1, dispatch.Prepared},
 		{green + ".png", 1, dispatch.Prepared},
 		{"media.libreoffice.docx", 0, dispatch.Prepared},
 	})
-	if got, want := wheres(events), []string{"media " + red + ".png", "media " + blue + ".png", "media " + emf + ".emf", "media " + green + ".png"}; !slices.Equal(got, want) {
+	if got, want := wheres(events), []string{"media " + red + ".png", "media " + blue + ".png", "media " + emf + ".emf, as PNG", "media " + green + ".png"}; !slices.Equal(got, want) {
 		t.Errorf("wheres:\n got %q\nwant %q", got, want)
 	}
 	if ev := byName(t, events, red+".png"); ev.Part.ContentType.Route != route.Vision || ev.Outputs[0].Kind != dispatch.ImageOutput || ev.Outputs[0].MediaType != "image/png" {
 		t.Errorf("red: %s, %+v", ev.Part.ContentType.Route, ev.Outputs)
 	}
-	if ev := byName(t, events, emf+".emf"); ev.Part.ContentType.Route != route.VisionConverted || ev.Part.ContentType.Stored != "image/x-emf" {
+	if ev := byName(t, events, emf+".png"); ev.Part.ContentType.Route != route.Vision || ev.Part.ContentType.Stored != "image/png" {
 		t.Errorf("emf: %s, %q", ev.Part.ContentType.Route, ev.Part.ContentType.Stored)
 	}
 	md := outputNamed(t, events[len(events)-1], dispatch.MarkdownOutput, "document")
@@ -732,11 +731,11 @@ func TestEmailConversations(t *testing.T) {
 // TestOneNoteStage dispatches a section with an image and ink, then a section holding the same
 // image, sharing one index. Each page is a record, then its Markdown, beside the section and
 // notebook records; the image, found on its page, is prepared by the vision stage, then seen; the
-// ink, an SVG, goes to the picture stage, which has no processor without magick.
+// ink, an SVG, is prepared by the picture stage over the host's magick.
 func TestOneNoteStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{
-		route.OneNote: onenoteStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: toollessPicture(t),
+		route.OneNote: onenoteStage(t), route.Vision: dispatch.NewVisionStage(), route.VisionConverted: pictureStage(t),
 	}, index)
 	const (
 		page  = "page 5eaf76b1-8dde-8745-a8a7-1a9865cc478a"
@@ -748,7 +747,7 @@ func TestOneNoteStage(t *testing.T) {
 	for _, ev := range events {
 		names = append(names, fmt.Sprintf("%s@%d:%s %s", filepath.Ext(ev.Part.Name), ev.Part.Depth, ev.Outcome, ev.Part.ContentType.Route))
 	}
-	want := []string{".jpg@1:prepared vision", ".svg@1:no processor yet vision-converted", ".one@0:prepared onenote"}
+	want := []string{".jpg@1:prepared vision", ".svg@1:prepared vision-converted", ".one@0:prepared onenote"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("events:\n got %q\nwant %q", names, want)
 	}
@@ -808,16 +807,39 @@ func pinned(t *testing.T, spec tool.Spec) *tool.Tool {
 	return tl
 }
 
-// officeStage returns an office stage over the pinned office alone, with no LibreOffice or
-// magick.
-func officeStage(t *testing.T) *dispatch.OfficeStage {
+// hostPictures returns the picture package's Converter over the pinned magick and the host's
+// soffice, both through the exec runner, with the two Tools.
+func hostPictures(t *testing.T) (*picture.Converter, *tool.Tool, *tool.Tool) {
 	t.Helper()
-	tl := pinned(t, office.OfficeSpec())
-	c, err := office.NewConverter(t.Context(), office.Config{Office: tl})
+	lo, mg := pinned(t, picture.LibreOfficeSpec()), pinned(t, picture.MagickSpec())
+	c, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := dispatch.NewOfficeStage(dispatch.OfficeConfig{Converter: c, Version: dispatch.Versions(tl)})
+	return c, lo, mg
+}
+
+// officeStage returns an office stage over the pinned office and hostPictures.
+func officeStage(t *testing.T) *dispatch.OfficeStage {
+	t.Helper()
+	tl := pinned(t, office.OfficeSpec())
+	pc, lo, mg := hostPictures(t)
+	c, err := office.NewConverter(t.Context(), office.Config{Office: tl, Pictures: pc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := dispatch.NewOfficeStage(dispatch.OfficeConfig{Converter: c, Version: dispatch.Versions(tl, lo, mg)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// pictureStage returns a picture stage over hostPictures.
+func pictureStage(t *testing.T) *dispatch.PictureStage {
+	t.Helper()
+	pc, lo, mg := hostPictures(t)
+	s, err := dispatch.NewPictureStage(dispatch.PictureConfig{Converter: pc, Version: dispatch.Versions(mg, lo)})
 	if err != nil {
 		t.Fatal(err)
 	}

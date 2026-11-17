@@ -17,6 +17,7 @@ func TestMain(m *testing.M) {
 		"ffmpeg":          ffmpegStandin,
 		"ffprobe":         ffprobeStandin,
 		"magick":          pictureStandin,
+		"soffice":         sofficeStandin,
 		"docproc-onenote": onenoteStandin,
 	})
 }

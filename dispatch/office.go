@@ -37,9 +37,8 @@ type OfficeConfig struct {
 //
 // An RTF is office's to convert through LibreOffice to docx, as a .doc is. The stage has no
 // processor yet for an ODF package, a WordPerfect document, or an Excel binary workbook, which
-// LibreOffice would convert, nor for a legacy document or an RTF when the Converter has no
-// LibreOffice converter: each ends with [ErrNoProcessor], its reason naming the kind. A refusal
-// internal/cli classes as encrypted ends it with [ErrEncrypted].
+// LibreOffice would convert: each ends with [ErrNoProcessor], its reason naming the kind. A
+// refusal internal/cli classes as encrypted ends it with [ErrEncrypted].
 //
 // Interim until slice 15, which moves the adapters into stages: the stage joins an xlsx's sheets
 // into the one Markdown output, as before the reader streamed them.
@@ -135,17 +134,13 @@ func (s *OfficeStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2
 	}
 }
 
-// officeError returns err, a conversion's, as the stage's: a legacy document or an RTF without a
-// LibreOffice converter matches ErrNoProcessor, and a refusal internal/cli classes as encrypted
-// ErrEncrypted.
+// officeError returns err, a conversion's, as the stage's: a refusal internal/cli classes as
+// encrypted matches ErrEncrypted.
 //
 // Interim until slice 15: internal/cli can't name dispatch's classes, so the stage maps its
 // cli.Refusal to them.
 func officeError(err error) error {
-	switch exit, ok := errors.AsType[*cli.ExitError](err); {
-	case errors.Is(err, office.ErrNoLibreOffice):
-		return fmt.Errorf("office stage: %w: %w", ErrNoProcessor, err)
-	case ok && exit.Refusal() == cli.Encrypted:
+	if exit, ok := errors.AsType[*cli.ExitError](err); ok && exit.Refusal() == cli.Encrypted {
 		return fmt.Errorf("office stage: %w: %w", ErrEncrypted, err)
 	}
 	return fmt.Errorf("office stage: %w", err)

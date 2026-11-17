@@ -25,18 +25,17 @@
 //
 // A legacy document, .doc, .xls, or .ppt and their templates and shows, is one with the OLE2
 // compound-file signature whose Request.Name has a legacy extension, route.LegacyTarget's table.
-// Given a LibreOffice Tool in the Config, Convert copies it into the working directory, the only
-// document it copies, and converts the copy to the OOXML format its extension names, and runs
-// docproc-ooxml on that; the Document's ConvertedFrom names the legacy format. Without one, a
-// legacy document is refused with ErrNoLibreOffice before anything runs. Any other OLE2 file,
+// Convert converts it through the picture package's one LibreOffice runner, the Config's Pictures'
+// RunLibreOffice, which copies it into a directory of its own in the working directory, the only
+// document copied, and converts the copy to the OOXML format its extension names; docproc-ooxml
+// runs on that, and the Document's ConvertedFrom names the legacy format. Any other OLE2 file,
 // such as an encrypted OOXML package, goes to docproc-ooxml, which refuses it. An RTF, found by
 // its signature whatever its name, is converted the same way to docx, through Writer's docx export
-// filter, as a .doc is, and ConvertedFrom is "rtf"; without LibreOffice it is refused with
-// ErrNoLibreOffice too. The picture package's LibreOfficeSpec declares soffice, minimum 24.2, and
-// its LibreOfficeImage is the default image the container runner runs it in, under its full
-// lockdown: no network, the caller's uid:gid, every capability dropped. Each conversion gives
-// soffice a user profile of its own inside the working directory, which the runner mounts, and
-// removes it with the copied and converted documents when the run ends.
+// filter, as a .doc is, and ConvertedFrom is "rtf". The picture package's LibreOfficeSpec declares
+// soffice, minimum 24.2, and its LibreOfficeImage is the default image the container runner runs
+// it in, under its full lockdown: no network, the caller's uid:gid, every capability dropped. The
+// runner's directory holds soffice's user profile, its HOME under the exec runner, and the copied
+// and converted documents, and is removed when the run ends.
 //
 // The Document's Media are every picture, embedded package, and OLE object docproc-ooxml wrote,
 // each resolved in the media directory by the envelope's media name rule, internal/cli's: its
@@ -49,16 +48,14 @@
 // the Document line is read, and before it is yielded, its pictures are converted in one batch. A
 // picture vision decodes, PNG, JPEG, GIF, or BMP, is handed on exactly as stored, as is any kind
 // the standard names no converter for, an embedded package, and an OLE object. By its stored
-// file's signature, an EMF or WMF is rendered to PNG through the LibreOffice Tool, all of a
-// document's in one soffice run with LibreOffice's Draw PNG export, and each trimmed to its
-// picture through a magick Tool; a TIFF is converted through magick, its first image alone. The
-// picture package converts them, each picture copied into a directory of its own, and its
-// MagickSpec declares magick, minimum 7.1. A converted picture's PNG is named by the stored name's
+// file's signature, an EMF or WMF is rendered to PNG through soffice, all of a document's in one
+// soffice run with LibreOffice's Draw PNG export, and each trimmed to its picture through magick;
+// a TIFF is converted through magick, its first image alone. The picture package converts them,
+// each picture copied into a directory of its own, every magick run carrying its Converter's
+// limits, and its MagickSpec declares magick, minimum 7.1. A converted picture's PNG is named by the stored name's
 // stem, its SHA-256, and .png, and written into the media directory beside the stored file, which
 // stays; magick writes it without the time of the run, so a picture converted twice is the same
-// bytes both times. A picture whose converter the Config didn't give, for EMF and WMF either of
-// LibreOffice and magick, is handed on as stored, and the conversion still succeeds; a picture
-// conversion that fails fails the conversion.
+// bytes both times. A picture conversion that fails fails the conversion.
 //
 // Draw places a metafile at its own size, at 96 dpi, in the middle of a page, so a metafile is
 // rendered as a page at Request.MetafileScale times 96 dpi, picture.DefaultMetafileScale, 3, when
@@ -81,16 +78,14 @@
 //
 // One picture outside a document, such as a mail attachment the email package routes to
 // route.VisionConverted, is the picture package's to convert, through the same code a document's
-// picture takes: its Converter's Convert.
+// picture takes: its Converter's ConvertPages.
 //
 // Its exported identifiers:
 //
 //   - [OfficeSpec] declares docproc-ooxml for the exec runner's constructor.
 //   - [OfficeMinimum] is the oldest docproc-ooxml the Converter accepts, 0.1.0.
-//   - [ErrNoLibreOffice] is the cause of a legacy document's or an RTF's refusal without a
-//     LibreOffice Tool.
-//   - [Config] is the Tools a Converter is built over: docproc-ooxml, LibreOffice for legacy
-//     documents, RTFs, and, with magick, EMF and WMF pictures, and magick for TIFF pictures.
+//   - [Config] is what a Converter is built over: docproc-ooxml and the picture package's
+//     Converter, for legacy documents, RTFs, and TIFF, EMF, and WMF pictures.
 //   - [Converter] converts office documents through docproc-ooxml.
 //   - [NewConverter] builds a Converter over a Config.
 //   - [Converter.Convert] converts one document as a Request says, yielding its Records.

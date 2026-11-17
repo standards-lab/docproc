@@ -28,10 +28,10 @@ type PictureConfig struct {
 // VisionConverted's parts, through picture's Converter, to PNGs in the part's directory: a TIFF
 // to one [ImageOutput] per page, in page order, named "page N", its Meta naming the page and the
 // TIFF's page count; an EMF, WMF, SVG, HEIC, WebP, or AVIF to one ImageOutput named "picture",
-// a HEIC's primary image, a WebP's or AVIF's first frame. Every output's Meta names the kind it
-// was converted from. It has no processor yet for a picture whose converter the Converter wasn't
-// given, magick for any, LibreOffice too for a metafile, nor for a HEIC, WebP, or AVIF whose
-// reader the Converter's magick lacks: each ends with [ErrNoProcessor], its reason naming why.
+// a HEIC's primary image, a WebP's or AVIF's first frame, each read as the kind the part's content
+// type names and named by the part's SHA-256. Every output's Meta names the kind it was converted
+// from. It has no processor yet for a HEIC, WebP, or AVIF whose reader the Converter's magick
+// lacks: it ends with [ErrNoProcessor], its reason naming why.
 type PictureStage struct {
 	converter *picture.Converter
 	scale     int
@@ -59,9 +59,11 @@ func (s *PictureStage) Identity() Identity { return s.id }
 // Prepare converts the picture at p.Path, as the type's doc says.
 func (s *PictureStage) Prepare(ctx context.Context, p Part, dir string) iter.Seq2[Item, error] {
 	return func(yield func(Item, error) bool) {
-		pngs, err := s.converter.ConvertPages(ctx, picture.Request{Dir: dir, Path: p.Path, MetafileScale: s.scale})
+		pngs, err := s.converter.ConvertPages(ctx, picture.Request{
+			Dir: dir, Path: p.Path, Kind: p.ContentType.Kind, Stem: p.SHA256, MetafileScale: s.scale,
+		})
 		switch {
-		case errors.Is(err, picture.ErrNoMagick), errors.Is(err, picture.ErrNoLibreOffice), errors.Is(err, picture.ErrNoReader):
+		case errors.Is(err, picture.ErrNoReader):
 			yield(Item{}, fmt.Errorf("picture stage: %w: %w", ErrNoProcessor, err))
 			return
 		case err != nil:

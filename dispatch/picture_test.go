@@ -47,7 +47,7 @@ const (
 )
 
 // pictureStandin is the stand-in magick. With -version alone it prints its version, 7.1.2-34, and
-// with -list format its settings' listing. Otherwise its last argument names its output,
+// with -list format null: its settings' listing. Otherwise its last argument names its output,
 // "png:path": a pages run, one with +adjoin, writes its settings' count of PNGs, each to the
 // path with %d put for its index from 0, holding PNG's signature and "page N"; any other run
 // writes one, holding PNG's signature and its first argument, the input it read.
@@ -62,7 +62,7 @@ func pictureStandin(r tooltest.Run) int {
 	case len(args) == 1 && args[0] == "-version":
 		fmt.Println("Version: ImageMagick 7.1.2-34 Q16-HDRI x86_64 https://imagemagick.org")
 		return 0
-	case len(args) == 2 && args[0] == "-list" && args[1] == "format":
+	case slices.Equal(args, []string{"-list", "format", "null:"}):
 		fmt.Print(settings.Formats)
 		return 0
 	case len(args) < 2:
@@ -86,8 +86,20 @@ func pictureStandin(r tooltest.Run) int {
 	return 0
 }
 
-// standinPictureStage builds a picture stage over the stand-in magick, through the exec runner,
-// with listing as its format listing and pages as the pages its pages run writes.
+// sofficeStandin is the stand-in soffice, which the picture stage's tests never convert through:
+// with --version alone it prints its version, 26.8.1.1, and any other run fails.
+func sofficeStandin(r tooltest.Run) int {
+	if len(r.Args) == 1 && r.Args[0] == "--version" {
+		fmt.Println("LibreOffice 26.8.1.1 680(Build:1)")
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "stand-in: unexpected arguments %q\n", r.Args)
+	return 2
+}
+
+// standinPictureStage builds a picture stage over the stand-in magick and soffice, through the
+// exec runner, with listing as magick's format listing and pages as the pages its pages run
+// writes.
 func standinPictureStage(t *testing.T, listing string, pages int) *dispatch.PictureStage {
 	t.Helper()
 	spec := picture.MagickSpec()
@@ -96,7 +108,13 @@ func standinPictureStage(t *testing.T, listing string, pages int) *dispatch.Pict
 	if err != nil {
 		t.Fatal(err)
 	}
-	c, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg})
+	spec = picture.LibreOfficeSpec()
+	spec.Program = tooltest.Link(t, t.TempDir(), "soffice", struct{}{})
+	lo, err := tool.NewExec(t.Context(), spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := picture.NewConverter(t.Context(), picture.Config{Magick: mg, LibreOffice: lo})
 	if err != nil {
 		t.Fatal(err)
 	}

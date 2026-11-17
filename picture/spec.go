@@ -6,8 +6,7 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// MagickMinimum is the oldest ImageMagick the package accepts, for the conversions and the
-// corrections stage alike: 7.1.
+// MagickMinimum is the oldest ImageMagick the package accepts: 7.1.
 const MagickMinimum = "7.1"
 
 // MagickSpec declares ImageMagick's magick, minimum 7.1, for either runner's constructor.

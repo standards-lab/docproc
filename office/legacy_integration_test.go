@@ -19,31 +19,52 @@ import (
 
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/picture"
-	"github.com/standards-lab/docproc/tool"
 )
 
 // legacyTargets are the OOXML formats the legacy fixtures' extensions convert to.
 var legacyTargets = map[string]string{".doc": "docx", ".xls": "xlsx", ".ppt": "pptx"}
 
-// containerConverter builds a Converter over the real office the mise pins, through the exec
-// runner, and soffice in the default image, LibreOfficeImage, through the container runner,
-// which pulls the image when it isn't present.
+// containerConverter builds fullConverter's Converter: the real docproc-ooxml through the exec
+// runner, and soffice in the default image, LibreOfficeImage, through the container runner, which
+// pulls the image when it isn't present, with the host's magick.
 func containerConverter(t *testing.T) *office.Converter {
 	t.Helper()
-	o, err := tool.NewExec(t.Context(), office.OfficeSpec())
-	if err != nil {
-		t.Fatalf("office, which mise pins, run the tier through mise run integration: %v", err)
-	}
-	lo, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: picture.LibreOfficeImage}, picture.LibreOfficeSpec())
+	return fullConverter(t)
+}
+
+// TestLegacyHost converts every generated legacy fixture, and the RTF fixture, through the host's
+// soffice on the exec runner, which gives soffice no HOME of the host's but the LibreOffice run's
+// own directory, then docproc-ooxml: each succeeds as a Document of the OOXML format it converts
+// to, which ConvertedFrom names, and leaves only the media directory in the working directory,
+// so nothing soffice wrote to its HOME is left there.
+func TestLegacyHost(t *testing.T) {
+	c := realConverter(t)
+	paths, err := filepath.Glob(filepath.Join("testdata", "legacy", "generated", "*.*"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("soffice %s in %s", lo.Version(), picture.LibreOfficeImage)
-	c, err := office.NewConverter(t.Context(), office.Config{Office: o, LibreOffice: lo})
-	if err != nil {
-		t.Fatal(err)
+	paths = slices.DeleteFunc(paths, func(p string) bool { return legacyTargets[filepath.Ext(p)] == "" })
+	if len(paths) == 0 {
+		t.Fatal("no legacy fixtures")
 	}
-	return c
+	for _, path := range append(paths, filepath.Join("testdata", "rtf", "memo.rtf")) {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			start := time.Now()
+			res := convertPath(t, c, path)
+			ext := filepath.Ext(path)
+			from, to := strings.TrimPrefix(ext, "."), legacyTargets[ext]
+			if ext == ".rtf" {
+				to = "docx"
+			}
+			if res.doc.Format != to || res.doc.ConvertedFrom != from {
+				t.Fatalf("document %s, converted from %q; want %s from %s", res.doc.Format, res.doc.ConvertedFrom, to, from)
+			}
+			if strings.TrimSpace(res.markdown) == "" {
+				t.Errorf("no Markdown")
+			}
+			t.Logf("recorded: %s to %s in %d ms, %d B of Markdown", filepath.Base(path), to, time.Since(start).Milliseconds(), len(res.markdown))
+		})
+	}
 }
 
 // TestLegacyRoundTrip converts every legacy fixture through soffice in the default image, then

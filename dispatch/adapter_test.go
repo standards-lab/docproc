@@ -14,25 +14,9 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/internal/tooltest"
-	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/tool"
 )
-
-// toollessPicture returns a picture stage over a Converter given no tool, which has no processor
-// for any picture.
-func toollessPicture(t *testing.T) *dispatch.PictureStage {
-	t.Helper()
-	c, err := picture.NewConverter(t.Context(), picture.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s, err := dispatch.NewPictureStage(dispatch.PictureConfig{Converter: c, Version: "none"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return s
-}
 
 // newDispatcher returns a dispatcher over stages and index, in a working directory of its own.
 func newDispatcher(t *testing.T, stages dispatch.Stages, index dispatch.Index) *dispatch.Dispatcher {
@@ -153,23 +137,5 @@ func TestDocumentStage(t *testing.T) {
 	ev := dispatchAll(t, d, pdf, nil)[0]
 	if ev.Outcome != dispatch.Failed || !strings.Contains(ev.Reason, "1 of 3 pages failed") || len(ev.Outputs) != 4 {
 		t.Errorf("a failing page: %s, %q, %d outputs", ev.Outcome, ev.Reason, len(ev.Outputs))
-	}
-}
-
-// TestPictureNoProcessor: a Converter given no tool has no processor yet for a WebP, a HEIC, an
-// AVIF, a TIFF, or an EMF; each reason says why.
-func TestPictureNoProcessor(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: toollessPicture(t)}, dispatch.NewMemoryIndex(0))
-	for name, c := range map[string]struct{ content, reason string }{
-		"x.webp": {"RIFF\x10\x00\x00\x00WEBPVP8 ", "is a WebP picture: no magick converter"},
-		"x.heic": {"\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic", "is a HEIC picture: no magick converter"},
-		"x.avif": {"\x00\x00\x00\x18ftypavif\x00\x00\x00\x00mif1avif", "is an AVIF picture: no magick converter"},
-		"x.tif":  {"II*\x00\x08\x00\x00\x00", "no magick converter"},
-		"x.emf":  {"\x01\x00\x00\x00" + strings.Repeat("\x00", 36) + " EMF" + strings.Repeat("\x00", 40), "no LibreOffice converter"},
-	} {
-		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
-		if ev.Part.ContentType.Route != route.VisionConverted || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
-			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason, c.reason)
-		}
 	}
 }

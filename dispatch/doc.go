@@ -103,13 +103,13 @@
 //     Rendition annotation isn't extracted.
 //   - [OfficeStage], for route.Office: the Markdown of office's records, joined, and each medium
 //     docproc-ooxml wrote, a converted picture as its PNG, found as a part, an RTF converted to
-//     docx first, as a legacy document is. ODF, WordPerfect, an Excel binary workbook, and a
-//     legacy document or an RTF without LibreOffice have no processor yet; an encrypted OOXML
-//     package, whose refusal internal/cli classes as encrypted, ends with [ErrEncrypted].
+//     docx first, as a legacy document is. ODF, WordPerfect, and an Excel binary workbook have no
+//     processor yet; an encrypted OOXML package, whose refusal internal/cli classes as encrypted,
+//     ends with [ErrEncrypted].
 //   - [PictureStage], for route.VisionConverted: a TIFF to a PNG per page, "page N", its Meta
 //     naming the page and the count, and an EMF, WMF, SVG, HEIC, WebP, or AVIF to one PNG,
-//     through picture's Converter. A picture whose tool the Converter lacks, or a HEIC, WebP, or
-//     AVIF whose reader its magick lacks, has no processor yet.
+//     through picture's Converter, read as the part's kind and named by its SHA-256. A HEIC,
+//     WebP, or AVIF whose reader its magick lacks has no processor yet.
 //   - [VisionStage], for route.Vision: a PNG, JPEG, GIF, or BMP passed through as an image
 //     output, so every picture reaches a layer above as one.
 //   - [EmailStage], for route.Nested: docproc-mail's records, each a record output, and each

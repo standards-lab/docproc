@@ -276,7 +276,11 @@ func documentStage(_ context.Context, t tools) (dispatch.Stage, error) {
 // officeStage builds the office stage over office, LibreOffice in its pinned image, and magick.
 func officeStage(ctx context.Context, t tools) (dispatch.Stage, error) {
 	of, lo, mg := t["docproc-ooxml"], t["soffice"], t["magick"]
-	c, err := office.NewConverter(ctx, office.Config{Office: of, LibreOffice: lo, Magick: mg})
+	pictures, err := picture.NewConverter(ctx, picture.Config{Magick: mg, LibreOffice: lo})
+	if err != nil {
+		return nil, err
+	}
+	c, err := office.NewConverter(ctx, office.Config{Office: of, Pictures: pictures})
 	if err != nil {
 		return nil, err
 	}

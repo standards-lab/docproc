@@ -15,36 +15,7 @@ import (
 
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/picture"
-	"github.com/standards-lab/docproc/tool"
 )
-
-// pictureConverter builds a Converter over the stand-in docproc-ooxml at 0.1.0 and, when asked, the
-// stand-in soffice and the stand-in magick, each built from its Spec through the exec runner, and
-// returns it with the stand-ins.
-func pictureConverter(t *testing.T, libreoffice, magick bool) (*office.Converter, *standins) {
-	t.Helper()
-	ins := installStandin(t, "0.1.0")
-	var cfg office.Config
-	var err error
-	if cfg.Office, err = tool.NewExec(t.Context(), ins.spec(office.OfficeSpec())); err != nil {
-		t.Fatal(err)
-	}
-	if libreoffice {
-		if cfg.LibreOffice, err = tool.NewExec(t.Context(), ins.spec(picture.LibreOfficeSpec())); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if magick {
-		if cfg.Magick, err = tool.NewExec(t.Context(), ins.spec(picture.MagickSpec())); err != nil {
-			t.Fatal(err)
-		}
-	}
-	c, err := office.NewConverter(t.Context(), cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c, ins
-}
 
 // programs returns the programs of runs, in order.
 func programs(runs []standinRun) []string {
@@ -70,7 +41,7 @@ func h(c string) string { return strings.Repeat(c, 64) }
 // handed on as stored. Only the media directory is left.
 func TestConvertPictures(t *testing.T) {
 	t.Parallel()
-	c, ins := pictureConverter(t, true, true)
+	c, ins := standinConverter(t)
 	names := []string{h("1") + ".emf", h("2") + ".WMF", h("3") + ".tiff", h("4") + ".png", h("5") + ".jpeg",
 		h("6") + ".gif", h("7") + ".bmp", h("8") + ".TIF", h("9") + ".svg", h("0") + ".emf"}
 	embedded := h("e") + ".emf"
@@ -117,8 +88,9 @@ func TestConvertPictures(t *testing.T) {
 	if got, want := programs(all), []string{"docproc-ooxml", "magick", "magick", "soffice", "magick", "magick", "magick"}; !slices.Equal(got, want) {
 		t.Fatalf("runs: got %q, want %q", got, want)
 	}
-	// Each picture is converted from a copy in a directory of its own, numbered by its place in
-	// the picture package's batch, under its stem and its kind's extension.
+	// Each TIFF is converted from a copy in a directory of its own, numbered by its place in the
+	// picture package's batch, under its stem and its kind's extension, and each metafile from a
+	// copy under the same name in the LibreOffice run's directory, where soffice runs.
 	own := func(i int, name string) string {
 		return regexp.QuoteMeta(dir) + `/picture-[^/]+/` + fmt.Sprint(i) + `/` + regexp.QuoteMeta(name)
 	}
@@ -133,16 +105,16 @@ func TestConvertPictures(t *testing.T) {
 		}
 	}
 	sr := all[3]
-	if sr.Dir != dir {
-		t.Errorf("soffice's working directory: got %s, want %s", sr.Dir, dir)
-	}
 	work := regexp.QuoteMeta(dir) + `/libreoffice-[^/]+`
+	if !regexp.MustCompile(`^` + work + `$`).MatchString(sr.Dir) {
+		t.Errorf("soffice's working directory: got %s, want the run's own in %s", sr.Dir, dir)
+	}
 	wantArgs := []string{
 		`-env:UserInstallation=file://` + work + `/profile`,
 		`--headless`, `--norestore`,
 		`--convert-to`, regexp.QuoteMeta(drawFilter(2382, 3369)),
 		`--outdir`, work + `/out`,
-		own(0, h("1")+".emf"), own(1, h("2")+".wmf"), own(4, h("0")+".emf"),
+		work + `/in/` + h("1") + `\.emf`, work + `/in/` + h("2") + `\.wmf`, work + `/in/` + h("0") + `\.emf`,
 	}
 	if !matchArgs(sr.Args, wantArgs) {
 		t.Errorf("soffice's arguments: got %q, want %q", sr.Args, wantArgs)
@@ -185,7 +157,7 @@ func TestConvertPicturesScale(t *testing.T) {
 		{picture.MaxMetafileScale, 6352, 8984},
 	} {
 		t.Run(fmt.Sprint(tc.scale), func(t *testing.T) {
-			c, ins := pictureConverter(t, true, true)
+			c, ins := standinConverter(t)
 			ins.set(mediaKey, emf)
 			ins.set(stdoutKey, pictureLine("docx", "", emf))
 			if _, err := collect(t, c, office.Request{Path: writeDocument(t, "", "doc"), Dir: t.TempDir(), MetafileScale: tc.scale}); err != nil {
@@ -202,7 +174,7 @@ func TestConvertPicturesScale(t *testing.T) {
 	}
 	for _, scale := range []int{-1, picture.MaxMetafileScale + 1} {
 		t.Run(fmt.Sprint(scale), func(t *testing.T) {
-			c, ins := pictureConverter(t, true, true)
+			c, ins := standinConverter(t)
 			ins.set(mediaKey, emf)
 			ins.set(stdoutKey, pictureLine("docx", "", emf))
 			dir := t.TempDir()
@@ -216,66 +188,6 @@ func TestConvertPicturesScale(t *testing.T) {
 			}
 			if got := entries(t, dir); len(got) != 0 {
 				t.Errorf("working directory holds %q, want nothing", got)
-			}
-		})
-	}
-}
-
-// TestConvertPicturesNoConverter: a picture whose converter the Converter wasn't given, for EMF
-// and WMF either of soffice and magick, is handed on as stored, and the conversion succeeds;
-// nothing runs for it, and its links in the Markdown stay as docproc-ooxml wrote them. A
-// converter given converts its own kinds.
-func TestConvertPicturesNoConverter(t *testing.T) {
-	t.Parallel()
-	emf, wmf, tiff, png := h("1")+".emf", h("2")+".wmf", h("3")+".tiff", h("4")+".png"
-	link := func(names ...string) string {
-		var parts []string
-		for _, n := range names {
-			parts = append(parts, "!["+n[:1]+"]("+n+")")
-		}
-		return strings.Join(parts, " ") + "\n"
-	}
-	md := link(emf, wmf, tiff, png)
-	for _, tc := range []struct {
-		desc                string
-		libreoffice, magick bool
-		converted           []string
-		programs            []string
-		markdown            string
-	}{
-		{"neither", false, false, nil, []string{"docproc-ooxml"}, md},
-		{"libreoffice", true, false, nil, []string{"docproc-ooxml"}, md},
-		{"magick", false, true, []string{tiff},
-			[]string{"docproc-ooxml", "magick"},
-			link(emf, wmf, h("3")+".png", png)},
-		{"both", true, true, []string{emf, wmf, tiff},
-			[]string{"docproc-ooxml", "magick", "soffice", "magick", "magick"},
-			link(h("1")+".png", h("2")+".png", h("3")+".png", png)},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			c, ins := pictureConverter(t, tc.libreoffice, tc.magick)
-			ins.set(mediaKey, strings.Join([]string{emf, wmf, tiff, png}, ","))
-			ins.set(stdoutKey, pictureLine("docx", md, emf, wmf, tiff, png))
-			recs, err := collect(t, c, office.Request{Path: writeDocument(t, "", "doc"), Dir: t.TempDir()})
-			if err != nil {
-				t.Fatal(err)
-			}
-			doc := document(t, recs)
-			for _, m := range doc.Media {
-				stored := filepath.Join(filepath.Dir(doc.Media[0].Path), m.File)
-				if slices.Contains(tc.converted, m.File) {
-					if !m.Converted || m.Path != strings.TrimSuffix(stored, filepath.Ext(stored))+".png" {
-						t.Errorf("%s: handed on as %s, converted %t; want converted", m.File, m.Path, m.Converted)
-					}
-				} else if m.Converted || m.Path != stored {
-					t.Errorf("%s: handed on as %s, converted %t; want as stored", m.File, m.Path, m.Converted)
-				}
-			}
-			if got := programs(ins.runs()); !slices.Equal(got, tc.programs) {
-				t.Errorf("runs: got %q, want %q", got, tc.programs)
-			}
-			if doc.Markdown != tc.markdown {
-				t.Errorf("Markdown:\ngot  %q\nwant %q", doc.Markdown, tc.markdown)
 			}
 		})
 	}
@@ -317,7 +229,7 @@ func TestConvertPicturesFails(t *testing.T) {
 			"office: picture: magick: " + emf + ": " + h("1") + ".png isn't a PNG"},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c, ins := pictureConverter(t, true, true)
+			c, ins := standinConverter(t)
 			ins.set(mediaKey, strings.Join(tc.media, ","))
 			ins.set(stdoutKey, pictureLine("docx", "", tc.media...))
 			for k, v := range tc.env {
@@ -345,7 +257,7 @@ func TestConvertPicturesFails(t *testing.T) {
 // Each medium keeps docproc-ooxml's name in File.
 func TestConvertRewritesLinks(t *testing.T) {
 	t.Parallel()
-	c, ins := pictureConverter(t, true, true)
+	c, ins := standinConverter(t)
 	emf, tif, tiff, png := h("1")+".emf", h("3")+".tif", h("3")+".tiff", h("4")+".png"
 	ins.set(mediaKey, strings.Join([]string{emf, tif, tiff, png}, ","))
 	md := "![a](" + emf + ")\n\nagain ![](" + emf + "), and ![](" + emf + ")\n\n" +
@@ -379,43 +291,5 @@ func TestConvertRewritesLinks(t *testing.T) {
 		if m.Path != pngPath || !m.Converted {
 			t.Errorf("%s: handed on as %s, converted %t; want %s", m.File, m.Path, m.Converted, pngPath)
 		}
-	}
-}
-
-// TestNewConverterMagick: MagickSpec reads magick's version line, and refuses an older magick at
-// the Tool's construction; the constructor refuses one a laxer Spec built, whatever minimum the
-// Tool's own Spec declared.
-func TestNewConverterMagick(t *testing.T) {
-	t.Parallel()
-	ins := installStandin(t, "0.1.0")
-	o, err := tool.NewExec(t.Context(), ins.spec(office.OfficeSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mg, err := tool.NewExec(t.Context(), ins.spec(picture.MagickSpec()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := mg.Version().String(); got != "7.1.2" {
-		t.Errorf("version: got %s, want 7.1.2", got)
-	}
-
-	ins.set(magickVersionKey, "6.9.13-17")
-	if _, err := tool.NewExec(t.Context(), ins.spec(picture.MagickSpec())); !errors.Is(err, tool.ErrTooOld) {
-		t.Errorf("NewExec over 6.9.13: got %v, want ErrTooOld", err)
-	}
-	lax := ins.spec(picture.MagickSpec())
-	lax.Minimum = "6.0"
-	old, err := tool.NewExec(t.Context(), lax)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = office.NewConverter(t.Context(), office.Config{Office: o, Magick: old})
-	var verr *tool.VersionError
-	if !errors.As(err, &verr) || !errors.Is(err, tool.ErrTooOld) {
-		t.Fatalf("NewConverter over 6.9.13: got %v, want a VersionError wrapping ErrTooOld", err)
-	}
-	if verr.Program != "magick" || verr.Found != "6.9.13" || verr.Minimum != picture.MagickMinimum {
-		t.Errorf("VersionError: %+v", verr)
 	}
 }

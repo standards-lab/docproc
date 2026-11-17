@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -33,9 +32,6 @@ type settings struct {
 	Log string `json:"log"`
 	// Fail, when set, makes a magick run write it to stderr and exit 1 after logging.
 	Fail string `json:"fail,omitzero"`
-	// Stdout, when set, is what a magick run that writes to stdout writes in place of its copy of
-	// stdin.
-	Stdout *string `json:"stdout,omitzero"`
 	// Raw makes a magick run that writes a file write it without PNG's signature.
 	Raw bool `json:"raw,omitzero"`
 	// SofficeFail, when set, makes a soffice run write it to stderr and exit 1 after logging.
@@ -105,23 +101,24 @@ func filePath(arg string) (string, bool) {
 }
 
 // magickStandin is the stand-in magick. With -version alone it prints the version line the real one
-// prints first, and with -list format its format listing, the settings' Formats or fullListing,
-// or fails when ListFail is set; neither is logged in its own log. A run whose first argument is png:-, the
-// corrections stage's, reads stdin: it logs its arguments, then fails when Fail is set, or else
-// writes Stdout when it is set, and copies stdin when it isn't, so a corrected image is
-// the image it was given. Any other run, a conversion's, reads its input, its first argument that
-// names an absolute path, "tiff:path[0]", "rsvg:path", or "png:path", and writes its last,
-// "png:path": it logs its arguments and its input's content, then fails when Fail is set, or
-// else writes PNG's signature, convertedPrefix, and its input, less any PNG signature it begins
-// with, without the signature when Raw is set; a pages run, one with +adjoin, writes that to
-// each page, as magickPages says. A metafile's PNG, which soffice and then magick wrote, holds
-// convertedPrefix twice.
+// prints first. A run ending -list format null:, after any options, is its format listing: it
+// logs its arguments, then prints the settings' Formats or fullListing, or fails when ListFail is
+// set. Any other run, a conversion's, reads its input, its first argument that names an absolute
+// path, "tiff:path[0]", "rsvg:path", or "png:path", and writes its last, "png:path": it logs its
+// arguments and its input's content, then fails when Fail is set, or else writes PNG's signature,
+// convertedPrefix, and its input, less any PNG signature it begins with, without the signature
+// when Raw is set; a pages run, one with +adjoin, writes that to each page, as magickPages says. A
+// metafile's PNG, which soffice and then magick wrote, holds convertedPrefix twice.
 func magickStandin(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "-version" {
 		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", s.MagickVersion)
 		return 0
 	}
-	if len(args) == 2 && args[0] == "-list" && args[1] == "format" {
+	if listing(args) {
+		if err := appendLog(s.Log, "magick", args, "", ""); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 		if s.ListFail != "" {
 			fmt.Fprint(os.Stderr, s.ListFail)
 			return 1
@@ -136,9 +133,6 @@ func magickStandin(s settings, args []string) int {
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, "stand-in: want an input and an output")
 		return 2
-	}
-	if args[0] == "png:-" {
-		return magickStdout(s, args)
 	}
 	var input []byte
 	for _, a := range args[:len(args)-1] {
@@ -192,28 +186,11 @@ func magickPages(s settings, pattern, out string) int {
 	return 0
 }
 
-// magickStdout is the stand-in magick's run that reads stdin, as magickStandin says.
-func magickStdout(s settings, args []string) int {
-	if err := appendLog(s.Log, "magick", args, "", ""); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	if s.Fail != "" {
-		fmt.Fprint(os.Stderr, s.Fail)
-		return 1
-	}
-	if s.Stdout != nil {
-		if _, err := os.Stdout.WriteString(*s.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-		return 0
-	}
-	if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	return 0
+// listing reports whether args, a magick run's, are a format listing's: any options, then
+// -list format null:.
+func listing(args []string) bool {
+	n := len(args)
+	return n >= 3 && args[n-3] == "-list" && args[n-2] == "format" && args[n-1] == "null:"
 }
 
 // sofficeStandin is the stand-in soffice. With --version alone it writes a line of noise to
@@ -377,6 +354,18 @@ func (st *standins) mustTool(spec tool.Spec) *tool.Tool {
 // runs returns every run of either stand-in, in order, the version commands and format listings
 // left out.
 func (st *standins) runs() []standinRun {
+	st.t.Helper()
+	return slices.DeleteFunc(st.all(), func(r standinRun) bool { return r.Program == "magick" && listing(r.Args) })
+}
+
+// listings returns every format listing the stand-in magick ran, in order.
+func (st *standins) listings() []standinRun {
+	st.t.Helper()
+	return slices.DeleteFunc(st.all(), func(r standinRun) bool { return r.Program != "magick" || !listing(r.Args) })
+}
+
+// all returns every run of either stand-in, in order, the version commands left out.
+func (st *standins) all() []standinRun {
 	t := st.t
 	t.Helper()
 	f, err := os.Open(st.settings.Log)
@@ -403,50 +392,17 @@ func (st *standins) runs() []standinRun {
 	return runs
 }
 
-// args returns the arguments of every run runs returns, in order.
-func (st *standins) args() [][]string {
-	st.t.Helper()
-	var args [][]string
-	for _, r := range st.runs() {
-		args = append(args, r.Args)
-	}
-	return args
-}
-
-// standinMagick links the stand-ins with magick at version, opts applied to their settings,
-// builds the magick Tool from spec through the exec runner, and returns it with the stand-ins.
-func standinMagick(t *testing.T, version string, spec tool.Spec, opts ...func(*settings)) (*tool.Tool, *standins) {
-	t.Helper()
-	st := newStandins(t, version, opts...)
-	return st.mustTool(spec), st
-}
-
-// standinCorrector builds the corrections stage over the stand-in magick at 7.1.2-34, and
-// returns it with the stand-ins.
-func standinCorrector(t *testing.T) (*picture.Corrector, *standins) {
-	t.Helper()
-	tl, st := standinMagick(t, "7.1.2-34", picture.MagickSpec())
-	c, err := picture.NewCorrector(picture.Config{Magick: tl})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c, st
-}
-
 // standinConverter builds a Converter over the stand-in magick at 7.1.2-34 and the stand-in
-// soffice at 26.8.1.1, each when asked, built from its Spec through the exec runner, opts applied
+// soffice at 26.8.1.1, each built from its Spec through the exec runner, with limits, opts applied
 // to their settings first, and returns it with the stand-ins.
-func standinConverter(t *testing.T, libreoffice, magick bool, opts ...func(*settings)) (*picture.Converter, *standins) {
+func standinConverter(t *testing.T, limits picture.Limits, opts ...func(*settings)) (*picture.Converter, *standins) {
 	t.Helper()
 	st := newStandins(t, "7.1.2-34", opts...)
-	var cfg picture.Config
-	if libreoffice {
-		cfg.LibreOffice = st.mustTool(picture.LibreOfficeSpec())
-	}
-	if magick {
-		cfg.Magick = st.mustTool(picture.MagickSpec())
-	}
-	c, err := picture.NewConverter(t.Context(), cfg)
+	c, err := picture.NewConverter(t.Context(), picture.Config{
+		Magick:      st.mustTool(picture.MagickSpec()),
+		LibreOffice: st.mustTool(picture.LibreOfficeSpec()),
+		Limits:      limits,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
