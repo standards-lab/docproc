@@ -268,6 +268,6 @@
 //   - The shapes, versioned by [Version]: [Event], its [Part] and the part's [ContentType], an
 //     [Output], a [Warning], and the stage table's [Tool], [Row], and [State], [Wired],
 //     [Missing], or [Excluded]; the Meta keys [MetaPage], [MetaCount], [MetaWindow],
-//     [MetaFrame], and [MetaSheet]; and the record media types [MediaAudioPlan],
+//     [MetaFrame], [MetaSheet], and [MetaDPI]; and the record media types [MediaAudioPlan],
 //     [MediaVideoPlan], [MediaOOXML], [MediaMail], and [MediaOneNote].
 package dispatch

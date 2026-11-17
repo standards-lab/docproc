@@ -2,12 +2,13 @@
 # once per runner, natively on x64 and arm64, followed by its third-party notices, but only when
 # the tool's directory or the wiring every tool shares changed; the Go job runs the root's
 # check:go on both runners only when what the Go modules build or read changed; the lint job runs
-# the root's lint, shellcheck, actionlint, and the release workflow's tag-routing test, only when
-# a script, a workflow, or the root mise.toml changed. The `ci` job always runs last and is the one check docproc's `main` ruleset requires: it fails when
-# any job it needs failed or was cancelled, and passes when they succeeded or their paths skipped
-# them, so a skipped job never blocks a merge. Actions are pinned by their exact release tag,
-# which `mise run currency` compares with each action's latest release. A newer run on the same
-# ref cancels the one it supersedes.
+# the root's lint, shellcheck and actionlint and the release workflow's tag-routing test, only
+# when a script, a workflow, or the root mise.toml changed. The `ci` job always runs last and is
+# the one check docproc's `main` ruleset requires: it fails when any job it needs failed or was
+# cancelled, and passes when they succeeded or their paths skipped them, so a skipped job never
+# blocks a merge. Actions are pinned by their exact release tag, which `mise run currency`
+# compares with each action's latest release. A newer run on the same ref cancels the one it
+# supersedes.
 name: CI
 
 on:
