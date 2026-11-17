@@ -197,12 +197,16 @@ func TestExtract(t *testing.T) {
 }
 
 // TestExtractStops: a writer that fails stops 7zz while it writes bomb.7z's 8 MiB of zeros, and
-// Extract returns once 7zz has exited, with an error.
+// Extract returns once 7zz has exited, with an error, writing nothing after the failed write.
 func TestExtractStops(t *testing.T) {
 	r := reader(t)
-	err := r.Extract(t.Context(), sevenzip.ExtractRequest{Path: fixture("generated/bomb.7z"), Kind: route.SevenZip, Name: "zeros.bin"}, &failAfter{n: 64 << 10})
+	w := &failAfter{n: 64 << 10}
+	err := r.Extract(t.Context(), sevenzip.ExtractRequest{Path: fixture("generated/bomb.7z"), Kind: route.SevenZip, Name: "zeros.bin"}, w)
 	if err == nil {
 		t.Error("an extraction whose writer failed succeeded")
+	}
+	if w.late != 0 {
+		t.Errorf("%d writes after the writer failed, want none", w.late)
 	}
 }
 
@@ -220,13 +224,23 @@ func reader(t *testing.T) *sevenzip.Reader {
 	return r
 }
 
-// failAfter is a writer that takes n bytes and then fails.
-type failAfter struct{ n int }
+// failAfter is a writer that takes n bytes and then fails, counting the writes after it failed in
+// late.
+type failAfter struct {
+	n      int
+	failed bool
+	late   int
+}
 
 var errFull = errors.New("full")
 
 func (w *failAfter) Write(p []byte) (int, error) {
+	if w.failed {
+		w.late++
+		return 0, errFull
+	}
 	if len(p) > w.n {
+		w.failed = true
 		took := w.n
 		w.n = 0
 		return took, errFull

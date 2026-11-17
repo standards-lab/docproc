@@ -3,11 +3,14 @@ package goldentest_test
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"hash/crc32"
 	"image"
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/internal/goldentest"
@@ -90,4 +93,46 @@ func TestCheckRecords(t *testing.T) {
 	}
 	t.Setenv(goldentest.RecordEnv, "")
 	goldentest.Check(t, path, got)
+}
+
+// errorsTB records the errors a check reports, in place of failing the test.
+type errorsTB struct {
+	testing.TB
+	errs []string
+}
+
+func (e *errorsTB) Helper() {}
+
+func (e *errorsTB) Errorf(format string, args ...any) {
+	e.errs = append(e.errs, fmt.Sprintf(format, args...))
+}
+
+// TestCheckCompares: without RecordEnv, Check reports each key whose sum differs from the golden
+// file's, each the golden file holds and the run doesn't, and each the run holds and the golden
+// file doesn't, one error each, and none for a run equal to the file.
+func TestCheckCompares(t *testing.T) {
+	t.Setenv(goldentest.RecordEnv, "")
+	path := filepath.Join(t.TempDir(), "golden.sha256")
+	golden := goldentest.Sum([]byte("1")) + "  a/one\n" + goldentest.Sum([]byte("2")) + "  b/two\n"
+	if err := os.WriteFile(path, []byte(golden), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name string
+		got  map[string]string
+		want []string
+	}{
+		{"equal", map[string]string{"a/one": goldentest.Sum([]byte("1")), "b/two": goldentest.Sum([]byte("2"))}, nil},
+		{"changed", map[string]string{"a/one": goldentest.Sum([]byte("1")), "b/two": goldentest.Sum([]byte("3"))}, []string{"b/two: sum"}},
+		{"missing", map[string]string{"a/one": goldentest.Sum([]byte("1"))}, []string{"b/two: no output"}},
+		{"new", map[string]string{
+			"a/one": goldentest.Sum([]byte("1")), "b/two": goldentest.Sum([]byte("2")), "c/three": goldentest.Sum([]byte("3")),
+		}, []string{"c/three: an output the golden file doesn't hold"}},
+	} {
+		tb := &errorsTB{TB: t}
+		goldentest.Check(tb, path, c.got)
+		if !slices.EqualFunc(tb.errs, c.want, strings.HasPrefix) {
+			t.Errorf("%s: errors %q, want %q", c.name, tb.errs, c.want)
+		}
+	}
 }

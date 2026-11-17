@@ -61,7 +61,7 @@ func CanonicalPNG(png []byte) []byte {
 // Check compares got, a run's sums by key, with the golden file at path, a line "sum  key" per
 // output, sorted by key, and fails t for each key whose sum differs, is missing, or is new. With
 // RecordEnv set to 1 it writes got to path instead.
-func Check(t *testing.T, path string, got map[string]string) {
+func Check(t testing.TB, path string, got map[string]string) {
 	t.Helper()
 	if os.Getenv(RecordEnv) == "1" {
 		var b strings.Builder
