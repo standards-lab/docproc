@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,8 +33,8 @@ func GhostscriptSpec() tool.Spec {
 	}
 }
 
-// Ghostscript is the released Renderer, the renderer bake-off's winner: it counts and renders a
-// PDF's pages with Ghostscript's gs, one process per call. Ghostscript is AGPL-licensed; the
+// Ghostscript is the released renderer, the renderer bake-off's winner: it counts, renders, and
+// reads the text layer of a PDF's pages with Ghostscript's gs, one process per call. Ghostscript is AGPL-licensed; the
 // renderer runs gs as a separate program through a tool.Tool and never links it.
 //
 // gs reads the PDF by its path, which Count and Render make absolute, and each run's working
@@ -41,11 +43,6 @@ func GhostscriptSpec() tool.Spec {
 type Ghostscript struct {
 	gs *tool.Tool
 }
-
-var (
-	_ RegionRenderer = (*Ghostscript)(nil)
-	_ TextExtractor  = (*Ghostscript)(nil)
-)
 
 // NewGhostscript builds the released renderer over cfg's Ghostscript; it reads no other field. A
 // nil Ghostscript is the caller's mistake, and panics naming the field. It refuses one whose
@@ -79,6 +76,71 @@ func (g *Ghostscript) Count(ctx context.Context, pdf string) (int, error) {
 	return n, nil
 }
 
+// pageSize is a page's size in points as gs renders it: its media box, its rotation applied.
+type pageSize struct {
+	width, height float64
+}
+
+// pixels returns how many pixels gs renders the page at dpi: each side's points times dpi over
+// 72, rounded half up, as gs sizes its device, multiplied.
+func (s pageSize) pixels(dpi int) int64 {
+	side := func(points float64) int64 { return int64(math.Floor(points*float64(dpi)/72 + 0.5)) }
+	return side(s.width) * side(s.height)
+}
+
+// fit returns the largest DPI, at most dpi, at which the page renders in at most limit pixels,
+// and false when not even 1 dpi does. A page's pixels never fall as its DPI rises, so the DPIs
+// that fit are the ones below some bound, which fit searches for.
+func (s pageSize) fit(dpi int, limit int64) (int, bool) {
+	// The first DPI from 1 that doesn't fit; every DPI below it does.
+	over := 1 + sort.Search(dpi, func(i int) bool { return s.pixels(i+1) > limit })
+	return over - 1, over > 1
+}
+
+// sizes returns the size of every page of the PDF at pdf, in page order, in one gs run that sets
+// each page up as rendering does, its media box and rotation applied, and prints the device's
+// page size, so a page's size is the one Render renders. gs runs with -dSAFER, permitted to read
+// that one file.
+func (g *Ghostscript) sizes(ctx context.Context, pdf string) ([]pageSize, error) {
+	abs, err := filepath.Abs(pdf)
+	if err != nil {
+		return nil, fmt.Errorf("document: ghostscript: %w", err)
+	}
+	var out bytes.Buffer
+	if err := g.gs.Run(ctx, tool.Invocation{Args: sizesArgs(abs), Dir: filepath.Dir(abs), Stdout: &out}); err != nil {
+		return nil, err
+	}
+	sizes, err := parseSizes(out.String())
+	if err != nil {
+		return nil, fmt.Errorf("document: ghostscript: page sizes of %s: %w", abs, err)
+	}
+	return sizes, nil
+}
+
+// parseSizes reads sizesArgs' output: the page count on its own line, then each page's width and
+// height in points, one page a line.
+func parseSizes(out string) ([]pageSize, error) {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	n, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil || n < 0 || len(lines)-1 != n {
+		return nil, fmt.Errorf("gs printed %q", out)
+	}
+	sizes := make([]pageSize, n)
+	for i, line := range lines[1:] {
+		f := strings.Fields(line)
+		if len(f) != 2 {
+			return nil, fmt.Errorf("page %d: gs printed %q", i+1, line)
+		}
+		w, werr := strconv.ParseFloat(f[0], 64)
+		h, herr := strconv.ParseFloat(f[1], 64)
+		if werr != nil || herr != nil || !(w >= 0) || !(h >= 0) {
+			return nil, fmt.Errorf("page %d: gs printed %q", i+1, line)
+		}
+		sizes[i] = pageSize{w, h}
+	}
+	return sizes, nil
+}
+
 // Render writes page, 1-based, of the PDF at pdf to w as PNG at dpi, one gs run for the page. It
 // refuses a DPI of zero or less and a page below 1 before gs runs, as CheckRender does. A gs that
 // exits nonzero gives the Tool's error, a *tool.ExitError, and w may hold part of a PNG then.
@@ -87,49 +149,14 @@ func (g *Ghostscript) Count(ctx context.Context, pdf string) (int, error) {
 // "Requested FirstPage is greater than the number of pages in the file". Render writes nothing to
 // w unless stdout begins as a PNG, and returns gs's message as its error when it doesn't.
 func (g *Ghostscript) Render(ctx context.Context, pdf string, page, dpi int, w io.Writer) error {
-	return g.render(ctx, pdf, nil, page, dpi, w, nil)
-}
-
-// render renders page as Render does, from the PDF at pdf, or from stdin when pdf is "", and
-// fills usage, when not nil, as Invocation.Usage does. Render reads by path only; the renderer
-// bake-off reads from stdin to probe streaming, and measures the run's usage.
-func (g *Ghostscript) render(ctx context.Context, pdf string, stdin io.Reader, page, dpi int, w io.Writer, usage *tool.Usage) error {
 	if err := CheckRender(page, dpi); err != nil {
-		return err
-	}
-	var dir string
-	if pdf != "" {
-		abs, err := filepath.Abs(pdf)
-		if err != nil {
-			return fmt.Errorf("document: ghostscript: %w", err)
-		}
-		pdf, dir = abs, filepath.Dir(abs)
-	}
-	return g.png(ctx, tool.Invocation{Args: renderArgs(pdf, page, dpi), Dir: dir, Stdin: stdin, Usage: usage}, pdf, page, w)
-}
-
-// RenderRegion writes the region of page, 1-based, of the PDF at pdf to w as PNG at dpi, one gs
-// run for the page, as Render writes the whole page: the same device and anti-aliasing, so the
-// region's pixels are the whole page's, cropped. It refuses what Render refuses, and a region
-// CheckRegion refuses, before gs runs. A gs that exits nonzero gives the Tool's error, and w may
-// hold part of a PNG then; a page past the last writes nothing and is an error carrying the
-// message the run prints in place of a PNG.
-//
-// gs crops in its own PostScript, run with -c, as regionArgs says: the region's size, in the
-// page's points, is the device's page size, and the page is drawn translated so the region's
-// corner is the device's.
-func (g *Ghostscript) RenderRegion(ctx context.Context, pdf string, page, dpi int, region Region, w io.Writer) error {
-	if err := CheckRender(page, dpi); err != nil {
-		return err
-	}
-	if err := CheckRegion(region); err != nil {
 		return err
 	}
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
 		return fmt.Errorf("document: ghostscript: %w", err)
 	}
-	return g.png(ctx, tool.Invocation{Args: regionArgs(abs, page, dpi, region), Dir: filepath.Dir(abs)}, abs, page, w)
+	return g.png(ctx, tool.Invocation{Args: renderArgs(abs, page, dpi), Dir: filepath.Dir(abs)}, abs, page, w)
 }
 
 // png runs gs as inv says, its stdout a page's PNG, and writes the PNG to w, holding back a stdout
@@ -187,13 +214,9 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 }
 
 // renderArgs returns gs's arguments for page of the PDF at pdf at dpi, as the bake-off measured
-// them, reading stdin when pdf is "". png16m is 24-bit RGB; the alpha bits anti-alias text and
-// graphics, as poppler's pdftoppm and pdftocairo do by default and gs doesn't. -sOutputFile=-
-// writes the PNG to stdout.
+// them. png16m is 24-bit RGB; the alpha bits anti-alias text and graphics, as poppler's pdftoppm
+// and pdftocairo do by default and gs doesn't. -sOutputFile=- writes the PNG to stdout.
 func renderArgs(pdf string, page, dpi int) []string {
-	if pdf == "" {
-		pdf = "-"
-	}
 	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-", pdf}
@@ -206,44 +229,21 @@ func textArgs(pdf string, page int) []string {
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-", pdf}
 }
 
-// regionArgs returns gs's arguments for region of page of the PDF at pdf at dpi, the device and
-// anti-aliasing renderArgs gives, the PNG to stdout. gs reads the PDF itself in PostScript,
-// permitted to read that one file, checks the page, and draws it in pdfshowpage's steps, the
-// region set between them:
-//
-//   - A page past the last prints a message in place of a PNG and quits.
-//   - pdfshowpage_setpage sets the device's page size to the page's, rotation applied, and the
-//     CTM to place the page on it. The page's own transform is taken out of that CTM, against
-//     the device's default matrix.
-//   - setpagedevice sets the device's page size to the region's, its width and height the page's
-//     times the region's fractions, and resets the CTM to the new default. The page is then
-//     translated left by the region's left edge and down by the band below its bottom edge, in
-//     the page's points, and its own transform applied again, so the region alone lands on the
-//     device.
-//   - pdfshowpage_finish draws the page and shows it.
-//
-// The path is a PostScript string, escaped as countArgs escapes it, and the fractions are
-// decimals, CheckRegion having refused any that isn't a number.
-func regionArgs(pdf string, page, dpi int, r Region) []string {
-	n := strconv.Itoa(page)
-	f := func(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
-	ps := "(" + psString(pdf) + ") (r) file runpdfbegin " +
-		n + " pdfpagecount gt { (Requested page " + n + " is greater than the number of pages in the file) = quit } if " +
-		n + " pdfgetpage pdfshowpage_setpage " +
-		"matrix currentmatrix matrix defaultmatrix matrix invertmatrix matrix concatmatrix " +
-		"currentpagedevice /PageSize get aload pop /ph exch def /pw exch def " +
-		"<< /PageSize [pw " + f(r.Right) + " " + f(r.Left) + " sub mul ph " + f(r.Bottom) + " " + f(r.Top) + " sub mul] >> setpagedevice " +
-		"pw " + f(r.Left) + " mul neg ph 1 " + f(r.Bottom) + " sub mul neg translate concat " +
-		"pdfshowpage_finish runpdfend quit"
-	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "--permit-file-read=" + pdf, "-sDEVICE=png16m",
-		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi), "-sOutputFile=-", "-c", ps}
-}
-
 // countArgs returns gs's arguments to print the page count of the PDF at pdf. The path is a
 // PostScript string there, whose backslashes and parentheses are escaped.
 func countArgs(pdf string) []string {
 	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf,
 		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount = quit"}
+}
+
+// sizesArgs returns gs's arguments to print the page count of the PDF at pdf and each page's size:
+// pdfshowpage_setpage sets the device's page size to the page's, as rendering does, which is
+// printed as its width and height. The path is escaped as countArgs escapes it.
+func sizesArgs(pdf string) []string {
+	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf,
+		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount dup = 1 1 3 -1 roll { " +
+			"pdfgetpage pdfshowpage_setpage pop currentpagedevice /PageSize get aload pop exch =only ( ) print = " +
+			"} for runpdfend quit"}
 }
 
 // psString escapes s for a PostScript string: its backslashes and parentheses.

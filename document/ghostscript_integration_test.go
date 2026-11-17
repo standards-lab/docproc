@@ -5,14 +5,12 @@ package document_test
 import (
 	"bytes"
 	"errors"
-	"image"
 	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/document"
-	"github.com/standards-lab/docproc/internal/textscore"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -93,8 +91,8 @@ func TestGhostscriptTextHost(t *testing.T) {
 			t.Errorf("clean.pdf page %d has no text layer, want one", i+1)
 			continue
 		}
-		e, n := textscore.CharErrors(truth, text)
-		we, wn := textscore.WordErrors(truth, text)
+		e, n := charErrors(truth, text)
+		we, wn := wordErrors(truth, text)
 		found := wordsFound(truth, text)
 		edits, chars, wedits, words = edits+e, chars+n, wedits+we, words+wn
 		// txtwrite keeps the page's layout, so two columns read across both, line by line, and a
@@ -104,9 +102,9 @@ func TestGhostscriptTextHost(t *testing.T) {
 			t.Errorf("clean.pdf page %d's text layer holds %.4f of its truth's words, want nearly all: %q", i+1, found, text)
 		}
 		t.Logf("recorded: text layer clean.pdf page %d: CER %.4f, WER %.4f, %.4f of the truth's words found, %d bytes",
-			i+1, textscore.Rate(e, n), textscore.Rate(we, wn), found, len(text))
+			i+1, rate(e, n), rate(we, wn), found, len(text))
 	}
-	t.Logf("recorded: text layer clean.pdf, 6 pages: CER %.4f, WER %.4f", textscore.Rate(edits, chars), textscore.Rate(wedits, words))
+	t.Logf("recorded: text layer clean.pdf, 6 pages: CER %.4f, WER %.4f", rate(edits, chars), rate(wedits, words))
 	scanned := filepath.Join("testdata", "scanned.pdf")
 	for page := 1; page <= 7; page++ {
 		text, err := g.Text(t.Context(), scanned, page)
@@ -120,74 +118,6 @@ func TestGhostscriptTextHost(t *testing.T) {
 	if _, err := g.Text(t.Context(), pdf, 7); !errors.Is(err, document.ErrRequest) {
 		t.Errorf("Text(clean.pdf page 7) of 6 pages returned %v, want document.ErrRequest", err)
 	}
-}
-
-// TestGhostscriptRenderRegionHost checks RenderRegion on the host's gs: a footer band of
-// scanned.pdf's page 7 at 300 dpi decodes as a PNG of the band's size, letter's width by a tenth
-// of its height, 2550x330, whose pixels are the whole page's, rendered at 300 dpi, in that band.
-// The whole page as a region is the page Render renders, and a page past the last is an error
-// that writes nothing.
-func TestGhostscriptRenderRegionHost(t *testing.T) {
-	g, _ := hostGhostscript(t)
-	pdf := filepath.Join("testdata", "scanned.pdf")
-	render := func(region *document.Region) image.Image {
-		t.Helper()
-		var out bytes.Buffer
-		var err error
-		if region == nil {
-			err = g.Render(t.Context(), pdf, 7, 300, &out)
-		} else {
-			err = g.RenderRegion(t.Context(), pdf, 7, 300, *region, &out)
-		}
-		if err != nil {
-			t.Fatal(err)
-		}
-		img, err := png.Decode(bytes.NewReader(out.Bytes()))
-		if err != nil {
-			t.Fatalf("region %+v isn't a PNG: %v", region, err)
-		}
-		return img
-	}
-	page := render(nil)
-	footer := render(&document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1})
-	if b := footer.Bounds(); b.Dx() != 2550 || b.Dy() != 330 {
-		t.Fatalf("the footer band is %dx%d, want 2550x330", b.Dx(), b.Dy())
-	}
-	if !samePixels(footer, page, image.Pt(0, 3300-330)) {
-		t.Error("the footer band's pixels aren't the page's bottom 330 rows")
-	}
-	whole := render(&document.Region{Top: 0, Bottom: 1, Left: 0, Right: 1})
-	if !samePixels(whole, page, image.Point{}) || whole.Bounds() != page.Bounds() {
-		t.Error("the whole page as a region isn't the page Render renders")
-	}
-	corner := render(&document.Region{Top: 0, Bottom: 0.25, Left: 0.5, Right: 1})
-	if b := corner.Bounds(); b.Dx() != 1275 || b.Dy() != 825 || !samePixels(corner, page, image.Pt(1275, 0)) {
-		t.Errorf("the top right quarter band is %v, want 1275x825 of the page's own pixels", corner.Bounds())
-	}
-	t.Logf("recorded: RenderRegion scanned.pdf page 7 at 300 dpi: footer band %v, top right %v, the page's own pixels",
-		footer.Bounds(), corner.Bounds())
-	var out bytes.Buffer
-	err := g.RenderRegion(t.Context(), filepath.Join("testdata", "clean.pdf"), 7, 150, document.Region{Top: 0, Bottom: 1, Left: 0, Right: 1}, &out)
-	if err == nil || out.Len() != 0 {
-		t.Errorf("RenderRegion(clean.pdf page 7) of 6 pages returned %v and wrote %d bytes, want an error and nothing", err, out.Len())
-	}
-	t.Logf("region past the last: %v", err)
-}
-
-// samePixels reports whether every pixel of part equals whole's at part's position offset by at.
-func samePixels(part, whole image.Image, at image.Point) bool {
-	b := part.Bounds()
-	if !b.Add(at).In(whole.Bounds()) {
-		return false
-	}
-	for y := b.Min.Y; y < b.Max.Y; y++ {
-		for x := b.Min.X; x < b.Max.X; x++ {
-			if part.At(x, y) != whole.At(x+at.X, y+at.Y) {
-				return false
-			}
-		}
-	}
-	return true
 }
 
 // wordsFound returns the fraction of truth's words that got holds, whatever their order, each
@@ -205,5 +135,55 @@ func wordsFound(truth, got string) float64 {
 			found++
 		}
 	}
-	return textscore.Rate(found, len(want))
+	return rate(found, len(want))
+}
+
+// collapse returns s with every run of whitespace made one space, and none at either end.
+func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// editDistance returns the Levenshtein distance from a to b: the fewest insertions, deletions,
+// and substitutions of one element that turn a into b. It keeps one row of the table.
+func editDistance[T comparable](a, b []T) int {
+	row := make([]int, len(b)+1)
+	for j := range row {
+		row[j] = j
+	}
+	for i := 1; i <= len(a); i++ {
+		diag := row[0]
+		row[0] = i
+		for j := 1; j <= len(b); j++ {
+			cost := 1
+			if a[i-1] == b[j-1] {
+				cost = 0
+			}
+			above := row[j]
+			row[j] = min(above+1, row[j-1]+1, diag+cost)
+			diag = above
+		}
+	}
+	return row[len(b)]
+}
+
+// charErrors returns the character edit distance from truth to got and truth's length in
+// characters, both texts collapsed, so line breaks and spacing never count as errors, and
+// compared rune by rune, case counting. Their ratio is the character error rate; summed over
+// pages, the rate of the pages together.
+func charErrors(truth, got string) (edits, length int) {
+	t := []rune(collapse(truth))
+	return editDistance(t, []rune(collapse(got))), len(t)
+}
+
+// wordErrors returns the word edit distance from truth to got and truth's length in words, words
+// being runs of non-whitespace. Their ratio is the word error rate.
+func wordErrors(truth, got string) (edits, length int) {
+	t := strings.Fields(truth)
+	return editDistance(t, strings.Fields(got)), len(t)
+}
+
+// rate returns edits over length, and 0 for a length of 0.
+func rate(edits, length int) float64 {
+	if length == 0 {
+		return 0
+	}
+	return float64(edits) / float64(length)
 }

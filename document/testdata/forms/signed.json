@@ -1,0 +1,36 @@
+{
+  "version": 2,
+  "parameters": {
+    "decodelevel": "generalized"
+  },
+  "acroform": {
+    "fields": [
+      {
+        "alternativename": "USGPOSignature",
+        "annotation": {
+          "annotationflags": 132,
+          "appearancestate": "",
+          "object": "5 0 R"
+        },
+        "choices": [],
+        "defaultvalue": null,
+        "fieldflags": 1,
+        "fieldtype": "/Sig",
+        "fullname": "USGPOSignature",
+        "ischeckbox": false,
+        "ischoice": false,
+        "isradiobutton": false,
+        "istext": false,
+        "mappingname": "USGPOSignature",
+        "object": "5 0 R",
+        "pageposfrom1": 1,
+        "parent": null,
+        "partialname": "USGPOSignature",
+        "quadding": 0,
+        "value": "12 0 R"
+      }
+    ],
+    "hasacroform": true,
+    "needappearances": false
+  }
+}

@@ -4,35 +4,49 @@ package document_test
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/standards-lab/docproc/internal/tooltest"
-	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/tool"
 )
 
 // settings are a stand-in's settings, which tooltest writes beside its link.
 type settings struct {
 	// Version is the version the stand-in's version command prints, in its program's form:
-	// "7.1.2-34" for magick, "10.08.0" for gs.
+	// "10.08.0" for gs.
 	Version string `json:"version"`
 	// Log names the file each run but a version command appends its working directory and
 	// arguments to, one JSON object per line: tooltest's own run log holds no working directory.
 	Log string `json:"log"`
-	// Fail, when set, makes a magick or gs run write it to stderr and exit 1 after logging.
+	// Fail, when set, makes a gs run write it to stderr and exit 1 after logging.
 	Fail string `json:"fail,omitzero"`
 	// Stdout, when set, is what the stand-in writes to stdout for a run in place of its own: gs's
-	// page count or its page, or magick's copy of its stdin. It is bytes, so what isn't UTF-8,
-	// such as a cut PNG signature, survives the settings' JSON.
+	// page count or its page. It is bytes, so what isn't UTF-8, such as a cut PNG signature,
+	// survives the settings' JSON.
 	Stdout *[]byte `json:"stdout,omitzero"`
+	// Pages, when set, is the stand-in gs's page count in place of 6.
+	Pages int `json:"pages,omitzero"`
+	// Sizes, when set, are the stand-in gs's pages' sizes, a line each, such as "612 792", which a
+	// sizes run prints after the count of them; a sizes run prints "612 792" for each of Pages
+	// when it isn't set.
+	Sizes []string `json:"sizes,omitzero"`
+	// FailPage, when set, makes the stand-in gs's render of that page write "told to fail" to
+	// stderr and exit 1.
+	FailPage int `json:"fail_page,omitzero"`
+	// Delay holds, by page, how many milliseconds the stand-in gs's render of that page waits
+	// before it writes the page.
+	Delay map[int]int `json:"delay,omitzero"`
 	// Stderr is what the stand-in gs writes to stderr for a run that succeeds, and what the
 	// stand-in qpdf or pdfdetach writes to stderr for any run.
 	Stderr string `json:"stderr,omitzero"`
@@ -43,7 +57,6 @@ type settings struct {
 
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
-		"magick":    withSettings(magick),
 		"gs":        withSettings(gs),
 		"qpdf":      withSettings(qpdf),
 		"pdfdetach": withSettings(pdfdetach),
@@ -63,37 +76,6 @@ func withSettings(program func(s settings, args []string) int) tooltest.Program 
 	}
 }
 
-// magick is the stand-in magick. With -version alone it prints a version line in magick's own
-// form. Otherwise it appends its arguments to the log file, then fails when Fail is set, or
-// else writes Stdout to stdout when it is set, and copies stdin to stdout when it
-// isn't, so a corrected image is the image it was given.
-func magick(s settings, args []string) int {
-	if len(args) == 1 && args[0] == "-version" {
-		fmt.Printf("Version: ImageMagick %s Q16-HDRI x86_64 https://imagemagick.org\n", s.Version)
-		return 0
-	}
-	if err := appendLog(s.Log, args); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	if s.Fail != "" {
-		fmt.Fprint(os.Stderr, s.Fail)
-		return 1
-	}
-	if s.Stdout != nil {
-		if _, err := os.Stdout.Write(*s.Stdout); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-		return 0
-	}
-	if _, err := io.Copy(os.Stdout, os.Stdin); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 2
-	}
-	return 0
-}
-
 // standinText is the stand-in gs's text layer for a page: lines as txtwrite lays them out.
 const standinText = "      The Harbor Survey\n      The harbor survey began in the spring.\n"
 
@@ -103,9 +85,9 @@ var standinPage = []byte("\x89PNG\r\n\x1a\nstand-in gs page")
 // gs is the stand-in gs. With --version alone it prints the version alone, as gs does.
 // Otherwise it appends its working directory and arguments to the log file, then fails when
 // Fail is set, or else writes Stderr to stderr, and Stdout to stdout when it is set, and its own
-// output when it isn't: a page count of 6 for a run
-// with -dNODISPLAY, a page's text for a run with the txtwrite device, and standinPage for any
-// other.
+// output when it isn't: for a run with -dNODISPLAY, its pages' sizes when its PostScript asks for
+// them and its page count when it doesn't; a page's text for a run with the txtwrite device; and
+// standinPage for a render, after the page's Delay, or a failure for FailPage.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -120,20 +102,44 @@ func gs(s settings, args []string) int {
 		return 1
 	}
 	fmt.Fprint(os.Stderr, s.Stderr)
+	pages := cmp.Or(s.Pages, 6)
 	var out string
 	switch {
 	case s.Stdout != nil:
 		out = string(*s.Stdout)
+	case slices.Contains(args, "-dNODISPLAY") && strings.Contains(args[len(args)-1], "/PageSize"):
+		sizes := s.Sizes
+		if sizes == nil {
+			sizes = slices.Repeat([]string{"612 792"}, pages)
+		}
+		out = fmt.Sprintf("%d\n%s\n", len(sizes), strings.Join(sizes, "\n"))
 	case slices.Contains(args, "-dNODISPLAY"):
-		out = "6\n"
+		out = fmt.Sprintf("%d\n", pages)
 	case slices.Contains(args, "-sDEVICE=txtwrite"):
 		out = standinText
 	default:
+		page := pageArg(args)
+		time.Sleep(time.Duration(s.Delay[page]) * time.Millisecond)
+		if page == s.FailPage {
+			fmt.Fprint(os.Stderr, "told to fail")
+			return 1
+		}
 		out = string(standinPage)
 	}
 	if _, err := os.Stdout.WriteString(out); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	return 0
+}
+
+// pageArg returns the page a gs run's -dFirstPage names, and 0 for a run that names none.
+func pageArg(args []string) int {
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
+			n, _ := strconv.Atoi(v)
+			return n
+		}
 	}
 	return 0
 }
@@ -275,36 +281,6 @@ func (st *standin) runs() []standinRun {
 		t.Fatal(err)
 	}
 	return runs
-}
-
-// args returns the arguments of every run runs returns, in order.
-func (st *standin) args() [][]string {
-	st.t.Helper()
-	var args [][]string
-	for _, r := range st.runs() {
-		args = append(args, r.Args)
-	}
-	return args
-}
-
-// standinMagick links the stand-in magick at version, builds the Tool from spec through the exec
-// runner, and returns it with the stand-in.
-func standinMagick(t *testing.T, version string, spec tool.Spec) (*tool.Tool, *standin) {
-	t.Helper()
-	st := newStandin(t, "magick", version)
-	return st.mustTool(spec), st
-}
-
-// standinCorrector builds the picture package's corrections stage over the stand-in magick at
-// 7.1.2-34, and returns it with the stand-in.
-func standinCorrector(t *testing.T) (*picture.Corrector, *standin) {
-	t.Helper()
-	tl, st := standinMagick(t, "7.1.2-34", picture.MagickSpec())
-	c, err := picture.NewCorrector(picture.Config{Magick: tl})
-	if err != nil {
-		t.Fatal(err)
-	}
-	return c, st
 }
 
 // wantPanic fails t unless f panics with want.

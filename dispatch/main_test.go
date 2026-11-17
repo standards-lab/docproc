@@ -9,9 +9,11 @@ import (
 )
 
 // TestMain runs the tests, or, through a stand-in's link, the stand-in: ffmpeg and ffprobe for the
-// audio and video stages, magick for the picture stage, and docproc-onenote for the onenote stage.
+// audio and video stages, magick for the picture stage, docproc-onenote for the onenote stage, and
+// gs for the document stage.
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
+		"gs":              gsStandin,
 		"ffmpeg":          ffmpegStandin,
 		"ffprobe":         ffprobeStandin,
 		"magick":          pictureStandin,

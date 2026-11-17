@@ -7,214 +7,95 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"sync"
 	"testing"
-	"testing/iotest"
 	"time"
 
 	"github.com/standards-lab/docproc/document"
-	"github.com/standards-lab/docproc/picture"
 )
 
-// pagePNG is the stand-in renderer's page: the PNG signature and a tail that names the page.
-func pagePNG(page int) []byte {
-	return fmt.Appendf([]byte("\x89PNG\r\n\x1a\n"), "page %d", page)
-}
-
-// flightLog tracks how many pages are being rendered at once, and the most there have been.
-type flightLog struct {
-	mu       sync.Mutex
-	now, max int
-}
-
-func (f *flightLog) enter() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.now++
-	f.max = max(f.max, f.now)
-}
-
-func (f *flightLog) leave() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.now--
-}
-
-func (f *flightLog) counts() (now, most int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.now, f.max
-}
-
-// renderer is the stand-in Renderer, a RegionRenderer and a TextExtractor too. Count reads the
-// spooled PDF and returns pages, or countErr. Render calls wait for the page when it is set,
-// failing with its error, then writes pagePNG(page), or fails with fail's error for the page.
-// Each Render is in flight from its call to its return. RenderRegion logs the region and renders
-// as Render does. Text returns texts' text for the page, or textErr's error for it.
-type renderer struct {
-	pages    int
-	countErr error
-	fail     map[int]error
-	wait     func(ctx context.Context, page int) error
-	flight   *flightLog
-	texts    map[int]string
-	textErr  map[int]error
-
-	mu       sync.Mutex
-	spooled  []string
-	pdf      [][]byte
-	renders  []int
-	finished []int
-	dpi      []int
-	regions  []document.Region
-	read     []int
-}
-
-func (r *renderer) Count(ctx context.Context, pdf string) (int, error) {
-	b, err := os.ReadFile(pdf)
-	if err != nil {
-		return 0, err
-	}
-	r.mu.Lock()
-	r.spooled = append(r.spooled, pdf)
-	r.pdf = append(r.pdf, b)
-	r.mu.Unlock()
-	if r.countErr != nil {
-		return 0, r.countErr
-	}
-	return r.pages, nil
-}
-
-func (r *renderer) Render(ctx context.Context, pdf string, page, dpi int, w io.Writer) error {
-	r.flight.enter()
-	defer r.flight.leave()
-	r.mu.Lock()
-	r.renders = append(r.renders, page)
-	r.dpi = append(r.dpi, dpi)
-	r.mu.Unlock()
-	if r.wait != nil {
-		if err := r.wait(ctx, page); err != nil {
-			return err
-		}
-	}
-	defer func() {
-		r.mu.Lock()
-		r.finished = append(r.finished, page)
-		r.mu.Unlock()
-	}()
-	if err := r.fail[page]; err != nil {
-		return err
-	}
-	_, err := w.Write(pagePNG(page))
-	return err
-}
-
-func (r *renderer) RenderRegion(ctx context.Context, pdf string, page, dpi int, region document.Region, w io.Writer) error {
-	r.mu.Lock()
-	r.regions = append(r.regions, region)
-	r.mu.Unlock()
-	return r.Render(ctx, pdf, page, dpi, w)
-}
-
-func (r *renderer) Text(ctx context.Context, pdf string, page int) (string, error) {
-	r.mu.Lock()
-	r.read = append(r.read, page)
-	r.mu.Unlock()
-	if err := r.textErr[page]; err != nil {
-		return "", err
-	}
-	return r.texts[page], nil
-}
-
-// textRead returns the pages Text was asked for, sorted, and the regions RenderRegion was given.
-func (r *renderer) textRead() (pages []int, regions []document.Region) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return slices.Sorted(slices.Values(r.read)), slices.Clone(r.regions)
-}
-
-// plain is a Renderer that is neither a RegionRenderer nor a TextExtractor: embedding the
-// interface hides the stand-in's other methods.
-type plain struct{ document.Renderer }
-
-// rendered returns the pages Render was asked for, in the order asked, and the DPIs.
-func (r *renderer) rendered() (pages, dpi []int) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return slices.Clone(r.renders), slices.Clone(r.dpi)
-}
-
-// finishOrder returns the pages whose Render finished, in the order they finished.
-func (r *renderer) finishOrder() []int {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return slices.Clone(r.finished)
-}
-
-// delays is a renderer's wait of delay(page) for each page, cut short when ctx ends.
-func delays(delay func(page int) time.Duration) func(context.Context, int) error {
-	return func(ctx context.Context, page int) error {
-		select {
-		case <-time.After(delay(page)):
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-}
-
-// fixture is a Preparer over the stand-in renderer, the PDF it reads, and a request for it.
+// fixture is a Preparer over the stand-in gs at 10.08.0, the stand-in, a PDF path, and a request
+// whose pages go to a directory of the test's own.
 type fixture struct {
-	render *renderer
-	flight *flightLog
-	prep   *document.Preparer
-	pdf    []byte
-	req    document.ImagesRequest
+	prep *document.Preparer
+	gs   *standin
+	pdf  string
+	req  document.ImagesRequest
 }
 
-// newFixture builds a Preparer over a stand-in renderer of pages pages, with no corrections
-// stage, and a request for the PDF with its own working directory.
+// newFixture builds a fixture whose stand-in gs counts pages pages, at concurrency 1. The
+// stand-in reads no PDF, so the file is empty.
 func newFixture(t *testing.T, pages int) *fixture {
 	t.Helper()
-	flight := &flightLog{}
-	f := &fixture{
-		render: &renderer{pages: pages, flight: flight},
-		flight: flight,
-		pdf:    []byte("%PDF-1.7 stand-in"),
-		req:    document.ImagesRequest{Dir: t.TempDir()},
+	st := newStandin(t, "gs", "10.08.0")
+	st.set(func(s *settings) { s.Pages = pages })
+	g, err := document.NewGhostscript(document.Config{Ghostscript: st.mustTool(document.GhostscriptSpec())})
+	if err != nil {
+		t.Fatal(err)
 	}
-	f.prep = document.NewPreparer(document.Config{Renderer: f.render})
-	return f
+	pdf := filepath.Join(t.TempDir(), "doc.pdf")
+	if err := os.WriteFile(pdf, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &fixture{
+		prep: document.NewPreparer(document.Config{Renderer: g}),
+		gs:   st, pdf: pdf,
+		req: document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1},
+	}
 }
 
-// withCorrector rebuilds f's Preparer over the stand-in magick's corrections stage, and returns
-// the stand-in.
-func (f *fixture) withCorrector(t *testing.T) *standin {
-	t.Helper()
-	corrector, st := standinCorrector(t)
-	f.prep = document.NewPreparer(document.Config{Renderer: f.render, Corrector: corrector})
-	return st
-}
-
-// images ranges over f's stream to its end and returns what it yielded.
+// images ranges over the fixture's stream to its end, returning every page and error it yields.
 func (f *fixture) images(ctx context.Context) ([]document.PageImage, []error) {
 	var pages []document.PageImage
 	var errs []error
-	for p, err := range f.prep.Images(ctx, bytes.NewReader(f.pdf), f.req) {
+	for p, err := range f.prep.Images(ctx, f.pdf, f.req) {
 		pages = append(pages, p)
 		errs = append(errs, err)
 	}
 	return pages, errs
 }
 
-// zero reports whether p is the zero PageImage, which a stream's own error carries.
-func zero(p document.PageImage) bool { return p.Number == 0 && p.Count == 0 && p.PNG == nil }
+// rendered returns the page and the DPI of every render run the stand-in gs logged, in the order
+// they began.
+func (f *fixture) rendered() (pages, dpi []int) {
+	for _, r := range f.gs.runs() {
+		if !slices.Contains(r.Args, "-sDEVICE=png16m") {
+			continue
+		}
+		for _, a := range r.Args {
+			if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
+				n, _ := strconv.Atoi(v)
+				pages = append(pages, n)
+			}
+			if v, ok := strings.CutPrefix(a, "-r"); ok {
+				n, _ := strconv.Atoi(v)
+				dpi = append(dpi, n)
+			}
+		}
+	}
+	return pages, dpi
+}
+
+// files returns the names of the files in dir, sorted.
+func files(t *testing.T, dir string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	return names
+}
+
+// zero reports whether p is the zero PageImage a stream's own error comes with.
+func zero(p document.PageImage) bool { return p == document.PageImage{} }
 
 // TestNewPreparerNil: a Config with no Renderer is the caller's mistake, and panics naming the
 // field.
@@ -223,534 +104,305 @@ func TestNewPreparerNil(t *testing.T) {
 	wantPanic(t, "document: Config.Renderer is nil", func() { document.NewPreparer(document.Config{}) })
 }
 
-// TestImagesLazy checks that nothing runs until the stream is ranged over: no read of the PDF, no
-// spool, no count, no render.
+// TestImagesLazy checks that nothing runs until the stream is ranged over.
 func TestImagesLazy(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
-	read := false
-	pdf := readFunc(func(p []byte) (int, error) { read = true; return 0, io.EOF })
-	pages := f.prep.Images(t.Context(), pdf, f.req)
-	if read {
-		t.Error("Images read the PDF before the stream was ranged over")
-	}
-	assertEmpty(t, f.req.Dir)
-	if r, _ := f.render.rendered(); len(r) != 0 || len(f.render.spooled) != 0 {
-		t.Errorf("Images counted or rendered before the stream was ranged over")
+	pages := f.prep.Images(t.Context(), f.pdf, f.req)
+	if runs := f.gs.runs(); len(runs) != 0 {
+		t.Errorf("gs ran %q before the stream was ranged over", runs)
 	}
 	for _, err := range pages {
 		if err != nil {
 			t.Error(err)
 		}
 	}
-	if !read {
-		t.Error("ranging over the stream didn't read the PDF")
+	if p, _ := f.rendered(); len(p) != 3 {
+		t.Errorf("ranging over the stream rendered pages %v, want 3", p)
 	}
 }
 
-// readFunc is an io.Reader of a function.
-type readFunc func([]byte) (int, error)
-
-func (r readFunc) Read(p []byte) (int, error) { return r(p) }
-
-// TestImagesOrder checks that pages are yielded in page order, each with its own PNG, when later
-// pages finish first: page 1 is the slowest to render and page 6 the fastest.
-func TestImagesOrder(t *testing.T) {
+// TestImagesPages checks that each page is yielded in page order as a PNG file in the request's
+// directory, page-N.png holding the page gs rendered, with its number, the count, and the
+// default DPI, when later pages finish first: page 1 is the slowest to render.
+func TestImagesPages(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 6)
-	f.req.Concurrency = 6
-	f.render.wait = delays(func(page int) time.Duration { return time.Duration(7-page) * 15 * time.Millisecond })
+	f := newFixture(t, 4)
+	f.gs.set(func(s *settings) { s.Delay = map[int]int{1: 200, 2: 100} })
+	f.req.Concurrency = 4
 	pages, errs := f.images(t.Context())
-	if len(pages) != 6 {
-		t.Fatalf("the stream yielded %d pages, want 6", len(pages))
+	if len(pages) != 4 {
+		t.Fatalf("the stream yielded %d pages, want 4", len(pages))
 	}
 	for i, p := range pages {
-		if errs[i] != nil {
-			t.Errorf("page %d: %v", i+1, errs[i])
+		want := document.PageImage{Number: i + 1, Count: 4, Path: filepath.Join(f.req.Dir, fmt.Sprintf("page-%d.png", i+1)), DPI: 150}
+		if errs[i] != nil || p != want {
+			t.Errorf("yield %d: %+v, %v; want %+v", i+1, p, errs[i], want)
 			continue
 		}
-		if p.Number != i+1 || p.Count != 6 || !bytes.Equal(p.PNG, pagePNG(i+1)) {
-			t.Errorf("yield %d is page %d of %d with %q, want page %d of 6 with %q",
-				i+1, p.Number, p.Count, p.PNG, i+1, pagePNG(i+1))
+		if b, err := os.ReadFile(p.Path); err != nil || !bytes.Equal(b, standinPage) {
+			t.Errorf("page %d's file holds %q, %v; want the stand-in's page", p.Number, b, err)
 		}
 	}
-	// The renders finished out of order, so the order held is the stream's.
-	if got := f.render.finishOrder(); len(got) == 0 || got[0] == 1 {
-		t.Errorf("renders finished in the order %v, want a later page first: the delays didn't reorder the work", got)
+	if _, dpi := f.rendered(); !slices.Equal(dpi, []int{150, 150, 150, 150}) {
+		t.Errorf("rendered at %v dpi, want 150 for each page", dpi)
 	}
 }
 
-// TestImagesConcurrency checks the request's concurrency bounds the pages being prepared, and
-// that zero means 1.
-func TestImagesConcurrency(t *testing.T) {
-	for _, tc := range []struct{ concurrency, want int }{{0, 1}, {1, 1}, {3, 3}} {
-		t.Run(fmt.Sprint(tc.concurrency), func(t *testing.T) {
-			f := newFixture(t, 10)
-			f.req.Concurrency = tc.concurrency
-			f.render.wait = delays(func(int) time.Duration { return 10 * time.Millisecond })
-			pages, errs := f.images(t.Context())
-			if len(pages) != 10 || errors.Join(errs...) != nil {
-				t.Fatalf("the stream yielded %d pages, errors %v, want 10 and none", len(pages), errors.Join(errs...))
-			}
-			if _, most := f.flight.counts(); most != tc.want {
-				t.Errorf("%d pages were in flight at most, want %d", most, tc.want)
-			}
-		})
-	}
-}
-
-// TestImagesDPI checks the request's DPI reaches the renderer, and zero means 150.
+// TestImagesDPI checks a request's DPI reaches every render and its PageImage.
 func TestImagesDPI(t *testing.T) {
 	t.Parallel()
-	for dpi, want := range map[int]int{0: 150, 300: 300} {
-		f := newFixture(t, 2)
-		f.req.DPI = dpi
-		f.images(t.Context())
-		if _, got := f.render.rendered(); !slices.Equal(got, []int{want, want}) {
-			t.Errorf("DPI %d rendered at %v, want %d for each page", dpi, got, want)
-		}
+	f := newFixture(t, 2)
+	f.req.DPI = 300
+	pages, _ := f.images(t.Context())
+	if _, dpi := f.rendered(); !slices.Equal(dpi, []int{300, 300}) || pages[0].DPI != 300 {
+		t.Errorf("rendered at %v dpi, page 1's DPI %d; want 300", dpi, pages[0].DPI)
 	}
 }
 
-// TestImagesFailedPage checks that a page that fails in rendering yields its number, the count,
-// no image, and its error, naming the page, and the stream carries on.
-func TestImagesFailedPage(t *testing.T) {
+// TestImagesSlots checks a page's slot is released only when its outcome is taken: at
+// concurrency 2, while the consumer holds page 1, pages 2 and 3 render, page 2 waiting untaken in
+// its slot, and page 4 doesn't start until page 2 is taken.
+func TestImagesSlots(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 5)
+	f := newFixture(t, 6)
 	f.req.Concurrency = 2
-	renderErr := errors.New("gs: page is damaged")
-	f.render.fail = map[int]error{2: renderErr, 4: renderErr}
-	pages, errs := f.images(t.Context())
-	if len(pages) != 5 {
-		t.Fatalf("the stream yielded %d pages, want 5", len(pages))
-	}
-	for i, p := range pages {
-		if p.Number != i+1 || p.Count != 5 {
-			t.Errorf("yield %d is page %d of %d, want page %d of 5", i+1, p.Number, p.Count, i+1)
+	for p, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+		if err != nil {
+			t.Fatal(err)
 		}
-		if p.Number != 2 && p.Number != 4 {
-			if errs[i] != nil || !bytes.Equal(p.PNG, pagePNG(p.Number)) {
-				t.Errorf("page %d: %v, %q, want its image", p.Number, errs[i], p.PNG)
-			}
+		if p.Number != 1 {
 			continue
 		}
-		if !errors.Is(errs[i], renderErr) || !strings.Contains(errs[i].Error(), fmt.Sprintf("page %d of 5: render", p.Number)) {
-			t.Errorf("page %d: %v, want an error naming the page and wrapping %v", p.Number, errs[i], renderErr)
+		time.Sleep(300 * time.Millisecond)
+		if rendered, _ := f.rendered(); slices.Max(rendered) > 3 {
+			t.Errorf("while page 1 was held, pages %v rendered, want none past 3", rendered)
 		}
-		if p.PNG != nil {
-			t.Errorf("page %d failed and has an image", p.Number)
-		}
+	}
+	if rendered, _ := f.rendered(); len(rendered) != 6 {
+		t.Errorf("rendered pages %v, want 6", rendered)
 	}
 }
 
-// TestImagesCorrectFails checks that a page whose corrections fail yields its number and count
-// with an error naming the page, and the stream carries on to the next page.
-func TestImagesCorrectFails(t *testing.T) {
+// TestImagesFailedPage checks a page that fails to render yields its number and count with an
+// error naming the page and wrapping gs's, no file of it left, and the stream carries on.
+func TestImagesFailedPage(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
-	st := f.withCorrector(t)
-	st.set(func(s *settings) { s.Fail = "magick: no decode delegate" })
-	f.req.Corrections = []picture.Correction{picture.Deskew}
+	f.gs.set(func(s *settings) { s.FailPage = 2 })
+	f.req.Concurrency = 3
 	pages, errs := f.images(t.Context())
-	if len(pages) != 3 {
-		t.Fatalf("the stream yielded %d pages, want 3", len(pages))
+	if len(pages) != 3 || errs[0] != nil || errs[2] != nil {
+		t.Fatalf("the stream yielded %+v, %v; want 3 pages, page 2 alone failing", pages, errs)
 	}
-	for i, p := range pages {
-		if p.Number != i+1 || p.Count != 3 || p.PNG != nil ||
-			errs[i] == nil || !strings.Contains(errs[i].Error(), fmt.Sprintf("page %d of 3: correct", i+1)) {
-			t.Errorf("yield %d is page %d of %d, %v, want page %d's correction error", i+1, p.Number, p.Count, errs[i], i+1)
-		}
+	if p := pages[1]; p != (document.PageImage{Number: 2, Count: 3}) || !strings.Contains(errs[1].Error(), "page 2 of 3: render") ||
+		!strings.Contains(errs[1].Error(), "told to fail") {
+		t.Errorf("page 2: %+v, %v", p, errs[1])
+	}
+	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-3.png"}) {
+		t.Errorf("the directory holds %q, want pages 1 and 3", got)
 	}
 }
 
-// TestImagesCountFails checks that a failed count yields one error and ends the stream, having
-// rendered nothing and removed the spooled PDF.
+// TestImagesExistingFile checks a page whose file is already in the directory fails, the file
+// left as it was.
+func TestImagesExistingFile(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 2)
+	existing := filepath.Join(f.req.Dir, "page-2.png")
+	if err := os.WriteFile(existing, []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, errs := f.images(t.Context())
+	if errs[0] != nil || !errors.Is(errs[1], os.ErrExist) {
+		t.Errorf("errors %v, want page 2 alone failing, its file existing", errs)
+	}
+	if b, _ := os.ReadFile(existing); string(b) != "mine" {
+		t.Errorf("page-2.png holds %q, want the caller's", b)
+	}
+}
+
+// TestImagesCountFails checks a failed count is the stream's one error, with a zero PageImage.
 func TestImagesCountFails(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
-	f.render.countErr = errors.New("gs: not a PDF")
+	f.gs.set(func(s *settings) { s.Fail = "Error: /invalidfileaccess" })
 	pages, errs := f.images(t.Context())
-	if len(pages) != 1 || !zero(pages[0]) || !errors.Is(errs[0], f.render.countErr) {
-		t.Errorf("the stream yielded %v, %v, want one zero page with the count's error", pages, errs)
+	if len(pages) != 1 || !zero(pages[0]) || errs[0] == nil {
+		t.Errorf("the stream yielded %+v, %v; want one error", pages, errs)
 	}
-	if r, _ := f.render.rendered(); len(r) != 0 {
-		t.Errorf("rendered %v after a failed count, want nothing", r)
-	}
-	assertEmpty(t, f.req.Dir)
 }
 
-// TestImagesBreak checks that breaking out of the range cancels the pages in flight and returns
-// once their work has ended, with the spooled PDF removed.
+// TestImagesBreak checks breaking out of the stream ends the work in flight, and leaves only the
+// pages yielded in the directory: the pages rendered ahead and never taken are removed.
 func TestImagesBreak(t *testing.T) {
-	f := newFixture(t, 8)
-	f.req.Concurrency = 3
-	f.render.wait = func(ctx context.Context, page int) error {
-		if page == 1 {
-			return nil
-		}
-		<-ctx.Done() // The later pages wait for the break to cancel them.
-		time.Sleep(20 * time.Millisecond)
-		return ctx.Err()
-	}
-	for p, err := range f.prep.Images(t.Context(), bytes.NewReader(f.pdf), f.req) {
+	t.Parallel()
+	f := newFixture(t, 6)
+	f.gs.set(func(s *settings) { s.Delay = map[int]int{1: 200} })
+	f.req.Concurrency = 4
+	for p, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
 		if err != nil || p.Number != 1 {
-			t.Fatalf("first yield is page %d, %v, want page 1", p.Number, err)
+			t.Fatalf("first yield %+v, %v", p, err)
 		}
 		break
 	}
-	if now, _ := f.flight.counts(); now != 0 {
-		t.Errorf("%d pages still in flight after the range returned, want none", now)
+	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png"}) {
+		t.Errorf("after a break at page 1 the directory holds %q, want page 1's alone", got)
 	}
-	if r, _ := f.render.rendered(); len(r) > 4 {
-		t.Errorf("rendered pages %v after the break, want at most the 4 started before it", r)
-	}
-	assertEmpty(t, f.req.Dir)
 }
 
-// TestImagesContextEnds checks that a ctx that ends stops the stream with ctx's error, yielded
-// once, whether it ended before the stream began or while pages were in flight.
+// TestImagesContextEnds checks an ended context is the stream's one error, once, with a zero
+// PageImage, the pages not yet taken removed; and that a context ended before the range runs
+// nothing.
 func TestImagesContextEnds(t *testing.T) {
-	t.Run("before", func(t *testing.T) {
-		f := newFixture(t, 3)
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		pages, errs := f.images(ctx)
-		if len(pages) != 1 || !errors.Is(errs[0], context.Canceled) {
-			t.Errorf("the stream yielded %v, %v, want context.Canceled once", pages, errs)
-		}
-		if len(f.render.spooled) != 0 {
-			t.Error("counted pages with ctx already ended")
-		}
-		assertEmpty(t, f.req.Dir)
-	})
-	t.Run("during", func(t *testing.T) {
-		f := newFixture(t, 6)
-		f.req.Concurrency = 2
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-		f.render.wait = func(ctx context.Context, page int) error {
-			if page == 1 {
-				return nil
-			}
-			<-ctx.Done()
-			return ctx.Err()
-		}
-		var pages []document.PageImage
-		var errs []error
-		for p, err := range f.prep.Images(ctx, bytes.NewReader(f.pdf), f.req) {
-			pages = append(pages, p)
-			errs = append(errs, err)
+	t.Parallel()
+	f := newFixture(t, 6)
+	f.gs.set(func(s *settings) { s.Delay = map[int]int{2: 5000} })
+	f.req.Concurrency = 4
+	ctx, cancel := context.WithCancel(t.Context())
+	var got []error
+	for p, err := range f.prep.Images(ctx, f.pdf, f.req) {
+		got = append(got, err)
+		if p.Number == 1 {
 			cancel()
 		}
-		if len(pages) != 2 || errs[0] != nil || !zero(pages[1]) || !errors.Is(errs[1], context.Canceled) {
-			t.Errorf("the stream yielded %v, %v, want page 1, then context.Canceled once with a zero page", pages, errs)
+		if err != nil && !zero(p) {
+			t.Errorf("an error came with %+v", p)
 		}
-		if now, _ := f.flight.counts(); now != 0 {
-			t.Errorf("%d pages still in flight after the stream ended, want none", now)
-		}
-		assertEmpty(t, f.req.Dir)
-	})
-}
+	}
+	if len(got) != 2 || got[0] != nil || !errors.Is(got[1], context.Canceled) {
+		t.Errorf("the stream yielded %v, want page 1 and then context.Canceled", got)
+	}
+	if names := files(t, f.req.Dir); !slices.Equal(names, []string{"page-1.png"}) {
+		t.Errorf("the directory holds %q, want page 1's alone", names)
+	}
 
-// TestImagesCorrections checks a request's corrections run on each page's image, one magick run a
-// page, and the corrected image is the one yielded.
-func TestImagesCorrections(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 2)
-	st := f.withCorrector(t)
-	f.req.Corrections = []picture.Correction{picture.Grayscale, picture.Deskew}
-	pages, errs := f.images(t.Context())
-	if err := errors.Join(errs...); err != nil || len(pages) != 2 {
-		t.Fatalf("the stream yielded %d pages, %v, want 2 and no error", len(pages), err)
-	}
-	want := []string{"png:-", "-deskew", "40%", "-colorspace", "Gray", "png:-"}
-	got := st.args()
-	if len(got) != 2 || !slices.Equal(got[0], want) || !slices.Equal(got[1], want) {
-		t.Errorf("magick ran %q, want two runs of %q", got, want)
-	}
-	// The stand-in magick copies its image through, so each page is yielded as rendered.
-	for _, p := range pages {
-		if !bytes.Equal(p.PNG, pagePNG(p.Number)) {
-			t.Errorf("page %d is %q, want magick's output, %q", p.Number, p.PNG, pagePNG(p.Number))
-		}
+	f = newFixture(t, 3)
+	ended, cancel := context.WithCancel(t.Context())
+	cancel()
+	pages, errs := f.images(ended)
+	if len(pages) != 1 || !errors.Is(errs[0], context.Canceled) || len(f.gs.runs()) != 0 {
+		t.Errorf("an ended context: %+v, %v, runs %q", pages, errs, f.gs.runs())
 	}
 }
 
-// TestImagesNoCorrectionsRunsNothing checks a request that names no corrections runs no magick,
-// even on a Preparer with a corrections stage.
-func TestImagesNoCorrectionsRunsNothing(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 2)
-	st := f.withCorrector(t)
-	if _, errs := f.images(t.Context()); errors.Join(errs...) != nil {
-		t.Fatal(errors.Join(errs...))
-	}
-	if got := st.args(); len(got) != 0 {
-		t.Errorf("magick ran %q for a request with no corrections, want nothing", got)
-	}
-}
-
-// TestImagesRefusals checks the requests Images refuses before anything runs: the refusal is the
-// stream's one error, and nothing is read, spooled, or rendered.
+// TestImagesRefusals checks a request Images can't run is refused, wrapping ErrRequest, before gs
+// runs: no directory, a negative DPI, a concurrency below 1, which has no default, and a negative
+// MaxPixels.
 func TestImagesRefusals(t *testing.T) {
 	t.Parallel()
-	cases := map[string]func(*document.ImagesRequest){
-		"no directory":       func(r *document.ImagesRequest) { r.Dir = "" },
-		"negative dpi":       func(r *document.ImagesRequest) { r.DPI = -1 },
-		"negative workers":   func(r *document.ImagesRequest) { r.Concurrency = -2 },
-		"no corrector":       func(r *document.ImagesRequest) { r.Corrections = []picture.Correction{picture.Deskew} },
-		"unknown correction": func(r *document.ImagesRequest) { r.Corrections = []picture.Correction{0} },
-	}
-	for name, change := range cases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			f := newFixture(t, 3)
-			dir := f.req.Dir
-			change(&f.req)
-			read := false
-			pdf := readFunc(func(p []byte) (int, error) { read = true; return 0, io.EOF })
-			var errs []error
-			for p, err := range f.prep.Images(t.Context(), pdf, f.req) {
-				if !zero(p) {
-					t.Errorf("the refused stream yielded page %+v", p)
-				}
-				errs = append(errs, err)
-			}
-			if len(errs) != 1 || !errors.Is(errs[0], document.ErrRequest) {
-				t.Errorf("the stream yielded %v, want one refusal matching ErrRequest", errs)
-			}
-			if read || len(f.render.spooled) != 0 {
-				t.Error("the refused request read or counted")
-			}
-			assertEmpty(t, dir)
-		})
-	}
-}
-
-// drain ranges over f's stream for pdf to its end, returning its errors joined.
-func (f *fixture) drain(t *testing.T, pdf io.Reader) error {
-	var errs []error
-	for _, err := range f.prep.Images(t.Context(), pdf, f.req) {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
-}
-
-// TestSpool checks that the PDF is spooled into the caller's directory with the reader's content,
-// a file of each call's own, and removed when the call ends.
-func TestSpool(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 2)
-	pdf, err := os.ReadFile(filepath.Join("testdata", "clean.pdf"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if err := f.drain(t, bytes.NewReader(pdf)); err != nil {
-			t.Fatal(err)
+	for name, change := range map[string]func(*document.ImagesRequest){
+		"no directory":         func(r *document.ImagesRequest) { r.Dir = "" },
+		"negative dpi":         func(r *document.ImagesRequest) { r.DPI = -1 },
+		"zero concurrency":     func(r *document.ImagesRequest) { r.Concurrency = 0 },
+		"negative concurrency": func(r *document.ImagesRequest) { r.Concurrency = -1 },
+		"negative max pixels":  func(r *document.ImagesRequest) { r.MaxPixels = -1 },
+	} {
+		f := newFixture(t, 3)
+		change(&f.req)
+		pages, errs := f.images(t.Context())
+		if len(pages) != 1 || !zero(pages[0]) || !errors.Is(errs[0], document.ErrRequest) {
+			t.Errorf("%s: %+v, %v; want one ErrRequest", name, pages, errs)
+		}
+		if runs := f.gs.runs(); len(runs) != 0 {
+			t.Errorf("%s: gs ran %q", name, runs)
 		}
 	}
-	if len(f.render.spooled) != 2 || f.render.spooled[0] == f.render.spooled[1] {
-		t.Errorf("spooled to %v, want two files", f.render.spooled)
-	}
-	for i, path := range f.render.spooled {
-		if got := filepath.Dir(path); got != f.req.Dir {
-			t.Errorf("spooled into %s, want the caller's %s", got, f.req.Dir)
-		}
-		if !bytes.Equal(f.render.pdf[i], pdf) {
-			t.Errorf("spooled %d bytes, want the reader's %d, equal", len(f.render.pdf[i]), len(pdf))
-		}
-	}
-	assertEmpty(t, f.req.Dir)
 }
 
-// TestSpoolFailedRead checks that a reader that fails part way is the stream's error, and leaves
-// nothing in the caller's directory, nothing counted.
-func TestSpoolFailedRead(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 2)
-	readErr := errors.New("connection reset")
-	pdf := io.MultiReader(bytes.NewReader([]byte("%PDF-1.7")), iotest.ErrReader(readErr))
-	if err := f.drain(t, pdf); !errors.Is(err, readErr) {
-		t.Errorf("returned %v, want the reader's %v", err, readErr)
-	}
-	if len(f.render.spooled) != 0 {
-		t.Error("counted pages after a failed read")
-	}
-	assertEmpty(t, f.req.Dir)
-}
-
-// TestSpoolNoDirectory checks that the stream needs the caller's directory: an empty one is
-// refused, not taken as the system's temporary directory, and a missing one fails.
-func TestSpoolNoDirectory(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 2)
-	f.req.Dir = ""
-	if err := f.drain(t, bytes.NewReader(f.pdf)); err == nil {
-		t.Error("ran with no directory, want an error")
-	}
-	f.req.Dir = filepath.Join(t.TempDir(), "missing")
-	if err := f.drain(t, bytes.NewReader(f.pdf)); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("ran in a missing directory: %v, want fs.ErrNotExist", err)
-	}
-}
-
-// assertEmpty fails the test when dir holds anything.
-func assertEmpty(t *testing.T, dir string) {
-	t.Helper()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		t.Errorf("%s left behind in the caller's directory", e.Name())
-	}
-}
-
-// TestImagesText checks a request with Text reads every page's text layer into its PageImage,
-// blank or not, and renders every page as usual.
+// TestImagesText checks a request with Text reads every page's text layer, before rendering it,
+// into its PageImage, and renders every page as usual.
 func TestImagesText(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 3)
-	f.req.Concurrency = 2
+	f := newFixture(t, 2)
 	f.req.Text = true
-	f.render.texts = map[int]string{1: "page one\n", 3: " \n\f"}
 	pages, errs := f.images(t.Context())
-	if err := errors.Join(errs...); err != nil || len(pages) != 3 {
-		t.Fatalf("the stream yielded %d pages, %v, want 3 and no error", len(pages), err)
-	}
-	for _, p := range pages {
-		if p.Text != f.render.texts[p.Number] || !bytes.Equal(p.PNG, pagePNG(p.Number)) {
-			t.Errorf("page %d is %q with %q, want %q with its image", p.Number, p.Text, p.PNG, f.render.texts[p.Number])
+	for i, p := range pages {
+		if errs[i] != nil || p.Text != standinText || p.Path == "" {
+			t.Errorf("page %d: %+v, %v; want its text and its file", i+1, p, errs[i])
 		}
 	}
-	if read, _ := f.render.textRead(); !slices.Equal(read, []int{1, 2, 3}) {
-		t.Errorf("read the text of pages %v, want 1 to 3", read)
+	var devices []string
+	for _, r := range f.gs.runs() {
+		devices = append(devices, r.Args[slices.IndexFunc(r.Args, func(a string) bool {
+			return strings.HasPrefix(a, "-sDEVICE=") || a == "-dNODISPLAY"
+		})])
 	}
-	if r, _ := f.render.rendered(); len(r) != 3 {
-		t.Errorf("rendered pages %v, want all 3", r)
+	// One page at a time, its text before its render.
+	if want := []string{"-dNODISPLAY", "-sDEVICE=txtwrite", "-sDEVICE=png16m", "-sDEVICE=txtwrite", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
+		t.Errorf("gs ran %q, want %q", devices, want)
 	}
 }
 
-// TestImagesSkipText checks a request with SkipText yields a page with a text layer with its text
-// and no image, unrendered and uncorrected, and renders and corrects a page without one.
-func TestImagesSkipText(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 4)
-	st := f.withCorrector(t)
-	f.req.Concurrency = 2
-	f.req.SkipText = true
-	f.req.Corrections = []picture.Correction{picture.Deskew}
-	f.render.texts = map[int]string{1: "The Harbor Survey\n", 2: "  \n\n", 4: "Page 4"}
-	pages, errs := f.images(t.Context())
-	if err := errors.Join(errs...); err != nil || len(pages) != 4 {
-		t.Fatalf("the stream yielded %d pages, %v, want 4 and no error", len(pages), err)
-	}
-	for _, p := range pages {
-		text := f.render.texts[p.Number]
-		if p.Text != text {
-			t.Errorf("page %d's text is %q, want %q", p.Number, p.Text, text)
-		}
-		if document.HasText(text) && p.PNG != nil {
-			t.Errorf("page %d has a text layer and an image %q, want none", p.Number, p.PNG)
-		}
-		if !document.HasText(text) && !bytes.Equal(p.PNG, pagePNG(p.Number)) {
-			t.Errorf("page %d has no text layer and image %q, want its corrected image", p.Number, p.PNG)
-		}
-	}
-	r, _ := f.render.rendered()
-	if slices.Sort(r); !slices.Equal(r, []int{2, 3}) {
-		t.Errorf("rendered pages %v, want those without a text layer, 2 and 3", r)
-	}
-	if got := len(st.args()); got != 2 {
-		t.Errorf("magick ran %d times, want once for each of the 2 rendered pages", got)
-	}
-}
-
-// TestImagesTextFails checks that a page whose text fails yields its number and count with an
-// error naming the page, unrendered, and the stream carries on.
+// TestImagesTextFails checks a page whose text fails to read fails, unrendered, and the stream
+// carries on.
 func TestImagesTextFails(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 3)
+	f := newFixture(t, 2)
 	f.req.Text = true
-	textErr := errors.New("gs: /undefined in --runpdf--")
-	f.render.textErr = map[int]error{2: textErr}
-	pages, errs := f.images(t.Context())
-	if len(pages) != 3 {
-		t.Fatalf("the stream yielded %d pages, want 3", len(pages))
-	}
-	if p := pages[1]; p.Number != 2 || p.Count != 3 || p.PNG != nil || p.Text != "" ||
-		!errors.Is(errs[1], textErr) || !strings.Contains(errs[1].Error(), "page 2 of 3: text") {
-		t.Errorf("page 2 is %+v, %v, want its text's error naming the page", p, errs[1])
-	}
-	for _, i := range []int{0, 2} {
-		if errs[i] != nil || pages[i].PNG == nil {
-			t.Errorf("page %d: %v, want its image", i+1, errs[i])
+	// The stand-in fails every run once set, so it is set once the count has run.
+	first := true
+	for p, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+		if first {
+			f.gs.set(func(s *settings) { s.Fail = "Error: /undefined" })
+			first = false
+			if err != nil {
+				t.Errorf("page 1: %v", err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), "page 2 of 2: text") || p.Path != "" {
+			t.Errorf("page 2: %+v, %v; want its text failing", p, err)
 		}
 	}
-	if r, _ := f.render.rendered(); slices.Contains(r, 2) {
-		t.Errorf("rendered page 2 after its text failed")
-	}
 }
 
-// TestImagesRegion checks a request with a Region renders that region of every page through
-// RenderRegion, and that the stream reads its own copy of the region.
-func TestImagesRegion(t *testing.T) {
+// TestImagesMaxPixels checks a request's MaxPixels: the pages' sizes are read in the one gs run
+// that counts them, and a page past it at the request's DPI renders at the largest DPI that
+// fits, a letter page's 1275x1650 at 150 dpi, 2103750 pixels, at 149 dpi with one pixel fewer,
+// rounded as gs rounds its device's sides; a page within it at the request's DPI, a rotated page
+// read as its rotated size; and a page past it at 1 dpi fails.
+func TestImagesMaxPixels(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 3)
-	region := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
-	f.req.Region = &region
-	// The caller changes its region as page 1 renders, one page at a time, so pages 2 and 3
-	// would render the change if the stream read the caller's region.
-	f.render.wait = func(ctx context.Context, page int) error {
-		region.Top = 0.5
-		return nil
-	}
+	f := newFixture(t, 0)
+	f.gs.set(func(s *settings) { s.Sizes = []string{"612 792", "612.0 396.0", "792 612", "1e9 1e9"} })
+	f.req.MaxPixels = 1275*1650 - 1
 	pages, errs := f.images(t.Context())
-	if err := errors.Join(errs...); err != nil || len(pages) != 3 {
-		t.Fatalf("the stream yielded %d pages, %v, want 3 and no error", len(pages), err)
+	if len(pages) != 4 {
+		t.Fatalf("the stream yielded %+v, %v; want 4 pages", pages, errs)
 	}
-	want := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
-	_, regions := f.render.textRead()
-	if len(regions) != 3 || regions[0] != want || regions[1] != want || regions[2] != want {
-		t.Errorf("RenderRegion was given %v, want %+v for each of 3 pages", regions, want)
+	for i, want := range []int{149, 150, 149} {
+		if errs[i] != nil || pages[i].DPI != want {
+			t.Errorf("page %d: %+v, %v; want %d dpi", i+1, pages[i], errs[i], want)
+		}
 	}
-}
+	if errs[3] == nil || pages[3].Path != "" || !strings.Contains(errs[3].Error(), "page 4 of 4") {
+		t.Errorf("page 4, past MaxPixels at 1 dpi: %+v, %v; want it failed", pages[3], errs[3])
+	}
+	if _, dpi := f.rendered(); !slices.Equal(dpi, []int{149, 150, 149}) {
+		t.Errorf("rendered at %v dpi, want 149, 150, and 149", dpi)
+	}
+	runs := f.gs.runs()
+	if script := runs[0].Args[len(runs[0].Args)-1]; !slices.Contains(runs[0].Args, "-dNODISPLAY") ||
+		!strings.Contains(script, "pdfshowpage_setpage") || !strings.Contains(script, "pdfpagecount") {
+		t.Errorf("the first run %q, want the count and sizes run", runs[0].Args)
+	}
+	if n := len(slices.DeleteFunc(runs, func(r standinRun) bool { return !slices.Contains(r.Args, "-dNODISPLAY") })); n != 1 {
+		t.Errorf("%d count runs, want the one sizes run", n)
+	}
 
-// TestImagesRefusesCapabilities checks the requests a Preparer refuses for what its Renderer
-// can't do, before anything runs: a Region from a renderer that is no RegionRenderer, a region out
-// of range, and Text or SkipText from one that is no TextExtractor.
-func TestImagesRefusesCapabilities(t *testing.T) {
-	t.Parallel()
-	bad := document.Region{Top: 0.5, Bottom: 0.4, Left: 0, Right: 1}
-	footer := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
-	cases := []struct {
-		name   string
-		plain  bool
-		change func(*document.ImagesRequest)
-		want   error
-	}{
-		{"region out of range", false, func(r *document.ImagesRequest) { r.Region = &bad }, document.ErrRequest},
-		{"region, plain renderer", true, func(r *document.ImagesRequest) { r.Region = &footer }, document.ErrRequest},
-		{"text, plain renderer", true, func(r *document.ImagesRequest) { r.Text = true }, document.ErrRequest},
-		{"skip text, plain renderer", true, func(r *document.ImagesRequest) { r.SkipText = true }, document.ErrRequest},
+	// Exactly the pixels of 150 dpi is within the bound.
+	f = newFixture(t, 1)
+	f.req.MaxPixels = 1275 * 1650
+	if pages, errs := f.images(t.Context()); errs[0] != nil || pages[0].DPI != 150 {
+		t.Errorf("MaxPixels exactly a letter page's at 150 dpi: %+v, %v", pages, errs)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			f := newFixture(t, 3)
-			if tc.plain {
-				f.prep = document.NewPreparer(document.Config{Renderer: plain{f.render}})
-			}
-			tc.change(&f.req)
-			pages, errs := f.images(t.Context())
-			if len(errs) != 1 || errs[0] == nil || !zero(pages[0]) || !errors.Is(errs[0], tc.want) {
-				t.Errorf("the stream yielded %v, %v, want one refusal", pages, errs)
-			}
-			if len(f.render.spooled) != 0 {
-				t.Error("the refused request counted")
-			}
-			assertEmpty(t, f.req.Dir)
-		})
+
+	// Output the sizes run can't read fails the count.
+	f = newFixture(t, 0)
+	f.gs.set(func(s *settings) { s.Sizes = []string{"612"} })
+	f.req.MaxPixels = 1
+	if pages, errs := f.images(t.Context()); len(pages) != 1 || !zero(pages[0]) || errs[0] == nil {
+		t.Errorf("an unreadable size: %+v, %v; want the stream's one error", pages, errs)
 	}
 }

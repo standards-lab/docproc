@@ -24,14 +24,3 @@ func truthOf(t *testing.T, set string) []string {
 		truth = append(truth, string(b))
 	}
 }
-
-// openSet opens a set's PDF, closed when t ends.
-func openSet(t *testing.T, set string) *os.File {
-	t.Helper()
-	f, err := os.Open(filepath.Join("testdata", set+".pdf"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = f.Close() })
-	return f
-}

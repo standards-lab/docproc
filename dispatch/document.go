@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"io"
 	"iter"
-	"os"
-	"path/filepath"
 	"strconv"
 
 	"github.com/standards-lab/docproc/document"
@@ -35,13 +33,13 @@ type PDFDetach interface {
 type DocumentConfig struct {
 	// Preparer prepares the pages; it is required.
 	Preparer *document.Preparer
-	// Version names the tools behind the stage, its renderer's, its corrections stage's, and
-	// qpdf's and pdfdetach's when given, as [Versions] gives them; it is required.
+	// Version names the tools behind the stage, its renderer's, and qpdf's and pdfdetach's when
+	// given, as [Versions] gives them; it is required.
 	Version string
-	// Request is the request every PDF's pages are prepared under: its DPI, corrections,
-	// concurrency, text, and region. Its Dir is ignored: a part's pages are prepared in the
-	// part's own directory. Every field but Concurrency, which changes no page, is part of the
-	// stage's identity.
+	// Request is the request every PDF's pages are prepared under: its DPI, concurrency, text,
+	// and most pixels. Its Concurrency is at least 1. Its Dir is ignored: a part's pages are
+	// prepared in the part's own directory. Every field but Concurrency, which changes no page,
+	// is part of the stage's identity.
 	Request document.ImagesRequest
 	// QPDF, when not nil, checks each PDF for a password before it is rendered and reads its
 	// AcroForm; nil renders every PDF, as the stage did before it had qpdf. Whether it is given
@@ -57,11 +55,12 @@ type DocumentConfig struct {
 }
 
 // DocumentStage prepares a PDF, route.Document's parts, through document's Preparer: each page's
-// text layer, when the request reads it, as a [TextOutput], and its image as an [ImageOutput], a
-// PNG in the part's directory, each named "page N" with the page's number and the PDF's page
-// count in its Meta. A page whose text layer holds no text has no text output, and a page a
-// SkipText request didn't render no image. A page that fails doesn't stop the others: the stage
-// ends with an error naming every page that failed, once the rest are prepared. An encrypted PDF
+// text layer, when the request reads it, as a [TextOutput], and its image as an [ImageOutput], the
+// PNG file the Preparer writes in the part's directory, each named "page N" with the page's number
+// and the PDF's page count in its Meta, and an image the DPI it was rendered at, which a page past
+// the request's MaxPixels has lowered. A page whose text layer holds no text has no text output. A
+// page that fails doesn't stop the others: the stage ends with an error naming every page that
+// failed, once the rest are prepared. An encrypted PDF
 // the renderer can't read is [Encrypted] by its flags, as the dispatcher reports any stage's
 // failure on content flagged /Encrypt.
 //
@@ -97,20 +96,20 @@ type DocumentStage struct {
 }
 
 // NewDocumentStage builds a DocumentStage over cfg, panicking naming Preparer when it is nil, the
-// caller's mistake, and refusing one with no Version, and inspection options inspect refuses.
+// caller's mistake, and refusing one with no Version, a request whose Concurrency is below 1, and
+// inspection options inspect refuses.
 func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 	if cfg.Preparer == nil {
 		panic("dispatch: DocumentConfig.Preparer is nil")
+	}
+	if cfg.Request.Concurrency < 1 {
+		return nil, fmt.Errorf("dispatch: document stage: concurrency %d is below 1", cfg.Request.Concurrency)
 	}
 	if err := cfg.Inspect.Validate(); err != nil {
 		return nil, fmt.Errorf("dispatch: document stage: %w", err)
 	}
 	bomb := cfg.Inspect.Bomb()
 	req := cfg.Request
-	corrections := make([]string, len(req.Corrections))
-	for i, c := range req.Corrections {
-		corrections[i] = c.String()
-	}
 	// The thresholds weigh only what pdfdetach saves, so they are hashed only with it; with
 	// neither tool, the configuration hashes as it did before either was given.
 	type attachments struct {
@@ -122,14 +121,12 @@ func NewDocumentStage(cfg DocumentConfig) (*DocumentStage, error) {
 		detach = &attachments{bomb.Ratio, bomb.Size}
 	}
 	id, err := adapterIdentity("document", cfg.Version, struct {
-		DPI         int              `json:"dpi"`
-		Corrections []string         `json:"corrections"`
-		Text        bool             `json:"text"`
-		SkipText    bool             `json:"skip_text"`
-		Region      *document.Region `json:"region"`
-		QPDF        bool             `json:"qpdf,omitzero"`
-		Attachments *attachments     `json:"attachments,omitzero"`
-	}{cmp.Or(req.DPI, 150), corrections, req.Text, req.SkipText, req.Region, cfg.QPDF != nil, detach})
+		DPI         int          `json:"dpi"`
+		Text        bool         `json:"text"`
+		MaxPixels   int64        `json:"max_pixels,omitzero"`
+		QPDF        bool         `json:"qpdf,omitzero"`
+		Attachments *attachments `json:"attachments,omitzero"`
+	}{cmp.Or(req.DPI, document.DefaultDPI), req.Text, req.MaxPixels, cfg.QPDF != nil, detach})
 	if err != nil {
 		return nil, err
 	}
@@ -277,20 +274,13 @@ func (s *DocumentStage) attachment(ctx context.Context, p Part, a document.Attac
 // pages prepares the PDF p's pages into dir and yields each one's outputs, ending with an error
 // naming every page that failed and each of failed, the stage's earlier failures, when any.
 func (s *DocumentStage) pages(ctx context.Context, p Part, dir string, failed []error, yield func(Item, error) bool) {
-	f, err := os.Open(p.Path)
-	if err != nil {
-		yield(Item{}, fmt.Errorf("document stage: %w", err))
-		return
-	}
-	defer func() { _ = f.Close() }()
 	req := s.request
 	req.Dir = dir
-	reads := req.Text || req.SkipText
 	var pages []error
 	count := 0
-	for page, err := range s.preparer.Images(ctx, f, req) {
+	for page, err := range s.preparer.Images(ctx, p.Path, req) {
 		if err != nil && page.Number == 0 {
-			// The request, the spool, or the count failed, or ctx ended: no page follows.
+			// The request or the count failed, or ctx ended: no page follows.
 			yield(Item{}, errors.Join(append([]error{err}, failed...)...))
 			return
 		}
@@ -300,21 +290,15 @@ func (s *DocumentStage) pages(ctx context.Context, p Part, dir string, failed []
 			continue
 		}
 		name := "page " + strconv.Itoa(page.Number)
-		if reads && document.HasText(page.Text) {
+		if req.Text && document.HasText(page.Text) {
 			o := Output{Kind: TextOutput, Name: name, MediaType: "text/plain", Value: []byte(page.Text), Meta: pageMeta(page)}
 			if !yield(OutputItem(o), nil) {
 				return
 			}
 		}
-		if page.PNG == nil {
-			continue
-		}
-		path := filepath.Join(dir, fmt.Sprintf("page-%d.png", page.Number))
-		if err := os.WriteFile(path, page.PNG, 0o600); err != nil {
-			yield(Item{}, fmt.Errorf("document stage: %w", err))
-			return
-		}
-		o := Output{Kind: ImageOutput, Name: name, MediaType: "image/png", Path: path, Meta: pageMeta(page)}
+		meta := pageMeta(page)
+		meta[MetaDPI] = strconv.Itoa(page.DPI)
+		o := Output{Kind: ImageOutput, Name: name, MediaType: "image/png", Path: page.Path, Meta: meta}
 		if !yield(OutputItem(o), nil) {
 			return
 		}
@@ -329,5 +313,5 @@ func (s *DocumentStage) pages(ctx context.Context, p Part, dir string, failed []
 
 // pageMeta returns a page's outputs' Meta: its number and the PDF's page count.
 func pageMeta(page document.PageImage) map[string]string {
-	return map[string]string{"page": strconv.Itoa(page.Number), "count": strconv.Itoa(page.Count)}
+	return map[string]string{MetaPage: strconv.Itoa(page.Number), MetaCount: strconv.Itoa(page.Count)}
 }

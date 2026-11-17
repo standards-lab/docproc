@@ -89,6 +89,9 @@ const (
 	// MetaSheet is a sheet's name: the office stage's two outputs of a workbook's sheet, its
 	// Markdown and its rows.
 	MetaSheet = "sheet"
+	// MetaDPI is the DPI a page was rendered at: the document stage's image of a PDF's page, at
+	// its request's DPI, or lower for a page past its request's MaxPixels.
+	MetaDPI = "dpi"
 )
 
 // The media types of the record outputs, each naming the record's shape and its version, so a

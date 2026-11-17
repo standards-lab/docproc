@@ -3,99 +3,86 @@
 package document_test
 
 import (
-	"bytes"
 	"image/png"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/standards-lab/docproc/document"
-	"github.com/standards-lab/docproc/picture"
 )
 
-// TestImagesHost checks the released preparation on the host's tools: Images over the host's gs
-// and magick prepares every page of scanned.pdf, in page order, as a PNG of letter size at 150
-// dpi, with no corrections and with all five, and records each run's wall time.
-func TestImagesHost(t *testing.T) {
-	g, _ := hostGhostscript(t)
-	c, _ := hostCorrector(t)
-	p := document.NewPreparer(document.Config{Renderer: g, Corrector: c})
-	for name, corrections := range map[string][]picture.Correction{"none": nil, "all": all} {
-		t.Run(name, func(t *testing.T) {
-			req := document.ImagesRequest{Dir: t.TempDir(), Corrections: corrections, Concurrency: 4}
-			start := time.Now()
-			next := 1
-			for img, err := range p.Images(t.Context(), openSet(t, "scanned"), req) {
-				if err != nil {
-					t.Fatalf("page %d: %v", img.Number, err)
-				}
-				if img.Number != next || img.Count != 7 {
-					t.Errorf("yield %d is page %d of %d, want page %d of 7", next, img.Number, img.Count, next)
-				}
-				cfg, err := png.DecodeConfig(bytes.NewReader(img.PNG))
-				if err != nil {
-					t.Fatalf("page %d isn't a PNG: %v", img.Number, err)
-				}
-				// Deskew rotates the page, so a corrected page's size may differ by a few pixels.
-				if cfg.Width < 1225 || cfg.Width > 1325 || cfg.Height < 1600 || cfg.Height > 1700 {
-					t.Errorf("page %d is %dx%d, want about letter at 150 dpi, 1275x1650", img.Number, cfg.Width, cfg.Height)
-				}
-				next++
-			}
-			if next-1 != 7 {
-				t.Errorf("the stream yielded %d pages, want 7", next-1)
-			}
-			assertEmpty(t, req.Dir)
-			t.Logf("Images scanned.pdf, corrections %s, 7 pages at concurrency 4: %v", name, time.Since(start).Round(time.Millisecond))
-		})
+// pngSize returns the width and height of the PNG file at path.
+func pngSize(t *testing.T, path string) (int, int) {
+	t.Helper()
+	f, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
 	}
+	defer func() { _ = f.Close() }()
+	cfg, err := png.DecodeConfig(f)
+	if err != nil {
+		t.Fatalf("%s isn't a PNG: %v", path, err)
+	}
+	return cfg.Width, cfg.Height
 }
 
-// TestImagesTextLayerHost checks the flow of text layer first, vision only for the pages without
-// one, on the host's gs: Images with SkipText yields every page of clean.pdf with its text and no
-// image, and every page of scanned.pdf with no text and its image. With a Region, the image is
-// that band of the page.
-func TestImagesTextLayerHost(t *testing.T) {
+// TestImagesHost checks the released preparation on the host's gs: Images prepares every page of
+// scanned.pdf, in page order, as a PNG file of letter size at 150 dpi, and of clean.pdf with its
+// text layer, and records each run's wall time.
+func TestImagesHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})
-	footer := document.Region{Top: 0.9, Bottom: 1, Left: 0, Right: 1}
 	for _, tc := range []struct {
-		set    string
-		pages  int
-		text   bool
-		region *document.Region
-		w, h   int
-	}{
-		{"clean", 6, true, nil, 0, 0},
-		{"scanned", 7, false, nil, 1275, 1650},
-		{"scanned", 7, false, &footer, 1275, 165},
-	} {
-		req := document.ImagesRequest{Dir: t.TempDir(), SkipText: true, Region: tc.region, Concurrency: 4}
+		set   string
+		pages int
+		text  bool
+	}{{"scanned", 7, false}, {"clean", 6, true}} {
+		req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 4, Text: tc.text}
 		start := time.Now()
-		yielded := 0
-		for img, err := range p.Images(t.Context(), openSet(t, tc.set), req) {
+		next := 1
+		for img, err := range p.Images(t.Context(), filepath.Join("testdata", tc.set+".pdf"), req) {
 			if err != nil {
 				t.Fatalf("%s.pdf page %d: %v", tc.set, img.Number, err)
 			}
-			yielded++
-			if got := document.HasText(img.Text); got != tc.text {
-				t.Errorf("%s.pdf page %d has a text layer %v, want %v", tc.set, img.Number, got, tc.text)
+			if img.Number != next || img.Count != tc.pages || img.DPI != 150 {
+				t.Errorf("%s.pdf yield %d is page %d of %d at %d dpi, want page %d of %d at 150", tc.set, next, img.Number, img.Count, img.DPI, next, tc.pages)
 			}
-			if tc.text {
-				if img.PNG != nil {
-					t.Errorf("%s.pdf page %d has a text layer and an image, want no image", tc.set, img.Number)
-				}
-				continue
+			if w, h := pngSize(t, img.Path); w != 1275 || h != 1650 {
+				t.Errorf("%s.pdf page %d is %dx%d, want letter at 150 dpi, 1275x1650", tc.set, img.Number, w, h)
 			}
-			cfg, err := png.DecodeConfig(bytes.NewReader(img.PNG))
-			if err != nil || cfg.Width != tc.w || cfg.Height != tc.h {
-				t.Errorf("%s.pdf page %d is %dx%d, %v, want a PNG of %dx%d", tc.set, img.Number, cfg.Width, cfg.Height, err, tc.w, tc.h)
+			if document.HasText(img.Text) != tc.text {
+				t.Errorf("%s.pdf page %d has a text layer %t, want %t", tc.set, img.Number, !tc.text, tc.text)
+			}
+			next++
+		}
+		if next-1 != tc.pages {
+			t.Errorf("%s.pdf: the stream yielded %d pages, want %d", tc.set, next-1, tc.pages)
+		}
+		t.Logf("recorded: Images %s.pdf, text %t, %d pages at concurrency 4: %v", tc.set, tc.text, tc.pages, time.Since(start).Round(time.Millisecond))
+	}
+}
+
+// TestImagesMaxPixelsHost checks MaxPixels on the host's gs: one pixel short of a letter page's
+// 1275x1650 at 150 dpi, clean.pdf's pages render at 149 dpi, 1267x1639, within the bound, as the
+// page sizes the count run read predict; and at exactly that many pixels, at 150 dpi.
+func TestImagesMaxPixelsHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	p := document.NewPreparer(document.Config{Renderer: g})
+	for _, tc := range []struct {
+		max  int64
+		dpi  int
+		w, h int
+	}{{1275*1650 - 1, 149, 1267, 1639}, {1275 * 1650, 150, 1275, 1650}} {
+		req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 2, MaxPixels: tc.max}
+		for img, err := range p.Images(t.Context(), filepath.Join("testdata", "clean.pdf"), req) {
+			if err != nil {
+				t.Fatalf("page %d: %v", img.Number, err)
+			}
+			w, h := pngSize(t, img.Path)
+			if img.DPI != tc.dpi || w != tc.w || h != tc.h || int64(w*h) > tc.max {
+				t.Errorf("MaxPixels %d: page %d at %d dpi is %dx%d, want %d dpi, %dx%d", tc.max, img.Number, img.DPI, w, h, tc.dpi, tc.w, tc.h)
 			}
 		}
-		if yielded != tc.pages {
-			t.Errorf("%s.pdf: the stream yielded %d pages, want %d", tc.set, yielded, tc.pages)
-		}
-		assertEmpty(t, req.Dir)
-		t.Logf("recorded: Images %s.pdf with SkipText, region %v, %d pages at concurrency 4: %v",
-			tc.set, tc.region, tc.pages, time.Since(start).Round(time.Millisecond))
 	}
 }

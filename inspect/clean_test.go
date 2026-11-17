@@ -23,10 +23,11 @@ var cleanSkipped = map[string]bool{"../picture/testdata/script-bearing.svg": tru
 // picture is an external relationship, fetched when a reader renders the document, as an SVG's
 // external href is, so it is active content though the fixture is clean; an external
 // hyperlink, which word-with-attachments.docx holds three of, isn't. Its OLE object is one of
-// the embeddings the checks name.
+// the embeddings the checks name, as are document's attachments.pdf's embedded files.
 var cleanFlags = map[string][]inspect.Check{
 	"../office/testdata/ooxml/media.libreoffice.docx":     {inspect.ExternalRelationship},
 	"../office/testdata/ooxml/word-with-attachments.docx": {inspect.OLEObject},
+	"../document/testdata/attachments/attachments.pdf":    {inspect.PDFEmbeddedFile},
 }
 
 // TestCleanFixtures inspects the repository's clean fixtures, every file under cleanDirs but the

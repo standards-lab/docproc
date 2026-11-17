@@ -95,7 +95,9 @@ func (q *QPDF) RequiresPassword(ctx context.Context, pdf string) (bool, error) {
 // Form returns the AcroForm of the PDF at pdf, through qpdf's JSON, --json --json-key=acroform:
 // each terminal field's full name, type, and value, in the AcroForm's order, a radio group's
 // buttons as one field. A PDF with no AcroForm, or one with no fields, has a Form with none. A run
-// qpdf ends with warnings, exit code 3, has succeeded. JSON past 64 MiB fails.
+// qpdf ends with warnings, exit code 3, has succeeded. A field's value never fails the form: one
+// that isn't text, such as a signature field's reference to its signature, is no Value. Only a run
+// that fails, JSON past 64 MiB, JSON that doesn't parse, or JSON that isn't version 2 fails.
 func (q *QPDF) Form(ctx context.Context, pdf string) (Form, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
@@ -179,10 +181,13 @@ const (
 // Value is the field's value when it is one string or name: a text field's text; a checkbox's or a
 // radio group's state, the name of the appearance it shows, such as "Yes" or "Off"; and a choice's
 // value when one is selected. A name is given without its slash, and a string as text, a binary
-// one with any bytes that aren't UTF-8 replaced. Checked, for a checkbox or a radio group, says
-// whether its state is other than "Off". For a choice, Options are its options as qpdf gives them,
-// each option's display text, and Selected its selected values, its export values, one or more; a
-// choice with several selected has no Value.
+// one with any bytes that aren't UTF-8 replaced. A value of any other kind, or a string qpdf
+// encodes in a way Form doesn't know, is no Value, and doesn't fail the form. Checked, for a
+// checkbox or a radio group, says whether its state is other than "Off". For a choice, Options are
+// its options as qpdf gives them, each option's display text, and Selected its selected values,
+// its export values, one or more; a choice with several selected has no Value. Signed, for a
+// signature field, says whether it has a value, the signature dictionary a signed field refers
+// to.
 type FormField struct {
 	Name     string   `json:"name"`
 	Type     string   `json:"type"`
@@ -190,6 +195,7 @@ type FormField struct {
 	Checked  *bool    `json:"checked,omitzero"`
 	Options  []string `json:"options,omitzero"`
 	Selected []string `json:"selected,omitzero"`
+	Signed   *bool    `json:"signed,omitzero"`
 }
 
 // qpdfForm is the part of qpdf's JSON Form reads.
@@ -216,7 +222,7 @@ const pushbutton = 1 << 16
 
 // parseForm reads qpdf's JSON, version 2, into a Form. qpdf lists a field once for each of its
 // widgets, so a radio group's buttons, each a widget of the one field, are one field here, at
-// its first button's place.
+// its first button's place. Only JSON that doesn't parse, or isn't version 2, fails it.
 func parseForm(b []byte) (Form, error) {
 	var q qpdfForm
 	if err := json.Unmarshal(b, &q); err != nil {
@@ -236,10 +242,7 @@ func parseForm(b []byte) (Form, error) {
 		}
 		seen[qf.FullName] = true
 		field := FormField{Name: qf.FullName}
-		values, err := qpdfValues(qf.Value)
-		if err != nil {
-			return Form{}, fmt.Errorf("field %q: %w", qf.FullName, err)
-		}
+		values := qpdfValues(qf.Value)
 		if len(values) == 1 {
 			field.Value = values[0]
 		}
@@ -260,6 +263,7 @@ func parseForm(b []byte) (Form, error) {
 			field.Type = PushbuttonField
 		case qf.FieldType == "/Sig":
 			field.Type = SignatureField
+			field.Signed = new(len(qf.Value) != 0 && string(qf.Value) != "null")
 		default:
 			field.Type = strings.TrimPrefix(qf.FieldType, "/")
 		}
@@ -268,52 +272,52 @@ func parseForm(b []byte) (Form, error) {
 	return f, nil
 }
 
-// qpdfValues returns a field's value, as qpdf's JSON version 2 gives it, as text: null as none; a
-// string or a name as one; an array as each of its strings and names. A string is "u:" and its
+// qpdfValues returns a field's value, as qpdf's JSON version 2 gives it, as text: a string or a
+// name as one; an array as each of its strings and names; anything else, null, a reference such
+// as a signature field's "12 0 R", a number, or a dictionary, as none. A string is "u:" and its
 // text, or "b:" and its bytes in hex; a name is "/" and its text, or "n:/" and its text where it
-// isn't UTF-8.
-func qpdfValues(raw json.RawMessage) ([]string, error) {
-	if len(raw) == 0 || string(raw) == "null" {
-		return nil, nil
-	}
+// isn't UTF-8. An entry qpdfText can't read is left out.
+func qpdfValues(raw json.RawMessage) []string {
 	var one string
 	if err := json.Unmarshal(raw, &one); err == nil {
-		v, err := qpdfText(one)
-		if err != nil {
-			return nil, err
+		if v, ok := qpdfText(one); ok {
+			return []string{v}
 		}
-		return []string{v}, nil
+		return nil
 	}
-	var many []string
+	var many []json.RawMessage
 	if err := json.Unmarshal(raw, &many); err != nil {
-		return nil, fmt.Errorf("value %s: neither a string, a name, nor an array of them", raw)
+		return nil
 	}
-	values := make([]string, 0, len(many))
-	for _, s := range many {
-		v, err := qpdfText(s)
-		if err != nil {
-			return nil, err
+	var values []string
+	for _, m := range many {
+		var s string
+		if err := json.Unmarshal(m, &s); err != nil {
+			continue
 		}
-		values = append(values, v)
+		if v, ok := qpdfText(s); ok {
+			values = append(values, v)
+		}
 	}
-	return values, nil
+	return values
 }
 
-// qpdfText returns the text of one string or name in qpdf's JSON version 2.
-func qpdfText(s string) (string, error) {
+// qpdfText returns the text of one string or name in qpdf's JSON version 2, and false for a value
+// that is neither, such as a reference, or a binary string whose hex doesn't decode.
+func qpdfText(s string) (string, bool) {
 	switch {
 	case strings.HasPrefix(s, "u:"):
-		return s[2:], nil
+		return s[2:], true
 	case strings.HasPrefix(s, "b:"):
 		b, err := hex.DecodeString(s[2:])
 		if err != nil {
-			return "", fmt.Errorf("binary string %q: %w", s, err)
+			return "", false
 		}
-		return strings.ToValidUTF8(string(b), "\uFFFD"), nil
+		return strings.ToValidUTF8(string(b), "\uFFFD"), true
 	case strings.HasPrefix(s, "n:/"):
-		return s[3:], nil
+		return s[3:], true
 	case strings.HasPrefix(s, "/"):
-		return s[1:], nil
+		return s[1:], true
 	}
-	return "", fmt.Errorf("value %q: neither a string nor a name", s)
+	return "", false
 }

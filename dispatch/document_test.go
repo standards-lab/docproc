@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"io"
 	"path/filepath"
 	"slices"
@@ -71,9 +73,9 @@ func (d *fakeDetach) Save(_ context.Context, _ string, number int, w io.Writer) 
 // given qpdf and pdfdetach as q and d, either nil, and the bomb thresholds of opts.
 func formsDocumentStage(t *testing.T, q dispatch.QPDF, d dispatch.PDFDetach, opts inspect.Options) *dispatch.DocumentStage {
 	t.Helper()
-	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 3}})
 	cfg := dispatch.DocumentConfig{
-		Preparer: prep, Version: "pages 1", Request: document.ImagesRequest{Text: true}, Inspect: opts,
+		Preparer: standinPreparer(t, gsSettings{Pages: 3}), Version: "gs 10.08.0",
+		Request: document.ImagesRequest{Text: true, Concurrency: 1}, Inspect: opts,
 	}
 	// A nil interface, not a nil pointer in one, is no tool.
 	if q != nil {
@@ -196,9 +198,9 @@ func TestDocumentStageAttachments(t *testing.T) {
 		"broken.bin", "fail",
 	}}
 	q := &fakeQPDF{form: document.Form{Fields: []document.FormField{{Name: "f", Type: document.TextField, Value: "v"}}}}
-	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 3}})
 	s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{
-		Preparer: prep, Version: "pages 1", Request: document.ImagesRequest{Text: true}, QPDF: q, PDFDetach: detach,
+		Preparer: standinPreparer(t, gsSettings{Pages: 3}), Version: "gs 10.08.0",
+		Request: document.ImagesRequest{Text: true, Concurrency: 1}, QPDF: q, PDFDetach: detach,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -253,11 +255,11 @@ func TestDocumentStageAttachments(t *testing.T) {
 	}
 }
 
-// pngOf returns a 1x1 PNG, as the pages renderer draws page 1.
+// pngOf returns a 1x1 PNG.
 func pngOf(t *testing.T) string {
 	t.Helper()
 	var b bytes.Buffer
-	if err := (&pages{n: 1}).Render(t.Context(), "", 1, 72, &b); err != nil {
+	if err := png.Encode(&b, image.NewGray(image.Rect(0, 0, 1, 1))); err != nil {
 		t.Fatal(err)
 	}
 	return b.String()
@@ -295,12 +297,13 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 }
 
 // TestDocumentIdentity: bomb thresholds leave the identity of a stage with no pdfdetach alone;
-// qpdf changes it, and pdfdetach, and pdfdetach's thresholds.
+// qpdf changes it, and pdfdetach, and pdfdetach's thresholds. A request whose concurrency is below
+// 1 is refused.
 func TestDocumentIdentity(t *testing.T) {
-	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 1}})
+	prep := standinPreparer(t, gsSettings{Pages: 1})
 	id := func(cfg dispatch.DocumentConfig) string {
 		t.Helper()
-		cfg.Preparer, cfg.Version = prep, "gs 10.5"
+		cfg.Preparer, cfg.Version, cfg.Request.Concurrency = prep, "gs 10.5", 1
 		s, err := dispatch.NewDocumentStage(cfg)
 		if err != nil {
 			t.Fatal(err)
@@ -319,7 +322,11 @@ func TestDocumentIdentity(t *testing.T) {
 	if len(slices.Compact(all)) != 4 {
 		t.Errorf("configs %s, %s, %s, %s: want four", base, withQPDF, withDetach, lowered)
 	}
-	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "x", Inspect: inspect.Options{BombRatio: -1, BombSize: 1}}); err == nil {
+	req := document.ImagesRequest{Concurrency: 1}
+	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "x", Request: req, Inspect: inspect.Options{BombRatio: -1, BombSize: 1}}); err == nil {
 		t.Error("a negative bomb ratio was taken")
+	}
+	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "x"}); err == nil || !strings.Contains(err.Error(), "concurrency 0") {
+		t.Errorf("a request of concurrency 0: %v, want it refused", err)
 	}
 }

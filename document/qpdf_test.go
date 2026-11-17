@@ -51,20 +51,20 @@ func standinQPDF(t *testing.T, version string) (*document.QPDF, *standin) {
 	return q, st
 }
 
-// TestFixtureSums holds the forms fixtures to the SHA-256 the testdata README gives them.
+// TestFixtureSums holds the forms and attachments fixtures to the SHA-256 the testdata README gives them.
 func TestFixtureSums(t *testing.T) {
 	t.Parallel()
 	readme, err := os.ReadFile(filepath.Join("testdata", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"acroform.pdf", "acroform.json"} {
-		b, err := os.ReadFile(formFixture(name))
+	for _, name := range []string{"forms/acroform.pdf", "forms/acroform.json", "forms/signed.pdf", "forms/signed.json", "attachments/attachments.pdf"} {
+		b, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
 			t.Fatal(err)
 		}
 		sum := sha256.Sum256(b)
-		if line := hex.EncodeToString(sum[:]) + "  forms/" + name; !bytes.Contains(readme, []byte(line)) {
+		if line := hex.EncodeToString(sum[:]) + "  " + name; !bytes.Contains(readme, []byte(line)) {
 			t.Errorf("the testdata README has no line %q", line)
 		}
 	}
@@ -177,7 +177,9 @@ func TestForm(t *testing.T) {
 
 // TestFormValues: qpdf's JSON version 2 encodings read as text: a binary string's bytes, a name's
 // text with its slash or "n:/" taken off; a pushbutton, a signature, and a field of a type none
-// names are typed so, and a value that is neither a string, a name, nor an array of them fails.
+// names are typed so; and a field's value never fails the form: a number, a dictionary, a
+// reference, a string of no encoding Form knows, a binary string whose hex doesn't decode, and an
+// array's entries of those are no value, the field kept.
 func TestFormValues(t *testing.T) {
 	t.Parallel()
 	q, st := standinQPDF(t, "12.4.2")
@@ -188,7 +190,12 @@ func TestFormValues(t *testing.T) {
 		{"fullname": "box", "fieldtype": "/Btn", "ischeckbox": true, "value": "n:/On"},
 		{"fullname": "push", "fieldtype": "/Btn", "fieldflags": 65536, "value": null},
 		{"fullname": "sig", "fieldtype": "/Sig", "value": null},
-		{"fullname": "odd", "fieldtype": "/Xx", "value": "u:x"}
+		{"fullname": "odd", "fieldtype": "/Xx", "value": "u:x"},
+		{"fullname": "number", "fieldtype": "/Tx", "istext": true, "value": 7},
+		{"fullname": "dict", "fieldtype": "/Tx", "istext": true, "value": {"/A": 1}},
+		{"fullname": "ref", "fieldtype": "/Tx", "istext": true, "value": "3 0 R"},
+		{"fullname": "badhex", "fieldtype": "/Tx", "istext": true, "value": "b:zz"},
+		{"fullname": "list", "fieldtype": "/Ch", "ischoice": true, "value": ["u:a", 2, "4 0 R", "/b"]}
 	]}}`))
 	})
 	f, err := q.Form(t.Context(), pdf)
@@ -199,16 +206,49 @@ func TestFormValues(t *testing.T) {
 		{Name: "bin", Type: document.TextField, Value: "Hé\uFFFD"},
 		{Name: "box", Type: document.CheckboxField, Value: "On", Checked: new(true)},
 		{Name: "push", Type: document.PushbuttonField},
-		{Name: "sig", Type: document.SignatureField},
+		{Name: "sig", Type: document.SignatureField, Signed: new(false)},
 		{Name: "odd", Type: "Xx", Value: "x"},
+		{Name: "number", Type: document.TextField},
+		{Name: "dict", Type: document.TextField},
+		{Name: "ref", Type: document.TextField},
+		{Name: "badhex", Type: document.TextField},
+		{Name: "list", Type: document.ChoiceField, Selected: []string{"a", "b"}},
 	}
 	if !reflect.DeepEqual(f.Fields, want) {
 		t.Errorf("fields\n got %+v\nwant %+v", f.Fields, want)
 	}
-	st.set(func(s *settings) {
-		s.Stdout = new([]byte(`{"version": 2, "acroform": {"hasacroform": true, "fields": [{"fullname": "n", "value": 7}]}}`))
-	})
+	st.set(func(s *settings) { s.Stdout = new([]byte(`{"version": 2, "acroform": {`)) })
 	if _, err := q.Form(t.Context(), pdf); err == nil {
-		t.Error("a numeric value was read")
+		t.Error("JSON that doesn't parse was read")
+	}
+}
+
+// signedFields are the fields of signed.pdf, a page of a signed US government PDF: its one
+// signature field, signed, its value the reference "12 0 R" to its signature dictionary.
+var signedFields = []document.FormField{
+	{Name: "USGPOSignature", Type: document.SignatureField, Signed: new(true)},
+}
+
+// TestFormSigned: qpdf's JSON of signed.pdf, recorded beside it verbatim, reads as its one signed
+// signature field, whose value, a reference, fails nothing.
+func TestFormSigned(t *testing.T) {
+	t.Parallel()
+	q, st := standinQPDF(t, "12.4.2")
+	b, err := os.ReadFile(formFixture("signed.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(b, []byte(`"fieldtype": "/Sig"`)) || !bytes.Contains(b, []byte(`"value": "12 0 R"`)) {
+		t.Fatal("signed.json holds no /Sig field of value 12 0 R")
+	}
+	// qpdf exits 3 on this PDF, its warnings no failure.
+	st.set(func(s *settings) { s.Stdout = new(b) })
+	st.set(func(s *settings) { s.Exit = 3 })
+	f, err := q.Form(t.Context(), filepath.Join(t.TempDir(), "signed.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(f.Fields, signedFields) {
+		t.Errorf("fields\n got %+v\nwant %+v", f.Fields, signedFields)
 	}
 }

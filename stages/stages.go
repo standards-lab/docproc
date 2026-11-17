@@ -248,8 +248,8 @@ func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string,
 	return t, path, err
 }
 
-// documentStage builds the document stage: gs renders each page, its text layer read, qpdf checks
-// for a password and reads the AcroForm, and pdfdetach saves the embedded files.
+// documentStage builds the document stage: gs renders each page, one at a time, its text layer
+// read, qpdf checks for a password and reads the AcroForm, and pdfdetach saves the embedded files.
 func documentStage(_ context.Context, t tools) (dispatch.Stage, error) {
 	gs, qt, dt := t["gs"], t["qpdf"], t["pdfdetach"]
 	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt}
@@ -268,7 +268,7 @@ func documentStage(_ context.Context, t tools) (dispatch.Stage, error) {
 		return nil, err
 	}
 	return dispatch.NewDocumentStage(dispatch.DocumentConfig{
-		Preparer: prep, Version: dispatch.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true},
+		Preparer: prep, Version: dispatch.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true, Concurrency: 1},
 		QPDF: q, PDFDetach: detach,
 	})
 }

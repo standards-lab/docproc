@@ -1,7 +1,7 @@
 # testdata
 
-The document fixtures: letter-size PDFs with each page's ground truth, in three sets, and a
-generated AcroForm for the forms record. Each set is one multi-page PDF, so a renderer test names
+The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
+AcroForm and a page of a signed PDF for the forms record; and a generated PDF of embedded files. Each set is one multi-page PDF, so a renderer test names
 a page of it and a page stream test takes the whole PDF. The clean and degraded sets are
 generated from `clean.typ`; the scanned set is real scans.
 
@@ -158,12 +158,55 @@ bf77a44be70876ecd682b1d2f0f6b7a710c17a7ce76288f018bf165ad44a3e2a  forms/acroform
 c4449427e48adef6d2fe6cd8f769a4157e59906dc69d7cc3f19d5579494c2fe5  forms/acroform.json
 ```
 
-## Golden sums
+## The signed fixture
 
-`golden/corrections.sha256` holds the SHA-256 of every corrected page `TestGoldenCorrections`,
-in the integration tier, writes, each without the chunks that carry the time of the run, and of
-each page's assessment, recorded at commit `aa71cc8`, before the picture package took the
-corrections stage over, so the move is proved to change no byte. The test compares a run's sums
-against it. Setting `GOLDEN_RECORD=1` records the sums in place of comparing, and is done only at a
-commit before the code the sums guard changes, so they hold what that code wrote; it is never done
-to make a failing test pass, since a failure is the change the sums exist to catch.
+`forms/signed.pdf` is page 1 of `cfr-2024-title32-vol1.pdf`, the Code of Federal Regulations,
+Title 32, Volume 1, revised as of July 1, 2024, as the US Government Publishing Office publishes
+it: a US government work, in the public domain. The source's SHA-256 is
+`a1946ff2e79347cc55adf80a0b0618e071d45d36ed367c7ddd979bdb3560e660`. The GPO signs the whole
+volume; the cut keeps its AcroForm's one signature field, `USGPOSignature`, of type `/Sig`, whose
+value is a reference to its signature dictionary, `12 0 R` in the cut, which a form reader must
+read without failing. The signature no longer covers the cut's bytes, which is no matter to a
+reader of the form. qpdf 12.4.2 made the cut, one page of about 157 KB; it exits 3, success with
+a warning about the source's object count, and `--deterministic-id` makes the output reproducible:
+
+```sh
+qpdf --deterministic-id --empty --pages cfr-2024-title32-vol1.pdf 1 -- document/testdata/forms/signed.pdf
+```
+
+`forms/signed.json` is qpdf 12.4.2's JSON of its AcroForm, recorded verbatim so the check reads it
+without qpdf; the integration tier reads the fixture through the host's qpdf and holds it to the
+same field, signed:
+
+```sh
+qpdf --json=2 --json-key=acroform signed.pdf > signed.json
+```
+
+Their SHA-256 sums, which `TestFixtureSums` holds them to:
+
+```
+acfc446f2d5ba5b51bf9d387e829e1dca4be355f3f21fa0dc336d56b1759204c  forms/signed.pdf
+dd1dfd83317dd0f5e673da59474f93c686d718fade7f4f145ef4788bd608a31f  forms/signed.json
+```
+
+## The attachments fixture
+
+`attachments/attachments.pdf` is this repository's, Apache-2.0: a one-page PDF that embeds a file
+each way a PDF holds one, written by hand by `attachments/generate.go`, every byte fixed, so a
+rerun writes the same bytes. Run it in `document/testdata/attachments`:
+
+```sh
+mise exec -- go run generate.go
+```
+
+| File | Held by | Content |
+| ---- | ------- | ------- |
+| `notes.txt` | the catalog's name tree of embedded files | `Embedded through the name tree.` and a newline |
+| `data.csv` | a file attachment annotation on the page | `name,count`, `harbor,3`, each line ending in a newline |
+| `clip.avi` | a Screen annotation's rendition | media the page plays, which pdfdetach doesn't list |
+
+Its SHA-256 sum, which `TestFixtureSums` holds it to:
+
+```
+2512e73aaca5a4d2df650018fedea34fcf05caecb5106172a713cd34ed8edf7f  attachments/attachments.pdf
+```

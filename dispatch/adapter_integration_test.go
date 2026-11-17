@@ -117,7 +117,7 @@ func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect
 		t.Fatal(err)
 	}
 	s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{
-		Preparer: prep, Version: dispatch.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true},
+		Preparer: prep, Version: dispatch.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true, Concurrency: 2},
 		QPDF: q, PDFDetach: detach, Inspect: opts,
 	})
 	if err != nil {
@@ -302,9 +302,10 @@ func TestOneNoteStageReal(t *testing.T) {
 // reader or converter and an empty version, and hashes exactly the options that change what it
 // prepares; the vision stage is versioned by this package.
 func TestAdapterIdentities(t *testing.T) {
-	prep := document.NewPreparer(document.Config{Renderer: &pages{n: 1}})
+	prep := standinPreparer(t, gsSettings{Pages: 1})
 	doc := func(req document.ImagesRequest) dispatch.Identity {
 		t.Helper()
+		req.Concurrency = max(req.Concurrency, 1)
 		s, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Version: "gs 10.5", Request: req})
 		if err != nil {
 			t.Fatal(err)
@@ -315,22 +316,20 @@ func TestAdapterIdentities(t *testing.T) {
 	if base.Name != "document" || base.Version != "gs 10.5" || len(base.Config) != 64 {
 		t.Errorf("document identity %v", base)
 	}
-	if doc(document.ImagesRequest{DPI: 150, Concurrency: 4, Dir: "elsewhere"}) != base {
+	if doc(document.ImagesRequest{DPI: document.DefaultDPI, Concurrency: 4, Dir: "elsewhere"}) != base {
 		t.Error("the default DPI, a concurrency, or a Dir changed the document identity")
 	}
 	for name, req := range map[string]document.ImagesRequest{
-		"dpi":         {DPI: 300},
-		"corrections": {Corrections: []picture.Correction{picture.Deskew}},
-		"text":        {Text: true},
-		"skip text":   {SkipText: true},
-		"region":      {Region: &document.Region{Top: 0.9, Bottom: 1, Right: 1}},
+		"dpi":        {DPI: 300},
+		"text":       {Text: true},
+		"max pixels": {MaxPixels: 1 << 20},
 	} {
 		if doc(req).Config == base.Config {
 			t.Errorf("%s left the document identity's config unchanged", name)
 		}
 	}
 
-	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep}); err == nil {
+	if _, err := dispatch.NewDocumentStage(dispatch.DocumentConfig{Preparer: prep, Request: document.ImagesRequest{Concurrency: 1}}); err == nil {
 		t.Error("a document stage with no version was built")
 	}
 
