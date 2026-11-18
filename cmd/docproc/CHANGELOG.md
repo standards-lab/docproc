@@ -21,7 +21,7 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   `go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs `docproc`. Its
   composition root, `internal/app`, its fixtures, `internal/apptest`, and its command package,
   `internal/run`, sit under `internal/`, and `integration` holds the built-binary tier's harness.
-  It requires the docproc base module, go-cli-sdk, go-core, and golang.org/x/sys.
+  It requires the docproc base module at v0.2.0, go-cli-sdk, go-core, and golang.org/x/sys.
 - `docproc version`, which prints the module's version, or `(devel)` for a binary that carries
   none, and builds nothing: it reads no configuration and looks up no tool.
 - `docproc run <path>... --out <dir> [--workers N] [--exclude <route>]...`. It collects its

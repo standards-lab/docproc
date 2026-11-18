@@ -517,9 +517,8 @@ func TestRun_StageTableAndManifest(t *testing.T) {
 			t.Errorf("row %d = %+v, want %+v", i, row, want.Rows[i])
 		}
 	}
-	// A test binary is built from this checkout, the library through the module's replace.
-	if m.Docproc != (schema.Build{Command: "(devel)", Library: "(devel)"}) {
-		t.Errorf("docproc = %+v, want (devel) for both", m.Docproc)
+	if want := (schema.Build{Command: "(devel)", Library: requiredLibrary(t)}); m.Docproc != want {
+		t.Errorf("docproc = %+v, want %+v", m.Docproc, want)
 	}
 	if m.Schema != schema.Version || m.Collected != 2 || m.Workers != 2 || !slices.Equal(m.Inputs, []string{in}) {
 		t.Errorf("manifest schema %q, collected %d, workers %d, inputs %q; want %q, 2, 2, [%s]", m.Schema, m.Collected, m.Workers, m.Inputs, schema.Version, in)
@@ -928,4 +927,23 @@ func TestRun_CanceledRun(t *testing.T) {
 	if id, err := dir.Latest(); err != nil || id != run.manifest.Run {
 		t.Errorf("Latest() = %q, %v; want the canceled run, which ended", id, err)
 	}
+}
+
+// requiredLibrary is the docproc version a test binary of this module links: the one go.mod
+// requires when the build resolves it as a consumer does, with the workspace off, as the check
+// runs it, and (devel) when the committed go.work puts this checkout's base module in its place.
+func requiredLibrary(t *testing.T) string {
+	t.Helper()
+	if os.Getenv("GOWORK") != "off" {
+		return "(devel)"
+	}
+	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := regexp.MustCompile(`(?m)^\s*github\.com/standards-lab/docproc (v\S+)$`).FindSubmatch(mod)
+	if m == nil {
+		t.Fatal("go.mod requires no github.com/standards-lab/docproc version")
+	}
+	return string(m[1])
 }
