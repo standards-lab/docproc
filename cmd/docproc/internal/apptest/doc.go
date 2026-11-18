@@ -1,0 +1,24 @@
+// Package apptest holds the fixtures internal/app's tests share for running docproc over the
+// composition [app.App] publishes: its graph and its nodes. A test builds its App with [app.New]
+// and applies the fixtures to it before it runs, each an observer or a Replace on the App's
+// graph; a constructor a fixture does not swap stays the production one. It was started from
+// go-cli-sdk-template's template/v0.3.0.
+//
+// [Builds] records the name of every node a run's Build begins, read from the handle
+// graph.Graph.Observe reports, so a test asserts which nodes a command builds from what the graph
+// reports. [Halt] fails the lifecycle configuration node, which the dispatcher adds to every
+// Build, so a run of a command that declares nodes fails before anything starts. [Stages] and
+// [Tools] replace the stage builder, so a run dispatches to stand-in stages, or builds docproc's
+// over stand-in tools, and runs no program on the host.
+//
+// The package exports:
+//
+//   - [Recorder], the events a test records, in order, and its [Recorder.Record] and
+//     [Recorder.Log]
+//   - [Builds], which returns a Recorder of the nodes the App's runs build
+//   - [Halt], which stops the App's runs before anything starts, and [ErrHalted], what such a
+//     run fails with
+//   - [Stages], which replaces the App's stage builder, and [Tools], which builds docproc's
+//     stages over a lookup of its own, such as [NoTools], a host with no tool, whose lookups fail
+//     with [ErrNoTool]
+package apptest

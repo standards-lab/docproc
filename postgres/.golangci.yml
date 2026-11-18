@@ -27,8 +27,9 @@ linters:
       # dispatch.Index it implements, sqlate's packages and its PostgreSQL engine, and pgx v5. Its
       # tests add sqlate/postgres's pgtest, which imports testing and so stays out of the
       # module's own packages. Allow entries match by prefix unless they end in `$`, so each is
-      # anchored. The longest match wins, so the deny entries keep the storage module out despite
-      # docproc's prefix, and pgtest out of the production files despite sqlate's.
+      # anchored. The longest match wins, so the deny entries keep the storage and cmd/docproc
+      # modules out despite docproc's prefix, and pgtest out of the production files despite
+      # sqlate's.
       rules:
         production:
           list-mode: strict
@@ -45,6 +46,8 @@ linters:
           deny:
             - pkg: github.com/standards-lab/docproc/storage
               desc: the postgres module requires the base module alone
+            - pkg: github.com/standards-lab/docproc/cmd/docproc
+              desc: the postgres module requires the base module alone
             - pkg: github.com/standards-lab/sqlate/postgres/pgtest
               desc: pgtest imports testing; only the module's tests use it
         tests:
@@ -60,4 +63,6 @@ linters:
             - github.com/jackc/pgx/v5/
           deny:
             - pkg: github.com/standards-lab/docproc/storage
+              desc: the postgres module requires the base module alone
+            - pkg: github.com/standards-lab/docproc/cmd/docproc
               desc: the postgres module requires the base module alone

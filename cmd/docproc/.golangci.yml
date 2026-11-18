@@ -1,0 +1,63 @@
+# golangci-lint v2 configuration for the cmd/docproc module, run by `mise run check` from this
+# directory: golangci-lint takes the configuration nearest the directory it runs in, so this one,
+# not the root's, holds the module. It is the root's but for depguard's lists, which hold the
+# module to its own requirements.
+version: "2"
+
+linters:
+  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus depguard, which
+  # holds the module to its allowed imports, and testpackage, which keeps tests black-box, as the
+  # root's configuration says: a command's tests too, in main_test.
+  default: standard
+  enable:
+    - depguard
+    - testpackage
+  settings:
+    testpackage:
+      skip-regexp: export_test\.go
+      allow-packages: [""]
+    depguard:
+      # The module's requirements alone: the standard library, the module's own packages,
+      # docproc's base packages, whose stages it wires, go-cli-sdk's cli, its command tree,
+      # go-core's packages, its graph, lifecycle, and process, and golang.org/x/sys's unix, the run
+      # command's statx; its tests add go-core's graphtest,
+      # which imports testing and so stays out of the module's own packages. Allow entries match by
+      # prefix unless they end in `$`, so each is anchored. The longest match wins, so the deny
+      # entries keep the storage and postgres modules out despite docproc's prefix, and graphtest
+      # out of the production files despite go-core's.
+      rules:
+        production:
+          list-mode: strict
+          files:
+            - $all
+            - "!$test"
+          allow:
+            - $gostd
+            - github.com/standards-lab/docproc$
+            - github.com/standards-lab/docproc/
+            - github.com/standards-lab/go-cli-sdk$
+            - github.com/standards-lab/go-core/
+            - golang.org/x/sys/unix$
+          deny:
+            - pkg: github.com/standards-lab/docproc/storage
+              desc: cmd/docproc requires the base module, not the storage module
+            - pkg: github.com/standards-lab/docproc/postgres
+              desc: cmd/docproc requires the base module, not the postgres module
+            - pkg: github.com/standards-lab/go-core/graph/graphtest
+              desc: graphtest imports testing; only the module's tests use it
+        tests:
+          list-mode: strict
+          files:
+            - $test
+          allow:
+            - $gostd
+            - github.com/standards-lab/docproc$
+            - github.com/standards-lab/docproc/
+            - github.com/standards-lab/go-cli-sdk$
+            - github.com/standards-lab/go-core/
+            - golang.org/x/sys/unix$
+          deny:
+            - pkg: github.com/standards-lab/docproc/storage
+              desc: cmd/docproc requires the base module, not the storage module
+            - pkg: github.com/standards-lab/docproc/postgres
+              desc: cmd/docproc requires the base module, not the postgres module

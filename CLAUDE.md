@@ -5,6 +5,9 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 
 - [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its packages,
   the system tools each stage needs, its limits, and its development tasks.
+- [`README.md`, "The command"](README.md#the-command): docproc/cmd/docproc, the docproc command,
+  a nested module on its own tags; its changelog is
+  [`cmd/docproc/CHANGELOG.md`](cmd/docproc/CHANGELOG.md).
 - [`storage/README.md`](storage/README.md): docproc/storage, the content store over go-storage, a
   nested module on its own tags.
 - [`postgres/README.md`](postgres/README.md): docproc/postgres, the index over sqlate on
@@ -21,4 +24,5 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 - `mise run check`: the check.
 - `mise run integration`: the providers' live tiers, `integration:postgres` and
   `integration:storage`, each against its own compose service; `mise run test:integration`, the
-  pre-tag run, the tools tier over this checkout's tool builds, then `integration`.
+  pre-tag run, the tools tier and cmd/docproc's built-binary tier over this checkout's tool
+  builds, then `integration`.

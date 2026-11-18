@@ -512,7 +512,8 @@ and the imports run one way: docinfer imports docproc, and no docproc package im
 The base module is built (`library`): each package's doc comment is the reference for its
 exported names, and the signatures below are the boundary other layers build against. The
 providers are built (`providers`), each module's README and package doc their reference; `rundir`
-and `cmd/docproc` are planned (`docproc`, `reports`).
+and `cmd/docproc` are built (`docproc`), the README's "The command" and each package's doc their
+reference, and `cmd/docproc`'s report is planned (`reports`).
 
 The modules:
 
@@ -526,8 +527,9 @@ github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqla
                                               Index.Close, Migrations, Verify, Statements, and
                                               NewRetention(db, age); requires the library,
                                               sqlate, sqlate/postgres, and pgx
-github.com/standards-lab/docproc/cmd/docproc  the docproc command; requires the library,
-                                              go-cli-sdk, go-core, and golang.org/x/sys
+github.com/standards-lab/docproc/cmd/docproc  the docproc command, built: version and run;
+                                              requires the library, go-cli-sdk, go-core, and
+                                              golang.org/x/sys
 ```
 
 Each store is an interface the library declares (`dispatch.Content`, `dispatch.Index`), with a
@@ -567,7 +569,7 @@ stages                     Build and its Options, Routes and ParseRoutes, the st
 internal/tooltest,         test helpers: the unit tier's stand-in tool, golden sums, and
   goldentest, mediatest      media's stand-in ffmpeg run
 rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and written
-                             (planned, `docproc`)
+                             (built, `docproc`)
 ```
 
 No root package. Another module reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`,
@@ -2200,29 +2202,15 @@ The integration tier, `mise run test:integration`, builds the three docproc tool
 checkout and runs on the developer's machine before each Go tag. What it leaves to later tasks:
 
 ```text
-rundir,             moved from the root's internal/docproc/{rundir,schema} [docproc]: public
-  rundir/schema     packages of this module, the API "The nested modules" states, the base module
-                    tagged when they land (design.md, "Releases"); one Dir from Open, which reads
-                    and creates nothing, or Create, which makes the directory, rundir.json, the
-                    index, and the content store, both refusing another schema or runs/ with no
-                    rundir.json; Manifest, Record, and every other method taking an id refusing one
-                    that isn't a run of the directory, ValidID unexported, Runs listing runs alone;
-                    Latest the latest ended run; Record an iter.Seq2, an unended run's last line
-                    without a newline dropped; ContentPath, the content directory joined to
-                    dispatch.ContentFile; Begin removing leftover .work-*
-                    directories; each record line flushed as written, no fsync; Quarantine keeping
-                    quarantine/<sha256>, flags.json gone; Store, its counter, stageDir, the
-                    extension table, Load, WriteRunFile, WriteFile, Run.Record, and the manifest's
-                    record go; the doc stating one writer per run directory. rundir/schema shapes
-                    alone: the event line with its kind and error, the manifest gaining docproc and
-                    collected, its tools and stage table dispatch's Tool and Row, filled by
-                    cmd/docproc's run from stages.Set, so schema imports no docproc package but
-                    dispatch and inspect; File gaining detected, an input's sniffed type, which
-                    leaves dispatch.ContentType; Version, Time, and TimeOf, which
-                    converts to UTC, the writer's one way to make a Time; a TestMain under
-                    Europe/London; rundir/testdata one committed schema "2" run directory, read
-                    through the reader's API and written again through the writer's, compared as
-                    text
+rundir,             built [docproc]: public packages of this module, on its v0.2.0; one Dir from
+  rundir/schema     Open, which reads and creates nothing, or Create, which makes the directory,
+                    rundir.json, the index, and the content store; Runs, Latest, Manifest, Record
+                    an iter.Seq2 ending on ErrNotEnded for an unended run, Content, Kept, and
+                    ContentPath; the writer's Index, Begin, and Quarantine, and Run's Write and
+                    End; rundir/schema shapes alone, the Event line, the Manifest with its Build,
+                    File with detected, Span, and Time, made by TimeOf in UTC, importing no docproc
+                    package but dispatch and inspect; rundir/testdata one committed schema "2" run
+                    directory, read and written again, compared as text
 storage (module)    built [providers]: storage.New(Config{Client, Prefix, Renew}), dispatch.Content
                     in object storage over go-storage's Client at <prefix>ab/<sha256>, go-storage's
                     ErrTooLarge mapped to dispatch.ErrTooLarge; no sweeper, the host's lifecycle
@@ -2315,14 +2303,16 @@ module is built from. Each command is a nested module of its library's repositor
 library requires go-cli-sdk or go-core.
 
 ```text
-docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, run, report};
-                                   requires docproc, go-cli-sdk, go-core, and golang.org/x/sys;
-                                   main.go at the module's root, app, apptest, run, and report under
-                                   internal/ (below); app and apptest started from
-                                   go-cli-sdk-template at v0.4.0, not ported; the graph's node the
-                                   stage builder, stages.Build over exec.LookPath, which
-                                   apptest.Tools and apptest.Stages replace, export_test.go gone;
-                                   wires docproc's stages, keeps WriteTable; run collects the inputs
+docproc/cmd/docproc    [docproc]   built from cmd/docproc and internal/docproc/{app, apptest,
+                                   run}: main.go at the module's root; internal/app,
+                                   internal/apptest, and internal/run; and integration, the
+                                   built-binary tier's harness (below); requires docproc,
+                                   go-cli-sdk, go-core, and golang.org/x/sys; app and apptest
+                                   started from go-cli-sdk-template's template/v0.3.0, which pins
+                                   go-cli-sdk v0.4.0, not ported; the graph's node the stage
+                                   builder, stages.Build over exec.LookPath, which apptest.Tools
+                                   and apptest.Stages replace, export_test.go gone; wires
+                                   docproc's stages, keeps one table writer; run collects the inputs
                                    before it builds the stages, follows a named argument that is a
                                    symbolic link, and fails on one that is neither file nor
                                    directory, or on arguments that yield no input; run is a runner
@@ -2346,7 +2336,9 @@ docproc/cmd/docproc    [docproc]   cmd/docproc, internal/docproc/{app, apptest, 
                                    wiring and cmd/docproc its first caller; a committed go.work
                                    over the base module and cmd/docproc, carrying changes between
                                    the base module's tags
-                       [reports]   the report: a page per distinct input content, named by its
+                       [reports]   planned: the report command, internal/report, built whole on
+                                   schema "2" in place of internal/docproc/report's "1" pages: a
+                                   page per distinct input content, named by its
                                    SHA-256, listing every input path that holds it with its file
                                    metadata, outcome, and time, the tree and outputs once; the
                                    index page listing every input, error inputs included; text,
@@ -2369,11 +2361,13 @@ docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest
 
 `cmd/docproc`'s `main.go` sits at its module's root, so
 `go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs it, and its packages
-sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run` and
-`report`, its command packages. The module's one public surface is the command, and the logic an
-integrator calls is the library's, so it is an exception to Go Elemental's command packages at a
-module's root level, which `STANDARDS.md` states; go-web-service's `tools/slab` layout would make
-the install path `cmd/docproc/cmd/docproc` and `run.Commands` API under its tags.
+sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run`, its
+command package, with `report` planned (`reports`). Its one package outside `internal/` is
+`integration`, the built-binary tier's harness, as go-cli-sdk-template's template/v0.3.0 places
+it. The module's one public surface is the command, and the logic an integrator calls is the
+library's, so it is an exception to Go Elemental's command packages at a module's root level,
+which `STANDARDS.md` states; go-web-service's `tools/slab` layout would make the install path
+`cmd/docproc/cmd/docproc` and `run.Commands` API under its tags.
 
 `rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
 of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory
@@ -2394,12 +2388,14 @@ func (d *Dir) Latest() (string, error)                         // the latest run
 func (d *Dir) Manifest(id string) (schema.Manifest, error)
 func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] // its lines, in order
 func (d *Dir) Content() dispatch.Content                       // the run directory's FileContent
+func (d *Dir) Kept(sha256 string) (string, bool, error)        // quarantine/<sha256>, if kept
 func ContentPath(sha256 string) string // a content's file from the root: the content directory
                                        // joined to dispatch.ContentFile(sha256)
 // The writer's, on a Dir from Create:
 func (d *Dir) Index() dispatch.Index
 func (d *Dir) Begin(m schema.Manifest) (*Run, error)
 func (d *Dir) Quarantine(sha256, path string) (string, error) // quarantine/<sha256>, kept once
+func (r *Run) ID() string                                     // a version 7 UUID
 func (r *Run) Write(e schema.Event) error                     // one line, written through
 func (r *Run) End(err error) error
 ```
@@ -2412,10 +2408,10 @@ and a reader of a run whose manifest has no `end` drops a last line with no newl
 names only a run that ended, and a reader given an unended run by id says so. `Record` yields the
 lines in order and ends on the first that doesn't decode.
 
-The run directory moves to schema "2", which includes `dispatch`'s shapes at `dispatch.Version` "1",
-so a break there is a break here. `schema` aliases the moved shapes (`dispatch.Part`, `ContentType`,
+The run directory is schema "2", which includes `dispatch`'s shapes at `dispatch.Version` "1", so
+a break there is a break here. `schema` aliases those shapes (`dispatch.Part`, `ContentType`,
 `Identity` as its `Stage`, `Output`, and `Warning`, and `inspect.Flag`), so no shape is defined
-twice, and a part's `parent` becomes its parent's ID, a change of meaning "1" can't take. The
+twice, and a part's `parent` is its parent's ID, a change of meaning "1" can't take. The
 manifest's tools and stage table are `dispatch.Tool` and `dispatch.Row`, which `stages.Set` holds
 and `cmd/docproc`'s `run` copies in, so `schema` imports no docproc package but `dispatch` and
 `inspect`, and a reader of the run directory, `cmd/docinfer` among them, never compiles `stages` and
@@ -2428,14 +2424,14 @@ it.
 The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
 input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch
 yields; "1"'s `warning`, a string the command wrote on a part line when no record held a seen
-part's children, goes with the copy that wrote it, since the dispatcher replays children. A reader
+part's children, is gone with the copy that wrote it, since the dispatcher replays children. A reader
 may tell the first three kinds by which of `output` and `warning` is set.
 
 ```go
 package schema
 type Event struct {
     Kind  string `json:"event"` // part, output, warning, error
-    Input string `json:"input"` // the input's path argument
+    Input string `json:"input"` // the input's own absolute path
     dispatch.Event              // its fields inline, its Part left out on an error line
     File       *File  `json:"file,omitempty"`      // an input's own part line
     Quarantine string `json:"quarantine,omitzero"` // quarantine/<sha256>, while it is kept
@@ -2446,15 +2442,16 @@ type Event struct {
 
 `quarantine` names the kept file whenever it exists, whether this event copied it or an earlier run
 did, and the flags are the line's, with no `flags.json`. The record's other shapes, `File`, `Span`,
-and the manifest, stay its own; `File` holds what `cmd/docproc` knows of an input's file beside the
-part, its `detected` the sniffed MIME type, filled by `run` beside `Statx`. The manifest keeps
-`schema` and `run` for a manifest read alone, drops `record`, whose path is the layout's
-(`runs/<id>/record.jsonl`), and gains `docproc`, the command's module version and the library's from
-the build info, and `collected`, the number of inputs its arguments named. Every `Time` is UTC, made
-by `TimeOf`. `cmd/docinfer`'s `source` reads "2" alone, as the spike's reads "1" alone. `schema`'s
-`Statx` (`stat_linux.go`, on `golang.org/x/sys/unix`), `FileOf`, `Stater`, and `Detect`, which
-imports `net/http`, move to `cmd/docproc`'s `run`, their one caller, so `rundir/schema` is shapes
-alone and the base module requires `golang.org/x/text` alone.
+and the manifest, are its own; `File` holds what `cmd/docproc` knows of an input's file beside the
+part, its `detected` the sniffed MIME type, filled by `run` beside `Statx`. The manifest holds
+`schema` and `run` for a manifest read alone, no `record`, whose path is the layout's
+(`runs/<id>/record.jsonl`), `docproc`, a `Build` of the command's module version and the
+library's from the build info, and `collected`, the number of inputs its arguments named. Every
+`Time` is UTC, made by `TimeOf`. `cmd/docinfer`'s `source` is planned to read "2" alone, as the
+spike's reads "1" alone. The spike's `schema` `Statx`, `FileOf`, `Stater`, and `Detect`, which
+imports `net/http`, are now `cmd/docproc`'s `run`'s, their one caller (`stat_linux.go`, on
+`golang.org/x/sys/unix`), so `rundir/schema` is shapes alone and the base module requires
+`golang.org/x/text` alone.
 
 `cmd/docinfer`'s directory moves to schema "2" with it, since its chunk lines embed docproc's
 `Part` and its held results become docinfer's `Held`. In "2" it takes docinfer's shapes rather
@@ -2507,9 +2504,9 @@ Queued as data-intelligence.md's asks of go-messaging, sized by the capstone's `
 - Assumes Athena builds `sparse_rows` from typed cells, not from Markdown (`athena-mapping`).
 - Assumes docproc keeps processing's package names `office`, `email`, and `onenote`, not the
   tools' names: each does more than decode its tool (LibreOffice's legacy conversion, threading).
-- Assumes the spike's docproc `stages` belongs in docproc, so Cerebro and `cmd/docproc` wire stages
-  alike, and its `schema` and `rundir` become docproc's public `rundir` and `rundir/schema`, so
-  `cmd/docinfer` in docinfer's repository reads a `cmd/docproc` run directory.
+- Assumes Cerebro wires docproc's `stages` as `cmd/docproc` does, and `cmd/docinfer`, in
+  docinfer's repository, reads a `cmd/docproc` run directory through docproc's public `rundir` and
+  `rundir/schema`.
 - Assumes inference needs nothing of docproc beyond `dispatch` (its dispatcher, events, shapes,
   and Meta keys) and, for `cmd/docinfer`, `rundir`, so docproc depends on no model concept and
   imports no docinfer package.

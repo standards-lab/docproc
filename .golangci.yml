@@ -35,9 +35,10 @@ linters:
         # unless they end in `$`, so the module's entries are anchored: the
         # module as itself or a package under it (not a sibling like
         # docproc-extra). The longest match wins, so the deny entries keep
-        # the storage and postgres modules, which require the base, out of
-        # it despite its prefix; each carries its own .golangci.yml, which
-        # golangci-lint takes as the nearest to the directory it runs in.
+        # the storage, postgres, and cmd/docproc modules, which require the
+        # base, out of it despite its prefix; each carries its own
+        # .golangci.yml, which golangci-lint takes as the nearest to the
+        # directory it runs in.
         module:
           list-mode: strict
           files:
@@ -52,3 +53,5 @@ linters:
               desc: the base imports no provider; the storage module depends on the base
             - pkg: github.com/standards-lab/docproc/postgres
               desc: the base imports no provider; the postgres module depends on the base
+            - pkg: github.com/standards-lab/docproc/cmd/docproc
+              desc: the base imports no command package; the cmd/docproc module depends on the base

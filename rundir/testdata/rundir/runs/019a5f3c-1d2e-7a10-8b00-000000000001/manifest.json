@@ -1,0 +1,45 @@
+{
+  "schema": "2",
+  "run": "019a5f3c-1d2e-7a10-8b00-000000000001",
+  "docproc": {
+    "command": "(devel)",
+    "library": "v0.2.0"
+  },
+  "start": "2026-11-07T15:04:00.123456789Z",
+  "end": "2026-11-07T15:04:03.123456789Z",
+  "workers": 2,
+  "inputs": [
+    "/docs"
+  ],
+  "collected": 3,
+  "tools": [
+    {
+      "program": "gs",
+      "minimum": "10.0",
+      "from": "/usr/bin/gs",
+      "version": "10.05.1"
+    },
+    {
+      "program": "ffmpeg",
+      "minimum": "6.0",
+      "error": "ffmpeg: not found"
+    }
+  ],
+  "stages": [
+    {
+      "route": "document",
+      "state": "wired",
+      "stage": {
+        "name": "document",
+        "version": "gs 10.05.1",
+        "config": "c0ffee"
+      },
+      "tools": "gs 10.05.1"
+    },
+    {
+      "route": "audio",
+      "state": "missing",
+      "reason": "ffmpeg missing"
+    }
+  ]
+}

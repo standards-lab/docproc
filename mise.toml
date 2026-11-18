@@ -14,10 +14,10 @@ shellcheck = "0.11.0"
 
 # Space-separated list of Go module directories, each with its own go.mod, which the check:go task
 # checks in turn, kept in sync with go.work's use list: the base module,
-# github.com/standards-lab/docproc, at the root, then the storage and postgres provider modules,
-# which require it.
+# github.com/standards-lab/docproc, at the root, then the storage and postgres provider modules
+# and the cmd/docproc command module, which require it.
 [env]
-GO_MODULES = ". storage postgres"
+GO_MODULES = ". storage postgres cmd/docproc"
 # The postgres module's live tier's server: compose.yml's PostgreSQL, whose port follows
 # DOCPROC_POSTGRES_PORT as compose/postgres.yml's does. Each test creates and drops its own
 # database on it.
@@ -110,10 +110,11 @@ scripts/release-tag-test.sh
 # installed docproc tool stands in for them. 7zz is the root's pin above; gs, qpdf, pdfdetach,
 # ffmpeg, ffprobe, magick, soffice, prlimit, and docker are the host's. Packages run in parallel,
 # as the unit tier's do: each container test watches only the containers its own runs name. The
-# base module's tier runs over the tools; the storage and postgres modules' through their
-# integration:* tasks, each against its own compose service, every one even after one fails.
+# base module's tier runs over the tools, then cmd/docproc's, which builds docproc itself and runs
+# it over the committed fixtures, over the same tools; the storage and postgres modules' through
+# their integration:* tasks, each against its own compose service, every one even after one fails.
 [tasks."test:integration"]
-description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier, the provider modules' against the compose harness; writes only the tools' build output and a temporary directory"
+description = "Build the three docproc tools from this checkout, put them first on PATH, and run every Go module's integration tier, cmd/docproc's over the built docproc, the provider modules' against the compose harness; writes only the tools' build output and temporary directories"
 run = '''
 set -eu
 export GOWORK=off
@@ -132,6 +133,8 @@ echo "test:integration: $(command -v 7zz)"
 rc=0
 echo "test:integration: ."
 (cd "$MISE_PROJECT_ROOT" && go test -tags integration ./...) || rc=1
+echo "test:integration: cmd/docproc"
+(cd "$MISE_PROJECT_ROOT/cmd/docproc" && go test -tags integration -count=1 ./integration/) || rc=1
 mise -C "$MISE_PROJECT_ROOT" run integration || rc=1
 exit $rc
 '''
