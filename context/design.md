@@ -656,7 +656,8 @@ form. An entry is carried by docproc unless it names another task; the command's
 - **DP-18 · `flags.json` repeated the record.** Accepted → docproc. The kept file is
   `quarantine/<sha256>`, named on the line whenever it exists.
 - **DP-19 · The port to go-cli-sdk v0.4.0 and go-core v0.12.0.** Accepted → docproc, starting
-  `internal/app` and `internal/apptest` from go-cli-sdk-template at v0.4.0.
+  `internal/app` and `internal/apptest` from go-cli-sdk-template's template/v0.3.0, whose go.mod
+  pins go-cli-sdk v0.4.0.
 - **DP-20 · The manifest didn't say what wrote it or how many inputs it had.** Accepted → docproc.
 - **DP-21 · `--workers` refused a value above the host's CPUs.** Accepted → docproc.
 - **DP-22 · `ReadRecord` returned the whole record.** Accepted → docproc. `Record` is a

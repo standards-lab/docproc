@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.1.0
+go get github.com/standards-lab/docproc@v0.2.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -36,7 +36,9 @@ the reference for its exported names, and its doc comment lists them.
 | `sevenzip` | 7z, zstd, cabinet, and a ZIP's entries of methods `archive/zip` doesn't read, listed and read through 7-Zip's 7zz. |
 | `dispatch` | The walk over an input's parts to their stages; the Stage contract and its error classes; the content store and its layout, and the index, each with a file and a memory implementation; the shapes of its events, parts, outputs, and warnings; and the Meta keys every stage sets and the record media types. It imports `route` and `inspect` alone. |
 | `dispatch/dispatchtest` | The Index and Content conformance suites, for every store, the module's own and a provider's, and the fixture stage a host's tests dispatch over. |
-| `stages` | `Build` and its `Options`: docproc's shipped wiring, each route's stage over its format package and tools, found on the host, under the host's run bounds and requests, with the one failure classification and each stage's identity. |
+| `stages` | `Build` and its `Options`: docproc's shipped wiring, each route's stage over its format package and tools, found on the host, under the host's run bounds and requests, with the one failure classification and each stage's identity. `cmd/docproc` is its first caller. |
+| `rundir` | `cmd/docproc`'s run directory, read and written: `Open` to read it and `Create` to write it, its runs, the latest that ended, each run's manifest and record, its content store and the path of a content's file, its index, and a quarantined part's kept file. One process writes a run directory. |
+| `rundir/schema` | The run directory's schema `"2"`: the shapes `cmd/docproc` writes and a reader decodes, a record line, a manifest, an input's file, and a time, each in UTC. It imports no docproc package but `dispatch` and `inspect`. |
 | `internal/cli` | The envelope reader the three readers share: their lines, stderr warnings, exit codes, and media names. |
 | `internal/goldentest`, `internal/mediatest`, `internal/tooltest` | Test helpers: PNG goldens, media fixtures, and the unit tier's stand-in tool. |
 
@@ -45,6 +47,70 @@ events. No bound, cap, or limit has a library default: the run bounds (`stages.O
 Idle, and Memory), `dispatch.Limits`, and the caps in each stage's request are none until the host
 sets them. `stages.Options.Concurrency`, the pages and windows held at once, is one until the host
 raises it.
+
+## The command
+
+`github.com/standards-lab/docproc/cmd/docproc` is a nested module, released on its own
+`cmd/docproc/vX.Y.Z` tags, with its own [`CHANGELOG.md`](cmd/docproc/CHANGELOG.md). It wires
+`stages.Build` over the host's tools and writes what it prepares to a run directory through
+`rundir`. Running it needs Linux and the system tools below, each for the stages that run it.
+
+```sh
+go install github.com/standards-lab/docproc/cmd/docproc@<version>
+```
+
+- `docproc version` prints the module's version, or `(devel)` for a binary that carries none. It
+  reads no configuration and looks up no tool.
+- `docproc run <path>... --out <dir>` runs the stages over each file argument and each regular
+  file under each directory argument, in lexical order, each file once. A named symbolic link is
+  followed; a link under a directory is not. It collects its inputs before it looks up any tool,
+  prints the tools and the stage table, then writes one run to the run directory `--out` names,
+  made when it doesn't exist: the run's manifest, one record line per event, each output's
+  content, and each quarantined part's file. `--workers N` dispatches N inputs at once, at least
+  1, the host's CPUs by default; `--exclude <route>`, repeatable, leaves a route's stage out, so
+  its parts have no processor.
+
+Exit statuses:
+
+| Status | When |
+| --- | --- |
+| 0 | The run ended. Failed parts and inputs stopped with an error leave it 0; the summary's last line counts both. |
+| 1 | The run stopped or never began: an argument that is neither a file nor a directory, arguments that yield no input, a run directory that can't be written, a failure of the index or the content store, or a cancellation. A run that began ends its manifest with the error. |
+| 2 | Help, or a usage error, such as an unknown route to `--exclude` or `--workers` under 1. Neither builds anything. |
+
+### Configuration
+
+The library sets no bound; the command ships the operator's starting values, and each
+`DOCPROC_` variable overrides one. A duration is a Go duration, such as `90s` or `10m`; a size a
+count of bytes; a count, a ratio, or a pixel count a decimal number; and a switch as Go's
+`strconv.ParseBool` reads it. An unset or empty variable leaves its starting value; no value may
+be negative. A value the command can't take fails the run before any tool is looked up, every
+such variable named at once. `DOCPROC_SHUTDOWN_TIMEOUT`, 10s by default, bounds the shutdown.
+
+| Variable | Bound | Starting value |
+| --- | --- | --- |
+| `DOCPROC_TOOL_MEMORY` | Every tool's memory bound, in bytes (`stages.Options.Memory`); set, the exec runner needs `prlimit` on PATH | 2 GiB |
+| `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, magick, soffice, docproc-ooxml, ffprobe | 10m |
+| `DOCPROC_STREAM_IDLE` | A stream run's idle bound (`Options.Idle`): ffmpeg, docproc-mail, docproc-onenote, 7zz | 2m |
+| `DOCPROC_MAX_PARTS` | The most parts one dispatch admits, the input among them (`dispatch.Limits.Parts`) | 100000 |
+| `DOCPROC_MAX_BYTES` | The most bytes one dispatch's parts may come to (`Limits.Bytes`) | 32 GiB |
+| `DOCPROC_MAX_DEPTH` | The deepest part one dispatch admits, the input at depth 0 (`Limits.Depth`) | 16 |
+| `DOCPROC_BOMB_RATIO` | The bomb rule's ratio of expanded to compressed size (`inspect.Options.BombRatio`); zero exactly when `DOCPROC_BOMB_SIZE` is, for no bomb rule | 1000 |
+| `DOCPROC_BOMB_SIZE` | The bomb rule's expanded size, in bytes (`inspect.Options.BombSize`) | 1 GiB |
+| `DOCPROC_ARCHIVE_ENTRIES` | The most entries a ZIP or a tar may hold (`inspect.Options.Entries`) | 100000 |
+| `DOCPROC_CLAIM_RELEASE` | The bound on a claim's release once a dispatch's context has ended (`dispatch.Config.Release`) | 10s |
+| `DOCPROC_CONCURRENCY` | A PDF's pages and an audio part's windows held at once (`Options.Concurrency`); zero is 1 | 1 |
+| `DOCPROC_PDF_DPI` | The DPI a PDF's pages are rendered at; zero is `document.DefaultDPI` | 150 |
+| `DOCPROC_PDF_TEXT` | Whether a PDF page's text layer is read | true |
+| `DOCPROC_PDF_MAX_PIXELS` | The most pixels a page's PNG may hold; a larger page is rendered at a lower DPI | 64000000 |
+| `DOCPROC_FRAME_MAX_SIDE` | The largest side a video frame is written at, in pixels | 2048 |
+| `DOCPROC_MAGICK_AREA` | The most pixels one image may hold in ImageMagick's pixel cache (`-limit area`) | 256000000 |
+| `DOCPROC_MAGICK_MEMORY` | The most bytes of heap the pixel cache may take (`-limit memory`) | 1 GiB |
+| `DOCPROC_MAGICK_MAP` | The most bytes of the pixel cache that may be memory-mapped (`-limit map`) | 2 GiB |
+| `DOCPROC_MAGICK_DISK` | The most bytes of the pixel cache that may be on disk (`-limit disk`) | 8 GiB |
+
+Zero is what the library makes of a zero: no bound, unless the table says otherwise. A size
+variable takes bytes, so 2 GiB is `2147483648`.
 
 ## Providers
 
@@ -161,20 +227,23 @@ repository root, `mise run <task>`:
 
 - `check`: shellchecks the scripts, lints the workflows, and tests the release workflow's tag
   routing; builds, vets, format-checks, fixes, tidies, tests under the race detector, and lints
-  every Go module, the base and both providers, each with the workspace off, then sqlints the
-  postgres module's SQL; then runs each tool's check. It is the unit tier: each package over its own
-  testdata and a stand-in tool, the readers replaying the tools' committed goldens in place. It
-  reads no network and runs no real tool but util-linux's `prlimit`, which the memory-bound tests
-  need on PATH.
+  every Go module, the base, both providers, and cmd/docproc, each with the workspace off, then
+  sqlints the postgres module's SQL; then runs each tool's check. It is the unit tier: each
+  package over its own testdata and a stand-in tool, the readers replaying the tools' committed
+  goldens in place. It reads no network and runs no real tool but util-linux's `prlimit`, which
+  the memory-bound tests need on PATH.
 - `test:integration`: the integration tier, under the `integration` build tag: the base module's
   tools tier, which runs the real tools and checks every committed fixture's route and outcome
-  through `stages`, then `integration`, below. It builds docproc-ooxml, docproc-mail, and
-  docproc-onenote from this checkout through their publish tasks and puts those three ahead of
-  everything else on PATH, so no installed release stands in for them; it runs 7zz at the root's
-  pin. Run it on your machine before each Go tag; CI doesn't. The other programs come from the host,
-  each at its minimum or later: `gs`, `qpdf`, `pdfdetach`, `ffmpeg`, `ffprobe`, `magick`, `soffice`,
-  util-linux's `prlimit`, and `docker`, which runs the compose harness and pulls
-  `audio.FFmpegImage` and `picture.LibreOfficeImage` for the tools tier.
+  through `stages`; then cmd/docproc's built-binary tier, which builds `docproc` with the race
+  detector and runs it over the committed fixtures, asserting its arguments, output, exit status,
+  signals, and the run directory it writes, read back through `rundir`; then `integration`, below.
+  It builds docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their
+  publish tasks and puts those three ahead of everything else on PATH, so no installed release
+  stands in for them; it runs 7zz at the root's pin. Run it on your machine before each Go tag; CI
+  doesn't. The other programs come from the host, each at its minimum or later: `gs`, `qpdf`,
+  `pdfdetach`, `ffmpeg`, `ffprobe`, `magick`, `soffice`, util-linux's `prlimit`, and `docker`,
+  which runs the compose harness and pulls `audio.FFmpegImage` and `picture.LibreOfficeImage` for
+  the tools tier.
 - `integration`: the providers' live tiers, `integration:postgres` then `integration:storage`, every
   one even after one fails; CI runs it on a push to main that needs it and on demand.
   `integration:postgres` runs the postgres module's suite against the harness's PostgreSQL, and

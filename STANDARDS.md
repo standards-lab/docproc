@@ -59,11 +59,14 @@ the tools part to the system tools under `tools/`.
 - `architecture/standards/go-elemental/principles/cli-applications.md`: `cmd/docproc`'s
   composition root and its fixtures, its exit codes, and its usage errors, which build nothing.
 - `architecture/standards/go-elemental/principles/domain-files.md`: `cmd/docproc`'s command
-  packages, `run` and `report`, only.
+  packages under `internal/`, such as `run`, only.
 - The exception for a command nested in its library's repository: `cmd/docproc`'s `main.go` sits
-  at its module's root and its packages, `app`, `apptest`, `run`, and `report`, under `internal/`,
-  where `cli-applications.md` has `cmd/<name>/main.go` and `topology-and-naming.md` domain
-  packages at the root level, since the module's one public surface is the command.
+  at its module's root, so `go install github.com/standards-lab/docproc/cmd/docproc@<version>`
+  installs `docproc`, and its packages, `app`, `apptest`, and each command package, such as
+  `run`, sit under `internal/`, where `cli-applications.md` has `cmd/<name>/main.go` and
+  `topology-and-naming.md` domain packages at the root level, since the module's one public
+  surface is the command. Its one package outside `internal/` is `integration`, the built-binary
+  tier's harness, at the module's root as go-cli-sdk-template's template/v0.3.0 has it.
 - `architecture/standards/go-elemental/principles/system-tools.md`: an adapter declares `Spec()`
   and `Minimum`, unprefixed with one tool and named for the tool with several. It checks its
   tools' versions through `Tool.AtLeast` alone, so a tool of another schema fails at startup, as
