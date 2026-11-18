@@ -69,9 +69,9 @@ jobs:
               - *envelope
               - 'tools/onenote/**'
 
-      # What the Go modules build or read: their sources, go.mod and go.sum files (the storage and
-      # postgres modules', and tools/go.mod, the boundary that keeps the tools out of the base
-      # module, among them), any testdata, each module's lint config, the postgres module's SQL and
+      # What the Go modules build or read: their sources, go.mod and go.sum files (the storage,
+      # postgres, and cmd/docproc modules', and tools/go.mod, the boundary that keeps the tools out
+      # of the base module, among them), any testdata, each module's lint config, the postgres module's SQL and
       # the sqlint.toml check:go lints it under, this workflow, and the root mise.toml check:go runs
       # from; and, in the tools' trees, only what the Go tests read in place: the shared envelope
       # cases and each tool's committed goldens and expected outputs. A change to a tool's code

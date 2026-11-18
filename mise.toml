@@ -14,10 +14,10 @@ shellcheck = "0.11.0"
 
 # Space-separated list of Go module directories, each with its own go.mod, which the check:go task
 # checks in turn, kept in sync with go.work's use list: the base module,
-# github.com/standards-lab/docproc, at the root, then the storage and postgres provider modules,
-# which require it.
+# github.com/standards-lab/docproc, at the root, then the storage and postgres provider modules
+# and the cmd/docproc command module, which require it.
 [env]
-GO_MODULES = ". storage postgres"
+GO_MODULES = ". storage postgres cmd/docproc"
 # The postgres module's live tier's server: compose.yml's PostgreSQL, whose port follows
 # DOCPROC_POSTGRES_PORT as compose/postgres.yml's does. Each test creates and drops its own
 # database on it.
