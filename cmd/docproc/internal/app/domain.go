@@ -9,6 +9,7 @@ import (
 
 	"github.com/standards-lab/docproc/stages"
 
+	"github.com/standards-lab/docproc/cmd/docproc/internal/report"
 	"github.com/standards-lab/docproc/cmd/docproc/internal/run"
 )
 
@@ -41,7 +42,9 @@ func newStageBuilder(*graph.Scope) (run.StageBuilder, error) {
 
 // mountDomain mounts docproc's commands at root, each from its command package under internal/,
 // over the nodes it passes, each command declaring with Use the nodes it reads, so a run builds
-// only what its command needs: the run command over the run config.
+// only what its command needs: the run command over the run config, and the report command,
+// which reads a run directory alone and declares no node, so it builds nothing.
 func mountDomain(root *cli.Command, n *Nodes) {
 	root.Add(run.Commands(n.RunConfig)...)
+	root.Add(report.Commands()...)
 }
