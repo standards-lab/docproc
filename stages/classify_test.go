@@ -28,9 +28,9 @@ import (
 // stage.
 const oneSection = "\xe4\x52\x5c\x7b\x8c\xd8\xa7\x4d\xae\xb1\x53\x78\xd0\x29\x96\xd3\x00\x00\x00\x00\x00\x00\x00\x00"
 
-// testMemory is the memory bound the classification's stand-in runs under: room for the
+// testMemory is the memory bound the classification's stand-in runs under, tooltest's room for a
 // stand-in, a test binary that may be race-built, to start.
-const testMemory = 2 << 30
+const testMemory = tooltest.Memory
 
 // onenoteOnly is every route but route.OneNote, for a Build that wires the onenote stage alone.
 func onenoteOnly() []route.Route {
@@ -51,6 +51,11 @@ func standinSet(t *testing.T, s onenoteSettings, opts stages.Options) (stages.Se
 	set, err := stages.Build(t.Context(), lookup, opts)
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, tl := range set.Tools {
+		if tl.Program == "docproc-onenote" && tl.Error != "" {
+			t.Fatalf("the stand-in docproc-onenote was refused: %s", tl.Error)
+		}
 	}
 	return set, link
 }
@@ -76,7 +81,7 @@ func dispatchSet(t *testing.T, set stages.Set) (dispatched, bool) {
 }
 
 // TestClassification dispatches a OneNote section through Build's Set over the stand-in
-// docproc-onenote, under a 2 GiB memory bound and an idle bound, once for each line of
+// docproc-onenote, under an 8 GiB memory bound and an idle bound, once for each line of
 // the package doc's table: a tool's own exit, 3 and 4, its own fatal signal, its reason naming the
 // signal and the bound, its own time bound, and output that doesn't parse are the content's,
 // failed and recorded; exit 1 and 2, and a SIGKILL or SIGTERM docproc didn't send, are the run's,
@@ -98,11 +103,11 @@ func TestClassification(t *testing.T) {
 	}{
 		{"exit 3, refused", refused("not a OneNote section, notebook, or package"), dispatch.Failed, true, "refused"},
 		{"exit 4, the tool's fault", onenoteSettings{Stdout: notebook, Stderr: "docproc-onenote: error: internal\n", Exit: 4}, dispatch.Failed, true, "failed: internal"},
-		{"SIGSEGV", onenoteSettings{Stdout: notebook, Signal: "SEGV"}, dispatch.Failed, true, "killed by SIGSEGV under a 2 GiB memory bound"},
-		{"SIGABRT", onenoteSettings{Stdout: notebook, Signal: "ABRT"}, dispatch.Failed, true, "killed by SIGABRT under a 2 GiB memory bound"},
-		{"SIGBUS", onenoteSettings{Signal: "BUS"}, dispatch.Failed, true, "killed by SIGBUS under a 2 GiB memory bound"},
-		{"SIGFPE", onenoteSettings{Signal: "FPE"}, dispatch.Failed, true, "killed by SIGFPE under a 2 GiB memory bound"},
-		{"SIGILL", onenoteSettings{Signal: "ILL"}, dispatch.Failed, true, "killed by SIGILL under a 2 GiB memory bound"},
+		{"SIGSEGV", onenoteSettings{Stdout: notebook, Signal: "SEGV"}, dispatch.Failed, true, "killed by SIGSEGV under a 8 GiB memory bound"},
+		{"SIGABRT", onenoteSettings{Stdout: notebook, Signal: "ABRT"}, dispatch.Failed, true, "killed by SIGABRT under a 8 GiB memory bound"},
+		{"SIGBUS", onenoteSettings{Signal: "BUS"}, dispatch.Failed, true, "killed by SIGBUS under a 8 GiB memory bound"},
+		{"SIGFPE", onenoteSettings{Signal: "FPE"}, dispatch.Failed, true, "killed by SIGFPE under a 8 GiB memory bound"},
+		{"SIGILL", onenoteSettings{Signal: "ILL"}, dispatch.Failed, true, "killed by SIGILL under a 8 GiB memory bound"},
 		{"its own time bound", onenoteSettings{HoldMS: 60000}, dispatch.Failed, true, "timed out"},
 		{"output that doesn't parse", onenoteSettings{Stdout: notebook + `{"line":"page","id":` + "\n"}, dispatch.Failed, true, ""},
 		{"exit 1, not written", onenoteSettings{Stderr: "docproc-onenote: error: writing stdout: Broken pipe\n", Exit: 1}, dispatch.Failed, false, "not written"},
