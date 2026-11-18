@@ -2,6 +2,7 @@ package report
 
 import (
 	"cmp"
+	"html/template"
 	"maps"
 	"slices"
 
@@ -31,6 +32,22 @@ type model struct {
 	// Contents are the distinct contents of the inputs that reached their own event, sorted by
 	// SHA-256: one page each.
 	Contents []*content
+	// Summary counts the inputs, and their parts, by route and outcome, in the stage table's
+	// route order, then by route and outcome; Total counts them all.
+	Summary []tally
+	Total   tally
+}
+
+// Span returns the run's span, from its start to its end; its end is zero for an unended run.
+func (v *model) Span() schema.Span { return schema.Span{Start: v.Manifest.Start, End: v.Manifest.End} }
+
+// tally is one row of the summary: how many inputs, and how many parts, every input's own part
+// and each part found in it, came to a route and an outcome.
+type tally struct {
+	Route   string
+	Outcome dispatch.Outcome
+	Inputs  int
+	Parts   int
 }
 
 // input is one input of the run: the path its record lines name, and what its own line, or its
@@ -50,6 +67,8 @@ type input struct {
 	// Content is the page of the content it holds, nil for an input stopped before its own event,
 	// which has no SHA-256.
 	Content *content
+	// Source is its file, a file URL of its absolute path, which [dress] sets.
+	Source template.URL
 	// roots are its part tree.
 	roots []*node
 }
@@ -76,6 +95,9 @@ type node struct {
 	Outputs  []*output
 	Warnings []warning
 	Children []*node
+	// Kept is the kept file of a quarantined part, relative to the run directory, which [dress]
+	// sets; empty when none is kept.
+	Kept string
 	// seq orders the parts by their own lines, or, for a part with none, by its first line.
 	seq int
 }
@@ -85,7 +107,27 @@ type output struct {
 	schema.Output
 	// Seen reports that the index recorded the output earlier and this run replayed it.
 	Seen bool
+	// Show, Href, Text, and Missing are how the page shows the output, which [dress] sets: Show is
+	// one of the show constants, Href its content's file relative to the report directory, Text
+	// its content, whole, for an output shown inline, and Missing reports that the content store
+	// holds no content by its SHA-256, so it is neither shown nor linked.
+	Show    string
+	Href    string
+	Text    string
+	Missing bool
 }
+
+// How a page shows an output.
+const (
+	// showText is a text, Markdown, or record output: its content inline, whole, escaped.
+	showText = "text"
+	// showImage is a PNG or JPEG image output: an img at its content's file.
+	showImage = "image"
+	// showAudio is a WAV audio output: an audio player at its content's file.
+	showAudio = "audio"
+	// showLink is any other output: a link to its content's file.
+	showLink = "link"
+)
 
 // warning is one warning line of a part.
 type warning struct {
@@ -109,7 +151,8 @@ func build(m schema.Manifest, lines []schema.Event) *model {
 		if root := rootOf(in.roots); root != nil {
 			sha = root.Part.SHA256
 		}
-		if in.Outcome == errorOutcome || sha == "" {
+		// A SHA-256 that isn't one can't name a page, nor reach a file outside the report.
+		if in.Outcome == errorOutcome || dispatch.ContentFile(sha) == "" {
 			continue
 		}
 		c := byContent[sha]
@@ -124,7 +167,70 @@ func build(m schema.Manifest, lines []schema.Event) *model {
 	for _, sha := range slices.Sorted(maps.Keys(byContent)) {
 		v.Contents = append(v.Contents, byContent[sha])
 	}
+	v.Summary, v.Total = summarize(m, v.Inputs)
 	return v
+}
+
+// summarize returns the summary of inputs, by route and outcome, in the stage table of m's route
+// order, a route outside it after them, by name, and each route's outcomes by name; and the
+// total.
+func summarize(m schema.Manifest, inputs []*input) ([]tally, tally) {
+	type key struct {
+		route   string
+		outcome dispatch.Outcome
+	}
+	counts := map[key]*tally{}
+	var total tally
+	count := func(route string, outcome dispatch.Outcome, isInput bool) {
+		k := key{route, outcome}
+		t := counts[k]
+		if t == nil {
+			t = &tally{Route: route, Outcome: outcome}
+			counts[k] = t
+		}
+		t.Parts++
+		total.Parts++
+		if isInput {
+			t.Inputs++
+			total.Inputs++
+		}
+	}
+	var walk func(nodes []*node)
+	walk = func(nodes []*node) {
+		for _, n := range nodes {
+			if n.Own {
+				count(routeOf(n.Part), n.Event.Outcome, n.Part.ID == rootID)
+			}
+			walk(n.Children)
+		}
+	}
+	for _, in := range inputs {
+		if in.Outcome == errorOutcome {
+			count(noRoute, errorOutcome, true)
+		}
+		walk(in.roots)
+	}
+	rank := map[string]int{}
+	for i, row := range m.Stages {
+		if _, ok := rank[string(row.Route)]; !ok {
+			rank[string(row.Route)] = i
+		}
+	}
+	rankOf := func(route string) int {
+		if i, ok := rank[route]; ok {
+			return i
+		}
+		return len(m.Stages)
+	}
+	rows := make([]tally, 0, len(counts))
+	for _, t := range counts {
+		rows = append(rows, *t)
+	}
+	slices.SortFunc(rows, func(a, b tally) int {
+		return cmp.Or(cmp.Compare(rankOf(a.Route), rankOf(b.Route)), cmp.Compare(a.Route, b.Route),
+			cmp.Compare(a.Outcome, b.Outcome))
+	})
+	return rows, total
 }
 
 // rootOf returns the input's own part among roots, nil when it had no own line.

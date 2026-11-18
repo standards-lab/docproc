@@ -1,63 +1,235 @@
+{{/*
+The report's pages: "index", the run's index, over a model, and "content", one content's page,
+over a contentView. Each is a whole page with its style inline and nothing loaded from elsewhere.
+*/ -}}
+{{define "head" -}}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #dddcd6; --panel: #f1f0ec;
+  --link: #1f5fa8; --ok: #2f7a3a; --warn: #9a6400; --bad: #b3261e; --info: #4b5ea6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a; --fg: #e6e5e1; --muted: #9a9a94; --line: #34363a; --panel: #212226;
+    --link: #8ab8f0; --ok: #79c487; --warn: #e0b45c; --bad: #f08a80; --info: #a6b4f0;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 72rem; padding: 1.5rem 1rem 4rem;
+  background: var(--bg); color: var(--fg);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; overflow-wrap: anywhere; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .25rem; }
+a { color: var(--link); }
+code, pre, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; }
+pre { background: var(--panel); border: 1px solid var(--line); border-radius: .3rem; padding: .5rem .75rem; margin: .3rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); }
+.warning { color: var(--warn); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .3rem .6rem .3rem 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+th { font-weight: 600; color: var(--muted); }
+td.n, th.n { text-align: right; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .15rem 1rem; margin: .5rem 0; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+.badge { display: inline-block; padding: 0 .45rem; border-radius: .6rem; border: 1px solid var(--line); background: var(--panel); font-size: .85em; white-space: nowrap; }
+[data-outcome="prepared"] { color: var(--ok); border-color: currentColor; }
+[data-outcome="seen"] { color: var(--info); border-color: currentColor; }
+[data-outcome="quarantined"], [data-outcome="failed"], [data-outcome="error"], [data-outcome="encrypted"] { color: var(--bad); border-color: currentColor; }
+[data-outcome="no processor yet"], [data-outcome="limited"], [data-outcome="cycle"] { color: var(--warn); border-color: currentColor; }
+section.input { border: 1px solid var(--line); border-radius: .4rem; margin: .6rem 0; padding: .25rem .75rem; }
+ul.tree { list-style: none; margin: 0; padding: 0; }
+ul.tree ul.tree { margin-left: .5rem; padding-left: 1rem; border-left: 2px solid var(--line); }
+li.part { margin: .8rem 0; }
+.part-head { overflow-wrap: anywhere; }
+.part-head .name { font-weight: 600; }
+ul.flat { margin: .15rem 0; padding-left: 1.2rem; }
+.output { margin: .5rem 0 .5rem 1rem; }
+.output img { display: block; max-width: 100%; max-height: 32rem; border: 1px solid var(--line); background: #fff; margin: .3rem 0; }
+.output audio { display: block; margin: .3rem 0; }
+</style>
+{{- end}}
+
 {{define "index" -}}
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+{{template "head"}}
 <title>docproc run {{.Manifest.Run}}</title>
 </head>
 <body>
+<header>
 <h1>docproc run <code>{{.Manifest.Run}}</code></h1>
-{{- if not .Ended}}
-<p>not ended</p>
+<dl class="facts">
+<dt>Start</dt><dd class="mono">{{time .Manifest.Start}}</dd>
+<dt>End</dt><dd class="mono">{{if .Ended}}{{time .Manifest.End}} <span class="muted">({{took .Span}})</span>{{else}}<span class="warning">not ended</span>{{end}}</dd>
+<dt>docproc</dt><dd>command <code>{{.Manifest.Docproc.Command}}</code>, library <code>{{.Manifest.Docproc.Library}}</code></dd>
+<dt>Workers</dt><dd>{{.Manifest.Workers}}</dd>
+<dt>Arguments</dt><dd>{{range $i, $p := .Manifest.Inputs}}{{if $i}}<br>{{end}}<code>{{$p}}</code>{{end}}</dd>
+<dt>Collected</dt><dd>{{.Manifest.Collected}} {{if eq .Manifest.Collected 1}}input{{else}}inputs{{end}}</dd>
+{{- with .Manifest.Error}}
+<dt>Error</dt><dd class="error">{{.}}</dd>
 {{- end}}
-<h2>Inputs</h2>
-<table>
-<thead><tr><th>Path</th><th>Route</th><th>Outcome</th><th>Time</th></tr></thead>
+</dl>
+{{- if not .Ended}}
+<p class="warning">The run has not ended: it is still running, or it was killed. The pages show the lines its record holds.</p>
+{{- end}}
+</header>
+
+<h2>Tools</h2>
+<div class="scroll"><table>
+<thead><tr><th>Program</th><th>Minimum</th><th>Version</th><th>From</th><th>Error</th></tr></thead>
 <tbody>
-{{- range .Inputs}}
-<tr><td>{{if .Content}}<a href="{{.Content.SHA256}}.html"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}}</td><td>{{.Route}}</td><td>{{.Outcome}}</td><td>{{with .Time}}{{time .Start}}{{end}}</td></tr>
+{{- range .Manifest.Tools}}
+<tr><td><code>{{.Program}}</code></td><td>{{.Minimum}}</td><td>{{.Version}}</td><td><code>{{.From}}</code></td><td class="error">{{.Error}}</td></tr>
+{{- else}}
+<tr><td colspan="5" class="muted">No tool was tried.</td></tr>
 {{- end}}
 </tbody>
-</table>
+</table></div>
+
+<h2>Stages</h2>
+<div class="scroll"><table>
+<thead><tr><th>Route</th><th>State</th><th>Stage</th><th>Tools</th><th>Reason</th></tr></thead>
+<tbody>
+{{- range .Manifest.Stages}}
+<tr><td>{{.Route}}</td><td>{{.State}}</td><td>{{if .Stage.Name}}{{.Stage.Name}} <span class="muted">{{.Stage.Version}}</span> <code class="muted">{{.Stage.Config}}</code>{{end}}</td><td>{{.Tools}}</td><td>{{.Reason}}</td></tr>
+{{- end}}
+</tbody>
+</table></div>
+
+<h2>Summary</h2>
+<div class="scroll"><table>
+<thead><tr><th>Route</th><th>Outcome</th><th class="n">Inputs</th><th class="n">Parts</th></tr></thead>
+<tbody>
+{{- range .Summary}}
+<tr><td>{{.Route}}</td><td><span class="badge" data-outcome="{{.Outcome}}">{{.Outcome}}</span></td><td class="n">{{.Inputs}}</td><td class="n">{{.Parts}}</td></tr>
+{{- end}}
+<tr><th>total</th><th></th><th class="n">{{.Total.Inputs}}</th><th class="n">{{.Total.Parts}}</th></tr>
+</tbody>
+</table></div>
+<p class="muted">Parts count every input's own part and each part found in it.</p>
+
+<h2>Inputs</h2>
+<div class="scroll"><table>
+<thead><tr><th>Path</th><th>Route</th><th>Outcome</th><th>Start</th><th class="n">Took</th></tr></thead>
+<tbody>
+{{- range .Inputs}}
+<tr><td>{{if .Content}}<a href="{{.Content.SHA256}}.html"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}}{{with .Error}}<br><span class="error">{{.}}</span>{{end}}</td><td>{{.Route}}</td><td><span class="badge" data-outcome="{{.Outcome}}">{{.Outcome}}</span>{{with .Recorded}} <span class="muted">recorded {{.}}</span>{{end}}</td><td class="mono">{{with .Time}}{{time .Start}}{{end}}</td><td class="n">{{with .Time}}{{took .}}{{end}}</td></tr>
+{{- else}}
+<tr><td colspan="5" class="muted">The record names no input.</td></tr>
+{{- end}}
+</tbody>
+</table></div>
 </body>
 </html>
 {{end}}
+
 {{define "content" -}}
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
+{{template "head"}}
 <title>docproc content {{.Content.SHA256}}</title>
 </head>
 <body>
-<p><a href="index.html">docproc run <code>{{.Run.Manifest.Run}}</code></a></p>
+<p><a href="index.html">docproc run <code>{{.Run.Manifest.Run}}</code></a>{{if not .Run.Ended}} <span class="warning">not ended</span>{{end}}</p>
 <h1>Content <code>{{.Content.SHA256}}</code></h1>
+
 <h2>Inputs</h2>
-<ul>
 {{- range .Content.Inputs}}
-<li><code>{{.Path}}</code> {{.Outcome}}{{with .Time}} {{time .Start}}{{end}}{{with .File}} {{.Size}} bytes {{.Mode}}{{end}}</li>
+<section class="input">
+<p><a href="{{.Source}}"><code>{{.Path}}</code></a> <span class="badge">{{.Route}}</span> <span class="badge" data-outcome="{{.Outcome}}">{{.Outcome}}</span>{{with .Recorded}} <span class="muted">recorded {{.}}</span>{{end}}</p>
+<dl class="facts">
+{{- with .File}}
+<dt>Argument</dt><dd><code>{{.Arg}}</code>, path <code>{{.Path}}</code></dd>
+<dt>File</dt><dd><code>{{.Name}}</code>, {{bytes .Size}} <span class="muted">({{.Size}} bytes)</span>, <code>{{.Mode}}</code>{{with .Detected}}, detected <code>{{.}}</code>{{end}}</dd>
+<dt>Modified</dt><dd class="mono">{{time .Modified}}</dd>
+{{- if not .Created.IsZero}}
+<dt>Created</dt><dd class="mono">{{time .Created}}</dd>
 {{- end}}
-</ul>
+{{- end}}
+{{- with .Time}}
+<dt>Time</dt><dd><span class="mono">{{time .Start}}</span> to <span class="mono">{{time .End}}</span>, {{took .}}</dd>
+{{- end}}
+</dl>
+</section>
+{{- end}}
+
 <h2>Parts</h2>
-<ul>
-{{- range .Content.Roots}}{{template "part" .}}{{end}}
+<ul class="tree">
+{{- range .Content.Roots}}
+{{template "part" .}}
+{{- end}}
 </ul>
 </body>
 </html>
 {{end}}
+
 {{define "part" -}}
-<li><code>{{.Part.ID}}</code> {{.Part.Name}}{{if .Own}} {{.Event.Outcome}}{{end}}
-{{- with .Outputs}}
-<ul>
-{{- range .}}
-<li>{{.Kind}} {{.Name}} {{.MediaType}}</li>
+<li class="part">
+<div class="part-head"><span class="name">{{.Part.Name}}</span> <code class="muted">{{.Part.ID}}</code>
+{{- if .Own}} <span class="badge">{{with .Part.ContentType.Route}}{{.}}{{else}}-{{end}}</span> <span class="badge" data-outcome="{{.Event.Outcome}}">{{.Event.Outcome}}</span>{{with .Event.Recorded}} <span class="muted">recorded {{.}}</span>{{end}}
+{{- else}} <span class="muted">no line of its own</span>{{end}}</div>
+<dl class="facts">
+<dt>ID</dt><dd><code>{{.Part.ID}}</code>{{with .Part.Where}}, where <code>{{.}}</code>{{end}}, depth {{.Part.Depth}}</dd>
+<dt>Size</dt><dd>{{bytes .Part.Size}} <span class="muted">({{.Part.Size}} bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>{{.Part.SHA256}}</code></dd>
+<dt>Content type</dt><dd>kind {{with .Part.ContentType.Kind}}<code>{{.}}</code>{{else}}<span class="muted">none</span>{{end}}{{with .Part.ContentType.Stored}}, stored <code>{{.}}</code>{{end}}</dd>
+<dt>Route</dt><dd>{{with .Part.ContentType.Route}}{{.}}{{else}}-{{end}}{{with .Part.ContentType.RouteReason}} <span class="muted">({{.}})</span>{{end}}</dd>
+{{- with .Event.Stage}}{{if .Name}}
+<dt>Stage</dt><dd>{{.Name}} <span class="muted">{{.Version}}</span> <code class="muted">{{.Config}}</code></dd>
+{{- end}}{{end}}
+{{- if .Own}}
+<dt>Outcome</dt><dd><span class="badge" data-outcome="{{.Event.Outcome}}">{{.Event.Outcome}}</span>{{with .Event.Recorded}}, recorded {{.}}{{end}}{{with .Event.Outputs}}, outputs {{.}}{{end}}{{with .Event.Children}}, parts {{.}}{{end}}</dd>
 {{- end}}
-</ul>
+{{- with .Event.Reason}}
+<dt>Reason</dt><dd{{if eq $.Event.Outcome "failed"}} class="error"{{end}}>{{.}}</dd>
+{{- end}}
+{{- with .Part.Flags}}
+<dt>Flags</dt><dd><ul class="flat">{{range .}}<li><code>{{.Check}}</code> <span class="badge">{{.Class}}</span> {{.Evidence}}</li>{{end}}</ul></dd>
+{{- end}}
+{{- with .Kept}}
+<dt>Kept</dt><dd><code>{{.}}</code> <span class="muted">in the run directory, not linked</span></dd>
+{{- end}}
+{{- with .Warnings}}
+<dt>Warnings</dt><dd><ul class="flat">{{range .}}<li class="warning"><code>{{.Tool}}</code>{{with .Where}} at {{.}}{{end}}: {{.What}}{{if .Seen}} <span class="badge" data-outcome="seen">seen</span>{{end}}</li>{{end}}</ul></dd>
+{{- end}}
+</dl>
+{{- range .Outputs}}
+{{template "output" .}}
 {{- end}}
 {{- with .Children}}
-<ul>
-{{- range .}}{{template "part" .}}{{end}}
+<ul class="tree">
+{{- range .}}
+{{template "part" .}}
+{{- end}}
 </ul>
 {{- end}}
 </li>
+{{- end}}
+
+{{define "output" -}}
+<div class="output">
+<div><span class="name">{{with .Name}}{{.}}{{else}}{{.Kind}}{{end}}</span> <span class="badge">{{.Kind}}</span>{{with .MediaType}} <code class="muted">{{.}}</code>{{end}}{{if .Seen}} <span class="badge" data-outcome="seen">seen</span>{{end}}{{range $k, $v := .Meta}} <span class="muted">{{$k}}</span> {{$v}}{{end}}</div>
+<div class="muted">sha256 <code>{{.SHA256}}</code></div>
+{{- if .Missing}}
+<p class="error">The content store holds no content by this SHA-256.</p>
+{{- else if eq .Show "text"}}
+<pre>{{.Text}}</pre>
+{{- else if eq .Show "image"}}
+<img src="{{.Href}}" alt="{{with .Name}}{{.}}{{else}}{{.Kind}}{{end}}" loading="lazy">
+{{- else if eq .Show "audio"}}
+<audio controls preload="none" src="{{.Href}}"></audio>
+{{- else}}
+<a href="{{.Href}}">content</a>
+{{- end}}
+</div>
 {{- end}}

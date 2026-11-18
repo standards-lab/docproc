@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/standards-lab/docproc/rundir"
 	"github.com/standards-lab/docproc/rundir/schema"
@@ -31,7 +32,29 @@ var pages = template.Must(template.New("").Funcs(funcs).ParseFS(sources, "pages.
 
 // funcs are the templates' functions.
 var funcs = template.FuncMap{
-	"time": func(t schema.Time) string { return t.String() },
+	"time":  func(t schema.Time) string { return t.String() },
+	"took":  took,
+	"bytes": byteSize,
+}
+
+// took returns how long span ran, to the millisecond.
+func took(span schema.Span) string {
+	return span.End.Time().Sub(span.Start.Time()).Round(time.Millisecond).String()
+}
+
+// byteSize returns n bytes in binary units, to one decimal place from a KiB up.
+func byteSize(n int64) string {
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	f, unit := float64(n)/1024, "KiB"
+	for _, u := range []string{"MiB", "GiB", "TiB"} {
+		if f < 1024 {
+			break
+		}
+		f, unit = f/1024, u
+	}
+	return fmt.Sprintf("%.1f %s", f, unit)
 }
 
 // Render renders the report of the run id in the run directory d, whose root is root, into the
@@ -42,7 +65,11 @@ var funcs = template.FuncMap{
 // report directory never holds two renders' pages. It first removes the working directories a
 // killed render left beside the report directory, since one process writes a run directory.
 //
-// A render reads the run's manifest and record, and no clock: the same run directory renders the
+// Every link into the run directory, to an output's content or from the index to a content's
+// page, is relative, so the run directory moves or archives whole; an input's source is linked by
+// its absolute path, as a file URL. The pages load nothing from elsewhere.
+//
+// A render reads the run's manifest and record, the content store and the kept files, and no clock: the same run directory renders the
 // same bytes, in any local zone. An unended run renders what its record holds, marked not
 // ended. An id that isn't a run of d is refused with an error matching fs.ErrNotExist, as
 // rundir's methods refuse it.
@@ -66,6 +93,9 @@ func Render(ctx context.Context, d *rundir.Dir, root, id string) error {
 		return err
 	}
 	v := build(m, lines)
+	if err := dress(ctx, d, rel, v); err != nil {
+		return err
+	}
 	files, err := render(ctx, v)
 	if err != nil {
 		return err

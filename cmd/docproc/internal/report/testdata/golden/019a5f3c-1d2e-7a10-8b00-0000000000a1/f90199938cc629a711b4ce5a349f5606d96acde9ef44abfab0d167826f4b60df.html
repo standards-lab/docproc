@@ -2,23 +2,116 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #dddcd6; --panel: #f1f0ec;
+  --link: #1f5fa8; --ok: #2f7a3a; --warn: #9a6400; --bad: #b3261e; --info: #4b5ea6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a; --fg: #e6e5e1; --muted: #9a9a94; --line: #34363a; --panel: #212226;
+    --link: #8ab8f0; --ok: #79c487; --warn: #e0b45c; --bad: #f08a80; --info: #a6b4f0;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 72rem; padding: 1.5rem 1rem 4rem;
+  background: var(--bg); color: var(--fg);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; overflow-wrap: anywhere; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .25rem; }
+a { color: var(--link); }
+code, pre, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; }
+pre { background: var(--panel); border: 1px solid var(--line); border-radius: .3rem; padding: .5rem .75rem; margin: .3rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); }
+.warning { color: var(--warn); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .3rem .6rem .3rem 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+th { font-weight: 600; color: var(--muted); }
+td.n, th.n { text-align: right; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .15rem 1rem; margin: .5rem 0; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+.badge { display: inline-block; padding: 0 .45rem; border-radius: .6rem; border: 1px solid var(--line); background: var(--panel); font-size: .85em; white-space: nowrap; }
+[data-outcome="prepared"] { color: var(--ok); border-color: currentColor; }
+[data-outcome="seen"] { color: var(--info); border-color: currentColor; }
+[data-outcome="quarantined"], [data-outcome="failed"], [data-outcome="error"], [data-outcome="encrypted"] { color: var(--bad); border-color: currentColor; }
+[data-outcome="no processor yet"], [data-outcome="limited"], [data-outcome="cycle"] { color: var(--warn); border-color: currentColor; }
+section.input { border: 1px solid var(--line); border-radius: .4rem; margin: .6rem 0; padding: .25rem .75rem; }
+ul.tree { list-style: none; margin: 0; padding: 0; }
+ul.tree ul.tree { margin-left: .5rem; padding-left: 1rem; border-left: 2px solid var(--line); }
+li.part { margin: .8rem 0; }
+.part-head { overflow-wrap: anywhere; }
+.part-head .name { font-weight: 600; }
+ul.flat { margin: .15rem 0; padding-left: 1.2rem; }
+.output { margin: .5rem 0 .5rem 1rem; }
+.output img { display: block; max-width: 100%; max-height: 32rem; border: 1px solid var(--line); background: #fff; margin: .3rem 0; }
+.output audio { display: block; margin: .3rem 0; }
+</style>
 <title>docproc content f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df</title>
 </head>
 <body>
 <p><a href="index.html">docproc run <code>019a5f3c-1d2e-7a10-8b00-0000000000a1</code></a></p>
 <h1>Content <code>f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df</code></h1>
+
 <h2>Inputs</h2>
-<ul>
-<li><code>/docs/a/report.pdf</code> prepared 2026-11-07T15:00:01.123456789Z 16 bytes -rw-r--r--</li>
-<li><code>/docs/b/copy of report.pdf</code> seen 2026-11-07T15:00:02.123456789Z 16 bytes -rw-r--r--</li>
-</ul>
+<section class="input">
+<p><a href="file:///docs/a/report.pdf"><code>/docs/a/report.pdf</code></a> <span class="badge">document</span> <span class="badge" data-outcome="prepared">prepared</span></p>
+<dl class="facts">
+<dt>Argument</dt><dd><code>/docs</code>, path <code>a/report.pdf</code></dd>
+<dt>File</dt><dd><code>report.pdf</code>, 16 B <span class="muted">(16 bytes)</span>, <code>-rw-r--r--</code>, detected <code>application/pdf</code></dd>
+<dt>Modified</dt><dd class="mono">2026-11-07T15:00:00.123456789Z</dd>
+<dt>Time</dt><dd><span class="mono">2026-11-07T15:00:01.123456789Z</span> to <span class="mono">2026-11-07T15:00:02.123456789Z</span>, 1s</dd>
+</dl>
+</section>
+<section class="input">
+<p><a href="file:///docs/b/copy%20of%20report.pdf"><code>/docs/b/copy of report.pdf</code></a> <span class="badge">document</span> <span class="badge" data-outcome="seen">seen</span> <span class="muted">recorded prepared</span></p>
+<dl class="facts">
+<dt>Argument</dt><dd><code>/docs</code>, path <code>b/copy of report.pdf</code></dd>
+<dt>File</dt><dd><code>copy of report.pdf</code>, 16 B <span class="muted">(16 bytes)</span>, <code>-rw-r--r--</code>, detected <code>application/pdf</code></dd>
+<dt>Modified</dt><dd class="mono">2026-11-07T15:00:00.123456789Z</dd>
+<dt>Time</dt><dd><span class="mono">2026-11-07T15:00:02.123456789Z</span> to <span class="mono">2026-11-07T15:00:02.123456789Z</span>, 0s</dd>
+</dl>
+</section>
+
 <h2>Parts</h2>
-<ul><li><code>/</code> report.pdf prepared
-<ul>
-<li>text page 1 text/plain; charset=utf-8</li>
-<li>image page 1 image/png</li>
-<li>record form application/vnd.docproc.form&#43;json; version=1</li>
-</ul>
+<ul class="tree">
+<li class="part">
+<div class="part-head"><span class="name">report.pdf</span> <code class="muted">/</code> <span class="badge">document</span> <span class="badge" data-outcome="prepared">prepared</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/</code>, depth 0</dd>
+<dt>Size</dt><dd>16 B <span class="muted">(16 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df</code></dd>
+<dt>Content type</dt><dd>kind <code>pdf</code></dd>
+<dt>Route</dt><dd>document <span class="muted">(signature pdf)</span></dd>
+<dt>Stage</dt><dd>document <span class="muted">gs 10.05.1</span> <code class="muted">c0ffee</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="prepared">prepared</span>, outputs 3</dd>
+<dt>Warnings</dt><dd><ul class="flat"><li class="warning"><code>gs</code> at page 1: font &lt;Arial&gt; substituted</li></ul></dd>
+</dl>
+<div class="output">
+<div><span class="name">page 1</span> <span class="badge">text</span> <code class="muted">text/plain; charset=utf-8</code> <span class="muted">count</span> 1 <span class="muted">page</span> 1</div>
+<div class="muted">sha256 <code>91f139ca1c19593f32cba1f5a21ceeb556eeeaf3a208c97c5927e7a098878b19</code></div>
+<pre>Quarterly report
+A line with &lt;/pre&gt;&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; more.
+
+The end, no newline after it.</pre>
+</div>
+<div class="output">
+<div><span class="name">page 1</span> <span class="badge">image</span> <code class="muted">image/png</code> <span class="muted">dpi</span> 150 <span class="muted">page</span> 1</div>
+<div class="muted">sha256 <code>4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2</code></div>
+<img src="../../../content/43/4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2" alt="page 1" loading="lazy">
+</div>
+<div class="output">
+<div><span class="name">form</span> <span class="badge">record</span> <code class="muted">application/vnd.docproc.form&#43;json; version=1</code> <span class="muted">fields</span> 2</div>
+<div class="muted">sha256 <code>a1c904eedaa045e589e7662e41362498fee1eac19cb75247d86187f0e8b829f9</code></div>
+<pre>{&#34;fields&#34;:[{&#34;name&#34;:&#34;approver&#34;,&#34;value&#34;:&#34;&lt;b&gt;Ada&lt;/b&gt;&#34;},{&#34;name&#34;:&#34;total&#34;,&#34;value&#34;:&#34;12&#34;}]}
+</pre>
+</div>
 </li>
 </ul>
 </body>

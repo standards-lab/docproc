@@ -2,38 +2,200 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root {
+  color-scheme: light dark;
+  --bg: #fbfbfa; --fg: #1d1d1b; --muted: #6b6b66; --line: #dddcd6; --panel: #f1f0ec;
+  --link: #1f5fa8; --ok: #2f7a3a; --warn: #9a6400; --bad: #b3261e; --info: #4b5ea6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #17181a; --fg: #e6e5e1; --muted: #9a9a94; --line: #34363a; --panel: #212226;
+    --link: #8ab8f0; --ok: #79c487; --warn: #e0b45c; --bad: #f08a80; --info: #a6b4f0;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0 auto; max-width: 72rem; padding: 1.5rem 1rem 4rem;
+  background: var(--bg); color: var(--fg);
+  font: 14px/1.5 system-ui, sans-serif;
+}
+h1 { font-size: 1.4rem; margin: 0 0 .25rem; overflow-wrap: anywhere; }
+h2 { font-size: 1.1rem; margin: 2rem 0 .5rem; border-bottom: 1px solid var(--line); padding-bottom: .25rem; }
+a { color: var(--link); }
+code, pre, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .92em; }
+pre { background: var(--panel); border: 1px solid var(--line); border-radius: .3rem; padding: .5rem .75rem; margin: .3rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.muted { color: var(--muted); }
+.error { color: var(--bad); }
+.warning { color: var(--warn); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: .3rem .6rem .3rem 0; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+th { font-weight: 600; color: var(--muted); }
+td.n, th.n { text-align: right; }
+dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: .15rem 1rem; margin: .5rem 0; }
+dl.facts dt { color: var(--muted); }
+dl.facts dd { margin: 0; overflow-wrap: anywhere; }
+.badge { display: inline-block; padding: 0 .45rem; border-radius: .6rem; border: 1px solid var(--line); background: var(--panel); font-size: .85em; white-space: nowrap; }
+[data-outcome="prepared"] { color: var(--ok); border-color: currentColor; }
+[data-outcome="seen"] { color: var(--info); border-color: currentColor; }
+[data-outcome="quarantined"], [data-outcome="failed"], [data-outcome="error"], [data-outcome="encrypted"] { color: var(--bad); border-color: currentColor; }
+[data-outcome="no processor yet"], [data-outcome="limited"], [data-outcome="cycle"] { color: var(--warn); border-color: currentColor; }
+section.input { border: 1px solid var(--line); border-radius: .4rem; margin: .6rem 0; padding: .25rem .75rem; }
+ul.tree { list-style: none; margin: 0; padding: 0; }
+ul.tree ul.tree { margin-left: .5rem; padding-left: 1rem; border-left: 2px solid var(--line); }
+li.part { margin: .8rem 0; }
+.part-head { overflow-wrap: anywhere; }
+.part-head .name { font-weight: 600; }
+ul.flat { margin: .15rem 0; padding-left: 1.2rem; }
+.output { margin: .5rem 0 .5rem 1rem; }
+.output img { display: block; max-width: 100%; max-height: 32rem; border: 1px solid var(--line); background: #fff; margin: .3rem 0; }
+.output audio { display: block; margin: .3rem 0; }
+</style>
 <title>docproc content f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014</title>
 </head>
 <body>
 <p><a href="index.html">docproc run <code>019a5f3c-1d2e-7a10-8b00-0000000000a1</code></a></p>
 <h1>Content <code>f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014</code></h1>
+
 <h2>Inputs</h2>
-<ul>
-<li><code>/docs/bundle.zip</code> prepared 2026-11-07T15:00:01.123456789Z 11 bytes -rw-r--r--</li>
-</ul>
+<section class="input">
+<p><a href="file:///docs/bundle.zip"><code>/docs/bundle.zip</code></a> <span class="badge">archive</span> <span class="badge" data-outcome="prepared">prepared</span></p>
+<dl class="facts">
+<dt>Argument</dt><dd><code>/docs</code>, path <code>bundle.zip</code></dd>
+<dt>File</dt><dd><code>bundle.zip</code>, 11 B <span class="muted">(11 bytes)</span>, <code>-rw-r--r--</code>, detected <code>application/zip</code></dd>
+<dt>Modified</dt><dd class="mono">2026-11-07T15:00:00.123456789Z</dd>
+<dt>Created</dt><dd class="mono">2026-11-07T15:00:00.123456789Z</dd>
+<dt>Time</dt><dd><span class="mono">2026-11-07T15:00:01.123456789Z</span> to <span class="mono">2026-11-07T15:00:03.123456789Z</span>, 2s</dd>
+</dl>
+</section>
+
 <h2>Parts</h2>
-<ul><li><code>/</code> bundle.zip prepared
-<ul><li><code>/notes.md</code> notes.md prepared
-<ul>
-<li>markdown notes text/markdown</li>
-<li>image figure image/gif</li>
-</ul>
-</li><li><code>/inner.zip</code> inner.zip prepared
-<ul><li><code>/inner.zip/voice.wav</code> voice.wav prepared
-<ul>
-<li>audio window 0 audio/wav</li>
-<li>record plan application/vnd.docproc.audio-plan&#43;json; version=1</li>
-</ul>
-</li><li><code>/inner.zip/x.exe</code> x.exe quarantined
+<ul class="tree">
+<li class="part">
+<div class="part-head"><span class="name">bundle.zip</span> <code class="muted">/</code> <span class="badge">archive</span> <span class="badge" data-outcome="prepared">prepared</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/</code>, depth 0</dd>
+<dt>Size</dt><dd>11 B <span class="muted">(11 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014</code></dd>
+<dt>Content type</dt><dd>kind <code>zip</code></dd>
+<dt>Route</dt><dd>archive <span class="muted">(signature zip)</span></dd>
+<dt>Stage</dt><dd>archive <span class="muted">7zz 26.06</span> <code class="muted">a2c</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="prepared">prepared</span>, parts 3</dd>
+</dl>
+<ul class="tree">
+<li class="part">
+<div class="part-head"><span class="name">notes.md</span> <code class="muted">/notes.md</code> <span class="badge">text</span> <span class="badge" data-outcome="prepared">prepared</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/notes.md</code>, where <code>notes.md</code>, depth 1</dd>
+<dt>Size</dt><dd>8 B <span class="muted">(8 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>365d0b84ae63c2afc293dedd2b00bdf0dc8d6ef70c9297d90f9e5682ab0d72ee</code></dd>
+<dt>Content type</dt><dd>kind <span class="muted">none</span></dd>
+<dt>Route</dt><dd>text <span class="muted">(signature none)</span></dd>
+<dt>Stage</dt><dd>text <span class="muted">1</span> <code class="muted">7e57</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="prepared">prepared</span>, outputs 2</dd>
+</dl>
+<div class="output">
+<div><span class="name">notes</span> <span class="badge">markdown</span> <code class="muted">text/markdown</code></div>
+<div class="muted">sha256 <code>49f0a3b0c2b2a69f7619a5fdb670aec4c66c547ab78d4c13c41bf822a2f63a9d</code></div>
+<pre># Notes
+
+*Keep* &lt;this&gt; &amp; that.
+
+- one
+- two
+</pre>
+</div>
+<div class="output">
+<div><span class="name">figure</span> <span class="badge">image</span> <code class="muted">image/gif</code></div>
+<div class="muted">sha256 <code>6aadf10b8e2ff279d1eebcbf84f605f00f4827d82dad47f55b468b8ddf3d44c4</code></div>
+<a href="../../../content/6a/6aadf10b8e2ff279d1eebcbf84f605f00f4827d82dad47f55b468b8ddf3d44c4">content</a>
+</div>
+</li>
+<li class="part">
+<div class="part-head"><span class="name">inner.zip</span> <code class="muted">/inner.zip</code> <span class="badge">archive</span> <span class="badge" data-outcome="prepared">prepared</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/inner.zip</code>, where <code>inner.zip</code>, depth 1</dd>
+<dt>Size</dt><dd>10 B <span class="muted">(10 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>2e607d3b5407e513e637d7981130da329e53689d6b943cda1b7ca477f3ad9f70</code></dd>
+<dt>Content type</dt><dd>kind <code>zip</code></dd>
+<dt>Route</dt><dd>archive <span class="muted">(signature zip)</span></dd>
+<dt>Stage</dt><dd>archive <span class="muted">7zz 26.06</span> <code class="muted">a2c</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="prepared">prepared</span>, parts 2</dd>
+</dl>
+<ul class="tree">
+<li class="part">
+<div class="part-head"><span class="name">voice.wav</span> <code class="muted">/inner.zip/voice.wav</code> <span class="badge">audio</span> <span class="badge" data-outcome="prepared">prepared</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/inner.zip/voice.wav</code>, where <code>voice.wav</code>, depth 2</dd>
+<dt>Size</dt><dd>76 B <span class="muted">(76 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>e700dfd0455f7fc65a5847792900801c945226449672700b65e1fa8da633a0e7</code></dd>
+<dt>Content type</dt><dd>kind <code>wav</code></dd>
+<dt>Route</dt><dd>audio <span class="muted">(signature wav)</span></dd>
+<dt>Stage</dt><dd>audio <span class="muted">ffmpeg 7.1</span> <code class="muted">a0d10</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="prepared">prepared</span>, outputs 2</dd>
+</dl>
+<div class="output">
+<div><span class="name">window 0</span> <span class="badge">audio</span> <code class="muted">audio/wav</code> <span class="muted">cut</span> end <span class="muted">end</span> 1.5 <span class="muted">samples</span> 24000 <span class="muted">start</span> 0 <span class="muted">window</span> 0</div>
+<div class="muted">sha256 <code>e700dfd0455f7fc65a5847792900801c945226449672700b65e1fa8da633a0e7</code></div>
+<audio controls preload="none" src="../../../content/e7/e700dfd0455f7fc65a5847792900801c945226449672700b65e1fa8da633a0e7"></audio>
+</div>
+<div class="output">
+<div><span class="name">plan</span> <span class="badge">record</span> <code class="muted">application/vnd.docproc.audio-plan&#43;json; version=1</code></div>
+<div class="muted">sha256 <code>e5e635c7a7480ef91dd5f6503c2d4f7ed429a7df4f3c80350de6e1c95d7c8d38</code></div>
+<pre>{&#34;windows&#34;:[{&#34;start&#34;:0,&#34;end&#34;:1.5}],&#34;silences&#34;:[]}
+</pre>
+</div>
+</li>
+<li class="part">
+<div class="part-head"><span class="name">x.exe</span> <code class="muted">/inner.zip/x.exe</code> <span class="badge">-</span> <span class="badge" data-outcome="quarantined">quarantined</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/inner.zip/x.exe</code>, where <code>x.exe</code>, depth 2</dd>
+<dt>Size</dt><dd>16 B <span class="muted">(16 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>d9f0fc6ffd4c580cd4bd9f56d16d92f1e74ab539039d33d33ab256c8995b5b9d</code></dd>
+<dt>Content type</dt><dd>kind <code>pe</code></dd>
+<dt>Route</dt><dd>-</dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="quarantined">quarantined</span></dd>
+<dt>Flags</dt><dd><ul class="flat"><li><code>executable</code> <span class="badge">active</span> PE header at 0</li><li><code>executable-extension</code> <span class="badge">active</span> .exe</li></ul></dd>
+<dt>Kept</dt><dd><code>quarantine/d9f0fc6ffd4c580cd4bd9f56d16d92f1e74ab539039d33d33ab256c8995b5b9d</code> <span class="muted">in the run directory, not linked</span></dd>
+</dl>
 </li>
 </ul>
-</li><li><code>/mail.pst</code> mail.pst failed
-<ul>
-<li>record message 1 application/vnd.docproc.mail&#43;jsonl; schema=2</li>
-</ul>
+</li>
+<li class="part">
+<div class="part-head"><span class="name">mail.pst</span> <code class="muted">/mail.pst</code> <span class="badge">email</span> <span class="badge" data-outcome="failed">failed</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/mail.pst</code>, where <code>mail.pst</code>, depth 1</dd>
+<dt>Size</dt><dd>40 B <span class="muted">(40 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code></dd>
+<dt>Content type</dt><dd>kind <code>pst</code></dd>
+<dt>Route</dt><dd>email <span class="muted">(signature pst)</span></dd>
+<dt>Stage</dt><dd>email <span class="muted">docproc-mail 0.4.0</span> <code class="muted">e4a1</code></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="failed">failed</span></dd>
+<dt>Reason</dt><dd class="error">docproc-mail: exit 3: &lt;/pre&gt;&lt;script&gt;bad&lt;/script&gt;</dd>
+</dl>
+<div class="output">
+<div><span class="name">message 1</span> <span class="badge">record</span> <code class="muted">application/vnd.docproc.mail&#43;jsonl; schema=2</code></div>
+<div class="muted">sha256 <code>2556d072121b94e2a6cc4cf8e43f73b1b5030ec3ab59d0b2235aa2faa16b4abe</code></div>
+<pre>{&#34;line&#34;:1,&#34;subject&#34;:&#34;&lt;/textarea&gt;&lt;script&gt;x&lt;/script&gt;&#34;}
+{&#34;line&#34;:2}
+</pre>
+</div>
 </li>
 </ul>
-</li><li><code>/missing/lost.txt</code> lost.txt no processor yet
+</li>
+<li class="part">
+<div class="part-head"><span class="name">lost.txt</span> <code class="muted">/missing/lost.txt</code> <span class="badge">text</span> <span class="badge" data-outcome="no processor yet">no processor yet</span></div>
+<dl class="facts">
+<dt>ID</dt><dd><code>/missing/lost.txt</code>, where <code>lost.txt</code>, depth 2</dd>
+<dt>Size</dt><dd>5 B <span class="muted">(5 bytes)</span></dd>
+<dt>SHA-256</dt><dd><code>ed1d1a8db09e369fa33bde54f504d1fda0161a5ccd8a0d5517d92456fec28c41</code></dd>
+<dt>Content type</dt><dd>kind <span class="muted">none</span></dd>
+<dt>Route</dt><dd>text <span class="muted">(signature none)</span></dd>
+<dt>Outcome</dt><dd><span class="badge" data-outcome="no processor yet">no processor yet</span></dd>
+<dt>Reason</dt><dd>route text has no stage for this kind yet</dd>
+</dl>
 </li>
 </ul>
 </body>
