@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,9 +10,11 @@ import (
 
 	"github.com/standards-lab/go-core/process"
 
+	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/rundir"
 	"github.com/standards-lab/docproc/rundir/schema"
 
+	"github.com/standards-lab/docproc/cmd/docproc/internal/app"
 	"github.com/standards-lab/docproc/cmd/docproc/internal/apptest"
 )
 
@@ -262,6 +265,153 @@ func TestReportCommand_Usage(t *testing.T) {
 	for _, want := range []string{"docproc report [flags] <run-dir>", "--run id", "Exit status:", "  0  the report was rendered", "never ended", "  1  nothing was rendered", "  2  a usage error"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("help lacks %q:\n%s", want, r.stdout)
+		}
+	}
+}
+
+// With --report, once the summary is printed, a run that ended renders its pages, as docproc
+// report would, and prints its index's path last.
+func TestRun_ReportAfterEndedRun(t *testing.T) {
+	in := write(t, t.TempDir(), "a.txt", "a\n")
+	out := filepath.Join(t.TempDir(), "out")
+
+	r := runOK(t, apptest.NoTools, in, "--out", out, "--report")
+
+	id := onlyRun(t, out).manifest.Run
+	index := indexOf(t, out, id)
+	if last := lastLine(r.stdout); last != index {
+		t.Errorf("stdout's last line = %q, want the index's path %q", last, index)
+	}
+	wantLine(t, r.stdout, "run "+id)
+	if page := readPage(t, index); !strings.Contains(page, id) || !strings.Contains(page, filepath.Join(in, "a.txt")) {
+		t.Errorf("the index doesn't show run %s and its input", id)
+	}
+}
+
+// With --report, a run a failure of the content store stopped still renders its pages, then
+// exits 1 with the store's failure.
+func TestRun_ReportAfterStoreFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes a directory of mode 0555, so the store doesn't fail")
+	}
+	in := write(t, t.TempDir(), "hello.txt", helloText)
+	out := filepath.Join(t.TempDir(), "out")
+	if _, err := rundir.Create(out); err != nil {
+		t.Fatal(err)
+	}
+	content := filepath.Join(out, "content")
+	if err := os.Chmod(content, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(content, 0o755) })
+
+	r := runCmd(t, context.Background(), func(a *app.App) { apptest.Tools(a, apptest.NoTools) }, in, "--out", out, "--report")
+
+	if r.code != process.ExitFailure {
+		t.Fatalf("code = %d, want %d; stdout = %q", r.code, process.ExitFailure, r.stdout)
+	}
+	if want := "docproc run: dispatch: content: "; !strings.HasPrefix(r.stderr, want) || strings.Contains(r.stderr, "docproc report") {
+		t.Errorf("stderr = %q, want the store's failure alone", r.stderr)
+	}
+	index := indexOf(t, out, onlyRun(t, out).manifest.Run)
+	if last := lastLine(r.stdout); last != index {
+		t.Errorf("stdout's last line = %q, want the index's path %q", last, index)
+	}
+	if page := readPage(t, index); !strings.Contains(page, "dispatch: content: ") {
+		t.Error("the index doesn't show the error that stopped the run")
+	}
+}
+
+// With --report, a canceled run renders nothing.
+func TestRun_ReportAfterCancellation(t *testing.T) {
+	in := write(t, t.TempDir(), "a.txt", "a\n", "b.txt", "b\n")
+	out := filepath.Join(t.TempDir(), "out")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	r := runCmd(t, ctx, func(a *app.App) {
+		textStage(a, func(sctx context.Context, p dispatch.Part) error {
+			cancel()
+			<-sctx.Done()
+			return sctx.Err()
+		})
+	}, in, "--out", out, "--workers", "1", "--report")
+
+	if r.code != process.ExitFailure {
+		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitFailure, r.stderr)
+	}
+	run := onlyRun(t, out)
+	if run.manifest.Error != context.Canceled.Error() {
+		t.Errorf("manifest error %q, want %q", run.manifest.Error, context.Canceled)
+	}
+	if _, err := os.Stat(filepath.Dir(indexOf(t, out, run.manifest.Run))); !os.IsNotExist(err) {
+		t.Errorf("the report directory: %v, want none", err)
+	}
+	if strings.Contains(r.stdout, "index.html") {
+		t.Errorf("stdout = %q, want no index's path", r.stdout)
+	}
+}
+
+// With --report, a render that fails after a run that ended exits 1, the error saying docproc
+// report renders the pages again. The stand-in stage makes the run's report directory, during the
+// run, a directory that can't be written, which a render can't move aside: on Linux, moving a
+// directory to another parent needs write permission on it, for its "..".
+func TestRun_ReportRenderFailure(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root moves a directory of mode 0555, so the render doesn't fail")
+	}
+	in := write(t, t.TempDir(), "a.txt", "a\n")
+	out := filepath.Join(t.TempDir(), "out")
+
+	r := runCmd(t, context.Background(), func(a *app.App) {
+		textStage(a, func(context.Context, dispatch.Part) error {
+			dirs, err := filepath.Glob(filepath.Join(out, "runs", "*"))
+			if err != nil || len(dirs) != 1 {
+				return fmt.Errorf("the run's directory: %q, %v", dirs, err)
+			}
+			blocked := filepath.Join(dirs[0], "report")
+			t.Cleanup(func() { _ = os.Chmod(blocked, 0o755) })
+			return os.Mkdir(blocked, 0o555)
+		})
+	}, in, "--out", out, "--report")
+
+	if r.code != process.ExitFailure {
+		t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitFailure, r.stderr)
+	}
+	run := onlyRun(t, out)
+	if m := run.manifest; m.Error != "" || m.End.IsZero() {
+		t.Errorf("manifest error %q, end %v; want a run that ended with no error", m.Error, m.End)
+	}
+	if e := run.line(t, schema.PartEvent, "a.txt"); e.Outcome != dispatch.Prepared {
+		t.Errorf("a.txt's line = %+v, want prepared", e)
+	}
+	want := "docproc run: the run's report: "
+	again := "docproc report " + out + " --run " + run.manifest.Run + " renders its pages again"
+	if !strings.HasPrefix(r.stderr, want) || !strings.Contains(r.stderr, again) {
+		t.Errorf("stderr = %q, want it to start with %q and say %q", r.stderr, want, again)
+	}
+	if strings.Contains(r.stdout, "index.html") {
+		t.Errorf("stdout = %q, want no index's path", r.stdout)
+	}
+}
+
+// The run's help states what --report does after a run that ended, a store's failure, and a
+// cancellation, and that docproc report renders the pages again.
+func TestRun_HelpStatesReport(t *testing.T) {
+	a, stdout, _, _ := newApp(t)
+	if code := a.Run(context.Background(), []string{"run", "--help"}); code != process.ExitUsage {
+		t.Errorf("code = %d, want %d", code, process.ExitUsage)
+	}
+	help := strings.Join(strings.Fields(stdout.String()), " ")
+	for _, want := range []string{
+		"--report once the summary is printed",
+		"with --report, its pages were rendered too",
+		"a run stopped by a failure of the index or the content store still renders its pages",
+		"a canceled run renders none",
+		"pages couldn't be rendered exits 1 too, and docproc report renders them again",
+	} {
+		if !strings.Contains(help, want) {
+			t.Errorf("help lacks %q:\n%s", want, stdout)
 		}
 	}
 }

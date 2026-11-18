@@ -3,6 +3,7 @@ package run
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"os"
@@ -13,6 +14,8 @@ import (
 	"github.com/standards-lab/docproc/rundir"
 	"github.com/standards-lab/docproc/rundir/schema"
 	"github.com/standards-lab/docproc/stages"
+
+	"github.com/standards-lab/docproc/cmd/docproc/internal/report"
 )
 
 // puts is how many of a part's outputs a dispatch puts into the run directory's content store at
@@ -21,8 +24,8 @@ import (
 const puts = 1
 
 // runner is one run of the command: its configuration, the terminal it prints to, the run
-// directory it writes, its path arguments and the inputs collected from them, and how many are
-// dispatched at once.
+// directory it writes, its path arguments and the inputs collected from them, how many are
+// dispatched at once, and whether it renders its report once it has ended, --report.
 type runner struct {
 	cfg     Config
 	w       io.Writer
@@ -30,6 +33,7 @@ type runner struct {
 	args    []string
 	inputs  []input
 	workers int
+	report  bool
 }
 
 // run builds the stages, prints the stage table, creates the run directory, and begins a run in
@@ -42,6 +46,11 @@ type runner struct {
 // failure of the index or the content store, a *dispatch.StoreError, stops the run, as do the
 // context ending and the run directory or the terminal refusing a write: the run ends with that
 // error, which run returns once the manifest names it.
+//
+// With --report, once the summary is printed, run renders the run's report and prints its
+// index's path, as docproc report does, when [rendersReport] says the run's end calls for it. A
+// render that fails is an error of its own, naming docproc report, which renders the pages again
+// from what the run wrote.
 func (r *runner) run(ctx context.Context) error {
 	set, err := r.cfg.Build(ctx, r.cfg.Stages)
 	if err != nil {
@@ -82,7 +91,29 @@ func (r *runner) run(ctx context.Context) error {
 	}
 	stopped := r.dispatch(ctx, set, rec)
 	ended := run.End(stopped)
-	return errors.Join(stopped, ended, rec.term.summary(run.ID()))
+	summary := rec.term.summary(run.ID())
+	err = errors.Join(stopped, ended, summary)
+	if !r.report || ended != nil || summary != nil || !rendersReport(ctx, stopped) {
+		return err
+	}
+	if rerr := report.Make(ctx, r.w, dir, r.out, run.ID()); rerr != nil {
+		err = errors.Join(err, fmt.Errorf("the run's report: %w; docproc report %s --run %s renders its pages again",
+			rerr, r.out, run.ID()))
+	}
+	return err
+}
+
+// rendersReport reports whether --report renders the report of a run stopped by stopped, under
+// ctx: a run that ended with no error, or one a failure of the index or the content store
+// stopped, whose record is whole up to the failure. A canceled run renders nothing, as the
+// context ending asks, nor does a run the run directory or the terminal stopped by refusing a
+// write, whose pages would be no better off.
+func rendersReport(ctx context.Context, stopped error) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	var store *dispatch.StoreError
+	return stopped == nil || errors.As(stopped, &store)
 }
 
 // dispatch dispatches the inputs over set's stages, under its validated inspection options, on a
