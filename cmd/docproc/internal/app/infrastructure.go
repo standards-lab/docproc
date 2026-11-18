@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"os"
 	"strconv"
 	"time"
 
@@ -162,27 +161,24 @@ func newBounds(*graph.Scope) (Bounds, error) {
 	return b, errors.Join(errs...)
 }
 
-// readEnv sets *dest from the variable bound names under envPrefix, read by parse, and leaves it
-// when the variable is unset or empty. Its error names the variable.
+// readEnv sets *dest from the variable bound names under envPrefix, read by parse, through
+// go-core's config.SetFromEnv, and leaves it when the variable is unset or empty. Its error names
+// the variable.
 func readEnv[T any](dest *T, bound string, parse func(string) (T, error)) error {
-	name := config.EnvName(envPrefix, bound)
-	s := os.Getenv(name)
-	if s == "" {
-		return nil
+	var v *T
+	err := config.SetFromEnv(&v, config.EnvName(envPrefix, bound), parse)
+	if v != nil {
+		*dest = *v
 	}
-	v, err := parse(s)
-	if err != nil {
-		return fmt.Errorf("%s: %w", name, err)
-	}
-	*dest = v
-	return nil
+	return err
 }
 
-// parseCount reads a decimal count, a size in bytes among them, refusing a negative one.
+// parseCount reads a decimal count, a size in bytes among them, refusing a negative one and one
+// T can't hold, as an int can't past 2^31-1 on a 32-bit platform.
 func parseCount[T int | int64 | uint64](s string) (T, error) {
 	n, err := strconv.ParseInt(s, 10, 64)
 	switch {
-	case errors.Is(err, strconv.ErrRange):
+	case errors.Is(err, strconv.ErrRange), err == nil && int64(T(n)) != n:
 		return 0, fmt.Errorf("%s is out of range", s)
 	case err != nil:
 		return 0, fmt.Errorf("%q is not a whole number", s)
