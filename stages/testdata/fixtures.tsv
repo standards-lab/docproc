@@ -137,6 +137,16 @@ picture/testdata/scanned-g4.tiff	vision-converted	prepared
 picture/testdata/script-bearing.svg	vision-converted	prepared
 picture/testdata/shapes.svg	vision-converted	prepared
 picture/testdata/two-images.heic	vision-converted	prepared
+rundir/testdata/rundir/content/b6/b688c8947f876ba9580749960b0c70076ea223eec8dcb9d57d4c51c9c9dd2906	unrouted	no processor yet
+rundir/testdata/rundir/content/d3/d31031c3593a9da13ff7013b8cf20bf3120903467fac751975e0260c8560c6c7	unrouted	no processor yet
+rundir/testdata/rundir/quarantine/4efe525c159bafa28a6ba4e08aa028a846bdebb78bf4b33c11e959a37b481bca	unrouted	no processor yet
+rundir/testdata/rundir/rundir.json	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000001/manifest.json	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000001/record.jsonl	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000002/manifest.json	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000002/record.jsonl	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000003/manifest.json	text	prepared
+rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000003/record.jsonl	text	prepared
 sevenzip/testdata/README.md	text	prepared
 sevenzip/testdata/commons-compress/LICENSE.txt	text	prepared
 sevenzip/testdata/commons-compress/NOTICE.txt	text	prepared
