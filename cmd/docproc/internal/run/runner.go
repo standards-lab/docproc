@@ -42,7 +42,7 @@ type runner struct {
 // failure of the index or the content store, a *dispatch.StoreError, stops the run, as do the
 // context ending and the run directory or the terminal refusing a write: the run ends with that
 // error, which run returns once the manifest names it.
-func (r *runner) run(ctx context.Context) (err error) {
+func (r *runner) run(ctx context.Context) error {
 	set, err := r.cfg.Build(ctx, r.cfg.Stages)
 	if err != nil {
 		return err
@@ -190,8 +190,8 @@ func (rec *recorder) event(path string, ev dispatch.Event) error {
 	return rec.term.input(in.path, ev, span)
 }
 
-// stopped writes the error line of the input at path, whose dispatch stop stopped before its own
-// event, with its file, when it can still be read, and its time, and its terminal line.
+// stopped writes the error line of the input at path, whose dispatch the error stop ended before
+// its own event, with its file, when it can still be read, and its time, and its terminal line.
 func (rec *recorder) stopped(path string, stop error) error {
 	now := rec.arrived(path)
 	in := rec.inputs[path]

@@ -31,25 +31,17 @@ const errorRunes = 400
 // a stage takes, and where it was found, or why it wasn't built; then each route's stage, its
 // name and its tools' versions, or none, when wired, or its state and why.
 func writeTable(w io.Writer, set stages.Set) error {
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	// tabwriter buffers every cell until Flush, so a write to w fails only there; err keeps the
-	// first failure all the same.
-	var err error
-	row := func(cells ...string) {
-		if err == nil {
-			_, err = io.WriteString(tw, strings.Join(cells, "\t")+"\n")
-		}
-	}
-	row("TOOL", "VERSION", "MINIMUM", "FROM")
+	tb := newTable(w)
+	tb.row("TOOL", "VERSION", "MINIMUM", "FROM")
 	for _, t := range set.Tools {
 		version, from := t.Version, t.From
 		if t.Error != "" {
 			version, from = "-", t.Error
 		}
-		row(t.Program, version, t.Minimum, from)
+		tb.row(t.Program, version, t.Minimum, from)
 	}
-	row()
-	row("ROUTE", "STAGE", "STATE", "TOOLS")
+	tb.row()
+	tb.row("ROUTE", "STAGE", "STATE", "TOOLS")
 	for _, r := range set.Rows {
 		name, detail := "-", r.Reason
 		if r.State == dispatch.Wired {
@@ -58,11 +50,33 @@ func writeTable(w io.Writer, set stages.Set) error {
 				detail = "none"
 			}
 		}
-		row(string(r.Route), name, string(r.State), detail)
+		tb.row(string(r.Route), name, string(r.State), detail)
 	}
-	row()
-	return errors.Join(err, tw.Flush())
+	tb.row()
+	return tb.flush()
 }
+
+// table is a table the terminal prints, its columns aligned two spaces apart.
+type table struct {
+	tw  *tabwriter.Writer
+	err error // the first write's failure
+}
+
+// newTable returns a table printing to w.
+func newTable(w io.Writer) *table {
+	return &table{tw: tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)}
+}
+
+// row adds a row of cells; no cells add an empty line.
+func (t *table) row(cells ...string) {
+	if t.err == nil {
+		_, t.err = io.WriteString(t.tw, strings.Join(cells, "\t")+"\n")
+	}
+}
+
+// flush prints the table. tabwriter buffers every cell until then, so a write to the terminal
+// fails only here; a row's failure is kept all the same.
+func (t *table) flush() error { return errors.Join(t.err, t.tw.Flush()) }
 
 // tallyKey is one cell of the closing summary: a route and an outcome.
 type tallyKey struct {
@@ -92,7 +106,7 @@ func (t *terminal) input(path string, ev dispatch.Event, span schema.Span) error
 	return err
 }
 
-// stopped prints the line of an input whose dispatch stop stopped before its own event.
+// stopped prints the line of an input whose dispatch the error stop ended before its own event.
 func (t *terminal) stopped(path string, stop error, span schema.Span) error {
 	t.tally[tallyKey{routeName(""), errorOutcome}]++
 	t.errored++
@@ -110,25 +124,19 @@ func (t *terminal) summary(id string) error {
 		}
 		return strings.Compare(a.outcome, b.outcome)
 	})
-	tw := tabwriter.NewWriter(t.w, 0, 0, 2, ' ', 0)
-	var err error
-	row := func(cells ...string) {
-		if err == nil {
-			_, err = io.WriteString(tw, strings.Join(cells, "\t")+"\n")
-		}
-	}
-	row()
-	row("ROUTE", "OUTCOME", "INPUTS")
+	tb := newTable(t.w)
+	tb.row()
+	tb.row("ROUTE", "OUTCOME", "INPUTS")
 	total := 0
 	for _, k := range keys {
-		row(k.route, k.outcome, fmt.Sprint(t.tally[k]))
+		tb.row(k.route, k.outcome, fmt.Sprint(t.tally[k]))
 		total += t.tally[k]
 	}
-	row("total", "", fmt.Sprint(total))
-	row()
-	row("run " + id)
-	row(fmt.Sprintf("failed parts %d  error inputs %d", t.failed, t.errored))
-	return errors.Join(err, tw.Flush())
+	tb.row("total", "", fmt.Sprint(total))
+	tb.row()
+	tb.row("run " + id)
+	tb.row(fmt.Sprintf("failed parts %d  error inputs %d", t.failed, t.errored))
+	return tb.flush()
 }
 
 // took returns span's length, to the millisecond, as the terminal writes it.
