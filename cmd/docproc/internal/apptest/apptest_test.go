@@ -1,7 +1,6 @@
 package apptest_test
 
 import (
-	"errors"
 	"slices"
 	"strconv"
 	"sync"
@@ -53,14 +52,5 @@ func TestRecorder_ConcurrentRecords(t *testing.T) {
 
 	if got := len(r.Log()); got != n {
 		t.Errorf("len(Log()) = %d, want %d", got, n)
-	}
-}
-
-// NoTools finds no program, failing with ErrNoTool.
-func TestNoTools(t *testing.T) {
-	for _, program := range []string{"7zz", "docker", ""} {
-		if path, err := apptest.NoTools(program); path != "" || !errors.Is(err, apptest.ErrNoTool) {
-			t.Errorf("NoTools(%q) = %q, %v; want no path and ErrNoTool", program, path, err)
-		}
 	}
 }

@@ -270,7 +270,8 @@ func TestOpen_FixtureContent(t *testing.T) {
 
 func TestContentPath(t *testing.T) {
 	sha := strings.Repeat("ab", 32)
-	if got, want := rundir.ContentPath(sha), filepath.Join("content", dispatch.ContentFile(sha)); got != want {
+	// The layout is schema "2"'s, which a reader that isn't Go follows: content/<ab>/<sha256>.
+	if got, want := rundir.ContentPath(sha), filepath.Join("content", "ab", sha); got != want {
 		t.Errorf("ContentPath = %q, want %q", got, want)
 	}
 	for _, bad := range []string{"", "AB" + sha[2:], sha[:63], "../" + sha[3:]} {
