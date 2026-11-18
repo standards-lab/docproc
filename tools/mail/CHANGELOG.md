@@ -9,6 +9,8 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-18
+
 ### Changed
 
 - The crate graph locks uuid 1.29.3, a patch release, in place of 1.29.2. The output is
@@ -154,6 +156,7 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0

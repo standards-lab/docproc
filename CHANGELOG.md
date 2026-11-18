@@ -9,6 +9,11 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-11-18
+
+This release names a run's report directory, which `cmd/docproc`'s report renders into. The
+module still requires golang.org/x/text alone.
+
 ### Added
 
 - `rundir.Dir.ReportDir`, a run's report directory, `runs/<run>/report`, relative to the run
@@ -142,6 +147,7 @@ fixtures scripts stay in the spike.
 The [README](README.md#limits) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.3.0...HEAD
+[v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/v0.1.0
