@@ -17,6 +17,13 @@ import (
 // an offset no whole-hour rounding hides, so a time left in the local zone shows in a test.
 var Zone = time.FixedZone("tooltest", 5*3600+45*60)
 
+// Memory is the memory bound, as RLIMIT_AS, a test runs a stand-in under when it sets one. A
+// stand-in is the test binary itself, and a race-built one reserves about 1.8 GiB of address
+// space as it starts; at a 2 GiB bound a busy CI runner sometimes failed to create its threads
+// ("runtime/cgo: pthread_create failed: Resource temporarily unavailable"), so the stand-in
+// failed its version command. 8 GiB leaves it four times that room.
+const Memory = 8 << 30
+
 // settingsSuffix and logSuffix end the names of a link's settings file and run log, which sit
 // beside the link.
 const (

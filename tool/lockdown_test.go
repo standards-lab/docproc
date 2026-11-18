@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -68,9 +69,9 @@ func TestRunExitHasNoSignal(t *testing.T) {
 	}
 }
 
-// memoryLimit is the bound the memory tests set: room for the stand-in, a race-built test binary,
-// to start, and far below what the refused allocation asks.
-const memoryLimit = 2 << 30
+// memoryLimit is the bound the memory tests set: tooltest's room for the stand-in, a race-built
+// test binary, to start, and far below what the refused allocation asks.
+const memoryLimit = tooltest.Memory
 
 // TestMemoryLimit checks that a bounded Spec's every run, the version command's included, runs
 // under RLIMIT_AS set to the bound, and that an allocation past it is refused while one within it
