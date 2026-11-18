@@ -8,6 +8,28 @@ audio/testdata/speech-truncated.mp3	audio	prepared
 audio/testdata/speech.flac	audio	prepared
 audio/testdata/speech.truth.txt	text	prepared
 audio/testdata/windows-v0.9.0.txt	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/956e499b5e521771b3584eaa57b659d9bae2cebed6c9b9a66b1bde9ef33ab03e.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/index.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/index.html	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/25/2556d072121b94e2a6cc4cf8e43f73b1b5030ec3ab59d0b2235aa2faa16b4abe	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/43/4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2	vision	prepared
+cmd/docproc/internal/report/testdata/rundir/content/49/49f0a3b0c2b2a69f7619a5fdb670aec4c66c547ab78d4c13c41bf822a2f63a9d	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/6a/6aadf10b8e2ff279d1eebcbf84f605f00f4827d82dad47f55b468b8ddf3d44c4	vision	prepared
+cmd/docproc/internal/report/testdata/rundir/content/6d/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/91/91f139ca1c19593f32cba1f5a21ceeb556eeeaf3a208c97c5927e7a098878b19	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/98/98dc2ca63ef11a81aec72f3f4adbfc46f76775d1bffeb97ea5d95efd53afab36	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/a1/a1c904eedaa045e589e7662e41362498fee1eac19cb75247d86187f0e8b829f9	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/e5/e5e635c7a7480ef91dd5f6503c2d4f7ed429a7df4f3c80350de6e1c95d7c8d38	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/e7/e700dfd0455f7fc65a5847792900801c945226449672700b65e1fa8da633a0e7	audio	prepared
+cmd/docproc/internal/report/testdata/rundir/quarantine/d9f0fc6ffd4c580cd4bd9f56d16d92f1e74ab539039d33d33ab256c8995b5b9d	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/rundir.json	text	prepared
+cmd/docproc/internal/report/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-0000000000a1/manifest.json	text	prepared
+cmd/docproc/internal/report/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-0000000000a1/record.jsonl	text	prepared
+cmd/docproc/internal/report/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-0000000000a2/manifest.json	text	prepared
+cmd/docproc/internal/report/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-0000000000a2/record.jsonl	text	prepared
 dispatch/testdata/dispatch.jsonl	text	prepared
 dispatch/testdata/log.jsonl	text	prepared
 document/testdata/README.md	text	prepared
@@ -140,7 +162,7 @@ picture/testdata/two-images.heic	vision-converted	prepared
 rundir/testdata/rundir/content/b6/b688c8947f876ba9580749960b0c70076ea223eec8dcb9d57d4c51c9c9dd2906	unrouted	no processor yet
 rundir/testdata/rundir/content/d3/d31031c3593a9da13ff7013b8cf20bf3120903467fac751975e0260c8560c6c7	unrouted	no processor yet
 rundir/testdata/rundir/quarantine/4efe525c159bafa28a6ba4e08aa028a846bdebb78bf4b33c11e959a37b481bca	unrouted	no processor yet
-rundir/testdata/rundir/rundir.json	text	prepared
+rundir/testdata/rundir/rundir.json	text	seen
 rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000001/manifest.json	text	prepared
 rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000001/record.jsonl	text	prepared
 rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000002/manifest.json	text	prepared
