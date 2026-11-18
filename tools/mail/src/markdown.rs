@@ -16,11 +16,11 @@
 //! `inline` when the Markdown links it, and a `data:` payload is written, and listed, only when
 //! the Markdown links it, so every file written is named by a line.
 //!
-//! htmd writes a text `&` as itself, so CommonMark would read a literal `&amp;` in the text back
-//! as `&`. Before htmd writes the Markdown, each `&` of the parsed text, character references
-//! decoded and attribute values aside, becomes a private-use character the body lacks, and once it
-//! is written each one becomes `\&` where it could begin a character reference outside code, and
-//! `&` elsewhere ([`from_html`]).
+//! htmd 0.6 escapes more of the text than htmd 0.5.6 did: each `&`, `$`, and `~`, a `-` or `+`
+//! that begins a text, an ordered item's `)`, and a `<` that could open HTML or an autolink. A
+//! pass over the Markdown htmd writes keeps such an escape only where CommonMark needs it, where
+//! taking the backslash away would change how the Markdown reads, and makes every other the bare
+//! character, so the Markdown reads, and is written, as it was ([`bare`]).
 //!
 //! Markdown made from HTML is compared with the message's source text by the content rule, the
 //! shared crate's (context/layers.md, schema "2"): the source text's sentences the Markdown lacks
@@ -30,15 +30,13 @@
 use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ops::Range;
-use std::rc::Rc;
 
 use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::{destination, escape, reference_like, title};
+use docproc_envelope::markdown::{destination, escape, title};
 use docproc_envelope::{Fault, Media};
-use htmd::element_handler::{HandlerResult, Handlers};
-use htmd::{Element, Node};
+use htmd::Element;
+use htmd::element_handler::{Context, ContextKind, HandlerResult, Handlers};
 use mail_parser::Encoding;
-use markup5ever_rcdom::NodeData;
 
 use crate::model::{Medium, Message};
 
@@ -435,204 +433,267 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
 }
 
 /// Markdown from an HTML body. Images keep their sources as written. The head, styles and
-/// scripts are no part of the text: htmd would write a style's rules as text. Links and images
-/// are written by [`anchor`] and [`image`], in place of htmd's own. Each `&` of the text is
-/// written escaped, `\&`, where it could begin a character reference outside code, and as itself
-/// elsewhere ([`ampersands`]).
+/// scripts are no part of the text: htmd would write a style's rules as text. Links, images, and
+/// table cells are written by [`anchor`], [`image`], and [`cell`], in place of htmd's own. The
+/// escapes htmd 0.6 writes beyond htmd 0.5.6's are kept only where CommonMark needs them
+/// ([`bare`]).
 pub fn from_html(html: &str) -> Result<String, String> {
     let htmd = htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
         .add_handler(vec!["a"], anchor)
         .add_handler(vec!["img"], image)
+        .add_handler(vec!["td", "th"], cell)
         .build();
-    let fault = |err: std::io::Error| format!("can't be made into Markdown ({err})");
-    let tree = htmd.html_to_tree(html).map_err(fault)?;
-    if !has_text_ampersand(&tree) {
-        return Ok(htmd.tree_to_markdown(&tree));
+    let markdown = htmd
+        .convert(html)
+        .map_err(|err| format!("can't be made into Markdown ({err})"))?;
+    Ok(bare(&markdown))
+}
+
+/// How the Markdown is read when [`bare`] tests an escape: CommonMark with GFM tables and
+/// strikethrough, as the envelope's content rule reads it, and math, which htmd 0.6 writes for.
+const READING: pulldown_cmark::Options = pulldown_cmark::Options::ENABLE_TABLES
+    .union(pulldown_cmark::Options::ENABLE_STRIKETHROUGH)
+    .union(pulldown_cmark::Options::ENABLE_MATH);
+
+/// Whether a backslash before `c` is one [`bare`] may take back: an escape htmd 0.5.6 never wrote,
+/// or wrote under narrower rules than htmd 0.6 does. htmd 0.5.6's own escapes, before `\`, `*`,
+/// `_`, `` ` ``, `[`, `]`, a first `=`, `>`, or `#`, and an ordered item's `.`, are written as
+/// htmd 0.6 writes them too, and are kept as written, so the Markdown made today stays as it is.
+fn bare_candidate(c: u8) -> bool {
+    c.is_ascii_punctuation() && !b"\\*_`[]=>#.".contains(&c)
+}
+
+/// `markdown`, as htmd 0.6 writes it, with each escape [`bare_candidate`] names kept only where
+/// CommonMark needs it: one whose backslash, taken away, changes how [`READING`] reads the
+/// Markdown is kept, and every other becomes the bare character. So prose such as `AT&T`, `$5`,
+/// `E-Mail`, or `~3` keeps its character bare, as htmd 0.5.6 wrote it, while an `&amp;` that is
+/// text, a `- ` or `1)` that would begin a list item, a `<b>` that would be HTML, or a `~~` that
+/// would strike text through keeps its escape. The escapes are tried last first, each against the
+/// Markdown with the backslashes already taken away, and each test reads only the top-level block
+/// that holds it, so a body's many blocks cost one read each per escape, not the whole body.
+///
+/// Only htmd's own text is read: a code span, a code block, a math expression, and raw HTML, where
+/// a backslash escapes nothing, are left as written, and so are an image and a link's destination
+/// and title, which [`anchor`] and [`image`] write through the envelope's rules.
+fn bare(markdown: &str) -> String {
+    if !markdown.contains('\\') {
+        return markdown.to_owned();
     }
-    let sentinel = sentinel(html, &tree)
-        .ok_or("can't be made into Markdown (it holds every private-use character)")?;
-    mark_ampersands(&tree, sentinel);
-    Ok(ampersands(&htmd.tree_to_markdown(&tree), sentinel))
-}
-
-/// Whether any of `tree`'s text holds a `&`, the only case that needs a sentinel.
-fn has_text_ampersand(tree: &Rc<Node>) -> bool {
-    let mut found = false;
-    each_node(tree, |node| {
-        if let NodeData::Text { contents } = &node.data {
-            found |= contents.borrow().contains('&');
-        }
-    });
-    found
-}
-
-/// Calls `visit` on each node of `tree`, the tree itself first, in document order. The walk keeps
-/// its own stack, so a deep tree can't overflow the thread's.
-fn each_node(tree: &Rc<Node>, mut visit: impl FnMut(&Node)) {
-    let mut stack = vec![Rc::clone(tree)];
-    while let Some(node) = stack.pop() {
-        visit(&node);
-        stack.extend(node.children.borrow().iter().rev().cloned());
-    }
-}
-
-/// The character that stands for a text `&` while htmd writes the Markdown: the first private-use
-/// code point, from U+E000, in neither `html` nor its tree's text and attribute values, where a
-/// character reference may have put one. None when every one is in them.
-fn sentinel(html: &str, tree: &Rc<Node>) -> Option<char> {
-    let mut used: HashSet<char> = HashSet::new();
-    let private = |c: &char| matches!(c, '\u{E000}'..='\u{F8FF}' | '\u{F0000}'..);
-    used.extend(html.chars().filter(private));
-    each_node(tree, |node| match &node.data {
-        NodeData::Text { contents } => used.extend(contents.borrow().chars().filter(private)),
-        NodeData::Element { attrs, .. } => {
-            for attr in attrs.borrow().iter() {
-                used.extend(attr.value.chars().filter(private));
-            }
-        }
-        _ => {}
-    });
-    ('\u{E000}'..='\u{F8FF}')
-        .chain('\u{F0000}'..='\u{FFFFD}')
-        .chain('\u{100000}'..='\u{10FFFD}')
-        .find(|c| !used.contains(c))
-}
-
-/// Replaces each `&` of `tree`'s text nodes, as parsed, its character references decoded, with
-/// `sentinel`, so htmd, which writes a text `&` as itself, writes the sentinel instead. Attribute
-/// values are left alone: a link's or an image's are written by [`anchor`] and [`image`], whose
-/// rules escape a `&` already.
-fn mark_ampersands(tree: &Rc<Node>, sentinel: char) {
-    each_node(tree, |node| {
-        if let NodeData::Text { contents } = &node.data {
-            let mut contents = contents.borrow_mut();
-            if contents.contains('&') {
-                *contents = contents
-                    .replace('&', sentinel.encode_utf8(&mut [0; 4]))
-                    .into();
-            }
-        }
-    });
-}
-
-/// `markdown`, written by htmd from a tree [`mark_ampersands`] marked, with each `sentinel` the
-/// `&` it stands for: escaped, `\&`, where CommonMark would read it as beginning a character
-/// reference, outside code and before what the envelope's [`reference_like`] matches, and as
-/// itself elsewhere, so prose such as `AT&T` keeps its `&` bare. Within a code span or a code
-/// block CommonMark reads no reference. What follows a sentinel is read as written in the
-/// Markdown, where a following sentinel, `\`, or markup ends a reference as it would for
-/// CommonMark. A sentinel can't be in a link's or an image's destination or title, which are
-/// attribute values; there the same test holds, as the envelope's rules for them apply it.
-fn ampersands(markdown: &str, sentinel: char) -> String {
-    use pulldown_cmark::{Event, Options, Parser, Tag};
-    let code: Vec<Range<usize>> = Parser::new_ext(markdown, Options::ENABLE_TABLES)
-        .into_offset_iter()
-        .filter_map(|(event, range)| match event {
-            Event::Code(_) | Event::Start(Tag::CodeBlock(_)) => Some(range),
-            _ => None,
-        })
-        .collect();
+    let kept = kept(markdown);
     let mut out = String::with_capacity(markdown.len());
     let mut copied = 0;
-    let mut spans = code.iter().peekable();
-    for (at, _) in markdown.match_indices(sentinel) {
-        out.push_str(&markdown[copied..at]);
-        while spans.next_if(|span| span.end <= at).is_some() {}
-        let in_code = spans.peek().is_some_and(|span| span.contains(&at));
-        copied = at + sentinel.len_utf8();
-        let escaped = !in_code && reference_like(&markdown[copied..]);
-        out.push_str(if escaped { "\\&" } else { "&" });
+    for block in blocks(markdown) {
+        out.push_str(&markdown[copied..block.start]);
+        let escapes = escapes(markdown, block.clone(), &kept);
+        out.push_str(&bare_block(&markdown[block.clone()], &escapes));
+        copied = block.end;
     }
     out.push_str(&markdown[copied..]);
     out
 }
 
-/// A link, as htmd 0.5.6 writes one inline, `[text](destination "title")`, but for its
-/// destination, which is the envelope's [`destination`]: htmd escapes only a target's `(` and
-/// `)`, so CommonMark would read a UNC path's `\\` back as `\` and an `&amp;` as `&`. An
-/// `<a>` with no `href` is its text alone. As htmd does, the text's leading whitespace is
-/// dropped and its trailing whitespace follows the link. A title is [`attribute_title`]: htmd
-/// escapes only its `"`, so CommonMark would read a `\` before punctuation, or an `&amp;`, back
-/// as something else.
-fn anchor(handlers: &dyn Handlers, element: Element) -> Option<HandlerResult> {
-    let mut target = None;
-    let mut title = None;
-    for attr in element.attrs {
-        match &*attr.name.local {
-            "href" => target = Some(&*attr.value),
-            "title" => title = Some(attribute_title(&attr.value)),
+/// The top-level blocks of `markdown`, in order, as [`READING`] reads it.
+fn blocks(markdown: &str) -> Vec<Range<usize>> {
+    use pulldown_cmark::{Event, Parser};
+    let mut blocks = Vec::new();
+    let mut depth = 0usize;
+    for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
+        match event {
+            Event::Start(_) => {
+                if depth == 0 {
+                    blocks.push(range);
+                }
+                depth += 1;
+            }
+            Event::End(_) => depth -= 1,
             _ => {}
         }
     }
-    let Some(target) = target else {
-        return Some(handlers.walk_children(element.node));
+    blocks
+}
+
+/// The offsets, relative to `block`'s start, of the backslashes in `block` that escape a
+/// character [`bare_candidate`] names, outside the `kept` ranges. A `\\` is a literal backslash,
+/// and what follows it is read afresh.
+fn escapes(markdown: &str, block: Range<usize>, kept: &[Range<usize>]) -> Vec<usize> {
+    let bytes = markdown.as_bytes();
+    let mut kept = kept.iter().peekable();
+    let mut found = Vec::new();
+    let mut at = block.start;
+    while at + 1 < block.end {
+        while kept.next_if(|range| range.end <= at).is_some() {}
+        if let Some(range) = kept.peek().filter(|range| range.start <= at) {
+            at = range.end;
+            continue;
+        }
+        if bytes[at] != b'\\' || !bytes[at + 1].is_ascii_punctuation() {
+            at += 1;
+            continue;
+        }
+        if bare_candidate(bytes[at + 1]) {
+            found.push(at - block.start);
+        }
+        at += 2;
+    }
+    found
+}
+
+/// `block` with each backslash at `escapes` taken away where that leaves its reading unchanged.
+fn bare_block(block: &str, escapes: &[usize]) -> String {
+    let mut text = block.to_owned();
+    if escapes.is_empty() {
+        return text;
+    }
+    let read = reading(block);
+    // Last first, so a run's first backslash, which may keep its run from beginning a block, is
+    // the one left: `\~~~`, as htmd 0.5.6 wrote it, rather than `~~\~`.
+    for &at in escapes.iter().rev() {
+        let mut trial = text.clone();
+        trial.remove(at);
+        if reading(&trial) == read {
+            text = trial;
+        }
+    }
+    text
+}
+
+/// How [`READING`] reads `markdown`: its events, where they are aside, each run of text one.
+fn reading(markdown: &str) -> Vec<pulldown_cmark::Event<'static>> {
+    use pulldown_cmark::{CowStr, Event, Parser};
+    let mut events: Vec<Event<'static>> = Vec::new();
+    for event in Parser::new_ext(markdown, READING) {
+        match (events.last_mut(), event) {
+            (Some(Event::Text(text)), Event::Text(more)) => {
+                *text = CowStr::from(format!("{text}{more}"));
+            }
+            (_, event) => events.push(event.into_static()),
+        }
+    }
+    events
+}
+
+/// Where in `markdown` the text [`bare`] reads is not: its code spans, code blocks, math
+/// expressions, raw HTML, and images, whole, and each link's destination and title, everything
+/// after its text, in order of where each starts. It is read as [`READING`] reads it.
+fn kept(markdown: &str) -> Vec<Range<usize>> {
+    use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut kept: Vec<Range<usize>> = Vec::new();
+    // Each open link's range, and where the last event inside it ended.
+    let mut links: Vec<(Range<usize>, usize)> = Vec::new();
+    let mut image = 0usize;
+    for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
+        if image > 0 {
+            match event {
+                Event::Start(Tag::Image { .. }) => image += 1,
+                Event::End(TagEnd::Image) => image -= 1,
+                _ => {}
+            }
+            continue;
+        }
+        match event {
+            Event::Start(Tag::Link { .. }) => {
+                links.push((range.clone(), range.start + 1));
+                continue;
+            }
+            Event::End(TagEnd::Link) => {
+                if let Some((link, text_end)) = links.pop() {
+                    kept.push(text_end..link.end);
+                    if let Some((_, outer)) = links.last_mut() {
+                        *outer = (*outer).max(link.end);
+                    }
+                }
+                continue;
+            }
+            _ => {}
+        }
+        if let Some((_, text_end)) = links.last_mut() {
+            *text_end = (*text_end).max(range.end);
+        }
+        match event {
+            Event::Start(Tag::Image { .. }) => {
+                image = 1;
+                kept.push(range);
+            }
+            Event::Code(_)
+            | Event::InlineMath(_)
+            | Event::DisplayMath(_)
+            | Event::InlineHtml(_)
+            | Event::Html(_)
+            | Event::Start(Tag::CodeBlock(_) | Tag::HtmlBlock) => kept.push(range),
+            _ => {}
+        }
+    }
+    kept.sort_by_key(|range| range.start);
+    kept
+}
+
+/// A link, as htmd 0.6 writes one inline, `[text](destination "title")`, its text walked as inline
+/// content and its line endings written `&#13;` and `&#10;`, but for its destination, which is the
+/// envelope's [`destination`]: htmd's would read back the same, but the envelope's is the one
+/// every tool's Markdown shares. An `<a>` with no `href` is its text alone. A title is the
+/// envelope's [`title`], which escapes as htmd's does but for an `&` that could begin no
+/// character reference, which it leaves bare.
+fn anchor(handlers: &dyn Handlers, element: &Element) -> Option<HandlerResult> {
+    let attrs = element.node.attrs();
+    let Some(target) = attrs.get("href") else {
+        return Some(handlers.walk_children(element.node, element.context));
     };
-    let content = handlers.walk_children(element.node).content;
-    let text = content.trim_matches(DOCUMENT_WHITESPACE);
-    let trailing = &content[content.trim_end_matches(DOCUMENT_WHITESPACE).len()..];
+    let inline = Context {
+        kind: ContextKind::Inline,
+        ..element.context
+    };
+    let content = handlers.walk_children_content(element.node, inline);
+    let text = content.replace('\r', "&#13;").replace('\n', "&#10;");
     let mut out = format!("[{text}]({}", destination(target));
-    if let Some(title) = title {
-        out.push_str(&format!(" \"{title}\""));
-    }
-    out.push(')');
-    out.push_str(trailing);
-    Some(out.into())
-}
-
-/// An image, as htmd 0.5.6 writes one, `![alt](destination "title")`, but for its destination,
-/// which is the envelope's [`destination`], as a link's is ([`anchor`]). Its target is its last
-/// `src` or `href`, as htmd reads it, and an `<img>` with neither is nothing; its alt text is
-/// [`attribute_alt`] and its title [`attribute_title`].
-fn image(_: &dyn Handlers, element: Element) -> Option<HandlerResult> {
-    let mut target = None;
-    let mut alt = None;
-    let mut title = None;
-    for attr in element.attrs {
-        match &*attr.name.local {
-            "src" | "href" => target = Some(&*attr.value),
-            "alt" => alt = Some(attribute_alt(&attr.value)),
-            "title" => title = Some(attribute_title(&attr.value)),
-            _ => {}
-        }
-    }
-    let target = target?;
-    let mut out = format!("![{}]({}", alt.unwrap_or_default(), destination(target));
-    if let Some(title) = title {
-        out.push_str(&format!(" \"{title}\""));
+    if let Some(text) = attrs.get("title") {
+        out.push_str(&format!(" \"{}\"", title(text)));
     }
     out.push(')');
     Some(out.into())
 }
 
-/// The whitespace htmd trims from a link's text and an attribute's lines: HTML's ASCII
-/// whitespace but the form feed.
+/// An image, as htmd 0.6 writes one, `![alt](destination "title")`, but for its destination and
+/// title, the envelope's, as a link's are ([`anchor`]), and its alt text, which is
+/// [`attribute_alt`], as htmd 0.5.6 wrote it. Its target is its `src`, and an `<img>` without one
+/// is nothing.
+fn image(_: &dyn Handlers, element: &Element) -> Option<HandlerResult> {
+    let attrs = element.node.attrs();
+    let target = attrs.get("src")?;
+    let alt = attrs.get("alt").map(attribute_alt).unwrap_or_default();
+    let mut out = format!("![{alt}]({}", destination(target));
+    if let Some(text) = attrs.get("title") {
+        out.push_str(&format!(" \"{}\"", title(text)));
+    }
+    out.push(')');
+    Some(out.into())
+}
+
+/// A table cell, as htmd 0.5.6 wrote one: its content walked where a block may begin, framed as a
+/// block. htmd 0.6 walks a cell as inline content, where a heading is its text alone, run into
+/// the text beside it; walked as a block, a heading in a layout table stays a heading, and a GFM
+/// table's writer folds the cell's lines into its row as it did.
+fn cell(handlers: &dyn Handlers, element: &Element) -> Option<HandlerResult> {
+    let content = handlers.walk_children_content(element.node, Context::BLOCK);
+    Some(format!("\n\n{}\n\n", content.trim_matches('\n')).into())
+}
+
+/// The whitespace htmd 0.5.6 trims from an alt text's lines: HTML's ASCII whitespace but the form
+/// feed.
 const DOCUMENT_WHITESPACE: &[char] = &['\t', '\n', '\r', ' '];
 
-/// An alt text's or a title's lines as htmd 0.5.6 takes them: each trimmed, the blank ones
-/// dropped.
-fn attribute_lines(text: &str) -> impl Iterator<Item = &str> {
+/// An image's alt text as Markdown that reads back as its lines, as htmd 0.5.6 took them, each
+/// trimmed and the blank ones dropped: each escaped as literal text, joined by line feeds. A line
+/// after the first begins its line of Markdown, so it is escaped as one. htmd 0.6 writes the alt
+/// text whole, its line endings as references.
+fn attribute_alt(text: &str) -> String {
     text.lines()
         .map(|line| line.trim_matches(DOCUMENT_WHITESPACE))
         .filter(|line| !line.is_empty())
-}
-
-/// An image's alt text as Markdown that reads back as its lines: each escaped as literal text,
-/// joined by line feeds as htmd 0.5.6 joins them. htmd escapes only a `"`, so CommonMark would
-/// read a `\` before punctuation, an `&amp;`, a `*`, or a `]` as something else. A line after the
-/// first begins its line of Markdown, so it is escaped as one.
-fn attribute_alt(text: &str) -> String {
-    attribute_lines(text)
         .enumerate()
         .map(|(index, line)| escape(line, index > 0))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-/// A link's or an image's title as the envelope's [`title`] writes its lines, joined by line
-/// feeds as htmd 0.5.6 joins them.
-fn attribute_title(text: &str) -> String {
-    title(&attribute_lines(text).collect::<Vec<_>>().join("\n"))
 }
 
 /// Markdown that reads as `text` does: its paragraphs, split at blank lines, each line escaped
@@ -1171,44 +1232,60 @@ mod tests {
         (titles, alts)
     }
 
-    /// A link's and an image's title, and an image's alt text, read back as their lines, through
-    /// CommonMark: backslashes, a `"`, an `&` that could begin a character reference, markup, and
-    /// a line that would begin a block, its lines trimmed and the blank ones dropped.
+    /// A link's and an image's title read back as written, and an image's alt text as its lines,
+    /// through CommonMark: backslashes, a `"`, an `&` that could begin a character reference,
+    /// markup, and a line that would begin a block; the alt text's lines trimmed and the blank ones
+    /// dropped. The parser reads a carriage return and line feed in an attribute as a line feed.
     #[test]
     fn titles_and_alt_texts_read_back_as_written() {
         let texts = [
-            (r"C:\Team Notes\plan.docx", r"C:\Team Notes\plan.docx"),
-            (r"a\*b\&quot;c", r#"a\*b\"c"#),
-            ("&amp;amp; &amp;#35; &amp;e &lt;b&gt;", "&amp; &#35; &e <b>"),
-            ("*a* _b_ [c] `d` ~e~", "*a* _b_ [c] `d` ~e~"),
+            (
+                r"C:\Team Notes\plan.docx",
+                r"C:\Team Notes\plan.docx",
+                r"C:\Team Notes\plan.docx",
+            ),
+            (r"a\*b\&quot;c", r#"a\*b\"c"#, r#"a\*b\"c"#),
+            (
+                "&amp;amp; &amp;#35; &amp;e &lt;b&gt;",
+                "&amp; &#35; &e <b>",
+                "&amp; &#35; &e <b>",
+            ),
+            (
+                "*a* _b_ [c] `d` ~e~",
+                "*a* _b_ [c] `d` ~e~",
+                "*a* _b_ [c] `d` ~e~",
+            ),
             (
                 " one \n\n # two \r\n- three\n1. four ",
+                " one \n\n # two \n- three\n1. four ",
                 "one\n# two\n- three\n1. four",
             ),
         ];
-        for (html, text) in texts {
+        for (html, title, alt) in texts {
             let markdown = from_html(&format!(
                 "<p><a href=\"x\" title=\"{html}\">link</a> \
                  <img src=\"y\" alt=\"{html}\" title=\"{html}\"></p>"
             ))
             .unwrap();
             let (titles, alts) = titles_and_alts(&markdown);
-            assert_eq!(titles, [text, text], "{markdown}");
-            assert_eq!(alts, [text], "{markdown}");
+            assert_eq!(titles, [title, title], "{markdown}");
+            assert_eq!(alts, [alt], "{markdown}");
         }
     }
 
-    /// Where htmd's own destination, title, and alt text already read back, the owned link and
-    /// image handlers write what htmd's would: the text, its trailing whitespace after the link, a
-    /// title's and an alt text's lines, a link with no target, and an image with none. A title
-    /// keeps to one line, where htmd's holds line feeds.
+    /// Where htmd's own destination and title already read back, the owned link and image handlers
+    /// write what htmd 0.6's would: a link's text, its edge whitespace inside the brackets, a
+    /// title, a link with no target, an image's alt text of one trimmed line, and an `<img>`
+    /// without a `src`, which is nothing. The one exception is an alt text htmd would write
+    /// otherwise: htmd 0.6 writes it whole, its edges and line feeds as references, where the
+    /// owned handler trims its lines and joins them by line feeds, as htmd 0.5.6 did.
     #[test]
     fn links_and_images_are_written_as_htmd_writes_them() {
         let htmls = [
             "<p>See <a href=\"https://example.net/x\" title=\" One &quot;q&quot; \">\
              <b>bold</b> text </a>after.</p>",
             "<p><a>no target</a> and <a href=\"https://example.net/f(x)\">f</a></p>",
-            "<p><img src=\"a b.png\" alt=\" A\nb \" title=\"t\"><img alt=\"none\">\
+            "<p><img src=\"a b.png\" alt=\"A moth\" title=\" t \"><img alt=\"none\">\
              <img href=\"h.png\" src=\"s.png\"></p>",
         ];
         let htmd = htmd::HtmlToMarkdown::builder()
@@ -1221,6 +1298,24 @@ mod tests {
                 "{html}"
             );
         }
+        let html = "<p><img src=\"a.png\" alt=\" A\nb \"></p>";
+        assert_eq!(from_html(html).unwrap(), "![A\nb](a.png)");
+        assert_eq!(htmd.convert(html).unwrap(), "![ A&#10;b ](a.png)");
+    }
+
+    /// A heading in a table's cell stays a heading, apart from the text beside it, as htmd 0.5.6
+    /// wrote it, in a layout table and in a GFM table's row; htmd 0.6 would write its text alone,
+    /// run into the cell's other text.
+    #[test]
+    fn headings_in_table_cells_stay_headings() {
+        assert_eq!(
+            from_html("<table><tr><td>b<h3>c</h3></td></tr></table>").unwrap(),
+            "b\n\n### c"
+        );
+        assert_eq!(
+            from_html("<table><tr><th>a</th></tr><tr><td><h1>x</h1>y</td></tr></table>").unwrap(),
+            "| a      |\n| ------ |\n| # x  y |"
+        );
     }
 
     /// The text of `markdown`'s blocks as CommonMark reads it back, GFM tables on: each
@@ -1289,7 +1384,6 @@ mod tests {
         for (html, text) in cases {
             let markdown = from_html(html).unwrap();
             assert_eq!(blocks(&markdown), text, "{markdown}");
-            assert!(!markdown.contains('\u{E000}'), "{markdown}");
         }
         let markdown = from_html("<p>`&amp;amp;`</p>").unwrap();
         assert_eq!(blocks(&markdown), ["`&amp;`"], "{markdown}");
@@ -1300,41 +1394,74 @@ mod tests {
         );
     }
 
-    /// A private-use character the body holds reads back as itself, beside a text `&` the
-    /// Markdown escapes, wherever the body holds it: in its text, as written or through a character
-    /// reference, and in a link's or an image's destination and title, which are attribute values.
-    /// A body holding every private-use character has none left to stand for its `&`s, and makes no
-    /// Markdown; without a text `&` it needs none, and makes its Markdown.
+    /// The escapes htmd 0.6 writes beyond htmd 0.5.6's, in Markdown as htmd writes it: each is
+    /// taken away where CommonMark reads the Markdown the same without it, and kept where it
+    /// would not, the Markdown reading the same either way. A text `&`, `$`, `~`, a `-` within a
+    /// word or a rule-like run, and a `<` that opens no HTML go bare; an `&` before what could be a
+    /// reference, a `- `, `+ `, or `1)` that would begin a list item, a run of `~` that would strike
+    /// text through or open a code fence, which keeps its first backslash, and a `<` that would
+    /// open HTML or an autolink stay escaped. A literal backslash, `\\`, stays, and the escape after
+    /// it is read on its own. htmd 0.5.6's own escapes, a `\[`, `\*`, or `1\.`, are kept as written.
     #[test]
-    fn private_use_characters_read_back_as_written() {
-        let html = "<p>\u{E000} &amp;amp; <code>\u{E000}&amp;</code> &#xE001;&amp;#59; \
-                    <a href=\"&#xE002;\" title=\"&#xE003;\">link</a> \
-                    <img src=\"\u{E004}\" title=\"&#57349;\"></p>";
-        let markdown = from_html(html).unwrap();
-        assert_eq!(
-            blocks(&markdown),
-            ["\u{E000} &amp; \u{E000}& \u{E001}&#59; link "],
-            "{markdown}"
-        );
-        assert_eq!(
-            destinations(&markdown),
-            ["\u{E002}", "\u{E004}"],
-            "{markdown}"
-        );
-        assert_eq!(
-            titles_and_alts(&markdown).0,
-            ["\u{E003}", "\u{E005}"],
-            "{markdown}"
-        );
+    fn the_escapes_htmd_adds_are_kept_only_where_commonmark_needs_them() {
+        let cases = [
+            (
+                r"AT\&T costs \$5, about \~3 min",
+                r"AT&T costs $5, about ~3 min",
+            ),
+            (
+                r"\&amp; and \&#59; and AT\&T \&copy",
+                r"\&amp; and \&#59; and AT&T &copy",
+            ),
+            (r"a \~\~b\~\~ c, \~\~ d", r"a \~~b~~ c, ~~ d"),
+            (r"\~\~\~ x", r"\~~~ x"),
+            (
+                "\\- x\n\n\\+ y\n\n1\\) z\n\n1\\. w",
+                "\\- x\n\n\\+ y\n\n1\\) z\n\n1\\. w",
+            ),
+            (r"E\-Mail and **\----**", r"E-Mail and **----**"),
+            (r"a \<b> c \< d \<", r"a \<b> c < d <"),
+            (r"mail \<1@b.co>", r"mail \<1@b.co>"),
+            (r"a \\ \$5 \\\&amp; \\\&b", r"a \\ $5 \\\&amp; \\&b"),
+            (r"\[Webinar\] \*not\* bold", r"\[Webinar\] \*not\* bold"),
+        ];
+        for (htmd, ours) in cases {
+            let made = bare(htmd);
+            assert_eq!(made, ours, "{htmd}");
+            assert_eq!(reading(&made), reading(htmd), "{htmd}");
+        }
+    }
 
-        let every: String = ('\u{E000}'..='\u{F8FF}')
-            .chain('\u{F0000}'..='\u{FFFFD}')
-            .chain('\u{100000}'..='\u{10FFFD}')
-            .collect();
-        let refused = from_html(&format!("<p>&amp;amp; {every}</p>")).unwrap_err();
-        assert!(refused.contains("every private-use character"), "{refused}");
-        let read = from_html(&format!("<p>{every}</p>")).unwrap();
-        assert_eq!(blocks(&read), [every.as_str()]);
+    /// Code spans, code blocks, math, and raw HTML, where a backslash escapes nothing, are left as
+    /// written, and so are a link's destination and title and an image, which the owned handlers
+    /// write; a link's text is htmd's, and read.
+    #[test]
+    fn code_math_html_and_link_targets_are_left_as_written() {
+        let cases = [
+            (
+                "Write `\\& \\$ \\~` for \\& \\$\n\n```\n\\& \\$5 \\~\n```",
+                "Write `\\& \\$ \\~` for & $\n\n```\n\\& \\$5 \\~\n```",
+            ),
+            (r"$a\$b$ costs \$5", r"$a\$b$ costs $5"),
+            (r"a <b title='\$'>x</b> \$", r"a <b title='\$'>x</b> $"),
+            (
+                r#"[AT\&T \$5](<a\&b c> "\~t \$") ![\~a \$](x "\$")"#,
+                r#"[AT&T $5](<a\&b c> "\~t \$") ![\~a \$](x "\$")"#,
+            ),
+        ];
+        for (htmd, ours) in cases {
+            assert_eq!(bare(htmd), ours, "{htmd}");
+        }
+        // Through htmd: a math span is htmd 0.6's own, and code holds its text as written.
+        assert_eq!(
+            from_html(
+                "<p>Write <code>\\&amp; $</code> &amp; $5, \
+                 <span class=\"math math-inline\">a+b</span></p>\
+                 <pre><code>\\&amp; $5 ~~x~~\n</code></pre>"
+            )
+            .unwrap(),
+            "Write `\\& $` & $5, $a+b$\n\n```\n\\& $5 ~~x~~\n```"
+        );
     }
 
     /// The `src` of a start tag, quoted either way or bare, past other attributes, a name that

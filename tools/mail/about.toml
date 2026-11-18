@@ -16,3 +16,10 @@ ignore-dev-dependencies = true
 # docproc-mail itself is unpublished and carries the repository's LICENSE.
 private = { ignore = true }
 
+
+# The licenses outside the shared list, each accepted for the one crate that needs it, so no other
+# crate can bring it in unreviewed.
+#
+# ego-tree, the DOM htmd parses HTML into, is ISC alone.
+[ego-tree]
+accepted = ["ISC"]
