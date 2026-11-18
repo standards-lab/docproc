@@ -6,8 +6,8 @@
 //
 //   - app.go: [App], [New], and [Nodes], which call the layer files' define and mount functions
 //     in layer order, lowest first;
-//   - infrastructure.go: defineInfrastructure, the configuration, read from DOCPROC_ variables
-//     (the lifecycle configuration alone, for now);
+//   - infrastructure.go: defineInfrastructure, the configuration, read from DOCPROC_ variables:
+//     the lifecycle configuration and [Bounds], a run's bounds at docproc's starting values;
 //   - domain.go: defineDomain and mountDomain, the services over docproc's library and the
 //     commands, from the command packages under internal/, that run them (none yet);
 //   - version.go: the version command, which declares no nodes.

@@ -58,6 +58,7 @@ func (a *App) Run(ctx context.Context, args []string) int {
 // comment repeats it.
 type Nodes struct {
 	LifecycleConfig *graph.Node[lifecycle.Config]
+	Bounds          *graph.Node[Bounds]
 }
 
 // Graph returns the graph a's commands are built from, as [New] described it. The program itself
