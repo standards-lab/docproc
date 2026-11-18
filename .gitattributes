@@ -3,3 +3,6 @@
 audio/testdata/speech.* -text
 # The hand-written RTF fixture is pinned by SHA-256, byte for byte, so git never converts it.
 office/testdata/rtf/** -text
+# The committed run directory is compared as text with what the writer writes, and one record ends
+# in a torn line with no newline, so git never converts it.
+rundir/testdata/** -text
