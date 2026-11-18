@@ -1,6 +1,7 @@
 package apptest
 
 import (
+	"context"
 	"errors"
 	"slices"
 	"sync"
@@ -8,7 +9,10 @@ import (
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/lifecycle"
 
+	"github.com/standards-lab/docproc/stages"
+
 	"github.com/standards-lab/docproc/cmd/docproc/internal/app"
+	"github.com/standards-lab/docproc/cmd/docproc/internal/run"
 )
 
 // Recorder records events in order. It is safe for concurrent use, as a
@@ -59,3 +63,30 @@ func Halt(a *app.App) {
 		return lifecycle.Config{}, ErrHalted
 	})
 }
+
+// Stages makes build a's stage builder, in place of stages.Build over the host's PATH, so a test
+// decides the stages a run dispatches to, stand-in stages among them. build is given the run's
+// options, its --exclude routes included. Stages is a Replace, so it panics once a has run a
+// Build.
+func Stages(a *app.App, build run.StageBuilder) {
+	a.Graph().Replace(a.Nodes().StageBuilder, func(*graph.Scope) (run.StageBuilder, error) {
+		return build, nil
+	})
+}
+
+// Tools makes a's runs build docproc's stages, stages.Build, over the tools lookup finds instead
+// of the host's PATH, the docker CLI included, so a test decides which tools a run has, stand-ins
+// among them. Tools is a Replace, so it panics once a has run a Build.
+func Tools(a *app.App, lookup stages.Lookup) {
+	Stages(a, func(ctx context.Context, opts stages.Options) (stages.Set, error) {
+		return stages.Build(ctx, lookup, opts)
+	})
+}
+
+// ErrNoTool is what [NoTools] fails every lookup with.
+var ErrNoTool = errors.New("no such tool")
+
+// NoTools is the lookup of a host with no tool: it finds no program. Given to [Tools], it leaves
+// out every stage that needs a tool, wiring the vision and text stages alone, and runs nothing on
+// the host.
+func NoTools(string) (string, error) { return "", ErrNoTool }

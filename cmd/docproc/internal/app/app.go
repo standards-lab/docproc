@@ -6,6 +6,8 @@ import (
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/lifecycle"
+
+	"github.com/standards-lab/docproc/cmd/docproc/internal/run"
 )
 
 // App is docproc: its dependency graph and the [Nodes] that describe it, its command tree, and
@@ -59,6 +61,8 @@ func (a *App) Run(ctx context.Context, args []string) int {
 type Nodes struct {
 	LifecycleConfig *graph.Node[lifecycle.Config]
 	Bounds          *graph.Node[Bounds]
+	StageBuilder    *graph.Node[run.StageBuilder]
+	RunConfig       *graph.Node[run.Config]
 }
 
 // Graph returns the graph a's commands are built from, as [New] described it. The program itself

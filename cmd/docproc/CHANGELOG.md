@@ -22,4 +22,14 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   composition root and test fixtures under `internal/`.
 - `docproc version`, which prints the module's version, or `(devel)` for a binary that carries
   none, and builds nothing: it reads no configuration and looks up no tool.
+- `docproc run <path>... --out <dir>`, which collects its inputs, a file argument as one and a
+  directory's regular files in lexical order, each once, following a named symbolic link and no
+  link under a directory, and fails before any tool is probed on an argument that is neither a
+  file nor a directory or on arguments that yield no input; builds the stages over the host's
+  tools under the starting bounds, `--exclude <route>` repeatable, and prints the stage table;
+  and dispatches the inputs, `--workers` at a time, at least 1 and the host's CPUs by default,
+  into a schema "2" run directory through `rundir`: one record line per event, each input's file
+  and time on its own line, a quarantined part's file kept and named. Failed parts and error
+  inputs exit 0, the summary's last line counting both; a failure of the index or the content
+  store, or a cancellation, ends the run with the error and exits 1.
 - Help, for the root and for each command, and every usage error exit 2.

@@ -18,8 +18,9 @@ linters:
       allow-packages: [""]
     depguard:
       # The module's requirements alone: the standard library, the module's own packages,
-      # docproc's base packages, whose stages it wires, go-cli-sdk's cli, its command tree, and
-      # go-core's packages, its graph, lifecycle, and process; its tests add go-core's graphtest,
+      # docproc's base packages, whose stages it wires, go-cli-sdk's cli, its command tree,
+      # go-core's packages, its graph, lifecycle, and process, and golang.org/x/sys's unix, the run
+      # command's statx; its tests add go-core's graphtest,
       # which imports testing and so stays out of the module's own packages. Allow entries match by
       # prefix unless they end in `$`, so each is anchored. The longest match wins, so the deny
       # entries keep the storage and postgres modules out despite docproc's prefix, and graphtest
@@ -36,6 +37,7 @@ linters:
             - github.com/standards-lab/docproc/
             - github.com/standards-lab/go-cli-sdk$
             - github.com/standards-lab/go-core/
+            - golang.org/x/sys/unix$
           deny:
             - pkg: github.com/standards-lab/docproc/storage
               desc: cmd/docproc requires the base module, not the storage module
@@ -53,6 +55,7 @@ linters:
             - github.com/standards-lab/docproc/
             - github.com/standards-lab/go-cli-sdk$
             - github.com/standards-lab/go-core/
+            - golang.org/x/sys/unix$
           deny:
             - pkg: github.com/standards-lab/docproc/storage
               desc: cmd/docproc requires the base module, not the storage module

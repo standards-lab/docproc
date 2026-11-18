@@ -8,8 +8,10 @@
 //     in layer order, lowest first;
 //   - infrastructure.go: defineInfrastructure, the configuration, read from DOCPROC_ variables:
 //     the lifecycle configuration and [Bounds], a run's bounds at docproc's starting values;
-//   - domain.go: defineDomain and mountDomain, the services over docproc's library and the
-//     commands, from the command packages under internal/, that run them (none yet);
+//   - domain.go: defineDomain and mountDomain, the services over docproc's library, the stage
+//     builder, stages.Build over the host's tools, and the run config over it and [Bounds], and
+//     the commands, from the command packages under internal/, that run them: run, from
+//     internal/run;
 //   - version.go: the version command, which declares no nodes.
 //
 // [Nodes] holds one handle per node: each define function fills its own part of one Nodes
