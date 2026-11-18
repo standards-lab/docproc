@@ -69,10 +69,10 @@ func byteSize(n int64) string {
 // page, is relative, so the run directory moves or archives whole; an input's source is linked by
 // its absolute path, as a file URL. The pages load nothing from elsewhere.
 //
-// A render reads the run's manifest and record, the content store and the kept files, and no clock: the same run directory renders the
-// same bytes, in any local zone. An unended run renders what its record holds, marked not
-// ended. An id that isn't a run of d is refused with an error matching fs.ErrNotExist, as
-// rundir's methods refuse it.
+// A render reads the run's manifest and record, the content store, and the kept files, and no
+// clock: the same run directory renders the same bytes, in any local zone. An unended run renders
+// what its record holds, marked not ended. An id that isn't a run of d is refused with an error
+// matching fs.ErrNotExist, as rundir's methods refuse it.
 func Render(ctx context.Context, d *rundir.Dir, root, id string) error {
 	m, err := d.Manifest(id)
 	if err != nil {

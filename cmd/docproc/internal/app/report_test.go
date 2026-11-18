@@ -2,7 +2,9 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -111,7 +113,7 @@ func TestReport_LatestEnded(t *testing.T) {
 		t.Errorf("the index doesn't show the latest ended run, %s", ids[1])
 	}
 	for _, id := range []string{ids[0], ids[2]} {
-		if _, err := os.Stat(filepath.Dir(indexOf(t, out, id))); !os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Dir(indexOf(t, out, id))); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("run %s's report directory: %v, want none", id, err)
 		}
 	}
@@ -181,7 +183,7 @@ func TestReport_ReplacesPages(t *testing.T) {
 
 	reportOK(t, out)
 
-	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+	if _, err := os.Stat(stray); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("an earlier render's file: %v, want it gone", err)
 	}
 	if _, err := os.Stat(index); err != nil {
@@ -225,7 +227,7 @@ func TestReport_Refusals(t *testing.T) {
 			}
 		})
 	}
-	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+	if _, err := os.Stat(missing); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the missing run directory: %v, want it not made", err)
 	}
 	if reports, _ := filepath.Glob(filepath.Join(unended, "runs", "*", "report")); len(reports) != 0 {
@@ -344,7 +346,7 @@ func TestRun_ReportAfterCancellation(t *testing.T) {
 	if run.manifest.Error != context.Canceled.Error() {
 		t.Errorf("manifest error %q, want %q", run.manifest.Error, context.Canceled)
 	}
-	if _, err := os.Stat(filepath.Dir(indexOf(t, out, run.manifest.Run))); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Dir(indexOf(t, out, run.manifest.Run))); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("the report directory: %v, want none", err)
 	}
 	if strings.Contains(r.stdout, "index.html") {

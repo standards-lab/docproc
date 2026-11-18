@@ -258,15 +258,10 @@ func TestRender_NoRun(t *testing.T) {
 }
 
 // TestRender_Escapes: hostile text in an input's path, a part's name, a reason, and an output's
-// content shows escaped, never as markup: no page holds a script.
+// content shows escaped, never as markup; TestRender_SelfContained proves no page holds a script.
 func TestRender_Escapes(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, ended)
-	for name, page := range got {
-		if strings.Contains(strings.ToLower(page), "<script") {
-			t.Errorf("%s holds a script", name)
-		}
-	}
 	odd := got[oddSHA+".html"]
 	for _, want := range []string{
 		"<pre>&lt;/pre&gt;&lt;script&gt;alert(1)&lt;/script&gt;\n&lt;!-- hostile --&gt;\n</pre>",
@@ -388,7 +383,7 @@ func TestRender_SelfContained(t *testing.T) {
 	d, root := fixture(t)
 	for name, page := range render(t, d, root, ended) {
 		for _, bad := range []string{"<script", "<link", "@import", "url(", "http:", "https:"} {
-			if strings.Contains(page, bad) {
+			if strings.Contains(strings.ToLower(page), bad) {
 				t.Errorf("%s holds %q", name, bad)
 			}
 		}
