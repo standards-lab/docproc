@@ -153,6 +153,13 @@ Put each binary on the host's PATH. Each tool's README states its install, its o
 limits: [docproc-ooxml](tools/ooxml/README.md), [docproc-mail](tools/mail/README.md), and
 [docproc-onenote](tools/onenote/README.md).
 
+The exec runner starts every tool in a fixed environment, never the host's: PATH as it was when
+the runner was built, `LANG=C.UTF-8`, and `HOME` and `TMPDIR` set to the run's own working
+directory. The program PATH finds must therefore be the program itself, not a version manager's
+shim, such as mise's or asdf's, which reads the user's configuration again on every run. Under
+that environment mise refuses the user's global configuration as untrusted, so every real run
+fails, although the shim answers `stages.Build`'s version check and its route reads `wired`.
+
 ### Other system tools
 
 | Program | From | Minimum | Stages |
