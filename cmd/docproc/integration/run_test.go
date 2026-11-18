@@ -125,7 +125,8 @@ func recordLines(t *testing.T, path string) int {
 // A run killed by SIGKILL partway through its record, which it can't catch, still reads through
 // Record: every whole line it wrote, a torn last line alone dropped, then ErrNotEnded, since its
 // manifest has no end; Latest passes it over. The kill lands mid-run: the run dispatches every
-// fixture one at a time, which takes seconds, and is killed once its record holds a line.
+// fixture one at a time, which takes seconds, and is killed once its record holds a line. docproc
+// report then renders it by --run, marked not ended, and exits 0.
 func TestRun_Killed(t *testing.T) {
 	fixtures := integration.Fixtures(t)
 	out := filepath.Join(t.TempDir(), "out")
@@ -169,5 +170,23 @@ func TestRun_Killed(t *testing.T) {
 	}
 	if lines != whole || lines == 0 {
 		t.Errorf("Record yielded %d lines, want the record's %d whole lines, at least one", lines, whole)
+	}
+
+	// docproc report renders the killed run, by --run, its index marked not ended, and exits 0,
+	// printing the index's path last.
+	rep := integration.Run(t, "report", out, "--run", id)
+	if rep.Code != process.ExitOK {
+		t.Fatalf("report code = %d, want %d; stderr = %q", rep.Code, process.ExitOK, rep.Stderr)
+	}
+	index := filepath.Join(reportDir(t, d, out, id), indexPage)
+	if got := lastLine(rep.Stdout); got != index {
+		t.Errorf("report's last stdout line = %q, want the index's path %q", got, index)
+	}
+	page, err := os.ReadFile(index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(page), "not ended") {
+		t.Errorf("%s doesn't mark the run not ended", index)
 	}
 }
