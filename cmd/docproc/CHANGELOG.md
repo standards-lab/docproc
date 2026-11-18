@@ -44,9 +44,10 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   `DOCPROC_SHUTDOWN_TIMEOUT` bounds the shutdown. The base module's
   [README](../../README.md#configuration) lists each variable with its bound and starting value.
 - Exit statuses: 0 when the run ends, failed parts and inputs stopped with an error included,
-  the summary's last line counting both; 1 when it stops or never begins, a failure of the index
-  or the content store or a cancellation ending the run's manifest with the error; and 2 for help
-  and every usage error, which build nothing.
+  the summary's last line counting both, a failure replayed from the index among the failed
+  parts; 1 when it stops or never begins, a failure of the index or the content store or a
+  cancellation ending the run's manifest with the error; and 2 for help and every usage error,
+  which build nothing.
 - The built-binary integration tier, under the `integration` build tag, run by
   `mise run test:integration`: it builds `docproc` and runs it over the repository's committed
   fixtures, asserting its arguments, output, exit status, signals, and the run directory it

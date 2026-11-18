@@ -168,7 +168,8 @@ func (rec *recorder) event(path string, ev dispatch.Event) error {
 	if line.Kind != schema.PartEvent {
 		return rec.run.Write(line)
 	}
-	if ev.Outcome == dispatch.Failed {
+	// A failure the index recorded and this run replays is a failed part too.
+	if ev.Outcome == dispatch.Failed || ev.Outcome == dispatch.Seen && ev.Recorded == dispatch.Failed {
 		rec.term.failed++
 	}
 	if ev.Outcome == dispatch.Quarantined {

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"iter"
@@ -816,6 +817,36 @@ func TestRun_FailedPartExits0(t *testing.T) {
 	}
 	if m := run.manifest; m.Error != "" || m.End.IsZero() {
 		t.Errorf("manifest error %q, end %v; want an end, no error", m.Error, m.End)
+	}
+}
+
+// A failed part a second run replays from the index is seen, its recorded outcome failed, and
+// the summary's last line still counts it; the run exits 0. The stand-in refuses the content,
+// the one failure the index records.
+func TestRun_ReplayedFailedPartCounts(t *testing.T) {
+	in := write(t, t.TempDir(), "a.txt", "a\n")
+	out := filepath.Join(t.TempDir(), "out")
+	fail := func(a *app.App) {
+		textStage(a, func(context.Context, dispatch.Part) error {
+			return fmt.Errorf("the stand-in can't read a.txt: %w", dispatch.ErrRefused)
+		})
+	}
+
+	for i := range 2 {
+		r := runCmd(t, context.Background(), fail, in, "--out", out, "--workers", "1")
+		if r.code != process.ExitOK {
+			t.Fatalf("run %d: code = %d, want %d; stderr = %q", i+1, r.code, process.ExitOK, r.stderr)
+		}
+		if last := lastLine(r.stdout); last != "failed parts 1  error inputs 0" {
+			t.Errorf("run %d: summary's last line = %q, want one failed part", i+1, last)
+		}
+	}
+	runs := readRuns(t, out)
+	if len(runs) != 2 {
+		t.Fatalf("%d runs, want 2", len(runs))
+	}
+	if e := runs[1].line(t, schema.PartEvent, "a.txt"); e.Outcome != dispatch.Seen || e.Recorded != dispatch.Failed {
+		t.Errorf("second run's a.txt line = %+v, want seen, recorded failed", e)
 	}
 }
 

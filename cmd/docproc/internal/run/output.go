@@ -89,7 +89,7 @@ type tallyKey struct {
 type terminal struct {
 	w       io.Writer
 	tally   map[tallyKey]int // inputs by route and outcome
-	failed  int              // parts whose outcome is failed, at any depth
+	failed  int              // parts failed or replayed with a recorded failure, at any depth
 	errored int              // inputs stopped before their own event
 }
 

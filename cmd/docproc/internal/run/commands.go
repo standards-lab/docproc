@@ -45,7 +45,8 @@ func Commands(cfg *graph.Node[Config]) []*cli.Command {
 // exitStatus is the run command's help footer: what each exit code means.
 const exitStatus = `Exit status:
   0  the run ended: every input was dispatched, though some of its parts failed or an input
-     stopped with an error before its own event; the summary's last line counts both
+     stopped with an error before its own event; the summary's last line counts both, a
+     failure replayed from the index among the failed parts
   1  the run stopped, or never began: an argument that is neither a file nor a directory,
      arguments that yield no input, a run directory that can't be written, a failure of the
      index or the content store, or a cancellation; a run that began ends its manifest with

@@ -74,7 +74,7 @@ Exit statuses:
 
 | Status | When |
 | --- | --- |
-| 0 | The run ended. Failed parts and inputs stopped with an error leave it 0; the summary's last line counts both. |
+| 0 | The run ended. Failed parts and inputs stopped with an error leave it 0; the summary's last line counts both, a failure replayed from the index among the failed parts. |
 | 1 | The run stopped or never began: an argument that is neither a file nor a directory, arguments that yield no input, a run directory that can't be written, a failure of the index or the content store, or a cancellation. A run that began ends its manifest with the error. |
 | 2 | Help, or a usage error, such as an unknown route to `--exclude` or `--workers` under 1. Neither builds anything. |
 
