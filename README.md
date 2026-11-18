@@ -80,12 +80,14 @@ Exit statuses:
 
 ### Configuration
 
-The library sets no bound; the command ships the operator's starting values, and each
-`DOCPROC_` variable overrides one. A duration is a Go duration, such as `90s` or `10m`; a size a
-count of bytes; a count, a ratio, or a pixel count a decimal number; and a switch as Go's
-`strconv.ParseBool` reads it. An unset or empty variable leaves its starting value; no value may
-be negative. A value the command can't take fails the run before any tool is looked up, every
-such variable named at once. `DOCPROC_SHUTDOWN_TIMEOUT`, 10s by default, bounds the shutdown.
+Each `DOCPROC_` variable below overrides one of the command's starting bounds; the library sets
+no bound of its own. A duration is a Go duration, such as `90s` or `10m`; a size is a count of
+bytes, so 2 GiB is `2147483648`; a count, a ratio, or a pixel count is a decimal number; and a
+switch is read by Go's `strconv.ParseBool`. An unset or empty variable keeps its starting value.
+A zero means no bound, as it does to the library, unless the table says otherwise, and no value
+may be negative. A value the command can't take fails the run before any tool is looked up, and
+the error names every such variable. `DOCPROC_SHUTDOWN_TIMEOUT`, 10s by default, bounds the
+shutdown.
 
 | Variable | Bound | Starting value |
 | --- | --- | --- |
@@ -108,9 +110,6 @@ such variable named at once. `DOCPROC_SHUTDOWN_TIMEOUT`, 10s by default, bounds 
 | `DOCPROC_MAGICK_MEMORY` | The most bytes of heap the pixel cache may take (`-limit memory`) | 1 GiB |
 | `DOCPROC_MAGICK_MAP` | The most bytes of the pixel cache that may be memory-mapped (`-limit map`) | 2 GiB |
 | `DOCPROC_MAGICK_DISK` | The most bytes of the pixel cache that may be on disk (`-limit disk`) | 8 GiB |
-
-Zero is what the library makes of a zero: no bound, unless the table says otherwise. A size
-variable takes bytes, so 2 GiB is `2147483648`.
 
 ## Providers
 
@@ -232,15 +231,15 @@ repository root, `mise run <task>`:
   package over its own testdata and a stand-in tool, the readers replaying the tools' committed
   goldens in place. It reads no network and runs no real tool but util-linux's `prlimit`, which
   the memory-bound tests need on PATH.
-- `test:integration`: the integration tier, under the `integration` build tag: the base module's
-  tools tier, which runs the real tools and checks every committed fixture's route and outcome
-  through `stages`; then cmd/docproc's built-binary tier, which builds `docproc` with the race
-  detector and runs it over the committed fixtures, asserting its arguments, output, exit status,
-  signals, and the run directory it writes, read back through `rundir`; then `integration`, below.
-  It builds docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their
-  publish tasks and puts those three ahead of everything else on PATH, so no installed release
-  stands in for them; it runs 7zz at the root's pin. Run it on your machine before each Go tag; CI
-  doesn't. The other programs come from the host, each at its minimum or later: `gs`, `qpdf`,
+- `test:integration`: the integration tier, under the `integration` build tag. It builds
+  docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their publish tasks
+  and puts those three ahead of everything else on PATH, so no installed release stands in for
+  them, and it runs 7zz at the root's pin. It then runs, in turn, the base module's tools tier,
+  which runs the real tools and checks every committed fixture's route and outcome through
+  `stages`; cmd/docproc's built-binary tier, which builds `docproc` with the race detector, runs
+  it over the committed fixtures, and checks its arguments, output, exit status, signals, and the
+  run directory it writes, read back through `rundir`; and `integration`, below. Run it on your
+  machine before each Go tag; CI doesn't. The other programs come from the host, each at its minimum or later: `gs`, `qpdf`,
   `pdfdetach`, `ffmpeg`, `ffprobe`, `magick`, `soffice`, util-linux's `prlimit`, and `docker`,
   which runs the compose harness and pulls `audio.FFmpegImage` and `picture.LibreOfficeImage` for
   the tools tier.

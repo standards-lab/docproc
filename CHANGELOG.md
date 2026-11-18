@@ -11,31 +11,31 @@ tool under `tools/` keeps its own.
 
 ## [v0.2.0] - 2026-11-18
 
-The run directory's packages, moved from spike-ai-pipeline's `internal/docproc/rundir` and
-`internal/docproc/schema` at 6a631f1 and made public, so `cmd/docproc` writes a run directory and
-a reader in another module, such as `cmd/docinfer`, reads it. The module's requirements are
-unchanged: golang.org/x/text alone.
+This release adds the run directory's packages, moved from spike-ai-pipeline's
+`internal/docproc/rundir` and `internal/docproc/schema` at 6a631f1 and made public, so
+`cmd/docproc` writes a run directory and a reader in another module, such as `cmd/docinfer`,
+reads it. The module still requires golang.org/x/text alone.
 
 ### Added
 
-- `rundir`, the run directory's one handle: `Open`, which reads a run directory and creates
-  nothing, and `Create`, which makes the directory, its `rundir.json`, the index, and the content
-  store, each refusing a run directory of another schema, or one holding `runs/` with no
-  `rundir.json`, which schema `"1"` wrote. A reader's `Dir.Runs`, `Latest`, the latest run that
-  ended, `Manifest`, `Record`, a run's lines as an `iter.Seq2` that yields `ErrNotEnded` last for
-  a run that hasn't ended, `Content`, and `Kept`, a quarantined part's kept file; `ContentPath`, a
-  content's file relative to the run directory; and a writer's `Dir.Index`, `Begin`, which begins
-  a `Run` and removes the working directories a killed run left, and `Quarantine`, which keeps a
-  quarantined part's file once, at `quarantine/<sha256>`. A `Run` appends one record line per
-  `Write`, each written through, and `End` records its end and its error. Every method that takes
-  a run's id refuses one that isn't a run of the directory. One process writes a run directory.
-- `rundir/schema`, the run directory's schema `"2"`, shapes alone: `Event`, a record line of kind
-  part, output, warning, or error, with its `Span`; `Manifest`, a run's docproc `Build`, its start
-  and end, its workers, its path arguments and how many inputs they named, the tools and the
-  stage table, `dispatch.Tool` and `dispatch.Row`, and the error it ended with; `File`, an
-  input's file metadata and its sniffed type; and `Time` and `TimeOf`, a time in UTC. It includes
-  `dispatch`'s shapes at `dispatch.Version` `"1"`, aliased, and imports no docproc package but
-  `dispatch` and `inspect`.
+- `rundir`, the run directory's one handle. `Open` reads a run directory and creates nothing;
+  `Create` makes the directory, its `rundir.json`, the index, and the content store. Each refuses
+  a run directory of another schema, or one holding `runs/` with no `rundir.json`, which schema
+  `"1"` wrote. A reader has `Dir.Runs`; `Latest`, the latest run that ended; `Manifest`; `Record`,
+  a run's lines as an `iter.Seq2` that yields `ErrNotEnded` last for a run that hasn't ended;
+  `Content`; and `Kept`, a quarantined part's kept file. `ContentPath` returns a content's file
+  relative to the run directory. A writer has `Dir.Index`; `Begin`, which begins a `Run` and
+  removes the working directories a killed run left; and `Quarantine`, which keeps a quarantined
+  part's file once, at `quarantine/<sha256>`. A `Run` appends one record line per `Write`, each
+  written through, and `End` records its end and its error. Every method that takes a run's id
+  refuses one that isn't a run of the directory. One process writes a run directory.
+- `rundir/schema`, the run directory's schema `"2"`, which holds shapes alone. `Event` is a record
+  line of kind part, output, warning, or error, with its `Span`. `Manifest` holds a run's docproc
+  `Build`, its start and end, its workers, its path arguments and how many inputs they named, the
+  tools and the stage table as `dispatch.Tool` and `dispatch.Row`, and the error it ended with.
+  `File` holds an input's file metadata and its sniffed type. `Time`, which `TimeOf` makes, is a
+  time in UTC. The schema includes `dispatch`'s shapes at `dispatch.Version` `"1"`, aliased, and
+  the package imports no docproc package but `dispatch` and `inspect`.
 
 ## [v0.1.0] - 2026-11-16
 

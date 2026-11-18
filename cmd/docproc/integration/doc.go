@@ -5,10 +5,12 @@
 // from go-cli-sdk-template's template/v0.3.0 integration package and is built on go-core's
 // processtest; nothing in the runtime exists for the tests' sake.
 //
-// processtest's Main builds the program to a path it keeps to itself, Launch starts it with no
-// arguments, and Run bounds a run by processtest.Failsafe, so the harness builds the binary
-// itself, as Main does, and starts it with its arguments, under a bound of its own that a run over
-// every fixture fits: a run docproc is killed in, partway through, must be one the test started.
+// The harness builds and starts the binary itself, since processtest falls short of this tier: its
+// Main builds the program to a path it keeps to itself, its Launch starts the program with no
+// arguments, and its Run bounds a run by processtest.Failsafe, which a run over every fixture can
+// outlast. The harness builds the binary as Main does, starts it with its arguments, and bounds
+// each run by [Bound], which such a run fits, so a test can kill docproc partway through a run it
+// started.
 //
 //   - [Main] is the suite's TestMain: it clears the DOCPROC_ environment and builds the command
 //     once per run, with the race detector so the program runs under it too.

@@ -14,7 +14,7 @@
 // The content store's directory and a content's path in it are part of schema "2": a reader that
 // isn't Go, such as a report's page linking a content's file, follows them.
 //
-// # One handle
+// # Opening a run directory
 //
 // [Open] opens a run directory to read it, creating nothing; [Create] opens one to write it,
 // making the directory, its rundir.json, the index, and the content store when they are absent.
@@ -24,7 +24,7 @@
 // a run of the directory, a directory under runs/ named by a version 7 id and holding its
 // manifest, so no caller checks an id first.
 //
-// # One writer
+// # Writing a run
 //
 // One process writes a run directory: nothing here locks it, and [Dir.Begin] removes the .work-*
 // directories at its root, which a killed run left. Every file is written whole, to a temporary
