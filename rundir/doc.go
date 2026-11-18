@@ -8,6 +8,8 @@
 //	quarantine/<sha256>            a quarantined part's file, kept once
 //	runs/<run>/manifest.json       each run's schema.Manifest
 //	runs/<run>/record.jsonl        and its record, one schema.Event per line
+//	runs/<run>/report/             and its report, which [Dir.ReportDir] names; a report's
+//	                               writer makes it, not this package
 //	.work-*                        a running run's working directories, the caller's
 //
 // A run's id is a version 7 UUID, in its lowercase form, so the ids sort by when each run began.
@@ -39,8 +41,8 @@
 //
 //   - [Dir], from [Open] or [Create]: [Dir.Runs], the runs in the order they began,
 //     [Dir.Latest], the latest that ended, [Dir.Manifest] and [Dir.Record], a run's manifest
-//     and its lines, [Dir.Content], the content store, and [Dir.Kept], a quarantined part's kept
-//     file
+//     and its lines, [Dir.ReportDir], a run's report directory, [Dir.Content], the content
+//     store, and [Dir.Kept], a quarantined part's kept file
 //   - [ContentPath], a content's file relative to the run directory
 //   - [ErrNotEnded], which a record of an unended run yields last
 //   - the writer's, on a Dir from Create: [Dir.Index], the index, [Dir.Begin], which begins a

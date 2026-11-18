@@ -10,3 +10,8 @@ require (
 )
 
 require golang.org/x/text v0.44.0 // indirect
+
+// The base module's unreleased rundir.Dir.ReportDir, reached from this checkout during the
+// reports task's build. It is removed once v0.3.0 is tagged, when this module requires
+// github.com/standards-lab/docproc v0.3.0.
+replace github.com/standards-lab/docproc => ../..

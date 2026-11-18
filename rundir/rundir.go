@@ -27,6 +27,7 @@ const (
 	runsDir       = "runs"
 	manifestFile  = "manifest.json"
 	recordFile    = "record.jsonl"
+	reportDir     = "report"
 	workPattern   = ".work-*"
 )
 
@@ -280,6 +281,18 @@ func (d *Dir) lines(id string, ended bool, yield func(schema.Event, error) bool)
 // directory, where each output's content is found by its SHA-256. On a Dir from [Open] it reads
 // alone, refusing a put, and misses every content when the directory is absent.
 func (d *Dir) Content() dispatch.Content { return d.content }
+
+// ReportDir returns the report directory of d's run id, runs/<run>/report, relative to the run
+// directory, with slashes, refusing an id that isn't a run of d with an error matching
+// fs.ErrNotExist. It names the directory alone: it neither makes it nor looks for it, and nothing
+// here writes a report. A Dir from [Open] answers it too, as does a writer for the run it is
+// writing, whose manifest [Dir.Begin] wrote.
+func (d *Dir) ReportDir(id string) (string, error) {
+	if err := d.checkRun(id); err != nil {
+		return "", err
+	}
+	return runsDir + "/" + id + "/" + reportDir, nil
+}
 
 // ContentPath returns the file of the content sha256 names, relative to a run directory: the
 // content directory joined to dispatch.ContentFile(sha256). It returns "" for a sha256 that isn't

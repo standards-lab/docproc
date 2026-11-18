@@ -281,6 +281,35 @@ func TestContentPath(t *testing.T) {
 	}
 }
 
+// ReportDir names a run's report directory under the run's own, on the writer for the run it is
+// writing and on a reader, makes nothing, and refuses an id that isn't a run.
+func TestReportDir(t *testing.T) {
+	d, root := create(t)
+	r := begin(t, d)
+	want := "runs/" + r.ID() + "/report"
+	if got, err := d.ReportDir(r.ID()); got != want || err != nil {
+		t.Errorf("writer's ReportDir = %q, %v; want %q, nil", got, err, want)
+	}
+	if err := r.End(nil); err != nil {
+		t.Fatal(err)
+	}
+	reader := open(t, root)
+	if got, err := reader.ReportDir(r.ID()); got != want || err != nil {
+		t.Errorf("reader's ReportDir = %q, %v; want %q, nil", got, err, want)
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(want))); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReportDir made %s: %v", want, err)
+	}
+	if got, err := open(t, fixture).ReportDir(unended); got != "runs/"+unended+"/report" || err != nil {
+		t.Errorf("fixture's ReportDir(unended) = %q, %v; want runs/%s/report, nil", got, err, unended)
+	}
+	for _, id := range []string{"", "..", "notes", otherRun, r.ID() + "/../" + r.ID()} {
+		if _, err := reader.ReportDir(id); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("ReportDir(%q) = %v, want an error matching fs.ErrNotExist", id, err)
+		}
+	}
+}
+
 // An unended run's record drops its torn last line, and says last that the run hasn't ended.
 func TestRecord_Unended(t *testing.T) {
 	d := open(t, fixture)

@@ -9,6 +9,13 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Added
+
+- `rundir.Dir.ReportDir`, a run's report directory, `runs/<run>/report`, relative to the run
+  directory, which schema `"2"`'s layout now names. A reader from `Open` answers it, as does a
+  writer for the run it is writing; it refuses an id that isn't a run of the directory, and it
+  makes nothing: a report's writer makes the directory.
+
 ## [v0.2.0] - 2026-11-18
 
 This release adds the run directory's packages, moved from spike-ai-pipeline's

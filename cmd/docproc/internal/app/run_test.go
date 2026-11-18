@@ -931,7 +931,8 @@ func TestRun_CanceledRun(t *testing.T) {
 
 // requiredLibrary is the docproc version a test binary of this module links: the one go.mod
 // requires when the build resolves it as a consumer does, with the workspace off, as the check
-// runs it, and (devel) when the committed go.work puts this checkout's base module in its place.
+// runs it, and (devel) when the committed go.work, or a temporary replace in go.mod, puts this
+// checkout's base module in its place.
 func requiredLibrary(t *testing.T) string {
 	t.Helper()
 	if os.Getenv("GOWORK") != "off" {
@@ -940,6 +941,9 @@ func requiredLibrary(t *testing.T) string {
 	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if regexp.MustCompile(`(?m)^\s*replace github\.com/standards-lab/docproc => \.\./\.\.$`).Match(mod) {
+		return "(devel)"
 	}
 	m := regexp.MustCompile(`(?m)^\s*github\.com/standards-lab/docproc (v\S+)$`).FindSubmatch(mod)
 	if m == nil {
