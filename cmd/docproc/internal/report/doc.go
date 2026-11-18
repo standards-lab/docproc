@@ -1,8 +1,8 @@
 // Package report is docproc's run report and its command, docproc report <run-dir> [--run <id>]:
 // static HTML pages, rendered with html/template, written into a run's report directory,
-// runs/<run>/report/, which rundir.Dir.ReportDir names. Its model,
-// the pages and what they list, comes from the run's manifest and record alone; the pages then
-// show the outputs from the run directory's content store and name its kept files.
+// runs/<run>/report/, which rundir.Dir.ReportDir names. Its model, the pages and what they
+// list, comes from the run's manifest and record alone; the pages then show the outputs from the
+// run directory's content store and name its kept files.
 //
 // The report has an index page, index.html, and one page per distinct content the run's inputs
 // hold, named by its SHA-256, <sha256>.html. The index lists every input, sorted by path, an

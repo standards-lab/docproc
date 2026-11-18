@@ -177,14 +177,15 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   `\'hh` decoded in the `\ansicpg` code page; nothing separates a table's cells. An RTF that
   encapsulates HTML (`\fromhtml`) has that HTML's text.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
-  and alt text, read back as the HTML holds them. The tool writes links and images with its own
-  htmd handlers, which write what htmd 0.5.6 does but through the envelope's destination and
-  title rules, an alt text's lines through the literal-text escape. htmd writes a text `&` as
-  itself, so before htmd writes, the tool replaces each `&` of the HTML's text with a
-  private-use character the body doesn't hold, and afterwards writes each one as `\&` where it
-  could begin a character reference outside a code span or block, and as `&` elsewhere. A body
-  whose text holds a `&` and which holds every private-use character is left without Markdown,
-  with a warning.
+  and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
+  its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6
+  didn't write unless removing it changes how CommonMark reads the text, so a text `&` is written
+  `\&` where it could begin a character reference and bare elsewhere. The pass leaves code, math,
+  raw HTML, and link destinations and titles as written. The tool's own handlers write table
+  cells, so a heading in a cell stays a heading, and links and images, in htmd 0.6's form but
+  through the envelope's destination and title rules, an alt text's lines through the
+  literal-text escape. `tools/mail/src/markdown.rs` holds the rules, and the tool's CHANGELOG,
+  v0.1.2, lists where its output differs from htmd 0.5.6's.
 - The content rule compares a source text with a Markdown text by standards alone, so no
   fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in the
   docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail and
@@ -513,7 +514,8 @@ The base module is built (`library`): each package's doc comment is the referenc
 exported names, and the signatures below are the boundary other layers build against. The
 providers are built (`providers`), each module's README and package doc their reference; `rundir`
 and `cmd/docproc` are built (`docproc`), the README's "The command" and each package's doc their
-reference, and `cmd/docproc`'s report is planned (`reports`).
+reference, and `cmd/docproc`'s report is built (`reports`), `internal/report`'s package doc its
+reference.
 
 The modules:
 
@@ -2202,12 +2204,13 @@ The integration tier, `mise run test:integration`, builds the three docproc tool
 checkout and runs on the developer's machine before each Go tag. What it leaves to later tasks:
 
 ```text
-rundir,             built [docproc]: public packages of this module, on its v0.2.0; one Dir from
+rundir,             built [docproc]: public packages of this module, since its v0.2.0; one Dir from
   rundir/schema     Open, which reads and creates nothing, or Create, which makes the directory,
                     rundir.json, the index, and the content store; Runs, Latest, Manifest, Record
-                    an iter.Seq2 ending on ErrNotEnded for an unended run, Content, Kept, and
-                    ContentPath; the writer's Index, Begin, and Quarantine, and Run's Write and
-                    End; rundir/schema shapes alone, the Event line, the Manifest with its Build,
+                    an iter.Seq2 ending on ErrNotEnded for an unended run, Content, Kept,
+                    ContentPath, and ReportDir, a run's report directory, added by reports in
+                    v0.3.0; the writer's Index, Begin, and Quarantine, and Run's Write and End;
+                    rundir/schema shapes alone, the Event line, the Manifest with its Build,
                     File with detected, Span, and Time, made by TimeOf in UTC, importing no docproc
                     package but dispatch and inspect; rundir/testdata one committed schema "2" run
                     directory, read and written again, compared as text
@@ -2336,17 +2339,16 @@ docproc/cmd/docproc    [docproc]   built from cmd/docproc and internal/docproc/{
                                    wiring and cmd/docproc its first caller; a committed go.work
                                    over the base module and cmd/docproc, carrying changes between
                                    the base module's tags
-                       [reports]   planned: the report command, internal/report, built whole on
-                                   schema "2" in place of internal/docproc/report's "1" pages: a
-                                   page per distinct input content, named by its
-                                   SHA-256, listing every input path that holds it with its file
-                                   metadata, outcome, and time, the tree and outputs once; the
-                                   index page listing every input, error inputs included; text,
-                                   Markdown, and record outputs inlined from the content store,
-                                   <img> and <audio> pointing at ContentPath; Render over
-                                   rundir's handle, its determinism test over a fixture
-                                   directory; the base module tagged again only if rundir
-                                   changed, then cmd/docproc/v0.1.0
+                       [reports]   built: internal/report, `docproc report <run-dir>
+                                   [--run <id>]` and `docproc run --report`, on schema "2" in
+                                   place of internal/docproc/report's "1" pages; index.html and
+                                   one <sha256>.html per distinct input content, written into
+                                   the run's report directory, runs/<run>/report/, which
+                                   rundir's package doc places in the run directory's layout and
+                                   Dir.ReportDir names; Render over rundir's handle, its golden pages over a
+                                   committed run directory; the base module tagged v0.3.0 for
+                                   ReportDir, then cmd/docproc/v0.1.0; internal/report's package
+                                   doc states the pages
 docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
                         goal]      infer, models, outdir, source, report}; requires docinfer,
                                    docproc, go-ai, go-cli-sdk, and go-core; builds
@@ -2361,10 +2363,9 @@ docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest
 
 `cmd/docproc`'s `main.go` sits at its module's root, so
 `go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs it, and its packages
-sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run`, its
-command package, with `report` planned (`reports`). Its one package outside `internal/` is
-`integration`, the built-binary tier's harness, as go-cli-sdk-template's template/v0.3.0 places
-it. The module's one public surface is the command, and the logic an integrator calls is the
+sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run` and
+`report`, its command packages. Its one package outside `internal/` is `integration`, the
+built-binary tier's harness, as go-cli-sdk-template's template/v0.3.0 places it. The module's one public surface is the command, and the logic an integrator calls is the
 library's, so it is an exception to Go Elemental's command packages at a module's root level,
 which `STANDARDS.md` states; go-web-service's `tools/slab` layout would make the install path
 `cmd/docproc/cmd/docproc` and `run.Commands` API under its tags.
@@ -2389,6 +2390,7 @@ func (d *Dir) Manifest(id string) (schema.Manifest, error)
 func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] // its lines, in order
 func (d *Dir) Content() dispatch.Content                       // the run directory's FileContent
 func (d *Dir) Kept(sha256 string) (string, bool, error)        // quarantine/<sha256>, if kept
+func (d *Dir) ReportDir(id string) (string, error)             // runs/<run>/report, not made
 func ContentPath(sha256 string) string // a content's file from the root: the content directory
                                        // joined to dispatch.ContentFile(sha256)
 // The writer's, on a Dir from Create:
