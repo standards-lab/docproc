@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"io/fs"
 	"iter"
 	"os"
 	"path/filepath"
@@ -686,6 +687,27 @@ func TestRun_QuarantineKept(t *testing.T) {
 	}
 	if b, err := os.ReadFile(filepath.Join(out, filepath.FromSlash(kept))); err != nil || string(b) != brokenZip {
 		t.Errorf("kept file = %q, %v; want the quarantined part's content, kept again", b, err)
+	}
+}
+
+// An unread child its stage quarantines, as an archive's entry with an unsafe name, has no file
+// and no SHA-256, so nothing is kept of it: its line names no kept file, and the run goes on.
+func TestRun_QuarantinedUnreadChild(t *testing.T) {
+	in := write(t, t.TempDir(), "traversal.zip", string(zipOf(t, "../evil.txt", "evil\n", "notes.txt", notesText)))
+	out := filepath.Join(t.TempDir(), "out")
+
+	runOK(t, sevenZip(t), in, "--out", out)
+
+	run := onlyRun(t, out)
+	e := run.line(t, schema.PartEvent, "../evil.txt")
+	if e.Outcome != dispatch.Quarantined || e.Part.SHA256 != "" || e.Quarantine != "" {
+		t.Errorf("../evil.txt's line = %+v, want quarantined, with no SHA-256, naming no kept file", e)
+	}
+	if e := run.line(t, schema.PartEvent, "traversal.zip"); e.Outcome != dispatch.Prepared {
+		t.Errorf("traversal.zip's line = %+v, want prepared", e)
+	}
+	if _, err := os.Stat(filepath.Join(out, "quarantine")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("quarantine/ = %v, want nothing kept", err)
 	}
 }
 

@@ -39,7 +39,8 @@
 //
 //   - [Dir], from [Open] or [Create]: [Dir.Runs], the runs in the order they began,
 //     [Dir.Latest], the latest that ended, [Dir.Manifest] and [Dir.Record], a run's manifest
-//     and its lines, and [Dir.Content], the content store
+//     and its lines, [Dir.Content], the content store, and [Dir.Kept], a quarantined part's kept
+//     file
 //   - [ContentPath], a content's file relative to the run directory
 //   - [ErrNotEnded], which a record of an unended run yields last
 //   - the writer's, on a Dir from Create: [Dir.Index], the index, [Dir.Begin], which begins a

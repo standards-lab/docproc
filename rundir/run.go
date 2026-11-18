@@ -42,16 +42,10 @@ func (d *Dir) Quarantine(sha256, path string) (string, error) {
 	if err := d.checkWrite("quarantine"); err != nil {
 		return "", err
 	}
-	if dispatch.ContentFile(sha256) == "" {
-		return "", fmt.Errorf("rundir: quarantine %q isn't a SHA-256 as lowercase hex: %w", sha256, dispatch.ErrRequest)
+	if rel, ok, err := d.Kept(sha256); err != nil || ok {
+		return rel, err
 	}
-	rel := quarantineDir + "/" + sha256
 	dst := filepath.Join(d.root, quarantineDir, sha256)
-	if _, err := os.Lstat(dst); err == nil {
-		return rel, nil
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return "", fmt.Errorf("rundir: %w", err)
-	}
 	in, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("rundir: %w", err)
@@ -64,7 +58,27 @@ func (d *Dir) Quarantine(sha256, path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("rundir: quarantine %s: %w", sha256, err)
 	}
-	return rel, nil
+	return quarantineDir + "/" + sha256, nil
+}
+
+// Kept looks up the kept file of the quarantined part whose SHA-256 is sha256, reading alone, so
+// a Dir from [Open] answers it too. When the part's file is kept, by this run or an earlier one,
+// it returns the file's name as [Dir.Quarantine] does, relative to the run directory, with
+// slashes, and true; when none is kept, "" and false. A sha256 that isn't 64 lowercase hex
+// digits is refused, matching dispatch.ErrRequest.
+func (d *Dir) Kept(sha256 string) (string, bool, error) {
+	if dispatch.ContentFile(sha256) == "" {
+		return "", false, fmt.Errorf("rundir: quarantine %q isn't a SHA-256 as lowercase hex: %w", sha256, dispatch.ErrRequest)
+	}
+	_, err := os.Lstat(filepath.Join(d.root, quarantineDir, sha256))
+	switch {
+	case err == nil:
+		return quarantineDir + "/" + sha256, true, nil
+	case errors.Is(err, fs.ErrNotExist):
+		return "", false, nil
+	default:
+		return "", false, fmt.Errorf("rundir: %w", err)
+	}
 }
 
 // Run is one run over a run directory, begun by [Dir.Begin]: its manifest and its record, under

@@ -659,3 +659,30 @@ func TestQuarantine_Once(t *testing.T) {
 		t.Error("Quarantine of an absent file = nil, want an error")
 	}
 }
+
+// Kept finds a part's kept file once Quarantine has kept it, on the writer and on a reader of the
+// same directory, and finds none, making nothing, before.
+func TestKept(t *testing.T) {
+	d, root := create(t)
+	sha := strings.Repeat("ab", 32)
+	src := filepath.Join(t.TempDir(), "part")
+	writeFile(t, src, "part")
+
+	if name, ok, err := d.Kept(sha); name != "" || ok || err != nil {
+		t.Errorf("Kept before Quarantine = %q, %t, %v; want \"\", false, nil", name, ok, err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "quarantine")); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Kept made quarantine/: %v", err)
+	}
+	if _, err := d.Quarantine(sha, src); err != nil {
+		t.Fatal(err)
+	}
+	for name, dir := range map[string]*rundir.Dir{"writer": d, "reader": open(t, root)} {
+		if kept, ok, err := dir.Kept(sha); kept != "quarantine/"+sha || !ok || err != nil {
+			t.Errorf("%s's Kept = %q, %t, %v; want quarantine/%s, true, nil", name, kept, ok, err, sha)
+		}
+		if _, _, err := dir.Kept("../" + sha[3:]); !errors.Is(err, dispatch.ErrRequest) {
+			t.Errorf("%s's Kept of a bad SHA-256 = %v, want an error matching dispatch.ErrRequest", name, err)
+		}
+	}
+}

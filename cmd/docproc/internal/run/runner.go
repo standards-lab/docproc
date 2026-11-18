@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/fs"
 	"iter"
 	"os"
 	"path/filepath"
@@ -232,14 +231,16 @@ func (rec *recorder) file(in input) *schema.File {
 }
 
 // kept returns the name of p's kept file, quarantine/<sha256>, keeping p's file first when it has
-// one and none is kept yet, or "" when p has no file and none is kept: a part replayed from the
-// index has no file, and its kept file is there when an earlier run kept it. rundir.Quarantine
-// returns a kept file's name without reading the path it is given, so a part with no file is
-// asked for by the empty path, whose open fails matching fs.ErrNotExist when nothing is kept.
+// one and none is kept yet, or "" when nothing of p is kept. A part replayed from the index has no
+// file, and its kept file is there when an earlier run kept it; an unread child, as an archive's
+// entry with an unsafe name, has no file and no SHA-256, so nothing of it is ever kept.
 func (rec *recorder) kept(p dispatch.Part) (string, error) {
-	name, err := rec.dir.Quarantine(p.SHA256, p.Path)
-	if p.Path == "" && errors.Is(err, fs.ErrNotExist) {
+	switch {
+	case p.SHA256 == "":
 		return "", nil
+	case p.Path != "":
+		return rec.dir.Quarantine(p.SHA256, p.Path)
 	}
+	name, _, err := rec.dir.Kept(p.SHA256)
 	return name, err
 }
