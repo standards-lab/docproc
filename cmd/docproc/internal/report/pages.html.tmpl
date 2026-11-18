@@ -1,0 +1,63 @@
+{{define "index" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>docproc run {{.Manifest.Run}}</title>
+</head>
+<body>
+<h1>docproc run <code>{{.Manifest.Run}}</code></h1>
+{{- if not .Ended}}
+<p>not ended</p>
+{{- end}}
+<h2>Inputs</h2>
+<table>
+<thead><tr><th>Path</th><th>Route</th><th>Outcome</th><th>Time</th></tr></thead>
+<tbody>
+{{- range .Inputs}}
+<tr><td>{{if .Content}}<a href="{{.Content.SHA256}}.html"><code>{{.Path}}</code></a>{{else}}<code>{{.Path}}</code>{{end}}</td><td>{{.Route}}</td><td>{{.Outcome}}</td><td>{{with .Time}}{{time .Start}}{{end}}</td></tr>
+{{- end}}
+</tbody>
+</table>
+</body>
+</html>
+{{end}}
+{{define "content" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>docproc content {{.Content.SHA256}}</title>
+</head>
+<body>
+<p><a href="index.html">docproc run <code>{{.Run.Manifest.Run}}</code></a></p>
+<h1>Content <code>{{.Content.SHA256}}</code></h1>
+<h2>Inputs</h2>
+<ul>
+{{- range .Content.Inputs}}
+<li><code>{{.Path}}</code> {{.Outcome}}{{with .Time}} {{time .Start}}{{end}}{{with .File}} {{.Size}} bytes {{.Mode}}{{end}}</li>
+{{- end}}
+</ul>
+<h2>Parts</h2>
+<ul>
+{{- range .Content.Roots}}{{template "part" .}}{{end}}
+</ul>
+</body>
+</html>
+{{end}}
+{{define "part" -}}
+<li><code>{{.Part.ID}}</code> {{.Part.Name}}{{if .Own}} {{.Event.Outcome}}{{end}}
+{{- with .Outputs}}
+<ul>
+{{- range .}}
+<li>{{.Kind}} {{.Name}} {{.MediaType}}</li>
+{{- end}}
+</ul>
+{{- end}}
+{{- with .Children}}
+<ul>
+{{- range .}}{{template "part" .}}{{end}}
+</ul>
+{{- end}}
+</li>
+{{- end}}

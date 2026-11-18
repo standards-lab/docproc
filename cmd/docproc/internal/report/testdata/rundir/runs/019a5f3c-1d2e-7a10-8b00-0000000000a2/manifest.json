@@ -1,0 +1,94 @@
+{
+  "schema": "2",
+  "run": "019a5f3c-1d2e-7a10-8b00-0000000000a2",
+  "docproc": {
+    "command": "(devel)",
+    "library": "v0.3.0"
+  },
+  "start": "2026-11-07T15:01:00.123456789Z",
+  "workers": 1,
+  "inputs": [
+    "/docs/c.txt",
+    "/docs/d.txt"
+  ],
+  "collected": 2,
+  "tools": [
+    {
+      "program": "gs",
+      "minimum": "10.0",
+      "from": "/usr/bin/gs",
+      "version": "10.05.1"
+    },
+    {
+      "program": "ffmpeg",
+      "minimum": "6.0",
+      "from": "/usr/bin/ffmpeg",
+      "version": "7.1"
+    },
+    {
+      "program": "soffice",
+      "minimum": "7.0",
+      "error": "soffice: not found"
+    }
+  ],
+  "stages": [
+    {
+      "route": "document",
+      "state": "wired",
+      "stage": {
+        "name": "document",
+        "version": "gs 10.05.1",
+        "config": "c0ffee"
+      },
+      "tools": "gs 10.05.1"
+    },
+    {
+      "route": "archive",
+      "state": "wired",
+      "stage": {
+        "name": "archive",
+        "version": "7zz 26.06",
+        "config": "a2c"
+      },
+      "tools": "7zz 26.06"
+    },
+    {
+      "route": "audio",
+      "state": "wired",
+      "stage": {
+        "name": "audio",
+        "version": "ffmpeg 7.1",
+        "config": "a0d10"
+      },
+      "tools": "ffmpeg 7.1"
+    },
+    {
+      "route": "email",
+      "state": "wired",
+      "stage": {
+        "name": "email",
+        "version": "docproc-mail 0.4.0",
+        "config": "e4a1"
+      },
+      "tools": "docproc-mail 0.4.0"
+    },
+    {
+      "route": "text",
+      "state": "wired",
+      "stage": {
+        "name": "text",
+        "version": "1",
+        "config": "7e57"
+      }
+    },
+    {
+      "route": "office",
+      "state": "missing",
+      "reason": "soffice: not found"
+    },
+    {
+      "route": "video",
+      "state": "excluded"
+    }
+  ]
+}
