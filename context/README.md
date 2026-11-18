@@ -41,11 +41,11 @@ repository's [README](../README.md) and each package's documentation.
   PostgreSQL ([`postgres/`](../postgres/README.md)). Their live tiers run against the compose
   harness through `mise run integration` (the root [README](../README.md), "Development").
 - **Run directory**: `cmd/docproc`'s, read and written by the `rundir` and `rundir/schema`
-  packages, whose package docs state its layout and schema "2" (`layers.md`, "The nested
-  modules").
-- **Command**: `cmd/docproc`, a thin composition of the library, with `version` and `run` built
-  and `report` planned (`reports`). The root [README](../README.md#the-command), "The command",
-  states its commands, exit statuses, and configuration (`layers.md`, "The nested modules";
-  `design.md`, "cmd/docproc").
+  packages, whose package docs state its layout, a run's report directory among it, and schema
+  "2" (`layers.md`, "The nested modules").
+- **Command**: `cmd/docproc`, a thin composition of the library, with three commands: `version`,
+  `run`, and `report`. The root [README](../README.md#the-command), "The command", states its
+  commands, exit statuses, and configuration (`layers.md`, "The nested modules"; `design.md`,
+  "cmd/docproc").
 - **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
   linux-arm64 (`design.md`, "Releases").

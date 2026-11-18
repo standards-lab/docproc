@@ -46,11 +46,14 @@ func Commands(cfg *graph.Node[Config]) []*cli.Command {
 const exitStatus = `Exit status:
   0  the run ended: every input was dispatched, though some of its parts failed or an input
      stopped with an error before its own event; the summary's last line counts both, a
-     failure replayed from the index among the failed parts
+     failure replayed from the index among the failed parts; with --report, its pages were
+     rendered too
   1  the run stopped, or never began: an argument that is neither a file nor a directory,
      arguments that yield no input, a run directory that can't be written, a failure of the
      index or the content store, or a cancellation; a run that began ends its manifest with
-     the error
+     the error. With --report, a run stopped by a failure of the index or the content store
+     still renders its pages, and a canceled run renders none; a run that ended and whose
+     pages couldn't be rendered exits 1 too, and docproc report renders them again
   2  a usage error, such as an unknown route to --exclude or --workers under 1
 `
 
@@ -60,6 +63,7 @@ func command(cfg *graph.Node[Config]) *cli.Command {
 		out      string
 		exclude  []string
 		workers  int
+		render   bool
 		excluded []route.Route
 	)
 	cmd := &cli.Command{
@@ -96,7 +100,7 @@ func command(cfg *graph.Node[Config]) *cli.Command {
 			}
 			c := inv.Get(cfg)
 			c.Stages.Exclude = slices.Concat(c.Stages.Exclude, excluded)
-			r := &runner{cfg: c, w: inv.Stdout, out: out, args: inv.Args, inputs: inputs, workers: workers}
+			r := &runner{cfg: c, w: inv.Stdout, out: out, args: inv.Args, inputs: inputs, workers: workers, report: render}
 			return r.run(ctx)
 		},
 	}
@@ -104,6 +108,7 @@ func command(cfg *graph.Node[Config]) *cli.Command {
 	flags.StringVar(&out, "out", "", "the run `dir`ectory the run writes in, made when it doesn't exist")
 	flags.Var(cli.StringsValue(&exclude, nil), "exclude", "leave out the stage of `route`, whose parts then have no processor yet")
 	flags.IntVar(&workers, "workers", runtime.NumCPU(), "how many inputs are dispatched at once, at least 1, with no ceiling; this host's CPUs by default")
+	flags.BoolVar(&render, "report", false, "once the summary is printed, render the run's report and print its index's path, as docproc report does: after a failure of the index or the content store too, and never after a cancellation")
 	cmd.Require("out")
 	return cmd.Use(cfg)
 }

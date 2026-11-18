@@ -586,7 +586,8 @@ form. An entry is carried by docproc unless it names another task; the command's
   changes `rundir`, before it tags `cmd/docproc/v0.1.0`; a committed `go.work` over the base
   module and `cmd/docproc` carries changes between tags. Reverses "`docproc` releases
   nothing". Rejected: `library` building `rundir` so v0.1.0 holds it, which tags a public
-  package before its one writer exists.
+  package before its one writer exists. `reports` adds `Dir.ReportDir`, so it tags v0.3.0
+  ("Releases").
 - **DP-4 · The copy of a seen part's subtree goes.** Accepted → docproc. The spike's dispatcher
   never replayed a seen part's children, so `run/replay.go` (249 lines) copied each subtree from
   the earliest record holding it, loading every earlier record into memory first, with a second
@@ -768,6 +769,8 @@ v0.1.0                 docproc           library    from spike-ai-pipeline-proce
 storage/v0.1.0         docproc/storage   providers  new
 postgres/v0.1.0        docproc/postgres  providers  new
 v0.2.0                 docproc           docproc    rundir and rundir/schema landed
+tools/mail/v0.1.2      docproc-mail      reports    htmd 0.6 in place of 0.5.6
+v0.3.0                 docproc           reports    rundir's Dir.ReportDir
 cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's docproc at 6a631f1
 ```
 
@@ -778,7 +781,10 @@ cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's doc
   `postgres`, through the Go module releases in `.github/workflows/release.yml`.
 - **docproc.** The `docproc` task tags the base module v0.2.0 when `rundir` lands (DP-3), and a
   committed `go.work` over the base module and `cmd/docproc` carries changes between tags.
-- **reports.** `reports` tags the base module again only if it changed `rundir`, then
-  `cmd/docproc/v0.1.0`.
+- **reports.** `reports` tags `tools/mail/v0.1.2` and the base module v0.3.0, which adds
+  `rundir`'s `Dir.ReportDir`, while `cmd/docproc` reaches the untagged base module through a
+  temporary `replace`. A second pull request replaces it with a requirement of v0.3.0, and once
+  that merges, `reports` tags `cmd/docproc/v0.1.0`, since `go install …@version` refuses a module
+  that carries a `replace`.
 - **Untagged.** docproc-envelope, the shared Rust crate at `tools/envelope`, is a path
   dependency of each Rust tool and is never tagged; a change to it runs every Rust tool's check.

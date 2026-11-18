@@ -9,10 +9,33 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-18
+
 ### Changed
 
 - The crate graph locks uuid 1.29.3, a patch release, in place of 1.29.2. The output is
   unchanged.
+- HTML is made into Markdown by htmd 0.6 in place of 0.5.6, over its default DOM, ego-tree
+  (ISC), which the third-party notices now list; markup5ever_rcdom leaves the crate graph. The
+  Markdown of every recorded message is unchanged. htmd 0.6 escapes more of the text than 0.5.6
+  did, and an escape it adds is kept only where CommonMark would otherwise read the Markdown
+  differently: a text `&`, `$`, or `~` is bare, but an `&` that could begin a character reference
+  and a `~` run that would strike text through or open a code fence. A heading in a table cell
+  stays a heading, as before. Where output differs, it reads at least as faithfully:
+  - a link's text keeps its leading and trailing whitespace inside the brackets, and a line
+    ending in it is written `&#10;`, as htmd 0.6 writes a link;
+  - a link's or an image's title is written whole, its edge whitespace and blank lines kept;
+  - an `<img>` is linked by its `src` alone, and one without a `src` is left out, as htmd 0.6
+    reads it;
+  - a `+` alone, a `1)`, or a `<` that could begin an autolink at the start of a text, which
+    CommonMark would read as a list item or a link, is now escaped;
+  - a `<span class="math math-inline">` or `math-display` is written as math, `$…$` or `$$…$$`.
+
+### Removed
+
+- The warning for an HTML body that holds every private-use character, which made no Markdown:
+  docproc-mail no longer stands a private-use character in for a text `&`, so every such body
+  makes its Markdown.
 
 ## [v0.1.1] - 2026-11-16
 
@@ -133,6 +156,7 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0

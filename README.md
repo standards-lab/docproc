@@ -37,7 +37,7 @@ the reference for its exported names, and its doc comment lists them.
 | `dispatch` | The walk over an input's parts to their stages; the Stage contract and its error classes; the content store and its layout, and the index, each with a file and a memory implementation; the shapes of its events, parts, outputs, and warnings; and the Meta keys every stage sets and the record media types. It imports `route` and `inspect` alone. |
 | `dispatch/dispatchtest` | The Index and Content conformance suites, for every store, the module's own and a provider's, and the fixture stage a host's tests dispatch over. |
 | `stages` | `Build` and its `Options`: docproc's shipped wiring, each route's stage over its format package and tools, found on the host, under the host's run bounds and requests, with the one failure classification and each stage's identity. `cmd/docproc` is its first caller. |
-| `rundir` | `cmd/docproc`'s run directory, read and written: `Open` to read it and `Create` to write it, its runs, the latest that ended, each run's manifest and record, its content store and the path of a content's file, its index, and a quarantined part's kept file. One process writes a run directory. |
+| `rundir` | `cmd/docproc`'s run directory, read and written: `Open` to read it and `Create` to write it, its runs, the latest that ended, each run's manifest and record, its content store and the path of a content's file, its index, a quarantined part's kept file, and a run's report directory, `runs/<run>/report/`. One process writes a run directory. |
 | `rundir/schema` | The run directory's schema `"2"`: the shapes `cmd/docproc` writes and a reader decodes, a record line, a manifest, an input's file, and a time, each in UTC. It imports no docproc package but `dispatch` and `inspect`. |
 | `internal/cli` | The envelope reader the three readers share: their lines, stderr warnings, exit codes, and media names. |
 | `internal/goldentest`, `internal/mediatest`, `internal/tooltest` | Test helpers: PNG goldens, media fixtures, and the unit tier's stand-in tool. |
@@ -53,7 +53,9 @@ raises it.
 `github.com/standards-lab/docproc/cmd/docproc` is a nested module, released on its own
 `cmd/docproc/vX.Y.Z` tags, with its own [`CHANGELOG.md`](cmd/docproc/CHANGELOG.md). It wires
 `stages.Build` over the host's tools and writes what it prepares to a run directory through
-`rundir`. Running it needs Linux and the system tools below, each for the stages that run it.
+`rundir`, then renders a run's report from that directory. Running it needs Linux and the system
+tools below, each for the stages that run it; rendering a report needs neither the tools nor the
+configuration below.
 
 ```sh
 go install github.com/standards-lab/docproc/cmd/docproc@<version>
@@ -68,19 +70,40 @@ go install github.com/standards-lab/docproc/cmd/docproc@<version>
   made when it doesn't exist: the run's manifest, one record line per event, each output's
   content, and each quarantined part's file. `--workers N` dispatches N inputs at once, at least
   1, the host's CPUs by default; `--exclude <route>`, repeatable, leaves a route's stage out, so
-  its parts have no processor.
+  its parts have no processor; `--report`, once the summary is printed, renders the run's report
+  and prints its index page's path, as `docproc report` does: after a run that ended, and after a
+  failure of the index or the content store, and never after a cancellation.
+- `docproc report <run-dir>` renders a run's report into its report directory,
+  `runs/<run>/report/` under the run directory, replacing earlier pages, and prints its index
+  page's path. It renders the latest run that ended, or the run `--run <id>` names, one that never
+  ended among them, its pages marked not ended. It reads the run directory alone: no
+  configuration, no tool. The report is static HTML: `index.html` has the run's header, from its
+  manifest, a summary of the inputs and their parts by route and outcome, and every input, sorted
+  by path, linking a page per distinct content, `<sha256>.html`, that lists the inputs holding it,
+  its part tree with each part's record metadata, and its outputs, a text inline, an image or an
+  audio window shown, and any other output linked. Its links into the run directory are relative,
+  so the run directory moves or archives whole; the pages load nothing from elsewhere, and every
+  time is the record's, in UTC.
 
-Exit statuses:
+`docproc run`'s exit statuses:
 
 | Status | When |
 | --- | --- |
-| 0 | The run ended. Failed parts and inputs stopped with an error leave it 0; the summary's last line counts both, a failure replayed from the index among the failed parts. |
-| 1 | The run stopped or never began: an argument that is neither a file nor a directory, arguments that yield no input, a run directory that can't be written, a failure of the index or the content store, or a cancellation. A run that began ends its manifest with the error. |
+| 0 | The run ended. Failed parts and inputs stopped with an error leave it 0; the summary's last line counts both, a failure replayed from the index among the failed parts. With `--report`, its pages were rendered too. |
+| 1 | The run stopped or never began: an argument that is neither a file nor a directory, arguments that yield no input, a run directory that can't be written, a failure of the index or the content store, or a cancellation. A run that began ends its manifest with the error. With `--report`, a run stopped by a failure of the index or the content store still renders its pages, and a canceled run renders none; a run that ended whose pages couldn't be rendered exits 1 too, and `docproc report` renders them again. |
 | 2 | Help, or a usage error, such as an unknown route to `--exclude` or `--workers` under 1. Neither builds anything. |
+
+`docproc report`'s exit statuses:
+
+| Status | When |
+| --- | --- |
+| 0 | The report was rendered, a run that never ended among them, its pages marked not ended. |
+| 1 | Nothing was rendered: a run directory that doesn't exist or isn't one, a `--run` that isn't one of its runs, no `--run` and no run that ended, or a page that couldn't be read or written. |
+| 2 | Help, or a usage error, such as no run directory or more than one. |
 
 ### Configuration
 
-Each `DOCPROC_` variable below overrides one of the command's starting bounds; the library sets
+Each `DOCPROC_` variable below overrides one of `docproc run`'s starting bounds; the library sets
 no bound of its own. A duration is a Go duration, such as `90s` or `10m`; a size is a count of
 bytes, so 2 GiB is `2147483648`; a count, a ratio, or a pixel count is a decimal number; and a
 switch is read by Go's `strconv.ParseBool`. An unset or empty variable keeps its starting value.

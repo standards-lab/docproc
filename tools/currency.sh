@@ -168,11 +168,14 @@ done <<<"$beyond"
 
 # Then every crate within its requirement to its latest, held ones left at their pins; a
 # requirement raised above, the tool's or the envelope's by another tool's upgrade, is within
-# now, so this re-locks the tool's graph to it.
+# now, so this re-locks the tool's graph to it. An update can move other crates with the one it
+# names, as re-locking regex moves regex-automata, so a crate whose pin an earlier update in the
+# list already moved is no longer locked at that pin, and is passed over.
 within=$(cargo update --dry-run --verbose 2>&1 |
 	sed -nE 's/^ *Updating +([^ ]+) +v([^ ]+) -> v[^ ]+$/\1 \2/p')
 while read -r name pinned; do
 	[ -n "$name" ] || continue
 	[ -z "$(held "$name" "$pinned")" ] || continue
+	cargo pkgid --quiet "$name@$pinned" >/dev/null 2>&1 || continue
 	cargo update --quiet "$name@$pinned"
 done <<<"$within"

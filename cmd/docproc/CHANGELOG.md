@@ -10,8 +10,10 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
-The command is built from spike-ai-pipeline at 6a631f1, its `cmd/docproc` and its
-`internal/docproc/app` and `internal/docproc/apptest` packages, with `internal/app` and
+## [v0.1.0] - 2026-11-18
+
+The first release. The command is built from spike-ai-pipeline at 6a631f1, its `cmd/docproc` and
+its `internal/docproc/app` and `internal/docproc/apptest` packages, with `internal/app` and
 `internal/apptest` started again from go-cli-sdk-template's template/v0.3.0 on go-cli-sdk v0.4.0
 and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
 
@@ -19,22 +21,39 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
 
 - The module. `main.go` sits at its root, so
   `go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs `docproc`. Its
-  composition root, `internal/app`, its fixtures, `internal/apptest`, and its command package,
-  `internal/run`, sit under `internal/`, and `integration` holds the built-binary tier's harness.
-  It requires the docproc base module at v0.2.0, go-cli-sdk, go-core, and golang.org/x/sys.
+  composition root, `internal/app`, its fixtures, `internal/apptest`, and its command packages,
+  `internal/run` and `internal/report`, sit under `internal/`, and `integration` holds the
+  built-binary tier's harness. It requires the docproc base module at v0.3.0, go-cli-sdk,
+  go-core, and golang.org/x/sys.
 - `docproc version`, which prints the module's version, or `(devel)` for a binary that carries
   none, and builds nothing: it reads no configuration and looks up no tool.
-- `docproc run <path>... --out <dir> [--workers N] [--exclude <route>]...`. It collects its
-  inputs first: a file argument is one input, and a directory yields its regular files in lexical
-  order, each once. It follows a named symbolic link and no link under a directory, and fails
-  before any tool is looked up on an argument that is neither a file nor a directory, or on
+- `docproc run <path>... --out <dir> [--workers N] [--exclude <route>]... [--report]`. It collects
+  its inputs first: a file argument is one input, and a directory yields its regular files in
+  lexical order, each once. It follows a named symbolic link and no link under a directory, and
+  fails before any tool is looked up on an argument that is neither a file nor a directory, or on
   arguments that yield no input. It then builds the stages over the host's tools under the run's
   bounds, leaving out each route `--exclude` names, prints the tools and the stage table, and
   dispatches the inputs, `--workers` at a time (at least 1, the host's CPUs by default), into a
   schema "2" run directory through `rundir`. It writes the run's manifest; one record line per
-  event, each input's own line carrying its file's metadata, sniffed type, and time; each
-  output's content, to the run directory's content store; and each quarantined part's file, kept
-  and named on its line. The terminal shows one line per input and a summary.
+  event, each input's own line carrying its file's metadata, sniffed type, and time; each output's
+  content, to the run directory's content store; and each quarantined part's file, kept and named
+  on its line. The terminal shows one line per input and a summary.
+- `docproc report <run-dir> [--run <id>]`, which renders a run's report and prints its index
+  page's path: static HTML pages in the run's report directory, `runs/<run>/report/`, replacing
+  earlier ones whole. It renders the latest run that ended, or the run `--run` names, one that
+  never ended among them, its pages marked not ended. It reads the run directory alone: it reads
+  no configuration and looks up no tool. An index page, `index.html`, has the run's header, from
+  its manifest, a summary counting the inputs and their parts by route and outcome, and every
+  input, sorted by path, with its route, outcome, and time, linking its content's page. A page
+  per distinct content, `<sha256>.html`, lists the inputs holding it, then its part tree, each
+  part's record metadata, and its outputs: a text, Markdown, or record output inline, a PNG or
+  JPEG image and a WAV window shown at its content's file, any other output linked, and a
+  quarantined part's kept file named. Every link into the run directory is relative, so the run
+  directory moves or archives whole, and the pages load nothing from elsewhere. Every time is the
+  record's, in UTC, so the same run directory renders the same bytes in any zone.
+- `docproc run --report`, which, once the summary is printed, renders the run's report and prints
+  its index page's path, as `docproc report` does: after a run that ended, and after a failure of
+  the index or the content store, which still exits 1; never after a cancellation.
 - The run's bounds, at docproc's starting values, each overridden by its `DOCPROC_` variable: the
   tools' memory bound, unit timeout, and stream idle bound; a dispatch's most parts, bytes, and
   depth; the bomb rule's ratio and size and an archive's most entries; a claim's release bound;
@@ -43,12 +62,20 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   take fails the run before any tool is looked up, and the error names every such variable.
   `DOCPROC_SHUTDOWN_TIMEOUT` bounds the shutdown. The base module's
   [README](../../README.md#configuration) lists each variable with its bound and starting value.
-- Exit statuses: 0 when the run ends, failed parts and inputs stopped with an error included,
-  the summary's last line counting both, a failure replayed from the index among the failed
-  parts; 1 when it stops or never begins, a failure of the index or the content store or a
-  cancellation ending the run's manifest with the error; and 2 for help and every usage error,
-  which build nothing.
+- `docproc run`'s exit statuses: 0 when the run ends, failed parts and inputs stopped with an
+  error included, the summary's last line counting both, a failure replayed from the index among
+  the failed parts; 1 when it stops or never begins, a failure of the index or the content store
+  or a cancellation ending the run's manifest with the error, or, with `--report`, a run that
+  ended whose pages couldn't be rendered, which `docproc report` renders again; and 2 for help and
+  every usage error, which build nothing. `docproc report`'s: 0 when the report is rendered; 1
+  when nothing is: a run directory that doesn't exist or isn't one, a `--run` that isn't one of
+  its runs, no `--run` and no run that ended, or a page that couldn't be read or written; and 2
+  for help and every usage error.
 - The built-binary integration tier, under the `integration` build tag, run by
   `mise run test:integration`: it builds `docproc` and runs it over the repository's committed
   fixtures, asserting its arguments, output, exit status, signals, and the run directory it
-  writes, read back through `rundir`.
+  writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
+  run.
+
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.1.0...HEAD
+[v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/cmd/docproc/v0.1.0

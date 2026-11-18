@@ -31,6 +31,12 @@
 // stops the run, as the context ending does: the run's manifest ends with the error, and the
 // command exits 1.
 //
+// With --report, once the summary is printed, the command renders the run's report through
+// package report and prints its index's path, as docproc report does: after a run that ended, and
+// after a failure of the index or the content store, which still exits 1; never after a
+// cancellation. A render that fails after a run that ended exits 1, its error saying docproc
+// report renders the pages again.
+//
 // The package exports:
 //
 //   - [Commands], which returns the run command over the [Config] node it declares
