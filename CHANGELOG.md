@@ -32,9 +32,10 @@ unchanged: golang.org/x/text alone.
 - `rundir/schema`, the run directory's schema `"2"`, shapes alone: `Event`, a record line of kind
   part, output, warning, or error, with its `Span`; `Manifest`, a run's docproc `Build`, its start
   and end, its workers, its path arguments and how many inputs they named, the tools and the
-  stage table, `dispatch.Tool` and `dispatch.Row`, and the error it ended with; `File`, an input's file metadata and its sniffed type; and `Time` and `TimeOf`,
-  a time in UTC. It includes `dispatch`'s shapes at `dispatch.Version` `"1"`, aliased, and imports
-  no docproc package but `dispatch` and `inspect`.
+  stage table, `dispatch.Tool` and `dispatch.Row`, and the error it ended with; `File`, an
+  input's file metadata and its sniffed type; and `Time` and `TimeOf`, a time in UTC. It includes
+  `dispatch`'s shapes at `dispatch.Version` `"1"`, aliased, and imports no docproc package but
+  `dispatch` and `inspect`.
 
 ## [v0.1.0] - 2026-11-16
 

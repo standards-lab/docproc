@@ -12,12 +12,13 @@
 //
 //   - [Main] is the suite's TestMain: it clears the DOCPROC_ environment and builds the command
 //     once per run, with the race detector so the program runs under it too.
-//   - [Start] starts the built program with its arguments as a [Process], which a test waits on
-//     with [Process.Wait] or kills with [Process.Kill]; [Run] runs it once and returns its
-//     processtest.Result.
+//   - [Start] starts the built program with its arguments as a [Process], which a test polls with
+//     [Process.Exited], waits on with [Process.Wait], or kills with [Process.Kill], each run
+//     bounded by [Bound]; [Run] runs it once and returns its processtest.Result.
 //   - [Fixtures] returns the repository's committed fixtures, the stages tier's golden's list,
-//     read from the repository tree the module sits in: absent, the test skips, naming what is
-//     missing; a file the list names that is missing fails it.
+//     read from the repository tree the module sits in by [ReadFixtures]: absent, matching
+//     [ErrNoFixtures], the test skips, naming what is missing; a file the list names that is
+//     missing fails it.
 //
 // The tier runs from `mise run test:integration`, over the docproc tools built from the checkout,
 // first on PATH, and the host's other system tools. The harness is untagged, so the unit tier

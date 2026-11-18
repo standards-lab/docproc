@@ -71,11 +71,11 @@ jobs:
 
       # What the Go modules build or read: their sources, go.mod and go.sum files (the storage,
       # postgres, and cmd/docproc modules', and tools/go.mod, the boundary that keeps the tools out
-      # of the base module, among them), any testdata, each module's lint config, the postgres module's SQL and
-      # the sqlint.toml check:go lints it under, this workflow, and the root mise.toml check:go runs
-      # from; and, in the tools' trees, only what the Go tests read in place: the shared envelope
-      # cases and each tool's committed goldens and expected outputs. A change to a tool's code
-      # alone doesn't run it.
+      # of the base module, among them), any testdata, each module's lint config, the postgres
+      # module's SQL and the sqlint.toml check:go lints it under, this workflow, and the root
+      # mise.toml check:go runs from; and, in the tools' trees, only what the Go tests read in
+      # place: the shared envelope cases and each tool's committed goldens and expected outputs. A
+      # change to a tool's code alone doesn't run it.
       - id: go
         uses: dorny/paths-filter@v4.0.3
         with:
