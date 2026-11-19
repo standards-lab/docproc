@@ -52,14 +52,18 @@ type settings struct {
 	// fail, at that page.
 	FailText int `json:"fail_text,omitzero"`
 	// Portfolio, when set, makes the stand-in gs a PDF portfolio's, as gs reads one: a survey run,
-	// whose PostScript asks for /Collection, prints true before the count; and a render or a text
-	// run writes, in place of each page's, each of the two documents' page of that number, the
-	// first document's pages, then the second's, as gs runs a portfolio's documents in turn over
-	// the run's pages.
+	// whose PostScript asks for /Collection, prints true after a count above zero; and a render or
+	// a text run writes, in place of each page's, each of the two documents' page of that number,
+	// the first document's pages, then the second's, as gs runs a portfolio's documents in turn
+	// over the run's pages.
 	Portfolio bool `json:"portfolio,omitzero"`
 	// Delay holds, by page, how many milliseconds the stand-in gs's render of that page waits
 	// before it writes the page.
 	Delay map[int]int `json:"delay,omitzero"`
+	// Leave, when set, makes each stand-in gs run but a version command leave a file in its
+	// TMPDIR, named gs_ and six characters, as a gs killed before it removes its temporary files
+	// leaves its band list's.
+	Leave bool `json:"leave,omitzero"`
 	// Stderr is what the stand-in gs writes to stderr for a run that succeeds, and what the
 	// stand-in qpdf or pdfdetach writes to stderr for any run.
 	Stderr string `json:"stderr,omitzero"`
@@ -145,17 +149,17 @@ func outputs(s settings, pages []int) []standinOutput {
 const argLimit = 2047
 
 // gs is the stand-in gs. With --version alone it prints the version alone, as gs does.
-// Otherwise it appends its working directory and arguments to the log file, then refuses an
-// argument past argLimit, as gs does, and fails when Fail is set, or else writes Stderr to
-// stderr, and Stdout to stdout when it is set, and its own output when it isn't: for a run with
-// -dNODISPLAY, whether the PDF is a portfolio when its PostScript asks for /Collection, then its
-// page count, then its pages' sizes when its PostScript asks for them; for a run with the
-// txtwrite device, each output's text, to stdout for an OutputFile of -, and otherwise to the
-// OutputFile, its %d the output's place in the run from 1, failing at FailText; and for a render,
-// each output's PNG in turn, after its page's Delay, failing at FailPage and killed at KillPage.
-// A run's outputs are its pages', as outputs gives them, its pages its -sPageList, or its
-// -dFirstPage alone. A page that fails writes "told to fail" to stderr and exits 1, the outputs
-// before it written.
+// Otherwise it appends its working directory and arguments to the log file, leaves a file in its
+// TMPDIR when Leave is set, then refuses an argument past argLimit, as gs does, and fails when
+// Fail is set, or else writes Stderr to stderr, and Stdout to stdout when it is set, and its own
+// output when it isn't: for a run with -dNODISPLAY, its page count, then, when the count is above
+// zero, whether the PDF is a portfolio when its PostScript asks for /Collection, then its pages'
+// sizes when its PostScript asks for them; for a run with the txtwrite device, each output's text,
+// to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the output's place in
+// the run from 1, failing at FailText; and for a render, each output's PNG in turn, after its
+// page's Delay, failing at FailPage and killed at KillPage. A run's outputs are its pages', as
+// outputs gives them, its pages its -sPageList, or its -dFirstPage alone. A page that fails writes
+// "told to fail" to stderr and exits 1, the outputs before it written.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -164,6 +168,16 @@ func gs(s settings, args []string) int {
 	if err := appendLog(s.Log, args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	if s.Leave {
+		f, err := os.CreateTemp(os.Getenv("TMPDIR"), "gs_")
+		if err == nil {
+			err = f.Close()
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 	}
 	for _, a := range args {
 		if len(a) > argLimit {
@@ -183,18 +197,22 @@ func gs(s settings, args []string) int {
 		out = string(*s.Stdout)
 	case slices.Contains(args, "-dNODISPLAY"):
 		script := args[len(args)-1]
-		if strings.Contains(script, "/Collection") {
-			out = fmt.Sprintf("%t\n", s.Portfolio)
-		}
-		if !strings.Contains(script, "/PageSize") {
-			out += fmt.Sprintf("%d\n", pages)
-			break
-		}
 		sizes := s.Sizes
 		if sizes == nil {
 			sizes = slices.Repeat([]string{"612 792"}, pages)
 		}
-		out += fmt.Sprintf("%d\n%s\n", len(sizes), strings.Join(sizes, "\n"))
+		if strings.Contains(script, "/PageSize") {
+			pages = len(sizes)
+		}
+		out = fmt.Sprintf("%d\n", pages)
+		if pages > 0 && strings.Contains(script, "/Collection") {
+			out += fmt.Sprintf("%t\n", s.Portfolio)
+		}
+		if strings.Contains(script, "/PageSize") {
+			for _, size := range sizes {
+				out += size + "\n"
+			}
+		}
 	case slices.Contains(args, "-sDEVICE=txtwrite"):
 		return standinTexts(s, args)
 	default:

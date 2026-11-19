@@ -93,7 +93,10 @@ type PageImage struct {
 // a lower DPI gets a process of its own, since gs renders one resolution a run, as does a lane's
 // lone page, and every page of a PDF portfolio, whose output gs writes from its embedded
 // documents' pages rather than a page's own. Each page's PNG and text are byte for byte what a
-// process of its own gives. A shared process's bound is the gs Tool's Timeout read as an idle bound, between
+// process of its own gives. Through the exec runner, the run that counts the pages and the shared
+// processes work in that temporary directory, which is their TMPDIR, so the temporary files a gs
+// ended early leaves are removed with it; a page's own processes work in the PDF's directory, as
+// Render and Text do. A shared process's bound is the gs Tool's Timeout read as an idle bound, between
 // its writes, and never counting time spent waiting on the consumer; a process of a page's own
 // takes it whole, as a unit's.
 //
@@ -151,7 +154,20 @@ type outcome struct {
 // a later page that finishes first waiting in its channel. Once the consumer stops, the outcomes
 // it never took have their files removed.
 func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yield func(PageImage, error) bool) {
-	sv, err := p.render.survey(ctx, path, req.MaxPixels > 0)
+	var scratch string
+	if p.render.ownDir() {
+		// The run's scratch, the Preparer's own, never the input's directory nor the caller's:
+		// the working directory, and so the TMPDIR, of the survey and the shared processes, and
+		// where the shared text runs write. It is removed once every page's work has ended, with
+		// whatever a gs ended early left in it.
+		var err error
+		if scratch, err = os.MkdirTemp("", "docproc-gs-*"); err != nil {
+			yield(PageImage{}, fmt.Errorf("document: gs scratch: %w", err))
+			return
+		}
+		defer func() { _ = os.RemoveAll(scratch) }()
+	}
+	sv, err := p.render.survey(ctx, path, scratch, req.MaxPixels > 0)
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			err = cerr
@@ -160,16 +176,7 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 		return
 	}
 	n := len(sv.sizes)
-	r := &run{p: p, path: path, n: n, sizes: sv.sizes, portfolio: sv.portfolio, req: req, turns: make([]chan struct{}, n), done: make([]chan outcome, n)}
-	if req.Text && p.render.sharedText() && !r.portfolio {
-		// The run's scratch, which the shared text runs write in: the Preparer's own, never the
-		// input's directory nor the caller's.
-		if r.scratch, err = os.MkdirTemp("", "docproc-text-*"); err != nil {
-			yield(PageImage{}, fmt.Errorf("document: text scratch: %w", err))
-			return
-		}
-		defer func() { _ = os.RemoveAll(r.scratch) }()
-	}
+	r := &run{p: p, path: path, n: n, sizes: sv.sizes, portfolio: sv.portfolio, req: req, scratch: scratch, turns: make([]chan struct{}, n), done: make([]chan outcome, n)}
 	work, cancel := context.WithCancel(ctx)
 	r.ctx = work
 	for i := range n {
@@ -221,8 +228,9 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 // unless req has a MaxPixels, which needs them, under req, already checked: its context, which
 // ends when the stream does, each page's turn, closed once it may start, and each page's outcome
 // channel. portfolio is whether the PDF is a portfolio, as survey reads it, whose pages never
-// share a process. scratch is the directory the shared text runs write in, "" when they don't
-// run.
+// share a process. scratch is the run's scratch directory, the shared processes' working
+// directory, where the shared text runs write, "" through the container runner, whose runs work
+// in the PDF's directory and read text a page a run.
 type run struct {
 	p         *Preparer
 	ctx       context.Context
@@ -349,7 +357,7 @@ func (r *run) shared(pages []int) ([]int, string, error) {
 	}
 	defer texts.close()
 	sink := &pageSink{r: r, pages: pages, texts: texts}
-	whole, err := r.p.render.renderPages(r.ctx, r.path, pages, r.req.DPI, sink)
+	whole, err := r.p.render.renderPages(r.ctx, r.path, r.scratch, pages, r.req.DPI, sink)
 	return pages[whole:], "render", err
 }
 

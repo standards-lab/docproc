@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,7 +43,9 @@ func GhostscriptSpec() tool.Spec {
 //
 // gs reads the PDF by its path, which Count and Render make absolute, and each run's working
 // directory is the PDF's directory. The container runner mounts a run's working directory at the
-// same absolute path, so the path names the same file through either runner.
+// same absolute path, so the path names the same file through either runner. The Preparer's own
+// runs, its survey and its shared processes, take the working directory it gives them, a scratch
+// directory of its own through the exec runner, as workDir says.
 type Ghostscript struct {
 	gs *tool.Tool
 }
@@ -111,18 +114,19 @@ type survey struct {
 	portfolio bool
 }
 
-// survey reads the PDF at pdf in one gs run: whether it is a portfolio, by the test gs's own
-// runpdf makes of it, its PDFInfo holding /Collection; its page count; and, with sizes, each
-// page's size, the page set up as rendering does, its media box and rotation applied, and the
-// device's page size printed, so a page's size is the one Render renders. gs runs with -dSAFER,
-// permitted to read that one file.
-func (g *Ghostscript) survey(ctx context.Context, pdf string, sizes bool) (survey, error) {
+// survey reads the PDF at pdf in one gs run, in the working directory dir, as workDir says: its
+// page count; whether it is a portfolio, by the
+// test gs's own runpdf makes of it, its PDFInfo holding /Collection; and, with sizes, each page's
+// size, the page set up as rendering does, its media box and rotation applied, and the device's
+// page size printed, so a page's size is the one Render renders. gs runs with -dSAFER, permitted
+// to read that one file.
+func (g *Ghostscript) survey(ctx context.Context, pdf, dir string, sizes bool) (survey, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
 		return survey{}, fmt.Errorf("document: ghostscript: %w", err)
 	}
 	var out bytes.Buffer
-	if err := g.gs.Run(ctx, tool.Invocation{Args: surveyArgs(abs, sizes), Dir: filepath.Dir(abs), Stdout: &out}); err != nil {
+	if err := g.gs.Run(ctx, tool.Invocation{Args: surveyArgs(abs, sizes), Dir: workDir(dir, abs), Stdout: &out}); err != nil {
 		return survey{}, err
 	}
 	sv, err := parseSurvey(out.String(), sizes)
@@ -137,24 +141,38 @@ func (g *Ghostscript) survey(ctx context.Context, pdf string, sizes bool) (surve
 	return sv, nil
 }
 
-// parseSurvey reads surveyArgs' output: true or false, whether the PDF is a portfolio, and the
-// page count, each on its own line, then, with sizes, each page's width and height in points, one
-// page a line.
+// parseSurvey reads surveyArgs' output: the page count on its own line; then, when it is above
+// zero, true or false, whether the PDF is a portfolio, on its own; then, with sizes, each page's
+// width and height in points, one page a line.
+//
+// Output it can't read is quoted in its error as the released count and sizes runs quoted theirs,
+// the portfolio line left out: a PDF gs can't open prints no portfolio line, its count 0 after
+// gs's message, and a run past the count quotes gs's output without the line surveyArgs added.
 func parseSurvey(out string, sizes bool) (survey, error) {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
-	if len(lines) < 2 {
+	n, err := strconv.Atoi(strings.TrimSpace(lines[0]))
+	if err != nil || n < 0 {
 		return survey{}, fmt.Errorf("gs printed %q", out)
 	}
-	portfolio, perr := strconv.ParseBool(strings.TrimSpace(lines[0]))
-	n, err := strconv.Atoi(strings.TrimSpace(lines[1]))
-	if perr != nil || err != nil || n < 0 || sizes && len(lines)-2 != n || !sizes && len(lines) != 2 {
+	var sv survey
+	if n > 0 {
+		if len(lines) < 2 || lines[1] != "true" && lines[1] != "false" {
+			return survey{}, fmt.Errorf("gs printed %q", out)
+		}
+		sv.portfolio = lines[1] == "true"
+		// The count's line is the first of out's that isn't blank, so the first "\ntrue\n" or
+		// "\nfalse\n" in out is the portfolio line after it.
+		out = strings.Replace(out, "\n"+lines[1]+"\n", "\n", 1)
+		lines = slices.Delete(lines, 1, 2)
+	}
+	if sizes && len(lines)-1 != n || !sizes && len(lines) != 1 {
 		return survey{}, fmt.Errorf("gs printed %q", out)
 	}
-	sv := survey{sizes: make([]pageSize, n), portfolio: portfolio}
+	sv.sizes = make([]pageSize, n)
 	if !sizes {
 		return sv, nil
 	}
-	for i, line := range lines[2:] {
+	for i, line := range lines[1:] {
 		f := strings.Fields(line)
 		if len(f) != 2 {
 			return survey{}, fmt.Errorf("page %d: gs printed %q", i+1, line)
@@ -246,21 +264,21 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 // output that doesn't parse is, so the run's pages fall back to a process each.
 var errOutput = errors.New("gs's output doesn't hold the pages asked for")
 
-// renderPages renders pages, 1-based and in order, of the PDF at pdf at dpi, in one gs run, its
-// stdout the pages' PNGs one after another, which it splits by their chunks and hands to sink, a
-// PNG at a time. It returns how many PNGs sink was handed whole, and the run's error: gs's own,
+// renderPages renders pages, 1-based and in order, of the PDF at pdf at dpi, in one gs run in the
+// working directory dir, as workDir says, its stdout the pages' PNGs one after another, which it
+// splits by their chunks and hands to sink, a PNG at a time. It returns how many PNGs sink was handed whole, and the run's error: gs's own,
 // the Tool's, or one wrapping errOutput when stdout isn't a PNG a page.
 //
 // The run's bound is the Tool's Timeout read as an idle bound, between gs's writes, rather than a
 // bound on the whole run: a unit's bound is a page's, and one run renders many. Time sink spends
 // blocked, waiting for the consumer, isn't idleness.
-func (g *Ghostscript) renderPages(ctx context.Context, pdf string, pages []int, dpi int, sink pngSink) (int, error) {
+func (g *Ghostscript) renderPages(ctx context.Context, pdf, dir string, pages []int, dpi int, sink pngSink) (int, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
 		return 0, fmt.Errorf("document: ghostscript: %w", err)
 	}
 	split := &pngSplit{n: len(pages), sink: sink}
-	err = g.gs.Run(ctx, tool.Invocation{Args: sharedRenderArgs(abs, pages, dpi), Dir: filepath.Dir(abs), Stdout: split, Idle: g.gs.Timeout()})
+	err = g.gs.Run(ctx, tool.Invocation{Args: sharedRenderArgs(abs, pages, dpi), Dir: workDir(dir, abs), Stdout: split, Idle: g.gs.Timeout()})
 	whole, serr := split.finish()
 	if err == nil && serr != nil {
 		err = fmt.Errorf("document: ghostscript: pages %s of %s: %w", pageList(pages), abs, serr)
@@ -268,18 +286,31 @@ func (g *Ghostscript) renderPages(ctx context.Context, pdf string, pages []int, 
 	return whole, err
 }
 
-// sharedText reports whether textPages' files can be read back: through the exec runner they
-// can, written wherever the caller says; the container runner mounts only a run's working
-// directory, the PDF's, and textPages never writes there, so a container's text is read a page a
-// run, through Text.
-func (g *Ghostscript) sharedText() bool {
+// ownDir reports whether gs's runs may work in a directory other than the PDF's: through the
+// exec runner they may, and the Preparer gives its own runs a scratch directory of its own, where
+// textPages writes its files; the container runner mounts only a run's working directory, the
+// PDF's, so a container's runs work there, and its text is read a page a run, through Text.
+func (g *Ghostscript) ownDir() bool {
 	_, container := g.gs.Image()
 	return !container
 }
 
+// workDir returns the working directory of a run over the PDF at pdf, absolute: dir, the
+// caller's, or the PDF's directory when dir is "". Through the exec runner a run's TMPDIR is its
+// working directory, where gs keeps its temporary files, a page's band list and a portfolio's
+// documents among them, and removes them as it exits; a gs killed first, its run ended early,
+// leaves them there. A run in a directory of the Preparer's own leaves them where the Preparer
+// removes them, never beside the input.
+func workDir(dir, pdf string) string {
+	if dir != "" {
+		return dir
+	}
+	return filepath.Dir(pdf)
+}
+
 // textPages writes the text of pages, 1-based and in order, of the PDF at pdf into dir, the
-// caller's, in one gs run with the txtwrite device: the run's i-th page, from 1, to textFile(dir,
-// i), as Text reads one page. Every page's file is there once it returns nil; a file missing is
+// caller's, in one gs run with the txtwrite device, dir its working directory too: the run's i-th
+// page, from 1, to textFile(dir, i), as Text reads one page. Every page's file is there once it returns nil; a file missing is
 // an error wrapping errOutput.
 //
 // gs runs without -q, so it writes "Page N" to stderr as each page starts, and the run's bound
@@ -291,7 +322,7 @@ func (g *Ghostscript) textPages(ctx context.Context, pdf string, pages []int, di
 	}
 	// gs reads a % in OutputFile as a format's, which %% escapes.
 	out := filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "page-%d.txt")
-	if err := g.gs.Run(ctx, tool.Invocation{Args: sharedTextArgs(abs, pages, out), Dir: filepath.Dir(abs), Idle: g.gs.Timeout()}); err != nil {
+	if err := g.gs.Run(ctx, tool.Invocation{Args: sharedTextArgs(abs, pages, out), Dir: dir, Idle: g.gs.Timeout()}); err != nil {
 		return err
 	}
 	for i := range pages {
@@ -418,20 +449,24 @@ func countArgs(pdf string) []string {
 		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount = quit"}
 }
 
-// surveyArgs returns gs's arguments to print whether the PDF at pdf is a portfolio, true or false,
-// as gs's runpdf tests it, PDFInfo, a dictionary once the PDF opens, holding /Collection; then its
-// page count; then, with sizes, each page's size: pdfshowpage_setpage sets the device's page size
-// to the page's, as rendering does, which is printed as its width and height. The path is escaped
-// as countArgs escapes it.
+// surveyArgs returns gs's arguments to print the page count of the PDF at pdf; then, when the
+// count is above zero, whether the PDF is a portfolio, true or false, as gs's runpdf tests it,
+// PDFInfo, a dictionary once the PDF opens, holding /Collection; then, with sizes, each page's
+// size: pdfshowpage_setpage sets the device's page size to the page's, as rendering does, which is
+// printed as its width and height. The path is escaped as countArgs escapes it.
+//
+// The portfolio line follows the count, and only a count above zero, so that a PDF gs can't open,
+// which prints gs's message and a count of 0, prints what the released count and sizes runs
+// printed for it, and its error quotes the same output.
 func surveyArgs(pdf string, sizes bool) []string {
-	script := "(" + psString(pdf) + ") (r) file runpdfbegin " +
-		"/PDFInfo where { /PDFInfo get dup type /dicttype eq { /Collection known } { pop false } ifelse } { false } ifelse = "
+	script := "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount dup = " +
+		"dup 0 gt { /PDFInfo where { /PDFInfo get dup type /dicttype eq { /Collection known } { pop false } ifelse } { false } ifelse = } if "
 	if sizes {
-		script += "pdfpagecount dup = 1 1 3 -1 roll { " +
+		script += "1 1 3 -1 roll { " +
 			"pdfgetpage pdfshowpage_setpage pop currentpagedevice /PageSize get aload pop exch =only ( ) print = " +
 			"} for runpdfend quit"
 	} else {
-		script += "pdfpagecount = runpdfend quit"
+		script += "pop runpdfend quit"
 	}
 	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf, "-c", script}
 }

@@ -244,3 +244,34 @@ func TestImagesPageListHost(t *testing.T) {
 		}
 	}
 }
+
+// TestImagesUnopenedHost checks a PDF the host's gs can't open fails as the released count and
+// sizes runs failed it: gs prints its message and a count of 0, and the survey prints nothing
+// more, so its error is Count's, which runs the released count, word for word, and with a
+// MaxPixels the same output named as the sizes'.
+func TestImagesUnopenedHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	p := document.NewPreparer(document.Config{Renderer: g})
+	pdf := filepath.Join(t.TempDir(), "unopened.pdf")
+	if err := os.WriteFile(pdf, []byte("not a PDF\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := g.Count(t.Context(), pdf)
+	if err == nil || !strings.Contains(err.Error(), "Couldn't initialise file") {
+		t.Fatalf("Count returned %v, want gs's message quoted", err)
+	}
+	count := err.Error()
+	for _, tc := range []struct {
+		maxPixels int64
+		want      string
+	}{{0, count}, {1 << 30, strings.Replace(count, ": page count of ", ": page sizes of ", 1)}} {
+		req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 2, MaxPixels: tc.maxPixels}
+		var errs []string
+		for _, err := range p.Images(t.Context(), pdf, req) {
+			errs = append(errs, fmt.Sprint(err))
+		}
+		if len(errs) != 1 || errs[0] != tc.want {
+			t.Errorf("MaxPixels %d: the stream yielded %q, want the one error %s", tc.maxPixels, errs, tc.want)
+		}
+	}
+}

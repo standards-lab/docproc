@@ -781,3 +781,84 @@ func TestImagesPageListLimit(t *testing.T) {
 		}
 	}
 }
+
+// TestImagesSurveyUnreadable checks a survey whose output doesn't read fails as the released
+// count and sizes runs failed, its error quoting gs's output without the portfolio line the
+// survey adds: a PDF gs can't open prints gs's message and a count of 0, and no portfolio line,
+// its error the count's or the sizes', as MaxPixels asks for sizes; and a sizes run that prints
+// fewer sizes than its count quotes the count and the sizes alone.
+func TestImagesSurveyUnreadable(t *testing.T) {
+	t.Parallel()
+	const unopened = "   **** Error: Couldn't initialise file.\n               Output may be incorrect.\n0\n"
+	for _, tc := range []struct {
+		stdout    string
+		maxPixels int64
+		what      string
+		quoted    string
+	}{
+		{unopened, 0, "page count", unopened},
+		{unopened, 1 << 30, "page sizes", unopened},
+		{"2\nfalse\n612 792\n", 1 << 30, "page sizes", "2\n612 792\n"},
+	} {
+		f := newFixture(t, 2)
+		f.gs.set(func(s *settings) { s.Stdout = new([]byte(tc.stdout)) })
+		f.req.MaxPixels = tc.maxPixels
+		pages, errs := f.images(t.Context())
+		want := fmt.Sprintf("document: ghostscript: %s of %s: gs printed %q", tc.what, f.pdf, tc.quoted)
+		if len(pages) != 1 || !zero(pages[0]) || errs[0] == nil || errs[0].Error() != want {
+			t.Errorf("gs printing %q: the stream yielded %+v, %v; want the one error %s", tc.stdout, pages, errs, want)
+		}
+	}
+}
+
+// TestImagesWorkDir checks the survey and the shared processes work in a scratch directory of the
+// stream's own, neither the PDF's nor the request's, which is their TMPDIR, so the temporary
+// files a gs ended early leaves, as the stand-in leaves one each run, are removed with it once the
+// stream ends, and none is left beside the PDF, whether the stream runs to its end or the
+// consumer stops after its first page. A page's own processes work in the PDF's directory, as
+// Render and Text do.
+func TestImagesWorkDir(t *testing.T) {
+	t.Parallel()
+	for _, take := range []int{8, 1} {
+		f := newFixture(t, 8)
+		f.gs.set(func(s *settings) { s.Leave = true })
+		f.req.Text, f.req.Concurrency, f.req.PagesPerProcess = true, 2, 2
+		taken := 0
+		for _, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if taken++; taken == take {
+				break
+			}
+		}
+		runs := f.gs.runs()
+		dir := runs[0].Dir
+		if dir == filepath.Dir(f.pdf) || dir == f.req.Dir || strings.HasPrefix(dir, f.req.Dir+string(filepath.Separator)) {
+			t.Errorf("taking %d pages: the survey worked in %s, want a directory of the stream's own", take, dir)
+		}
+		for _, r := range runs {
+			if r.Dir != dir && !strings.HasPrefix(r.Dir, dir+string(filepath.Separator)) {
+				t.Errorf("taking %d pages: gs %q worked in %s, want the stream's directory %s", take, r.Args, r.Dir, dir)
+			}
+		}
+		if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("taking %d pages: the stream's directory %s is left: %v", take, dir, err)
+		}
+		if got := files(t, filepath.Dir(f.pdf)); !slices.Equal(got, []string{"doc.pdf"}) {
+			t.Errorf("taking %d pages: the PDF's directory holds %q, want the PDF alone", take, got)
+		}
+	}
+
+	// A one-page PDF's page is its own process, in the PDF's directory.
+	f := newFixture(t, 1)
+	f.req.Text = true
+	if _, errs := f.images(t.Context()); errs[0] != nil {
+		t.Fatal(errs[0])
+	}
+	for _, r := range f.gs.runs()[1:] {
+		if r.Dir != filepath.Dir(f.pdf) {
+			t.Errorf("a page's own gs %q worked in %s, want the PDF's directory", r.Args, r.Dir)
+		}
+	}
+}
