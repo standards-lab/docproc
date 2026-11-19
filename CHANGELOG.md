@@ -24,16 +24,20 @@ tool under `tools/` keeps its own.
   concurrency C, lane k takes pages k, k+C, k+2C, and so on, up to `PagesPerProcess` a process
   through gs's page list, its PNGs split from one stdout, and, for a request with `Text`, one
   txtwrite process before it whose files, a page each, go to a temporary directory of the
-  Preparer's own, never the input's. A page `MaxPixels` lowers gets a process of its own. Pages
-  are yielded in order, at most C held, and every page's PNG and text, the document stage's
-  identity, and its outputs and warnings are as before. A shared process takes the gs Tool's
-  Timeout as an idle bound between its writes, time waiting on the consumer not counted; a
+  Preparer's own, never the input's. The run that counts the pages and the shared processes work in
+  that directory, which is their `TMPDIR`, so the temporary files a gs ended early leaves are
+  removed with it and never left beside the input. A process's pages go to gs as a page list, each
+  run of consecutive pages a range, and a batch ends early where its list would pass the 2047 bytes
+  gs takes in an argument. A page `MaxPixels` lowers gets a process of its own, as does a batch of
+  one page, and every page of a PDF portfolio, whose processes gs runs over its embedded documents'
+  pages. Pages are yielded in order, at most C held, and every page's PNG and text, the document
+  stage's identity, and its outputs and warnings are as before. A shared process takes the gs
+  Tool's Timeout as an idle bound between its writes, time waiting on the consumer not counted; a
   process of a page's own takes it whole, as before. A shared process that fails as the content's
   keeps the pages it handed over, and each other page is prepared in processes of its own, as
   before, so only a page that fails there fails; one that fails as the run's fails the pages it
   didn't hand over with its error, which ends the stage as before. Under the container runner,
-  whose runs see only the PDF's directory, each page's text is still read by a process of its
-  own.
+  whose runs see only the PDF's directory, each page's text is still read by a process of its own.
 
 ### Fixed
 

@@ -247,15 +247,23 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   or type (a traversal, an absolute name, a link, a device), an encrypted one, and a bomb as
   written are unread children, not read.
 - **document.** A PDF that needs a password is flagged and not read. A page past the request's
-  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's
-  pages share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
+  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
+  share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
   `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
-  writes their text layers to a temporary directory of its own, never the input's; a page
-  MaxPixels lowers gets a process of its own. Every page's PNG and text are byte for byte what a
-  process of its own gives. A shared process's bound is `stages.Options.Timeout` read as an idle
-  bound, between its pages, the time it waits on the consumer not counted. When one fails on the
-  content, the pages it handed over stand and each other page gets processes of its own, each
-  bounded by the whole timeout, so only a page that fails there fails.
+  writes their text layers to a temporary directory of the stream's own, never the input's. The run
+  that counts the pages and the shared processes work in that directory, their `TMPDIR`, so the
+  temporary files a gs ended early leaves are removed with it. A process's pages go to gs as a page
+  list, each run of consecutive pages a range, such as 1-8, and a batch ends early where its list
+  would pass the 2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
+  own, as does a batch of one page, and every page of a PDF portfolio, whose processes gs runs over
+  its embedded documents' pages. Every page's PNG and text are byte for byte what a process of its
+  own gives. A page's own processes work in the PDF's directory, as every tool's runs do, so one
+  ended early, by its bound or by the stream stopping, can leave gs's temporary files there: an
+  empty `gs_` file, or, for a portfolio, `gpdf-collection-` files. A shared process's bound is
+  `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
+  consumer not counted. When one fails on the content, the pages it handed over stand and each
+  other page gets processes of its own, each bounded by the whole timeout, so only a page that
+  fails there fails.
 - **audio and media.** A source ffprobe reports no duration for is refused. media reads files
   alone: no live source, stream URL, or capture.
 
