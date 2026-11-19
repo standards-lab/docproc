@@ -48,7 +48,7 @@ func TestImagesHost(t *testing.T) {
 		req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 4, Text: tc.text}
 		start := time.Now()
 		next := 1
-		for img, err := range p.Images(t.Context(), filepath.Join("testdata", tc.set+".pdf"), req) {
+		for img, err := range p.Images(t.Context(), fixtureCopy(t, tc.set+".pdf"), req) {
 			if err != nil {
 				t.Fatalf("%s.pdf page %d: %v", tc.set, img.Number, err)
 			}
@@ -82,7 +82,7 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 		w, h int
 	}{{1275*1650 - 1, 149, 1267, 1639}, {1275 * 1650, 150, 1275, 1650}} {
 		req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 2, MaxPixels: tc.max}
-		for img, err := range p.Images(t.Context(), filepath.Join("testdata", "clean.pdf"), req) {
+		for img, err := range p.Images(t.Context(), fixtureCopy(t, "clean.pdf"), req) {
 			if err != nil {
 				t.Fatalf("page %d: %v", img.Number, err)
 			}
@@ -109,7 +109,7 @@ func TestImagesSharedHost(t *testing.T) {
 		maxPixels int64
 		dpi       int
 	}{{"clean", 0, 150}, {"degraded", 0, 150}, {"clean", 1275*1650 - 1, 149}, {"portfolio/portfolio", 0, 150}} {
-		pdf := filepath.Join("testdata", set.pdf+".pdf")
+		pdf := fixtureCopy(t, set.pdf+".pdf")
 		n, err := g.Count(t.Context(), pdf)
 		if err != nil {
 			t.Fatal(err)

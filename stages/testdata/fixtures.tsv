@@ -59,6 +59,9 @@ document/testdata/forms/generate.go	unrouted	no processor yet
 document/testdata/forms/signed.json	text	prepared
 document/testdata/forms/signed.pdf	document	prepared
 document/testdata/generate.sh	unrouted	no processor yet
+document/testdata/malformed/compacted-syntax.pdf	document	prepared
+document/testdata/portfolio/generate.go	unrouted	no processor yet
+document/testdata/portfolio/portfolio.pdf	document	prepared
 document/testdata/scanned.pdf	document	prepared
 document/testdata/scanned/page-1.txt	text	prepared
 document/testdata/scanned/page-2.txt	text	prepared

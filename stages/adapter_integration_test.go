@@ -97,7 +97,7 @@ func wantPNG(t *testing.T, o dispatch.Output) {
 // PNG, in page order, the text the page's own.
 func TestDocumentStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
-	events := dispatchAll(t, d, filepath.Join("..", "document", "testdata", "clean.pdf"), func(ev *dispatch.Event) {
+	events := dispatchAll(t, d, documentFixture(t, "clean.pdf"), func(ev *dispatch.Event) {
 		if o := ev.Output; o != nil && o.Kind == dispatch.ImageOutput {
 			wantPNG(t, *o)
 		}
