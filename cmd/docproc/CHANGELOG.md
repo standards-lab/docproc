@@ -10,6 +10,15 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+### Added
+
+- `DOCPROC_AUDIO_LIMIT`, the longest audio window, its overlaps included, which an audio part's
+  windows are cut under: `stages.Options.Audio`'s `Limit`. It starts at 30s, and a host sets it
+  to its model's request size, the longest audio one request takes; a source no longer than it is
+  one window. A value of 4s or less, which is not over twice the 2 s overlap between windows, zero
+  among them, fails the run before any tool is looked up, as a value that doesn't parse does, the
+  error naming the variable. The base module's [README](../../README.md#configuration) lists it.
+
 ## [v0.1.0] - 2026-11-18
 
 The first release. The command is built from spike-ai-pipeline at 6a631f1, its `cmd/docproc` and

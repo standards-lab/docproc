@@ -11,6 +11,7 @@ import (
 	"github.com/standards-lab/go-core/graph"
 	"github.com/standards-lab/go-core/lifecycle"
 
+	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/inspect"
@@ -46,9 +47,9 @@ func newLifecycleConfig(*graph.Scope) (lifecycle.Config, error) {
 // stages.Set's Inspect, these options validated, as its Inspect. The library sets no bound of
 // its own; each here starts at docproc's starting value, which its variable overrides.
 type Bounds struct {
-	// Stages carry the run bounds, the inspection options, and the PDF, video, and ImageMagick
-	// bounds; every other option is the zero value, so every route is wired and every other
-	// request is at its own defaults.
+	// Stages carry the run bounds, the inspection options, and the PDF, audio, video, and
+	// ImageMagick bounds; every other option is the zero value, so every route is wired and every
+	// other request is at its own defaults.
 	Stages stages.Options
 	// Limits are each dispatch's caps.
 	Limits dispatch.Limits
@@ -114,6 +115,10 @@ const (
 //     Stages.Magick.Map, -limit map.
 //   - DOCPROC_MAGICK_DISK, 8 GiB: the most bytes of the pixel cache that may be on disk,
 //     Stages.Magick.Disk, -limit disk.
+//   - DOCPROC_AUDIO_LIMIT, 30s: the longest audio window, its overlaps included,
+//     Stages.Audio.Limit. A host sets it to its model's request size, the longest audio one
+//     request takes. It must be over twice the windows' 2 s overlap, so zero is refused, not read
+//     as no bound; a source no longer than it is one window.
 func newBounds(*graph.Scope) (Bounds, error) {
 	b := Bounds{
 		Stages: stages.Options{
@@ -126,6 +131,7 @@ func newBounds(*graph.Scope) (Bounds, error) {
 			Document:    document.ImagesRequest{DPI: 150, Text: true, MaxPixels: 64_000_000},
 			Video:       media.Request{MaxSide: 2048},
 			Magick:      picture.Limits{Area: 256_000_000, Memory: 1 * gib, Map: 2 * gib, Disk: 8 * gib},
+			Audio:       audio.Request{Limit: 30 * time.Second},
 		},
 		Limits:  dispatch.Limits{Parts: 100_000, Bytes: 32 * gib, Depth: 16},
 		Release: 10 * time.Second,
@@ -151,6 +157,7 @@ func newBounds(*graph.Scope) (Bounds, error) {
 		readEnv(&b.Stages.Magick.Memory, "magick memory", parseCount[int64]),
 		readEnv(&b.Stages.Magick.Map, "magick map", parseCount[int64]),
 		readEnv(&b.Stages.Magick.Disk, "magick disk", parseCount[int64]),
+		readEnv(&b.Stages.Audio.Limit, "audio limit", parseAudioLimit),
 	}
 	// The bomb rule is set by both its values or by neither, as inspect.Options.Validate has it;
 	// a rule half off names both variables, since either may be the one meant.
@@ -196,6 +203,22 @@ func parseDuration(s string) (time.Duration, error) {
 		return 0, fmt.Errorf("%q is not a duration, such as 90s or 10m", s)
 	case d < 0:
 		return 0, fmt.Errorf("%s is below zero", d)
+	}
+	return d, nil
+}
+
+// parseAudioLimit reads the audio window's limit as parseDuration reads a duration, refusing a
+// limit audio.NewPlanner refuses under the windows' overlap, audio.DefaultOverlap, which is one
+// not over twice it, and refusing zero, which the library would read as its own default: a host
+// sets the limit to its model's request size, so a zero is a mistake, not a wish for no bound.
+func parseAudioLimit(s string) (time.Duration, error) {
+	d, err := parseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := audio.NewPlanner(audio.Request{Limit: d}); d == 0 || err != nil {
+		return 0, fmt.Errorf("%v isn't over %v, twice the %v overlap between windows",
+			d, 2*audio.DefaultOverlap, audio.DefaultOverlap)
 	}
 	return d, nil
 }

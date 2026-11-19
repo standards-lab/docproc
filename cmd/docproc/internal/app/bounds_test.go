@@ -3,6 +3,7 @@ package app_test
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/standards-lab/go-cli-sdk"
 	"github.com/standards-lab/go-core/process"
 
+	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/inspect"
@@ -20,6 +22,7 @@ import (
 	"github.com/standards-lab/docproc/stages"
 
 	"github.com/standards-lab/docproc/cmd/docproc/internal/app"
+	"github.com/standards-lab/docproc/cmd/docproc/internal/apptest"
 )
 
 const gib = 1 << 30
@@ -45,6 +48,7 @@ var boundVars = []string{
 	"DOCPROC_MAGICK_MEMORY",
 	"DOCPROC_MAGICK_MAP",
 	"DOCPROC_MAGICK_DISK",
+	"DOCPROC_AUDIO_LIMIT",
 }
 
 // startingBounds returns docproc's starting values, the goal's table written out.
@@ -59,6 +63,7 @@ func startingBounds() app.Bounds {
 			Document:    document.ImagesRequest{DPI: 150, Text: true, MaxPixels: 64_000_000},
 			Video:       media.Request{MaxSide: 2048},
 			Magick:      picture.Limits{Area: 256_000_000, Memory: 1 * gib, Map: 2 * gib, Disk: 8 * gib},
+			Audio:       audio.Request{Limit: 30 * time.Second},
 		},
 		Limits:  dispatch.Limits{Parts: 100_000, Bytes: 32 * gib, Depth: 16},
 		Release: 10 * time.Second,
@@ -137,8 +142,10 @@ func TestBounds_EachVariableOverridesItsBound(t *testing.T) {
 		{"DOCPROC_MAGICK_MEMORY", "1024", func(b *app.Bounds) { b.Stages.Magick.Memory = 1024 }},
 		{"DOCPROC_MAGICK_MAP", "2048", func(b *app.Bounds) { b.Stages.Magick.Map = 2048 }},
 		{"DOCPROC_MAGICK_DISK", "0", func(b *app.Bounds) { b.Stages.Magick.Disk = 0 }},
+		{"DOCPROC_AUDIO_LIMIT", "45s", func(b *app.Bounds) { b.Stages.Audio.Limit = 45 * time.Second }},
+		{"DOCPROC_AUDIO_LIMIT", "4001ms", func(b *app.Bounds) { b.Stages.Audio.Limit = 4001 * time.Millisecond }},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
+		t.Run(tc.name+"="+tc.value, func(t *testing.T) {
 			clearBounds(t)
 			t.Setenv(tc.name, tc.value)
 
@@ -200,6 +207,35 @@ func TestBounds_BadValueNamesItsVariable(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The audio window's limit must be over twice the windows' 2 s overlap, so a window cut at the
+// limit keeps audio of its own between its seams; zero, which the library reads as its own
+// default, is refused with the rest rather than read as no bound, and the refusal says why.
+func TestBounds_AudioLimitRefused(t *testing.T) {
+	for _, value := range []string{"4s", "3s", "1ms", "0", "0s", "-30s", "30", "thirty"} {
+		t.Run(value, func(t *testing.T) {
+			clearBounds(t)
+			t.Setenv("DOCPROC_AUDIO_LIMIT", value)
+
+			_, err := buildBounds(t)
+
+			if err == nil || !strings.Contains(err.Error(), "DOCPROC_AUDIO_LIMIT: ") {
+				t.Errorf("Build: %v, want an error naming DOCPROC_AUDIO_LIMIT", err)
+			}
+		})
+	}
+	t.Run("message", func(t *testing.T) {
+		clearBounds(t)
+		t.Setenv("DOCPROC_AUDIO_LIMIT", "4s")
+
+		_, err := buildBounds(t)
+
+		want := "DOCPROC_AUDIO_LIMIT: 4s isn't over 4s, twice the 2s overlap between windows"
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Build: %v, want %q", err, want)
+		}
+	})
 }
 
 // A bomb rule is set by its ratio and its size together: one of them zero alone fails, naming
@@ -281,6 +317,66 @@ func TestRun_BadBoundFailsTheCommand(t *testing.T) {
 	}
 	if log := built.Log(); !slices.Contains(log, "bounds") {
 		t.Errorf("nodes built = %q, want bounds among them", log)
+	}
+}
+
+// A run's stages are built under the audio window's limit: DOCPROC_AUDIO_LIMIT's, or 30 s when
+// it is unset or empty.
+func TestRun_AudioLimitReachesStages(t *testing.T) {
+	for _, tc := range []struct {
+		value string
+		want  time.Duration
+	}{
+		{"", 30 * time.Second},
+		{"45s", 45 * time.Second},
+	} {
+		t.Run("DOCPROC_AUDIO_LIMIT="+tc.value, func(t *testing.T) {
+			in := write(t, t.TempDir(), "hello.txt", helloText)
+			out := filepath.Join(t.TempDir(), "out")
+			var got []time.Duration
+
+			r := runCmd(t, context.Background(), func(a *app.App) {
+				t.Setenv("DOCPROC_AUDIO_LIMIT", tc.value)
+				apptest.Stages(a, func(ctx context.Context, opts stages.Options) (stages.Set, error) {
+					got = append(got, opts.Audio.Limit)
+					return stages.Build(ctx, apptest.NoTools, opts)
+				})
+			}, in, "--out", out)
+
+			if r.code != process.ExitOK {
+				t.Fatalf("code = %d, want %d; stderr = %q", r.code, process.ExitOK, r.stderr)
+			}
+			if !slices.Equal(got, []time.Duration{tc.want}) {
+				t.Errorf("stages built with audio limits %v, want [%v]", got, tc.want)
+			}
+		})
+	}
+}
+
+// An audio window's limit the run can't take fails it, naming DOCPROC_AUDIO_LIMIT, before any
+// tool is looked up.
+func TestRun_AudioLimitRefusedBeforeLookup(t *testing.T) {
+	for _, value := range []string{"4s", "0", "thirty"} {
+		t.Run(value, func(t *testing.T) {
+			in := write(t, t.TempDir(), "hello.txt", helloText)
+			out := filepath.Join(t.TempDir(), "out")
+			lookup, looked := probes(apptest.NoTools)
+
+			r := runCmd(t, context.Background(), func(a *app.App) {
+				t.Setenv("DOCPROC_AUDIO_LIMIT", value)
+				apptest.Tools(a, lookup)
+			}, in, "--out", out)
+
+			if r.code != process.ExitFailure {
+				t.Errorf("code = %d, want %d", r.code, process.ExitFailure)
+			}
+			if want := "docproc run: bounds: DOCPROC_AUDIO_LIMIT: "; !strings.HasPrefix(r.stderr, want) {
+				t.Errorf("stderr = %q, want it to start with %q", r.stderr, want)
+			}
+			if log := looked.Log(); len(log) != 0 {
+				t.Errorf("tools looked up = %q, want none", log)
+			}
+		})
 	}
 }
 

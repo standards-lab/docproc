@@ -133,6 +133,7 @@ shutdown.
 | `DOCPROC_MAGICK_MEMORY` | The most bytes of heap the pixel cache may take (`-limit memory`) | 1 GiB |
 | `DOCPROC_MAGICK_MAP` | The most bytes of the pixel cache that may be memory-mapped (`-limit map`) | 2 GiB |
 | `DOCPROC_MAGICK_DISK` | The most bytes of the pixel cache that may be on disk (`-limit disk`) | 8 GiB |
+| `DOCPROC_AUDIO_LIMIT` | The longest audio window, its overlaps included (`Options.Audio.Limit`); a host sets it to its model's request size, the longest audio one request takes. A source no longer than it is one window. It must be over 4s, twice the 2 s overlap between windows, so zero is refused | 30s |
 
 ## Providers
 
