@@ -88,6 +88,8 @@ const (
 //   - DOCPROC_MAX_PARTS, 100000: the most parts one dispatch admits, the input among them,
 //     Limits.Parts.
 //   - DOCPROC_MAX_BYTES, 32 GiB: the most bytes one dispatch's parts may come to, Limits.Bytes.
+//     It bounds what the archive and document stages write too, and an entry stopped at it is
+//     recorded limited, with no size or SHA-256.
 //   - DOCPROC_MAX_DEPTH, 16: the deepest part one dispatch admits, the input at depth 0,
 //     Limits.Depth.
 //   - DOCPROC_BOMB_RATIO, 1000: the bomb rule's ratio, expanded to compressed size,
