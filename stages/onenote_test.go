@@ -3,6 +3,7 @@
 package stages_test
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -38,10 +39,16 @@ type onenoteSettings struct {
 	Signal string `json:"signal,omitzero"`
 	// Limit, when set, has a run warn of its own RLIMIT_AS, at "limit", before anything else.
 	Limit bool `json:"limit,omitzero"`
+	// Home, when set, makes the stand-in a version manager's shim, such as mise's, on a host
+	// whose user's home is Home: a run, the version command's included, answers only when its HOME
+	// is Home or unset, which the shim reads as the password database's home, Home again. Under
+	// any other HOME it refuses the user's configuration as untrusted, as mise does, and exits 1.
+	Home string `json:"home,omitzero"`
 }
 
 // envelopeStandin returns a stand-in docproc tool, docproc-onenote or docproc-ooxml, set by an
-// onenoteSettings: with --version alone it prints minimum and schema 2; otherwise it waits its
+// onenoteSettings: as a shim, when its Home is set, it refuses under another HOME; with
+// --version alone it prints minimum and schema 2; otherwise it waits its
 // settings' HoldMS, writes their Media into the directory after --media, then their Stdout and
 // Stderr, and exits with their Exit, or dies by their Signal.
 func envelopeStandin(minimum string) tooltest.Program {
@@ -54,6 +61,10 @@ func envelopeRun(r tooltest.Run, minimum string) int {
 	if err := r.Settings(&s); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	if home := cmp.Or(os.Getenv("HOME"), s.Home); s.Home != "" && home != s.Home {
+		fmt.Fprintf(os.Stderr, "mise ERROR Config files in %s are not trusted.\n", filepath.Join(s.Home, ".config", "mise", "config.toml"))
+		return 1
 	}
 	if len(r.Args) == 1 && r.Args[0] == "--version" {
 		fmt.Printf("%s\nschema 2\n", minimum)

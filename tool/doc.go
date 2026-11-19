@@ -11,7 +11,10 @@
 // The exec runner, NewExec, runs a program directly, a name looked up on PATH or a path with a
 // separator taken as given. Every program it starts leads a process group of its own, in a fixed
 // environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME and TMPDIR
-// the invocation's working directory when it has one, then the Spec's Env. Its parent-death
+// the invocation's working directory when it has one, then the Spec's Env. The version command
+// runs in that environment too, its HOME and TMPDIR a new empty directory of its own, so a
+// program that answers only under the host's HOME, as a version manager's shim does, is refused
+// at construction rather than failing every run. Its parent-death
 // signal is SIGKILL, from an OS thread locked to the run, so the host's death ends it; its
 // oom_score_adj is 1000, written to /proc once it has started, so the OOM killer chooses it over
 // its host; and whenever it exits, its group is sent SIGKILL before it is reaped, so no child it

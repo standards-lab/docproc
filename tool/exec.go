@@ -21,9 +21,10 @@ import (
 // NewExec builds a Tool that runs spec's program directly, the exec runner. It validates the
 // spec, then finds the program on PATH, or takes a path containing a separator as given, and,
 // for a spec with a MemoryLimit, util-linux's prlimit on PATH; then it runs the version command
-// under ctx, through prlimit under the bound as every run is, and refuses a program it can't
-// find, whose version command fails, or whose version is unmatched or older than the minimum. A
-// spec with a MemoryLimit and no prlimit on PATH is refused.
+// under ctx, through prlimit under the bound and in the fixed environment, as every run is, with
+// HOME and TMPDIR a new empty directory of its own, and refuses a program it can't find, whose
+// version command fails, or whose version is unmatched or older than the minimum. A spec with a
+// MemoryLimit and no prlimit on PATH is refused.
 //
 // Every run starts the program as the leader of a process group of its own, with:
 //
@@ -63,12 +64,30 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 		cfg.path = prlimit
 		cfg.lead = []string{"--as=" + strconv.FormatInt(spec.MemoryLimit, 10), "--", path}
 	}
-	run := execRun(cfg)
-	version, line, err := checkVersion(ctx, name, spec, minimum, run)
+	version, line, err := execVersion(ctx, name, spec, minimum, cfg)
 	if err != nil {
 		return nil, err
 	}
-	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: run}, nil
+	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: execRun(cfg)}, nil
+}
+
+// execVersion checks spec's version, as checkVersion does, through the exec runner under cfg, in
+// the environment a run gets: the fixed environment, then HOME and TMPDIR a new empty directory of
+// the check's own, standing in for the working directory each run has, then spec's Env. The
+// command still works in the process's working directory, and the directory is removed once it
+// has run. So a program that answers only under the host's HOME, such as a version manager's
+// shim, which reads the user's configuration again on every run and refuses it once HOME isn't
+// the user's, is refused here, as every run of it would fail.
+func execVersion(ctx context.Context, name string, spec Spec, minimum Version, cfg execConfig) (Version, string, error) {
+	home, err := os.MkdirTemp("", "docproc-version-")
+	if err != nil {
+		return Version{}, "", fmt.Errorf("tool: %s: the version command's home: %w", name, err)
+	}
+	// Best effort: a directory left behind holds only what the version command wrote, and the
+	// tool's check stands either way.
+	defer func() { _ = os.RemoveAll(home) }()
+	cfg.fixed = slices.Concat(cfg.fixed, []string{"HOME=" + home, "TMPDIR=" + home})
+	return checkVersion(ctx, name, spec, minimum, execRun(cfg))
 }
 
 // execConfig is what the exec runner runs, and how.

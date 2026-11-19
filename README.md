@@ -150,8 +150,8 @@ suite for their store.
 ## The system tools
 
 `stages.Build` looks up each tool a stage requires on the host, checks it against its package's
-minimum, and leaves out every stage that requires a tool it can't build, missing or too old, so
-that route has no processor; `Set.Rows` reports each route's stage and tools.
+minimum in the environment its runs get, and leaves out every stage that requires a tool it can't
+build, missing, too old, or failing in that environment, so that route has no processor; `Set.Rows` reports each route's stage and tools.
 
 ### docproc's own tools
 
@@ -180,8 +180,10 @@ The exec runner starts every tool in a fixed environment, never the host's: PATH
 the runner was built, `LANG=C.UTF-8`, and `HOME` and `TMPDIR` set to the run's own working
 directory. The program PATH finds must therefore be the program itself, not a version manager's
 shim, such as mise's or asdf's, which reads the user's configuration again on every run. Under
-that environment mise refuses the user's global configuration as untrusted, so every real run
-fails, although the shim answers `stages.Build`'s version check and its route reads `wired`.
+that environment mise refuses the user's global configuration as untrusted. `stages.Build` checks
+each tool's version in the same environment, with `HOME` and `TMPDIR` a new empty directory of
+the check's own, so such a shim reads as unavailable: its row in the tools table says why, and
+the stages that need it are `missing`.
 
 ### Other system tools
 

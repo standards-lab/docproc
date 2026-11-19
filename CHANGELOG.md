@@ -9,6 +9,16 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Fixed
+
+- `tool.NewExec`, and so `stages.Build`, checks a tool's version in the environment its runs get:
+  the fixed environment and the Spec's `Env`, with `HOME` and `TMPDIR` a new empty directory of
+  the check's own, standing in for each run's working directory, where the check gave them none.
+  A program that answers only under the host's `HOME`, such as a mise shim, which then refuses
+  the user's configuration as untrusted, is refused at construction: its row in the tools table
+  says why, the stages that need it are `missing`, and no part runs through it, where before its
+  route read `wired` and every run of it failed. A tool that answers under both builds as before.
+
 ## [v0.3.0] - 2026-11-18
 
 This release names a run's report directory, which `cmd/docproc`'s report renders into. The
