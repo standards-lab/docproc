@@ -127,7 +127,12 @@ func (g *Ghostscript) survey(ctx context.Context, pdf string, sizes bool) (surve
 	}
 	sv, err := parseSurvey(out.String(), sizes)
 	if err != nil {
-		return survey{}, fmt.Errorf("document: ghostscript: survey of %s: %w", abs, err)
+		// Named as the count and the sizes runs it took the place of named theirs.
+		what := "page count"
+		if sizes {
+			what = "page sizes"
+		}
+		return survey{}, fmt.Errorf("document: ghostscript: %s of %s: %w", what, abs, err)
 	}
 	return sv, nil
 }
