@@ -120,6 +120,12 @@ func archiveDispatcher(t *testing.T, opts inspect.Options) (*dispatch.Dispatcher
 // under cfg.Inspect.
 func archiveDispatcherWith(t *testing.T, cfg stages.ArchiveConfig) (*dispatch.Dispatcher, *counting, string) {
 	t.Helper()
+	return archiveDispatcherLimited(t, cfg, dispatch.Limits{})
+}
+
+// archiveDispatcherLimited returns a dispatcher as archiveDispatcherWith does, under limits.
+func archiveDispatcherLimited(t *testing.T, cfg stages.ArchiveConfig, limits dispatch.Limits) (*dispatch.Dispatcher, *counting, string) {
+	t.Helper()
 	if cfg.SevenZip == nil {
 		cfg.SevenZip = &fakeSevenZip{}
 	}
@@ -135,6 +141,7 @@ func archiveDispatcherWith(t *testing.T, cfg stages.ArchiveConfig) (*dispatch.Di
 		Index:   dispatch.NewMemoryIndex(0),
 		Dir:     work,
 		Inspect: cfg.Inspect,
+		Limits:  limits,
 	})
 	if err != nil {
 		t.Fatal(err)

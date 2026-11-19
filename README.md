@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.2.0
+go get github.com/standards-lab/docproc@v0.4.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -115,10 +115,10 @@ shutdown.
 | Variable | Bound | Starting value |
 | --- | --- | --- |
 | `DOCPROC_TOOL_MEMORY` | Every tool's memory bound, in bytes (`stages.Options.Memory`); set, the exec runner needs `prlimit` on PATH | 2 GiB |
-| `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, magick, soffice, docproc-ooxml, ffprobe | 10m |
+| `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, magick, soffice, docproc-ooxml, ffprobe; a gs process shared by a PDF's pages takes it as an idle bound between its pages | 10m |
 | `DOCPROC_STREAM_IDLE` | A stream run's idle bound (`Options.Idle`): ffmpeg, docproc-mail, docproc-onenote, 7zz | 2m |
 | `DOCPROC_MAX_PARTS` | The most parts one dispatch admits, the input among them (`dispatch.Limits.Parts`) | 100000 |
-| `DOCPROC_MAX_BYTES` | The most bytes one dispatch's parts may come to (`Limits.Bytes`) | 32 GiB |
+| `DOCPROC_MAX_BYTES` | The most bytes one dispatch's parts may come to (`Limits.Bytes`); it bounds what the archive and document stages write too, and an entry stopped at it is recorded `limited`, with no size or SHA-256 | 32 GiB |
 | `DOCPROC_MAX_DEPTH` | The deepest part one dispatch admits, the input at depth 0 (`Limits.Depth`) | 16 |
 | `DOCPROC_BOMB_RATIO` | The bomb rule's ratio of expanded to compressed size (`inspect.Options.BombRatio`); zero exactly when `DOCPROC_BOMB_SIZE` is, for no bomb rule | 1000 |
 | `DOCPROC_BOMB_SIZE` | The bomb rule's expanded size, in bytes (`inspect.Options.BombSize`) | 1 GiB |
@@ -133,6 +133,7 @@ shutdown.
 | `DOCPROC_MAGICK_MEMORY` | The most bytes of heap the pixel cache may take (`-limit memory`) | 1 GiB |
 | `DOCPROC_MAGICK_MAP` | The most bytes of the pixel cache that may be memory-mapped (`-limit map`) | 2 GiB |
 | `DOCPROC_MAGICK_DISK` | The most bytes of the pixel cache that may be on disk (`-limit disk`) | 8 GiB |
+| `DOCPROC_AUDIO_LIMIT` | The longest audio window, its overlaps included (`Options.Audio.Limit`); a host sets it to its model's request size, the longest audio one request takes. A source no longer than it is one window. It must be over 4s, twice the 2 s overlap between windows, so zero is refused | 30s |
 
 ## Providers
 
@@ -150,26 +151,27 @@ suite for their store.
 ## The system tools
 
 `stages.Build` looks up each tool a stage requires on the host, checks it against its package's
-minimum, and leaves out every stage that requires a tool it can't build, missing or too old, so
-that route has no processor; `Set.Rows` reports each route's stage and tools.
+minimum in the environment its runs get, and leaves out every stage that requires a tool it can't
+build, missing, too old, or failing in that environment, so that route has no processor;
+`Set.Rows` reports each route's stage and tools.
 
 ### docproc's own tools
 
 | Tool | Minimum | Current release | Stage |
 | --- | --- | --- | --- |
-| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.1` | office |
-| docproc-mail | 0.1.0 | `tools/mail/v0.1.1` | email |
-| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.0` | onenote |
+| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.2` | office |
+| docproc-mail | 0.1.0 | `tools/mail/v0.1.3` | email |
+| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.1` | onenote |
 
 Each minimum is the tool's first schema `"2"` release, which its reader requires. Fetch a tool by
 its own tag, never as the latest release: the repository's releases include the base module's
 and every tool's, so "latest" names whichever was tagged last. For linux-x64:
 
 ```sh
-gh release download tools/mail/v0.1.1 --repo standards-lab/docproc \
-  --pattern 'docproc-mail-v0.1.1-linux-x64.tar.gz' --pattern SHA256SUMS
+gh release download tools/mail/v0.1.3 --repo standards-lab/docproc \
+  --pattern 'docproc-mail-v0.1.3-linux-x64.tar.gz' --pattern SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.1-linux-x64.tar.gz docproc-mail
+tar -xzf docproc-mail-v0.1.3-linux-x64.tar.gz docproc-mail
 ```
 
 Put each binary on the host's PATH. Each tool's README states its install, its output, and its
@@ -180,8 +182,10 @@ The exec runner starts every tool in a fixed environment, never the host's: PATH
 the runner was built, `LANG=C.UTF-8`, and `HOME` and `TMPDIR` set to the run's own working
 directory. The program PATH finds must therefore be the program itself, not a version manager's
 shim, such as mise's or asdf's, which reads the user's configuration again on every run. Under
-that environment mise refuses the user's global configuration as untrusted, so every real run
-fails, although the shim answers `stages.Build`'s version check and its route reads `wired`.
+that environment mise refuses the user's global configuration as untrusted. `stages.Build` checks
+each tool's version in the same environment, with `HOME` and `TMPDIR` a new empty directory of
+the check's own, so such a shim reads as unavailable: its row in the tools table says why, and
+the stages that need it are `missing`.
 
 ### Other system tools
 
@@ -242,9 +246,30 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   the memory bound, at least 8 MiB and at most 256 MiB, which counts against the bound.
 - **archive.** A listing past `inspect.Options.Entries` fails its part; an entry flagged by name
   or type (a traversal, an absolute name, a link, a device), an encrypted one, and a bomb as
-  written are unread children, not read.
+  written are unread children, not read. An archive's entry, or a PDF's attachment, is stopped at
+  the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file removed,
+  and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
+  docproc-mail, and docproc-onenote write are held to the cap only once written.
 - **document.** A PDF that needs a password is flagged and not read. A page past the request's
-  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails.
+  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
+  share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
+  `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
+  writes their text layers to a temporary directory of the stream's own, never the input's. Under
+  the container runner, which mounts only the PDF's directory, each page's text is read by a process
+  of its own while the renders still share. The run that counts the pages and the shared
+  processes work in that directory, their `TMPDIR`, so the temporary files a gs ended early leaves
+  are removed with it. A process's pages go to gs as a page
+  list, each run of consecutive pages a range, such as 1-8, and a batch ends early where its list
+  would pass the 2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
+  own, as does a batch of one page, and every page of a PDF portfolio, whose processes gs runs over
+  its embedded documents' pages. Every page's PNG and text are byte for byte what a process of its
+  own gives. A page's own processes work in the PDF's directory, as every tool's runs do, so one
+  ended early, by its bound or by the stream stopping, can leave gs's temporary files there: an
+  empty `gs_` file, or, for a portfolio, `gpdf-collection-` files. A shared process's bound is
+  `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
+  consumer not counted. When one fails on the content, the pages it handed over stand and each
+  other page gets processes of its own, each bounded by the whole timeout, so only a page that
+  fails there fails.
 - **audio and media.** A source ffprobe reports no duration for is refused. media reads files
   alone: no live source, stream URL, or capture.
 

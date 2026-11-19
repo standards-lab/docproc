@@ -72,8 +72,10 @@ type documentConfig struct {
 // stored name, streamed from pdfdetach's standard output while it is hashed, and is a
 // [dispatch.Found] part, named by its stored name and found "attachment <name>". A file whose
 // saved bytes pass the bomb rule, against the whole PDF's size, is stopped, its partial file
-// removed, and is an unread child, quarantined, flagged inspect.ArchiveBomb; a file pdfdetach
-// can't save is an unread child, failed, its reason why.
+// removed, and is an unread child, quarantined, flagged inspect.ArchiveBomb; a file whose saved
+// bytes would pass what the dispatch may still admit, as dispatch.Remaining says, less what the
+// stage has saved before it, is stopped as well and is an unread child, limited, with no size or
+// SHA-256; a file pdfdetach can't save is an unread child, failed, its reason why.
 //
 // The pages come last: each page's text layer, when the request reads it, as a
 // [dispatch.TextOutput], and its image as a [dispatch.ImageOutput], the PNG file the Preparer
@@ -160,6 +162,7 @@ func (r *documentRun) unit(program, where string, err error) bool {
 // Prepare prepares the PDF at p.Path, as the type's doc says.
 func (s *documentStage) Prepare(ctx context.Context, p dispatch.Part, dir string) iter.Seq2[dispatch.Item, error] {
 	return func(yield func(dispatch.Item, error) bool) {
+		ctx := withWriteCap(ctx)
 		r := &documentRun{s: s, ctx: ctx, p: p, yield: yield}
 		locked, err := s.qpdf.RequiresPassword(ctx, p.Path)
 		switch {
@@ -250,7 +253,7 @@ func (r *documentRun) attachment(a document.Attachment, dir string) (dispatch.It
 				a.Name, written, whole, float64(written)/float64(max(whole, 1)), bomb.Size, bomb.Ratio),
 		}), nil
 	case why != nil:
-		return unread(where, a.Name, dispatch.Failed, why.Error()), nil
+		return notWritten(where, a.Name, why), nil
 	}
 	return dispatch.PartItem(dispatch.Found{Path: path, Name: a.Name, Where: where}), nil
 }

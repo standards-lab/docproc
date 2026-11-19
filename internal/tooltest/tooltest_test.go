@@ -1,9 +1,12 @@
 package tooltest_test
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -205,4 +208,42 @@ func TestToolsSkip(t *testing.T) {
 
 func equalLogged(a, b tooltest.Logged) bool {
 	return a.Program == b.Program && slices.Equal(a.Args, b.Args)
+}
+
+// TestPNG: the stand-in's PNG reads as a whole PNG to a reader that walks its chunks: PNG's
+// signature, then chunks, each its length, its type and data, and a CRC that checks, the last
+// IEND with nothing after it, and a tEXt chunk among them whose text is the one named; and two
+// texts give two PNGs.
+func TestPNG(t *testing.T) {
+	b := tooltest.PNG("page 1")
+	rest, ok := bytes.CutPrefix(b, []byte("\x89PNG\r\n\x1a\n"))
+	if !ok {
+		t.Fatalf("PNG(page 1) = %q, want PNG's signature first", b)
+	}
+	var kinds []string
+	var text string
+	for len(rest) > 0 {
+		if len(rest) < 12 {
+			t.Fatalf("PNG(page 1) ends in %q, short of a chunk", rest)
+		}
+		n := int(binary.BigEndian.Uint32(rest))
+		if len(rest) < 12+n {
+			t.Fatalf("PNG(page 1): a chunk of %d bytes in %d", n, len(rest))
+		}
+		chunk := rest[4 : 8+n]
+		if crc := binary.BigEndian.Uint32(rest[8+n:]); crc != crc32.ChecksumIEEE(chunk) {
+			t.Errorf("PNG(page 1): chunk %q's CRC doesn't check", chunk[:4])
+		}
+		kinds = append(kinds, string(chunk[:4]))
+		if keyword, value, ok := strings.Cut(string(chunk[4:]), "\x00"); string(chunk[:4]) == "tEXt" && ok && keyword == "Comment" {
+			text = value
+		}
+		rest = rest[12+n:]
+	}
+	if len(kinds) == 0 || kinds[len(kinds)-1] != "IEND" || text != "page 1" {
+		t.Errorf("PNG(page 1): chunks %q, text %q; want IEND last and the text page 1", kinds, text)
+	}
+	if bytes.Equal(b, tooltest.PNG("page 2")) {
+		t.Error("PNG(page 1) and PNG(page 2) are equal")
+	}
 }

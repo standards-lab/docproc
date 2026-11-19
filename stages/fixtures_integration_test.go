@@ -47,13 +47,43 @@ func committedFixtures(t *testing.T) []string {
 	return paths
 }
 
-// TestEveryFixture dispatches every committed fixture through Build's Set over this machine's
-// tools, the same-checkout docproc tools among them, under a host's bomb rule and entry bound, so
-// a bomb fixture is held to it rather than expanded, and checks each fixture's route and outcome
-// against the golden, as text: the whole module's fixtures read as a host reads them, through
-// stages and dispatch, four at once, as a host's pool workers run them. The bomb rule matters to
-// the others too: an expanded bomb fills the working directory's filesystem, and soffice, its
-// user installation not written, then fails whatever legacy document runs beside it.
+// copyFixtures copies each of fixtures, paths from this package's directory, to the same path
+// from the module's root in a directory of the test's own, and returns each fixture's copy by its
+// path, and that directory by "". A dispatch of a committed PDF in place would run gs's runs over
+// a page of their own in its testdata directory, which is their TMPDIR, where gs keeps its
+// temporary files, a portfolio's documents among them, and leaves them when it is killed; a
+// dispatch of the copy keeps every tool's files out of testdata. Each copy keeps its fixture's
+// name, which routing reads, and its siblings, as a fixture that names another finds it.
+func copyFixtures(t *testing.T, fixtures []string) map[string]string {
+	t.Helper()
+	root := t.TempDir()
+	copies := map[string]string{"": root}
+	for _, path := range fixtures {
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rel, _ := strings.CutPrefix(filepath.ToSlash(path), "../")
+		dst := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(dst, b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		copies[path] = dst
+	}
+	return copies
+}
+
+// TestEveryFixture dispatches every committed fixture, its copy in a directory of the test's own,
+// through Build's Set over this machine's tools, the same-checkout docproc tools among them, under
+// a host's bomb rule and entry bound, so a bomb fixture is held to it rather than expanded, and
+// checks each fixture's route and outcome against the golden, as text: the whole module's
+// fixtures read as a host reads them, through stages and dispatch, four at once, as a host's pool
+// workers run them. The bomb rule matters to the others too: an expanded bomb fills the working
+// directory's filesystem, and soffice, its user installation not written, then fails whatever
+// legacy document runs beside it.
 func TestEveryFixture(t *testing.T) {
 	set := builtSet(t, stages.Options{Inspect: inspect.Options{BombRatio: 100, BombSize: 64 << 20, Entries: 10000}})
 	d, err := dispatch.New(dispatch.Config{
@@ -64,10 +94,11 @@ func TestEveryFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 	fixtures := committedFixtures(t)
+	copies := copyFixtures(t, fixtures)
 	got := map[string]string{}
 	for ev, err := range d.Pool(t.Context(), func(yield func(dispatch.Input) bool) {
 		for _, path := range fixtures {
-			if !yield(dispatch.Input{Path: path}) {
+			if !yield(dispatch.Input{Path: copies[path]}) {
 				return
 			}
 		}
@@ -79,7 +110,8 @@ func TestEveryFixture(t *testing.T) {
 		if e.Part.Depth != 0 || e.Output != nil || e.Warning != nil {
 			continue
 		}
-		rel, _ := strings.CutPrefix(filepath.ToSlash(ev.Input.Path), "../")
+		rel, _ := filepath.Rel(copies[""], ev.Input.Path)
+		rel = filepath.ToSlash(rel)
 		got[rel] = string(e.Part.ContentType.Route) + "\t" + string(e.Outcome)
 		if e.Outcome == dispatch.Failed {
 			t.Logf("%s: %s", rel, e.Reason)

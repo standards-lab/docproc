@@ -21,13 +21,13 @@ const SIZE_MAX: u64 = 1 << 32;
 /// Reads the .eml at `path` and writes its store line, its message line and its skipped
 /// attachments' lines to `out`.
 pub fn read(path: &Path, out: &mut Lines<impl Write>, files: &mut Media) -> Result<(), Fault> {
-    let size = std::fs::metadata(path).map_err(unreadable)?.len();
+    let size = std::fs::metadata(path).map_err(unreadable(path))?.len();
     if size >= SIZE_MAX {
         return Err(Fault::Refused(
             "an .eml of 4 GiB or more is not read".to_owned(),
         ));
     }
-    let raw = std::fs::read(path).map_err(unreadable)?;
+    let raw = std::fs::read(path).map_err(unreadable(path))?;
     let raw = sniff::without_bom(&raw);
     let parser = mime::parser();
     let parsed = match guarded(|| Ok::<_, Infallible>(parser.parse(raw))) {

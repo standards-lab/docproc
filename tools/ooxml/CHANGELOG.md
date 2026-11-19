@@ -9,6 +9,17 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-19
+
+### Changed
+
+- An input that is missing, a directory, or without read permission is refused, still exit 3,
+  with a reason that says which and names the input's path as given, after it: `no such file:
+  <path>`, `is a directory: <path>`, or `permission denied: <path>`, in place of `not a file` and
+  `cannot be read: permission denied`. A dangling link is missing, and a path under a directory
+  that can't be searched is without read permission. Any other input that is not a regular file,
+  such as a device, is still `not a file`, and every other refusal and warning reads as before.
+
 ## [v0.1.1] - 2026-11-16
 
 ### Fixed
@@ -85,6 +96,7 @@ says how it differs from the spike.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...tools/ooxml/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...tools/ooxml/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

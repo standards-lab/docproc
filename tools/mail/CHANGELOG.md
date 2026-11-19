@@ -9,6 +9,17 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.3] - 2026-11-19
+
+### Changed
+
+- The crate graph locks pin-project-lite 0.2.18, a patch release, in place of 0.2.17. The
+  output is unchanged.
+- An input that is missing, a directory, or without read permission is refused, still exit 3,
+  with a reason that says which and names the input's path as given, after it: `no such file:
+  <path>`, `is a directory: <path>`, or `permission denied: <path>`, in place of `the input can't
+  be read:` and the operating system's message. Every other refusal and warning reads as before.
+
 ## [v0.1.2] - 2026-11-18
 
 ### Changed
@@ -156,7 +167,8 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.3...HEAD
+[v0.1.3]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...tools/mail/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/mail/v0.1.0

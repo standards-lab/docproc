@@ -152,7 +152,7 @@ func (s *archiveStage) listedEntry(ctx context.Context, p dispatch.Part, k seven
 	case errors.Is(why, errBomb):
 		return s.bombChild(where, e.Path, fmt.Sprintf("entry %q in a %d-byte archive, listed %d", e.Path, whole, e.Size), written, whole), nil
 	case why != nil:
-		return unread(where, e.Path, dispatch.Failed, why.Error()), nil
+		return notWritten(where, e.Path, why), nil
 	}
 	return dispatch.PartItem(dispatch.Found{Path: path, Name: e.Path, Where: where}), nil
 }
@@ -200,7 +200,7 @@ func (s *archiveStage) zstd(ctx context.Context, p dispatch.Part, dir string, yi
 	case errors.Is(why, errBomb):
 		yield(s.bombChild(where, name, fmt.Sprintf("content %q", name), written, compressed), nil)
 	case why != nil:
-		yield(unread(where, name, dispatch.Failed, why.Error()), nil)
+		yield(notWritten(where, name, why), nil)
 	default:
 		yield(dispatch.PartItem(dispatch.Found{Path: path, Name: name, Where: where}), nil)
 	}

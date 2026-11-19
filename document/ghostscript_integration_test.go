@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"errors"
 	"image/png"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,7 +37,7 @@ func TestGhostscriptVersion(t *testing.T) {
 func TestGhostscriptCountHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	for set, want := range map[string]int{"clean": 6, "scanned": 7} {
-		n, err := g.Count(t.Context(), filepath.Join("testdata", set+".pdf"))
+		n, err := g.Count(t.Context(), fixtureCopy(t, set+".pdf"))
 		if err != nil || n != want {
 			t.Errorf("Count(%s.pdf) returned %d, %v, want %d", set, n, err, want)
 		}
@@ -51,7 +50,7 @@ func TestGhostscriptRenderHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	for set, page := range map[string]int{"clean": 1, "scanned": 7} {
 		var out bytes.Buffer
-		if err := g.Render(t.Context(), filepath.Join("testdata", set+".pdf"), page, 150, &out); err != nil {
+		if err := g.Render(t.Context(), fixtureCopy(t, set+".pdf"), page, 150, &out); err != nil {
 			t.Fatalf("Render(%s.pdf page %d): %v", set, page, err)
 		}
 		img, err := png.Decode(bytes.NewReader(out.Bytes()))
@@ -64,7 +63,7 @@ func TestGhostscriptRenderHost(t *testing.T) {
 		t.Logf("%s.pdf page %d: %d PNG bytes, %v", set, page, out.Len(), img.Bounds())
 	}
 	var out bytes.Buffer
-	err := g.Render(t.Context(), filepath.Join("testdata", "clean.pdf"), 7, 150, &out)
+	err := g.Render(t.Context(), fixtureCopy(t, "clean.pdf"), 7, 150, &out)
 	if err == nil {
 		t.Error("Render(clean.pdf page 7) of 6 pages returned no error")
 	}
@@ -74,13 +73,29 @@ func TestGhostscriptRenderHost(t *testing.T) {
 	t.Logf("page past the last: %v", err)
 }
 
+// TestGhostscriptRenderMessageHost checks the host's gs renders the malformed fixture's page,
+// which it renders with "**** Error: Page drawing error occurred.": the message goes to stderr,
+// and Render writes the page's PNG alone.
+func TestGhostscriptRenderMessageHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	var out bytes.Buffer
+	if err := g.Render(t.Context(), fixtureCopy(t, "malformed/compacted-syntax.pdf"), 1, 150, &out); err != nil {
+		t.Fatalf("Render(compacted-syntax.pdf page 1): %v", err)
+	}
+	img, err := png.Decode(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatalf("compacted-syntax.pdf page 1 isn't a PNG: %v", err)
+	}
+	t.Logf("compacted-syntax.pdf page 1: %d PNG bytes, %v", out.Len(), img.Bounds())
+}
+
 // TestGhostscriptTextHost checks the host's gs reads clean.pdf's text layer, every page of it
 // having one, and finds none on scanned.pdf's pages, their text an image, and records each clean
 // page's character and word error rates against its ground truth. A page past the last is
 // ErrRequest.
 func TestGhostscriptTextHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	pdf := filepath.Join("testdata", "clean.pdf")
+	pdf := fixtureCopy(t, "clean.pdf")
 	var edits, chars, wedits, words int
 	for i, truth := range truthOf(t, "clean") {
 		text, err := g.Text(t.Context(), pdf, i+1)
@@ -105,7 +120,7 @@ func TestGhostscriptTextHost(t *testing.T) {
 			i+1, rate(e, n), rate(we, wn), found, len(text))
 	}
 	t.Logf("recorded: text layer clean.pdf, 6 pages: CER %.4f, WER %.4f", rate(edits, chars), rate(wedits, words))
-	scanned := filepath.Join("testdata", "scanned.pdf")
+	scanned := fixtureCopy(t, "scanned.pdf")
 	for page := 1; page <= 7; page++ {
 		text, err := g.Text(t.Context(), scanned, page)
 		if err != nil {

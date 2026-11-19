@@ -307,8 +307,8 @@ func TestRunIdle(t *testing.T) {
 }
 
 // TestSpecBounds checks that a Spec's Timeout and Idle bound every run whose Invocation sets
-// neither, and that an Invocation's own bound takes their place; a negative one is refused as the
-// spec's defect.
+// neither, and that an Invocation's own bound takes their place; that the Tool's Timeout reads the
+// Spec's; and that a negative one is refused as the spec's defect.
 func TestSpecBounds(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "1.0", "1.0")
@@ -316,6 +316,9 @@ func TestSpecBounds(t *testing.T) {
 	tl, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if got := tl.Timeout(); got != spec.Timeout {
+		t.Errorf("Timeout() = %v, want the Spec's %v", got, spec.Timeout)
 	}
 	err = tl.Run(t.Context(), tool.Invocation{Args: []string{"sleep", "1m"}})
 	if exitErr, ok := errors.AsType[*tool.ExitError](err); !ok || !exitErr.TimedOut {

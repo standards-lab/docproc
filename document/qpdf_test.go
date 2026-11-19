@@ -51,14 +51,15 @@ func standinQPDF(t *testing.T, version string) (*document.QPDF, *standin) {
 	return q, st
 }
 
-// TestFixtureSums holds the forms and attachments fixtures to the SHA-256 the testdata README gives them.
+// TestFixtureSums holds the forms, attachments, portfolio, and malformed fixtures to the SHA-256
+// the testdata README gives them.
 func TestFixtureSums(t *testing.T) {
 	t.Parallel()
 	readme, err := os.ReadFile(filepath.Join("testdata", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"forms/acroform.pdf", "forms/acroform.json", "forms/signed.pdf", "forms/signed.json", "attachments/attachments.pdf"} {
+	for _, name := range []string{"forms/acroform.pdf", "forms/acroform.json", "forms/signed.pdf", "forms/signed.json", "attachments/attachments.pdf", "portfolio/portfolio.pdf", "malformed/compacted-syntax.pdf"} {
 		b, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
 			t.Fatal(err)

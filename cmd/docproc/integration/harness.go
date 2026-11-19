@@ -196,23 +196,51 @@ func Run(t testing.TB, args ...string) processtest.Result {
 	return Start(t, args...).Wait(t)
 }
 
-// Fixtures returns the absolute paths of the repository's committed fixtures, as [ReadFixtures]
-// reads them from the repository the module sits in, two directories up from its root. An absent
-// fixture tree skips the test, naming what is missing; any other failure, a listed fixture
-// missing among them, fails it.
+// Fixtures returns the absolute paths of copies of the repository's committed fixtures, as
+// [ReadFixtures] reads them from the repository the module sits in, two directories up from its
+// root, each at its path from the repository's root in a directory of the test's own, in the
+// list's order. A run over a committed PDF in place would run gs's runs over a page of their own
+// in its testdata directory, which is their TMPDIR, where gs keeps its temporary files, a
+// portfolio's documents among them, and leaves them when it is killed, as a killed run's are; a
+// run over the copies keeps every tool's files out of the repository. An absent fixture tree skips
+// the test, naming what is missing; any other failure, a listed fixture missing among them, fails
+// it.
 func Fixtures(t testing.TB) []string {
 	t.Helper()
 	if root == "" {
 		t.Fatal("integration: no module root; the suite's TestMain must call Main")
 	}
-	paths, err := ReadFixtures(filepath.Join(root, "..", ".."))
+	repo, err := filepath.Abs(filepath.Join(root, "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := ReadFixtures(repo)
 	if errors.Is(err, ErrNoFixtures) {
 		t.Skip(err)
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	return paths
+	dir := t.TempDir()
+	copies := make([]string, len(paths))
+	for i, path := range paths {
+		rel, err := filepath.Rel(repo, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		copies[i] = filepath.Join(dir, rel)
+		b, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(filepath.Dir(copies[i]), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(copies[i], b, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return copies
 }
 
 // ReadFixtures returns the absolute paths of the committed fixtures of the repository at repo, in

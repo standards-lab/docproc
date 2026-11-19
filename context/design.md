@@ -304,7 +304,10 @@ it.
 - **9 · Default bounds (Q10).** Settled → library; docproc (`cmd/docproc`'s starting values);
   acceptance. No `Limits` or run bound has a library default; `cmd/docproc` ships starting
   values, and acceptance dispatches PI-1's bombs through it; the bomb rule sums across an
-  archive's entries. Rejected: `dispatch.New` refusing a zero `Limits.Bytes`.
+  archive's entries. `Limits.Bytes` bounds what a stage writes too: `dispatch.Remaining(ctx)`
+  gives a stage the bytes its dispatch may still admit, and a part past them is stopped at the
+  write (`layers.md`, "Dispatch"; `acceptance.md`, "Bombs"). Rejected: `dispatch.New` refusing a
+  zero `Limits.Bytes`.
 - **10 · Envelope additions (Q11).** Settled → ooxml, mail, onenote; library reads them. Three
   additions under schema "2", before the tool tasks start: `--version`'s second line
   `schema <n>`; the warning escape's form stated, and an error reason never leading with the
@@ -320,12 +323,16 @@ it.
   format.
 - **13 · Silence detectors (Q14).** Settled → library; acceptance. The tracker alone: one decode,
   audio in an MP4 and an M4A windowed alike, about 250 lines less, at 0.009 to 0.021 worse word
-  error rate on three corpora; acceptance measures word error rate on ~/docs' audio before the
-  tag, and silencedetect stays in the spike at v0.9.0. Rejected: both detectors, three decodes.
+  error rate on three corpora; silencedetect stays in the spike at v0.9.0. Whether audio that fits
+  one model request goes unsplit is the host's choice, through `cmd/docproc`'s
+  `DOCPROC_AUDIO_LIMIT` (starting 30s; 4 s or less refused); docproc's default stays 30 s. The
+  tracker's word error rate on acceptance's four excerpts is within 0.021 of silencedetect's on
+  every one (`acceptance.md`, "Word error rate"). Rejected: both detectors, three decodes.
 - **14 · Live sources (Q15).** Settled → library. `media`'s reader, URL, and pacing surface stays
   in the spike, by the rule applied to every callerless surface, until `protocol` names an owner.
   Rejected: promoting it with a doc saying no stage uses it.
-- **15 · The unread child (Q16).** Settled → library. `Found` may carry an outcome and no file;
+- **15 · The unread child (Q16).** Settled → library. `Found` may carry an outcome and no file,
+  an entry the bytes cap stopped being a `limited` one with no size or SHA-256;
   `Meta["warnings"]`, the entry records, and the medium records go. Rejected: records with
   string Meta.
 - **16 · A store's warning order (Q1, with PX-5).** Settled → library. Where read, best effort
@@ -441,7 +448,8 @@ it.
   every signed PDF failed. A field's value never fails the form, and a signature field gains
   `Signed`.
 - **PS-2 · One failed read failed the part, unrecorded.** Merged into PX-1 (the outcome) and PX-4
-  (the unit's warning). One page gs refused of 1,823 cost the whole part on every rerun.
+  (the unit's warning). One page of the 915-page CFR volume that gs refused cost the whole part on
+  every rerun.
 - **PS-3 · The audio stage decoded the source once per window.** Accepted → library; decision 13.
   645 windows of the 4.4 h audiobook decoded about 322 times its length. One decode cut into
   windows by `audio`'s stream cutter, byte for byte v0.9.0's windows.
@@ -468,7 +476,13 @@ it.
 - **PS-15 · picture read each file three times.** Merged into PX-10.
 - **PS-16 · Constructors disagreed with the construction rule.** Merged into PX-16; decision 17.
 - **PS-17 · A PDF cost two gs processes a page, serially.** Accepted → library (the concurrency,
-  through PX-3); acceptance times the 1,823-page PDF per page and by ranges.
+  through PX-3); acceptance. A PDF's pages share gs processes, interleaved by concurrency through
+  gs's page list, up to `document.ImagesRequest.PagesPerProcess` pages a process, outside the stage
+  identity; zero is 8 (escalation 1). A portfolio and a one-page batch take the per-page path. A
+  page list is written as ranges and capped at gs's 2047-byte argument. `DOCPROC_UNIT_TIMEOUT` is
+  a shared process's idle bound, and under the container runner text is read a page a process. On
+  the 915-page CFR volume (cfr-2024-title32-vol1.pdf), shared processes prepare 1.43 times as fast
+  at concurrency 1 and 1.47 times at 4 (`acceptance.md`, "PDF pages in shared gs processes").
 
 ### Dispatch, content, and index
 

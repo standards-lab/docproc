@@ -34,7 +34,7 @@ unpacking it:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-onenote-v0.1.0-linux-x64.tar.gz
+tar -xzf docproc-onenote-v0.1.1-linux-x64.tar.gz
 ./docproc-onenote --version
 ```
 
@@ -78,7 +78,7 @@ a path. `--media` naming something that exists and isn't a directory is a usage 
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.0
+0.1.1
 schema 2
 ```
 
@@ -186,7 +186,7 @@ stderr holds one line each:
   `, embedded file <n>`, or `, equation <n>`, each numbered from 1 within its page;
   `/OneNote_RecycleBin` for the recycle bin; and `/` for the notebook.
 - `docproc-onenote: error: <reason>` for exit codes 1 to 4. The reason never leads with the input
-  path.
+  path, and names it only for an input missing or without read permission.
 
 A section that fails to parse inside a notebook is a `skipped` line and a warning,
 `<where>: the section is skipped: <reason>`, and the read goes on with exit code 0. A warning also
@@ -197,9 +197,10 @@ at `/`; a creation time the parser couldn't read, left out; an image or embedded
 is missing or invalid; and an equation whose structure is lost.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-onenote
-refuses an input that is missing or can't be read; a ZIP, `a ZIP archive; extract the OneDrive
-download first`; a directory with no `.onetoc2`, or more than one; anything else, `not a OneNote
-section, notebook, or package`; under `--file-only`, a table of contents; and a section,
+refuses an input that is missing, `no such file: <path>`, or a file or notebook directory without
+read permission, `permission denied: <path>`, the path as given; any other input that can't be
+read; a ZIP, `a ZIP archive; extract the OneDrive download first`; a directory with no
+`.onetoc2`, or more than one; anything else, `not a OneNote section, notebook, or package`; under `--file-only`, a table of contents; and a section,
 notebook, or package onenote_parser can't read, with its reason, or that panics it, `the reader
 panicked: <message>`. A section that fails to parse and holds the two constants of an
 [MS-ONESTORE] 2.5.19 encryption key, scanned for only after the parse fails, is

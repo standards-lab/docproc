@@ -295,9 +295,44 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 	wantEmpty(t, work)
 }
 
+// TestDocumentStageAttachmentBytesCap: under a bytes cap, an attachment whose saved bytes would
+// pass what the dispatch may still admit, less what the stage saved before it, is stopped, its
+// partial file removed, and is an unread child, limited, with the bytes cap's reason and no size
+// or SHA-256; an attachment before it that fits is saved and dispatched, and the pages go on.
+func TestDocumentStageAttachmentBytesCap(t *testing.T) {
+	const mib = 1 << 20
+	pdf := "%PDF-1.7\n%%EOF\n"
+	s := formsDocumentStage(t, &fakeQPDF{}, &fakeDetach{files: []string{
+		"a.bin", strings.Repeat("a", mib), "b.bin", strings.Repeat("b", mib),
+	}}, inspect.Options{})
+	work := t.TempDir()
+	limit := int64(len(pdf)) + mib + mib/2
+	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Document: s},
+		Index: dispatch.NewMemoryIndex(0), Dir: work, Limits: dispatch.Limits{Bytes: limit},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := dispatchAll(t, d, input(t, "two.pdf", pdf), func(ev *dispatch.Event) {
+		if ev.Part.Name != "b.bin" {
+			return
+		}
+		if left, err := filepath.Glob(filepath.Join(work, "*", "entry-*")); err != nil || len(left) > 0 {
+			t.Errorf("partial files at b.bin's event: %q, %v", left, err)
+		}
+	})
+	wantSteps(t, events, []step{{"a.bin", 1, dispatch.NoProcessor}, {"b.bin", 1, dispatch.Limited}, {"two.pdf", 0, dispatch.Prepared}})
+	wantLimited(t, events[1], "attachment b.bin", limit)
+	if len(events[2].Outputs) != 6 {
+		t.Errorf("%d outputs, want six pages'", len(events[2].Outputs))
+	}
+	wantEmpty(t, work)
+}
+
 // TestDocumentIdentity: the identity hashes the request resolved, its DPI's default filled, so a
-// zero DPI and the default are one identity, and the bomb rule; concurrency and the request's Dir
-// are out of it; and the tools' version lines are its Version.
+// zero DPI and the default are one identity, and the bomb rule; concurrency, PagesPerProcess, and
+// the request's Dir are out of it; and the tools' version lines are its Version.
 func TestDocumentIdentity(t *testing.T) {
 	prep := standinPreparer(t, gsSettings{Pages: 1})
 	id := func(req document.ImagesRequest, opts inspect.Options) dispatch.Identity {
@@ -310,8 +345,8 @@ func TestDocumentIdentity(t *testing.T) {
 	if base.Version != "gs 10.5 (2025)" || base.Name != "document" {
 		t.Errorf("identity %v", base)
 	}
-	if id(document.ImagesRequest{DPI: document.DefaultDPI, Concurrency: 4, Dir: "/elsewhere"}, inspect.Options{}) != base {
-		t.Error("the default DPI, concurrency, or Dir changed the identity")
+	if id(document.ImagesRequest{DPI: document.DefaultDPI, Concurrency: 4, PagesPerProcess: 3, Dir: "/elsewhere"}, inspect.Options{}) != base {
+		t.Error("the default DPI, concurrency, PagesPerProcess, or Dir changed the identity")
 	}
 	for name, other := range map[string]dispatch.Identity{
 		"dpi":        id(document.ImagesRequest{DPI: 300, Concurrency: 1}, inspect.Options{}),

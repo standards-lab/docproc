@@ -2,7 +2,7 @@
 
 mod common;
 
-use common::{built, fixture, run};
+use common::{built, fixture, run, scratch};
 
 const USAGE: &str = "usage: docproc-mail [--media <dir>] [--after <id>] <input>
        docproc-mail --version
@@ -352,14 +352,48 @@ fn none_of_the_four_formats_is_refused() {
     }
 }
 
-/// A missing input is refused, its reason not leading with the path, which the caller knows.
+/// A missing input, a directory, and a file that can't be opened are each refused, the reason
+/// saying which and naming the input's path after it, never leading with it.
 #[test]
-fn a_missing_input_is_refused() {
+fn an_input_that_is_missing_a_directory_or_unreadable_is_refused_by_its_path() {
     let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("missing.pst");
+    assert_refused(&[&missing], &format!("no such file: {}", missing.display()));
+    let dir = scratch("folder.pst");
+    assert_refused(&[&dir], &format!("is a directory: {}", dir.display()));
+    let locked = Locked::new("locked.eml");
+    if std::fs::File::open(&locked.0).is_ok() {
+        eprintln!("skipped: a file without permission can be opened, as root");
+        return;
+    }
     assert_refused(
-        &[&missing],
-        "the input can't be read: No such file or directory (os error 2)",
+        &[&locked.0],
+        &format!("permission denied: {}", locked.0.display()),
     );
+}
+
+/// A message file under Cargo's temporary directory with no permission at all, given its
+/// permissions back when dropped, so nothing that walks the tree is stopped by it.
+struct Locked(std::path::PathBuf);
+
+impl Locked {
+    fn new(name: &str) -> Self {
+        // A previous run's file has no write permission, so it is replaced, not written over.
+        let _ = std::fs::remove_file(std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name));
+        let locked = Self(built(name, b"Subject: locked\r\n\r\nbody\r\n"));
+        locked.set(0o000);
+        locked
+    }
+
+    fn set(&self, mode: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        self.set(0o600);
+    }
 }
 
 /// A path needn't be UTF-8: one that isn't is read like any other, here refused as missing.
@@ -368,8 +402,5 @@ fn a_path_that_is_not_utf8_is_read_as_a_path() {
     use std::os::unix::ffi::OsStrExt;
     let name = std::ffi::OsStr::from_bytes(b"missing-\xFF.pst");
     let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
-    assert_refused(
-        &[&missing],
-        "the input can't be read: No such file or directory (os error 2)",
-    );
+    assert_refused(&[&missing], &format!("no such file: {}", missing.display()));
 }

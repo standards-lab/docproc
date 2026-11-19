@@ -3,8 +3,9 @@
 //! before any output; 4 a fault of the tool's own.
 
 use std::any::Any;
-use std::io::{self, Write};
+use std::io::{self, ErrorKind, Write};
 use std::panic::{self, AssertUnwindSafe};
+use std::path::Path;
 use std::process::ExitCode;
 
 use crate::stderr;
@@ -43,6 +44,20 @@ impl Fault {
             Fault::Internal(reason) => format!("internal fault: {reason}"),
         }
     }
+}
+
+/// The refusal of an input at `path` that can't be opened or read because it is missing, is a
+/// directory, or has no read permission: its reason says which, then names the path as given,
+/// after the colon, since a reason never leads with it. Any other error is `None`, for the tool
+/// to word as its own. A path one of whose directories is a file is missing.
+pub fn input_refusal(path: &Path, err: &io::Error) -> Option<Fault> {
+    let which = match err.kind() {
+        ErrorKind::NotFound | ErrorKind::NotADirectory => "no such file",
+        ErrorKind::IsADirectory => "is a directory",
+        ErrorKind::PermissionDenied => "permission denied",
+        _ => return None,
+    };
+    Some(Fault::Refused(format!("{which}: {}", path.display())))
 }
 
 /// Runs a tool's whole run and ends it: exit 0 when it returns, else the fault's error line on
@@ -139,6 +154,30 @@ mod tests {
             "internal fault: index out of bounds"
         );
         assert_eq!(Fault::Refused("not a file".into()).reason(), "not a file");
+    }
+
+    #[test]
+    fn an_input_refusal_says_which_then_names_the_path() {
+        let reason = |kind: ErrorKind| {
+            input_refusal(Path::new("in/box.pst"), &io::Error::from(kind)).map(|f| f.reason())
+        };
+        assert_eq!(
+            reason(ErrorKind::NotFound).as_deref(),
+            Some("no such file: in/box.pst")
+        );
+        assert_eq!(
+            reason(ErrorKind::NotADirectory).as_deref(),
+            Some("no such file: in/box.pst")
+        );
+        assert_eq!(
+            reason(ErrorKind::IsADirectory).as_deref(),
+            Some("is a directory: in/box.pst")
+        );
+        assert_eq!(
+            reason(ErrorKind::PermissionDenied).as_deref(),
+            Some("permission denied: in/box.pst")
+        );
+        assert_eq!(reason(ErrorKind::InvalidData), None);
     }
 
     #[test]

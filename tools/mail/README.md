@@ -31,7 +31,7 @@ Each archive holds the `docproc-mail` binary, the repository's `LICENSE`, and
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.2-linux-x64.tar.gz
+tar -xzf docproc-mail-v0.1.3-linux-x64.tar.gz
 ./docproc-mail --version
 ```
 
@@ -74,7 +74,7 @@ usage error. An id that names no message is refused.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.2
+0.1.3
 schema 2
 ```
 
@@ -149,7 +149,7 @@ stderr holds one line each:
   `, attachment <n>` and `, message` for each level of nesting; in an mbox, `message <n>`
   followed in the same way. `<what>` is `skipped: <reason>` for a skipped record.
 - `docproc-mail: error: <reason>` for exit codes 1 to 4. The reason never leads with the input
-  path.
+  path, and names it only for an input missing, a directory, or without read permission.
 
 A record that can't be read inside a readable input, whether its reader errs or panics, is a
 `skipped` line and a warning, and the run goes on with exit code 0. So is a `.pst` folder a
@@ -160,13 +160,15 @@ is more than nine times what its data can yield (not decompressed), an image sou
 nothing, a TNEF or opaque S/MIME part, and a `.pst` embedded message listed without its content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
-an input that can't be read; an input in none of the four formats, an mbox among them none of
-whose entries is a message (an empty mbox is read, giving its store line); an `.ost`, the
-offline cache of a server mailbox, to be exported from Outlook as a `.pst`; a PST version
-outlook-pst doesn't read (it reads 14 and 15, ANSI, and 23, Unicode); a store whose IPM subtree
-can't be read; a compound file that isn't an MS-OXMSG message, or whose top-level properties
-can't be read; an `.eml` of 4 GiB or more, or one mail-parser can't parse; and an `--after` id
-that names no message.
+an input that is missing, a directory, or without read permission, `no such file: <path>`, `is a
+directory: <path>`, or `permission denied: <path>`, the path as given; any other input that
+can't be read, `the input can't be read: <error>`; an input in none of the four formats, an mbox
+among them none of whose entries is a message (an empty mbox is read, giving its store line); an
+`.ost`, the offline cache of a server mailbox, to be exported from Outlook as a `.pst`; a PST
+version outlook-pst doesn't read (it reads 14 and 15, ANSI, and 23, Unicode); a store whose IPM
+subtree can't be read; a compound file that isn't an MS-OXMSG message, or whose top-level
+properties can't be read; an `.eml` of 4 GiB or more, or one mail-parser can't parse; and an
+`--after` id that names no message.
 
 The envelope these follow, its cases stated once for every tool, is
 [`tools/envelope/cases.json`](../envelope/cases.json), and the code that writes it is the shared

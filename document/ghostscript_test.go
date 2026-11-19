@@ -59,10 +59,10 @@ func TestGhostscriptRenderArgs(t *testing.T) {
 		if err := g.Render(t.Context(), pdf, tc.page, tc.dpi, &out); err != nil {
 			t.Fatalf("Render(page %d, %d dpi): %v", tc.page, tc.dpi, err)
 		}
-		if !bytes.Equal(out.Bytes(), standinPage) {
-			t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), standinPage)
+		if want := standinPage(tc.page, tc.dpi); !bytes.Equal(out.Bytes(), want) {
+			t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), want)
 		}
-		want := []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
+		want := []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 			"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(tc.dpi),
 			"-dFirstPage=" + strconv.Itoa(tc.page), "-dLastPage=" + strconv.Itoa(tc.page), "-sOutputFile=-", abs}
 		got := st.runs()
@@ -113,17 +113,33 @@ func TestGhostscriptRenderRefuses(t *testing.T) {
 	}
 }
 
+// TestGhostscriptRenderMessage checks that gs's own message for a page it renders nonetheless,
+// such as "**** Error: Page drawing error occurred.", goes to stderr, so the page's PNG is
+// stdout's alone and Render writes it whole.
+func TestGhostscriptRenderMessage(t *testing.T) {
+	g, st, pdf := standinRenderer(t)
+	st.set(func(s *settings) { s.Message = "   **** Error: Page drawing error occurred.\n" })
+	var out bytes.Buffer
+	if err := g.Render(t.Context(), pdf, 1, 150, &out); err != nil {
+		t.Fatalf("Render with gs writing a message: %v", err)
+	}
+	if want := standinPage(1, 150); !bytes.Equal(out.Bytes(), want) {
+		t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), want)
+	}
+}
+
 // TestGhostscriptRenderNotPNG checks that a gs that exits zero with no PNG on stdout, as gs does
-// for a page past the last, is an error carrying gs's message, and that w gets none of it.
+// for a page past the last, its message on stderr, is an error carrying that message, and that w
+// gets none of stdout.
 func TestGhostscriptRenderNotPNG(t *testing.T) {
 	msg := "\n   Requested FirstPage is greater than the number of pages in the file: 6\n"
-	for _, stdout := range []string{msg, "", "\x89PN"} {
+	for _, stdout := range []string{"", "\x89PN", "not a PNG"} {
 		g, st, pdf := standinRenderer(t)
-		st.set(func(s *settings) { s.Stdout = new([]byte(stdout)) })
+		st.set(func(s *settings) { s.Stdout, s.Stderr = new([]byte(stdout)), msg })
 		var out bytes.Buffer
 		err := g.Render(t.Context(), pdf, 9, 150, &out)
-		if err == nil || !strings.Contains(err.Error(), strings.TrimSpace(stdout)) {
-			t.Errorf("Render with gs writing %q returned %v, want an error carrying it", stdout, err)
+		if err == nil || !strings.Contains(err.Error(), "no PNG on stdout: "+strings.TrimSpace(msg)) {
+			t.Errorf("Render with gs writing %q returned %v, want an error carrying gs's message", stdout, err)
 		}
 		if out.Len() != 0 {
 			t.Errorf("Render with gs writing %q wrote %q, want nothing", stdout, out.Bytes())
@@ -257,7 +273,7 @@ func TestGhostscriptText(t *testing.T) {
 		stdout *string
 		want   string
 	}{
-		{1, nil, standinText},
+		{1, nil, standinText(1)},
 		{7, new(""), ""},
 		{3, new("\n\n  \n"), "\n\n  \n"},
 		{2, new("ofÏce\ttoday\r\n"), "ofÏce\ttoday\r\n"},

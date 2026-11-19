@@ -421,7 +421,8 @@ func entry() dispatch.Entry {
 	}
 }
 
-// log returns a log of one item of each kind, every field set, the local ones among them.
+// log returns a log of one item of each kind, every field set, the local ones among them, and a
+// limited unread child, which has no size or SHA-256.
 func log() []dispatch.Recorded {
 	return []dispatch.Recorded{
 		{Output: &dispatch.Output{
@@ -438,6 +439,10 @@ func log() []dispatch.Recorded {
 			Flags:  []inspect.Flag{{Check: inspect.PDFJavaScript, Class: inspect.Active, Evidence: "/JavaScript"}},
 			Parent: "/", Depth: 1, Where: "line 1", Path: "/local/a.pdf", After: 9,
 		}, Outcome: dispatch.Prepared}},
+		// An unread child, stopped at the bytes cap: no size and no SHA-256.
+		{Child: &dispatch.Child{Part: dispatch.Part{
+			ID: "/line 2", Name: "big.bin", Parent: "/", Depth: 1, Where: "line 2",
+		}, Outcome: dispatch.Limited}},
 	}
 }
 

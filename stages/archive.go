@@ -74,7 +74,12 @@ type archiveConfig struct {
 //     partial file is removed, and it is quarantined, flagged inspect.ArchiveBomb with the
 //     evidence;
 //   - an entry whose bytes don't match its central directory, its CRC-32 or its size, or that
-//     doesn't decompress: failed, its reason why.
+//     doesn't decompress: failed, its reason why;
+//   - an entry whose written bytes would pass what the dispatch may still admit, as
+//     dispatch.Remaining says, less what the stage has written for the entries before it: its
+//     writing stops there and its partial file is removed, and it is limited, with no size or
+//     SHA-256, the dispatcher giving it the bytes cap's reason. Every kind's entries, and a gzip's
+//     or zstd's content, are held to it.
 //
 // A ZIP with an encrypted entry ends, once every other entry is dispatched, with
 // dispatch.ErrEncrypted, naming how many of its entries are encrypted, so its outcome is
@@ -153,6 +158,7 @@ func (s *archiveStage) UntrustedWhere() {}
 // Prepare reads the archive at p.Path by its kind, as the type's doc says.
 func (s *archiveStage) Prepare(ctx context.Context, p dispatch.Part, dir string) iter.Seq2[dispatch.Item, error] {
 	return func(yield func(dispatch.Item, error) bool) {
+		ctx := withWriteCap(ctx)
 		switch p.ContentType.Kind {
 		case route.ZIP:
 			s.zip(ctx, p, dir, yield)
@@ -211,6 +217,40 @@ func (s *archiveStage) bombChild(where, name, what string, written, whole uint64
 // errBomb is a written entry's word that its bytes passed both bomb thresholds.
 var errBomb = errors.New("past the bomb thresholds")
 
+// errLimited is a written entry's word that its bytes would pass what the dispatch may still
+// admit, its writeCap's.
+var errLimited = errors.New("past the bytes cap")
+
+// writeCapKey is the key of a Prepare's writeCap on its context.
+type writeCapKey struct{}
+
+// writeCap is what one Prepare may still write of the parts it finds: what dispatch.Remaining
+// said as Prepare started, less what writeBySum has written for the parts found before it.
+type writeCap struct {
+	left uint64
+}
+
+// withWriteCap returns ctx, a Prepare's, holding a writeCap of what dispatch.Remaining says, or
+// ctx itself when the dispatch has no bytes cap. A stage calls it once a Prepare, inside its
+// iterator, so each run of the stage counts its own writes.
+func withWriteCap(ctx context.Context) context.Context {
+	n, ok := dispatch.Remaining(ctx)
+	if !ok {
+		return ctx
+	}
+	return context.WithValue(ctx, writeCapKey{}, &writeCap{left: uint64(max(n, 0))})
+}
+
+// notWritten returns the unread child of content that has no file for why, a writeBySum's reason
+// other than errBomb, at where, named name: limited for errLimited, the dispatcher giving it the
+// bytes cap's reason, and otherwise failed, its reason why.
+func notWritten(where, name string, why error) dispatch.Item {
+	if errors.Is(why, errLimited) {
+		return unread(where, name, dispatch.Limited, "")
+	}
+	return unread(where, name, dispatch.Failed, why.Error())
+}
+
 // copyFrom returns a fill for extract that copies r.
 func copyFrom(r io.Reader) func(io.Writer) error {
 	return func(w io.Writer) error {
@@ -223,10 +263,11 @@ func copyFrom(r io.Reader) func(io.Writer) error {
 // SHA-256 and CRC-32 are taken, then renamed to their SHA-256, and returns the path and the bytes
 // written. fill copies a reader, or runs 7zz with its standard output the writer it is given. The
 // bomb rule weighs the bytes written against compressed, the bytes they come from; past both
-// thresholds the writer refuses the next write, and fill, a reader's copy or 7zz, stops. whole,
-// given the writer and fill's error once the bytes are written, says why they aren't the content
-// whole, or nil when they are. why is the reason the content has no file, errBomb or whole's
-// word, its partial file removed; err is the stage's own failure.
+// thresholds the writer refuses the next write, and fill, a reader's copy or 7zz, stops. So it
+// does at a write that would take the bytes past ctx's writeCap, when it holds one. whole, given
+// the writer and fill's error once the bytes are written, says why they aren't the content whole,
+// or nil when they are. why is the reason the content has no file, errBomb, errLimited, or
+// whole's word, its partial file removed; err is the stage's own failure.
 func (s *archiveStage) extract(ctx context.Context, fill func(io.Writer) error, dir string, compressed uint64,
 	whole func(w *bombWriter, fillErr error) error,
 ) (path string, written uint64, why, err error) {
@@ -234,7 +275,9 @@ func (s *archiveStage) extract(ctx context.Context, fill func(io.Writer) error, 
 }
 
 // writeBySum is extract's writing, for any stage that writes content it reads from a program or
-// a reader under the bomb rule, its errors naming stage.
+// a reader under the bomb rule, its errors naming stage. Content it writes whole, a part the
+// dispatcher will admit, is taken from ctx's writeCap, so the parts one Prepare writes come to no
+// more than the dispatch may still admit.
 func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill func(io.Writer) error, dir string,
 	compressed uint64, whole func(w *bombWriter, fillErr error) error,
 ) (path string, written uint64, why, err error) {
@@ -252,6 +295,10 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 		ctx: ctx, w: tmp, sum: sha256.New(), crc: crc32.NewIEEE(),
 		compressed: compressed, rule: rule,
 	}
+	budget, capped := ctx.Value(writeCapKey{}).(*writeCap)
+	if capped {
+		w.room = &budget.left
+	}
 	fillErr := fill(w)
 	if err := tmp.Close(); err != nil {
 		return "", w.n, nil, fmt.Errorf("%s: %w", stage, err)
@@ -262,11 +309,17 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 	// A bomb is the writer's own word: 7zz, stopped by the refused write, fails in its own words.
 	case w.bomb:
 		return "", w.n, errBomb, nil
+	case w.limited:
+		return "", w.n, errLimited, nil
 	case w.writeErr != nil:
 		return "", w.n, nil, fmt.Errorf("%s: %w", stage, w.writeErr)
 	}
 	if why := whole(w, fillErr); why != nil {
 		return "", w.n, why, nil
+	}
+	if capped {
+		// The content is a part the dispatcher admits whole, from here on.
+		budget.left -= w.n
 	}
 	path = filepath.Join(dir, hex.EncodeToString(w.sum.Sum(nil)))
 	// The same content met earlier in this archive may still be at path: its bytes are these, so
@@ -285,7 +338,9 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 
 // bombWriter writes an entry's bytes to w while hashing them, and stops with errBomb, setting
 // bomb, once they pass the bomb rule against compressed, the bytes they come from, or with ctx's
-// error once it ends. writeErr is w's own failure.
+// error once it ends. With room set, the bytes its Prepare may still write, it refuses a write
+// that would take them past it, before writing it, with errLimited, setting limited. writeErr is
+// w's own failure.
 type bombWriter struct {
 	ctx        context.Context
 	w          io.Writer
@@ -295,6 +350,8 @@ type bombWriter struct {
 	compressed uint64
 	rule       inspect.BombRule
 	bomb       bool
+	room       *uint64
+	limited    bool
 	writeErr   error
 }
 
@@ -304,6 +361,10 @@ func (b *bombWriter) Write(p []byte) (int, error) {
 	}
 	if b.bomb {
 		return 0, errBomb
+	}
+	if b.limited || b.room != nil && uint64(len(p)) > *b.room-b.n {
+		b.limited = true
+		return 0, errLimited
 	}
 	n, err := b.w.Write(p)
 	b.n += uint64(n)

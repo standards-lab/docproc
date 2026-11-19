@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -37,10 +36,14 @@ type gsSettings struct {
 	Fail  int `json:"fail,omitzero"`
 }
 
-// gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A count run, with
-// -dNODISPLAY, prints its settings' Pages; a run of the txtwrite device prints "page N", N its
-// -dFirstPage, but a blank line for Empty; and a render prints PNG's signature and "page N", but
-// fails for Fail.
+// gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A survey run, with
+// -dNODISPLAY, prints its settings' Pages, then, when they are above zero, false, no portfolio,
+// when its PostScript asks for /Collection. Any other run's pages are its -sPageList's, a page or
+// a range of them between each comma, or its -dFirstPage alone, each in turn: a run of the
+// txtwrite device writes "page N" for each, but a blank line for Empty, to stdout for an
+// OutputFile of -, and otherwise to a file of the OutputFile, its %d the page's place in the run
+// from 1; and a render writes each page's PNG, naming "page N", but fails at Fail, the pages
+// before it written.
 func gsStandin(r tooltest.Run) int {
 	var settings gsSettings
 	if err := r.Settings(&settings); err != nil {
@@ -54,24 +57,40 @@ func gsStandin(r tooltest.Run) int {
 	}
 	if slices.Contains(args, "-dNODISPLAY") {
 		fmt.Println(settings.Pages)
+		if settings.Pages > 0 && strings.Contains(args[len(args)-1], "/Collection") {
+			fmt.Println(false)
+		}
 		return 0
 	}
-	page := 0
+	out := "-"
 	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-			page, _ = strconv.Atoi(v)
+		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
+			out = v
 		}
 	}
-	switch {
-	case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:
-		fmt.Print("  \n")
-	case slices.Contains(args, "-sDEVICE=txtwrite"):
-		fmt.Printf("page %d", page)
-	case page == settings.Fail:
-		fmt.Fprint(os.Stderr, "told to fail")
-		return 1
-	default:
-		fmt.Printf("%spage %d", route.PNGSignature, page)
+	for i, page := range tooltest.GSPages(args) {
+		var b []byte
+		switch {
+		case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:
+			b = []byte("  \n")
+		case slices.Contains(args, "-sDEVICE=txtwrite"):
+			b = fmt.Appendf(nil, "page %d", page)
+		case page == settings.Fail:
+			fmt.Fprint(os.Stderr, "told to fail")
+			return 1
+		default:
+			b = tooltest.PNG(fmt.Sprintf("page %d", page))
+		}
+		var err error
+		if out == "-" {
+			_, err = os.Stdout.Write(b)
+		} else {
+			err = os.WriteFile(fmt.Sprintf(out, i+1), b, 0o600)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 	}
 	return 0
 }

@@ -232,6 +232,79 @@ func TestLimits(t *testing.T) {
 	})
 }
 
+// TestRemaining: a Prepare's context says what the dispatch may still admit, the bytes cap less
+// the sizes it had admitted as Prepare started, the part being prepared among them and every part
+// its earlier siblings' subtrees came to; with no bytes cap, or on a context no Prepare was
+// given, it says nothing.
+func TestRemaining(t *testing.T) {
+	world := map[string]string{
+		"b.txt": "remaining\nfile d.txt",
+		"c.txt": "remaining",
+		"d.txt": "leaf d",
+	}
+	top := "remaining\nfile b.txt\nfile c.txt"
+	if _, ok := dispatch.Remaining(context.Background()); ok {
+		t.Error("Remaining on a context no Prepare was given: ok")
+	}
+	const limit = 1000
+	for _, tc := range []struct {
+		name   string
+		limits dispatch.Limits
+		want   map[string]remaining
+	}{
+		{"no cap", dispatch.Limits{Parts: 10}, map[string]remaining{"top.txt": {}, "b.txt": {}, "c.txt": {}}},
+		{"cap", dispatch.Limits{Bytes: limit}, map[string]remaining{
+			"top.txt": {limit - int64(len(top)), true},
+			"b.txt":   {limit - int64(len(top)+len(world["b.txt"])), true},
+			"c.txt":   {limit - int64(len(top)+len(world["b.txt"])+len(world["d.txt"])+len(world["c.txt"])), true},
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, world, nil, tc.limits)
+			dispatchAll(t, f.d, input(t, "top.txt", top), nil)
+			for name, want := range tc.want {
+				if got, ran := f.text.remainingOf(name); !ran || got != want {
+					t.Errorf("%s: Remaining %+v (ran %t), want %+v", name, got, ran, want)
+				}
+			}
+		})
+	}
+}
+
+// TestLimitedUnread: an unread child its stage stopped at the bytes cap is limited, with no size
+// or SHA-256, the dispatcher's reason for the bytes cap in place of the stage's, and its siblings
+// go on; its parent isn't recorded, so a dispatch under a larger cap prepares it again. With no
+// bytes cap set, a limited unread child fails.
+func TestLimitedUnread(t *testing.T) {
+	world := map[string]string{"c.txt": "leaf c"}
+	top := "limited big.bin\nfile c.txt"
+	index := dispatch.NewMemoryIndex(0)
+	path := input(t, "top.txt", top)
+	f := newFixture(t, world, index, dispatch.Limits{Bytes: 1 << 20})
+	events := dispatchAll(t, f.d, path, nil)
+	wantSteps(t, events, []step{
+		{"big.bin", 1, dispatch.Limited}, {"c.txt", 1, dispatch.Prepared}, {"top.txt", 0, dispatch.Prepared},
+	})
+	ev := byName(t, events, "big.bin")
+	if ev.Reason != "past the bytes cap, 1048576" || ev.Part.SHA256 != "" || ev.Part.Size != 0 || ev.Part.Where != "line 1" || ev.Err != nil {
+		t.Errorf("big.bin: %q, SHA-256 %q, size %d, where %q, %v", ev.Reason, ev.Part.SHA256, ev.Part.Size, ev.Part.Where, ev.Err)
+	}
+	if top := byName(t, events, "top.txt"); top.Children != 2 {
+		t.Errorf("top.txt: %d children, want 2", top.Children)
+	}
+	if _, ok, err := index.Lookup(context.Background(), dispatch.Key{SHA256: sum(top), Stage: f.text.Identity()}); err != nil || ok {
+		t.Errorf("top.txt recorded with a limited child: %t, %v", ok, err)
+	}
+
+	events = dispatchAll(t, newFixture(t, world, index, dispatch.Limits{}).d, path, nil)
+	wantSteps(t, events, []step{
+		{"big.bin", 1, dispatch.Failed}, {"c.txt", 1, dispatch.Seen}, {"top.txt", 0, dispatch.Prepared},
+	})
+	if ev := byName(t, events, "big.bin"); ev.Err == nil || ev.Reason != ev.Err.Error() {
+		t.Errorf("big.bin with no bytes cap: %q, %v", ev.Reason, ev.Err)
+	}
+}
+
 // TestSeenAcrossInputs: two inputs sharing an index prepare their shared content once; the
 // second's seen events, the shared part's replayed child's among them, carry the outputs'
 // SHA-256s, not their removed paths, and the flags the entry recorded.

@@ -12,15 +12,11 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/media"
 	"github.com/standards-lab/docproc/sevenzip"
 	"github.com/standards-lab/docproc/tool"
 )
-
-// ownSignals are the signals a tool dies by through its own fault: a bad access, an abort, a bus
-// error, an arithmetic fault, or an illegal instruction. An allocation refused under the memory
-// bound ends a tool by one of them, SIGABRT or SIGSEGV, never by an exit code.
-var ownSignals = []string{"SIGSEGV", "SIGABRT", "SIGBUS", "SIGFPE", "SIGILL"}
 
 // contentErrors are the errors a format package ends with when the content itself can't be read:
 // a source with no stream to read, an archive 7-Zip can't open or whose listing doesn't parse, or
@@ -59,7 +55,7 @@ type fault struct {
 // the facts tool reports and memory, the memory bound every tool ran under, zero for none:
 //
 //   - the content's, recorded: a tool that exited nonzero by its own code, 3 and 4 included; one
-//     that died by its own fault, a signal of ownSignals, an allocation refused under the bound
+//     that died by its own fault, a signal cli.OwnFault names, an allocation refused under the bound
 //     among them, its reason naming the signal and the bound, as in "killed by SIGABRT under a
 //     256 MiB memory bound"; one that passed its own time bound (TimedOut); output that didn't
 //     parse; and content a format package refuses as itself, contentErrors;
@@ -80,7 +76,7 @@ func classify(ctx context.Context, err error, memory int64) fault {
 		case exit.TimedOut:
 			f.content = true
 		case exit.Signal != "":
-			f.content = slices.Contains(ownSignals, exit.Signal)
+			f.content = cli.OwnFault(exit.Signal)
 			if f.content && memory > 0 {
 				f.reason = fmt.Sprintf("%s: killed by %s under a %s memory bound", exit.Program, exit.Signal, bytesOf(memory))
 				if exit.Message != "" {

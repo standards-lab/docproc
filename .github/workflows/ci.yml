@@ -137,7 +137,7 @@ jobs:
 
       # The lint needs only the root's shellcheck and actionlint, not its Go toolchain; the
       # routing test needs bash alone.
-      - uses: jdx/mise-action@v5.2.9
+      - uses: jdx/mise-action@v5.2.10
         with:
           install_args: actionlint shellcheck
 
@@ -157,7 +157,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       # check:go needs only the root's Go toolchain and golangci-lint.
-      - uses: jdx/mise-action@v5.2.9
+      - uses: jdx/mise-action@v5.2.10
         with:
           install_args: go golangci-lint
 
@@ -197,7 +197,7 @@ jobs:
 
       # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
       # one installed; the tool's tasks put it ahead of the runner's own dotnet on PATH.
-      - uses: jdx/mise-action@v5.2.9
+      - uses: jdx/mise-action@v5.2.10
         with:
           working_directory: tools/${{ matrix.tool }}
 
@@ -252,7 +252,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       # The tasks need only the root's Go toolchain; docker is the runner's.
-      - uses: jdx/mise-action@v5.2.9
+      - uses: jdx/mise-action@v5.2.10
         with:
           install_args: go
 

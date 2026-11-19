@@ -85,7 +85,7 @@ jobs:
 
       # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
       # one installed.
-      - uses: jdx/mise-action@v5.2.9
+      - uses: jdx/mise-action@v5.2.10
         with:
           working_directory: tools/${{ needs.tag.outputs.format }}
 

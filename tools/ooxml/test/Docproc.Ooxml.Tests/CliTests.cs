@@ -405,16 +405,49 @@ public sealed class CliTests : IDisposable
         Assert.Equal(stderr, result.Stderr);
     }
 
+    // A missing path, a directory, and a file without read permission are each refused by a reason
+    // that says which and then names the path as given, never leading with it.
     [Fact]
-    public void AMissingFileIsNotAFile() =>
-        Assert.Equal(OfficeReader.NotAFile, AssertRefused(Path.Combine(scratch.FullName, "absent.docx")));
+    public void AMissingFileIsRefusedByItsPath()
+    {
+        var path = Path.Combine(scratch.FullName, "absent.docx");
+
+        Assert.Equal($"{OfficeReader.NoSuchFile}: {path}", RefusalReason(path));
+    }
 
     [Fact]
-    public void ADirectoryIsNotAFile()
+    public void ADirectoryIsRefusedByItsPath()
     {
         var directory = Directory.CreateDirectory(Path.Combine(scratch.FullName, "folder.docx")).FullName;
 
-        Assert.Equal(OfficeReader.NotAFile, AssertRefused(directory));
+        Assert.Equal($"{OfficeReader.IsADirectory}: {directory}", RefusalReason(directory));
+    }
+
+    // A file that can't be opened is refused by its path; one under a directory that can't be
+    // searched, as one without read permission. As root both can be read, so the test is skipped.
+    [Fact]
+    [UnsupportedOSPlatform("windows")]
+    public void AnUnreadableFileIsRefusedByItsPath()
+    {
+        var path = Path.Combine(scratch.FullName, "locked.docx");
+        File.Copy(Fixtures.DocumentPath("headings", "python-docx"), path);
+        File.SetUnixFileMode(path, UnixFileMode.None);
+        var closed = Directory.CreateDirectory(Path.Combine(scratch.FullName, "closed")).FullName;
+        var inside = Path.Combine(closed, "inside.docx");
+        File.Copy(Fixtures.DocumentPath("headings", "python-docx"), inside);
+        File.SetUnixFileMode(closed, UnixFileMode.None);
+        try
+        {
+            Assert.SkipWhen(CanOpen(path), "the file can be opened without permission, as root");
+
+            Assert.Equal($"{OfficeReader.PermissionDenied}: {path}", RefusalReason(path));
+            Assert.Equal($"{OfficeReader.PermissionDenied}: {inside}", RefusalReason(inside));
+        }
+        finally
+        {
+            // The scratch directory is removed after the test, through this one.
+            File.SetUnixFileMode(closed, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
     }
 
     // A device is no regular file, though it can be opened and read.
@@ -422,7 +455,7 @@ public sealed class CliTests : IDisposable
     public void ADeviceIsNotAFile() =>
         Assert.Equal(OfficeReader.NotAFile, AssertRefused("/dev/null"));
 
-    // A symbolic link is followed to what it names.
+    // A symbolic link is followed to what it names, and one that names nothing is missing.
     [Fact]
     public void ALinkIsReadAsWhatItNames()
     {
@@ -433,19 +466,8 @@ public sealed class CliTests : IDisposable
 
         Assert.Equal(Cli.Converted, result.ExitCode);
         Assert.Equal(Golden("headings", "python-docx"), result.Stdout);
-        Assert.Equal(OfficeReader.NotAFile, AssertRefused(Path.Combine(scratch.FullName, "dangling.docx"), linkTo: Path.Combine(scratch.FullName, "gone")));
-    }
-
-    // A file that can't be opened is refused, its reason without the path .NET's message names.
-    [Fact]
-    [UnsupportedOSPlatform("windows")]
-    public void AnUnreadableFileIsRefused()
-    {
-        var path = Path.Combine(scratch.FullName, "locked.docx");
-        File.Copy(Fixtures.DocumentPath("headings", "python-docx"), path);
-        File.SetUnixFileMode(path, UnixFileMode.None);
-
-        Assert.Equal("cannot be read: permission denied", AssertRefused(path));
+        var dangling = Path.Combine(scratch.FullName, "dangling.docx");
+        Assert.Equal($"{OfficeReader.NoSuchFile}: {dangling}", RefusalReason(dangling, linkTo: Path.Combine(scratch.FullName, "gone")));
     }
 
     [Fact]
@@ -1012,10 +1034,9 @@ public sealed class CliTests : IDisposable
         }
     }
 
-    // The path is refused, exit code 3, before any output: stdout empty and no media directory.
-    // stderr is one error line, whose reason never holds the path, given or in full, or the
-    // file's name; returns the reason. With linkTo, the path is first made a link to it.
-    private string AssertRefused(string path, string? linkTo = null)
+    // The path is refused as AssertRefused says, by a reason that may name it: returns the
+    // reason.
+    private string RefusalReason(string path, string? linkTo = null)
     {
         if (linkTo is not null)
         {
@@ -1029,10 +1050,32 @@ public sealed class CliTests : IDisposable
         Assert.False(Directory.Exists(media));
         Assert.StartsWith("docproc-ooxml: error: ", result.Stderr, StringComparison.Ordinal);
         AssertOneLine(result.Stderr);
-        var reason = result.Stderr["docproc-ooxml: error: ".Length..^1];
+        return result.Stderr["docproc-ooxml: error: ".Length..^1];
+    }
+
+    // The path is refused, exit code 3, before any output: stdout empty and no media directory.
+    // stderr is one error line, whose reason, other than for a path missing, a directory, or
+    // without read permission, never holds the path, given or in full, or the file's name;
+    // returns the reason. With linkTo, the path is first made a link to it.
+    private string AssertRefused(string path, string? linkTo = null)
+    {
+        var reason = RefusalReason(path, linkTo);
         Assert.DoesNotContain(Path.GetFileName(path), reason, StringComparison.Ordinal);
         Assert.DoesNotContain(scratch.FullName, reason, StringComparison.Ordinal);
         return reason;
+    }
+
+    private static bool CanOpen(string path)
+    {
+        try
+        {
+            File.OpenRead(path).Dispose();
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     private static void AssertOneLine(string stderr)

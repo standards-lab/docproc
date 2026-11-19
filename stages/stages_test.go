@@ -13,6 +13,7 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/inspect"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/media"
 	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/route"
@@ -86,6 +87,58 @@ func TestBuildRows(t *testing.T) {
 	}
 }
 
+// TestBuildShim: a version manager's shim, which answers under the host's HOME but refuses under
+// the one a run gets, is checked under the run's environment, so it reads as unavailable: its
+// tool row holds the shim's refusal, the onenote route is missing for it, and nothing but the
+// version command ran through it. The same shim, given the host's HOME through Options.Env, which
+// every run's environment ends with, answers, and its route is wired.
+func TestBuildShim(t *testing.T) {
+	t.Parallel()
+	onenoteOnly := slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.OneNote })
+	for name, c := range map[string]struct {
+		env  func(home string) []string
+		want dispatch.State
+	}{
+		"under the fixed environment":  {func(string) []string { return nil }, dispatch.Missing},
+		"given the host's HOME in Env": {func(home string) []string { return []string{"HOME=" + home} }, dispatch.Wired},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			link := tooltest.Link(t, t.TempDir(), "docproc-onenote", onenoteSettings{Home: home})
+			lookup := func(program string) (string, error) {
+				if program == "docproc-onenote" {
+					return link, nil
+				}
+				return "", errors.New("not here")
+			}
+			set, err := stages.Build(t.Context(), lookup, stages.Options{Exclude: onenoteOnly, Env: c.env(home)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := set.Rows[slices.Index(stages.Routes(), route.OneNote)]
+			_, wired := set.Stages[route.OneNote]
+			if row.State != c.want || wired != (c.want == dispatch.Wired) {
+				t.Fatalf("onenote: %s, %q, wired %t; want %s", row.State, row.Reason, wired, c.want)
+			}
+			if got := tooltest.Runs(t, link); len(got) != 1 || !slices.Equal(got[0].Args, []string{"--version"}) {
+				t.Errorf("runs %v, want the version command alone", got)
+			}
+			if c.want == dispatch.Wired {
+				return
+			}
+			if !strings.Contains(row.Reason, "not trusted") {
+				t.Errorf("onenote reason %q, want the shim's refusal", row.Reason)
+			}
+			for _, tl := range set.Tools {
+				if tl.Program == "docproc-onenote" && (tl.Err == nil || !strings.Contains(tl.Error, "not trusted") || tl.Version != "") {
+					t.Errorf("tool %+v: want the shim's refusal and no version", tl)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildRefuses: Build refuses options it can't take before it looks anything up, each
 // matching ErrRequest: inspection options inspect refuses, a negative bound, and a request its
 // own package refuses.
@@ -96,18 +149,19 @@ func TestBuildRefuses(t *testing.T) {
 		return "", errors.New("not here")
 	}
 	for name, opts := range map[string]stages.Options{
-		"a negative bomb ratio":     {Inspect: inspect.Options{BombRatio: -1, BombSize: 1}},
-		"a negative timeout":        {Timeout: -time.Second},
-		"a negative idle bound":     {Idle: -time.Second},
-		"a negative memory bound":   {Memory: -1},
-		"a negative concurrency":    {Concurrency: -1},
-		"a negative DPI":            {Document: document.ImagesRequest{DPI: -1}},
-		"a negative MaxPixels":      {Document: document.ImagesRequest{MaxPixels: -1}},
-		"a metafile scale past 8":   {Picture: picture.Request{MetafileScale: picture.MaxMetafileScale + 1}},
-		"a negative density":        {Picture: picture.Request{Density: -1}},
-		"a negative magick limit":   {Magick: picture.Limits{Disk: -1}},
-		"an audio overlap too long": {Audio: audio.Request{Overlap: audio.DefaultWindowLimit / 2}},
-		"a video negative limit":    {Video: media.Request{Limit: -time.Second}},
+		"a negative bomb ratio":      {Inspect: inspect.Options{BombRatio: -1, BombSize: 1}},
+		"a negative timeout":         {Timeout: -time.Second},
+		"a negative idle bound":      {Idle: -time.Second},
+		"a negative memory bound":    {Memory: -1},
+		"a negative concurrency":     {Concurrency: -1},
+		"a negative DPI":             {Document: document.ImagesRequest{DPI: -1}},
+		"a negative MaxPixels":       {Document: document.ImagesRequest{MaxPixels: -1}},
+		"a negative PagesPerProcess": {Document: document.ImagesRequest{PagesPerProcess: -1}},
+		"a metafile scale past 8":    {Picture: picture.Request{MetafileScale: picture.MaxMetafileScale + 1}},
+		"a negative density":         {Picture: picture.Request{Density: -1}},
+		"a negative magick limit":    {Magick: picture.Limits{Disk: -1}},
+		"an audio overlap too long":  {Audio: audio.Request{Overlap: audio.DefaultWindowLimit / 2}},
+		"a video negative limit":     {Video: media.Request{Limit: -time.Second}},
 	} {
 		if _, err := stages.Build(t.Context(), lookup, opts); !errors.Is(err, stages.ErrRequest) {
 			t.Errorf("%s: %v, want ErrRequest", name, err)

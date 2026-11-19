@@ -6,7 +6,9 @@ import (
 	"bytes"
 	"compress/zlib"
 	"fmt"
+	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -19,9 +21,18 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// documentFixture returns the path of one of document's committed fixtures, under its testdata.
-func documentFixture(name string) string {
-	return filepath.Join("..", "document", "testdata", filepath.FromSlash(name))
+// documentFixture returns the path of a copy of one of document's committed fixtures, under its
+// testdata, under its own name in a directory of the test's own. The document stage's gs runs over
+// a page of its own work in the PDF's directory, which is their TMPDIR, where gs keeps its
+// temporary files, a portfolio's documents among them; a dispatch of the copy keeps them out of
+// testdata, which TestEveryFixture walks.
+func documentFixture(t *testing.T, name string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("..", "document", "testdata", filepath.FromSlash(name)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return input(t, path.Base(name), string(b))
 }
 
 // encryptedPDF returns a PDF made from document's clean.pdf by this machine's qpdf, encrypted with
@@ -29,7 +40,7 @@ func documentFixture(name string) string {
 func encryptedPDF(t *testing.T, name string, args ...string) string {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), name)
-	args = append(append(append([]string{documentFixture("clean.pdf"), "--encrypt"}, args...), "--"), out)
+	args = append(append(append([]string{documentFixture(t, "clean.pdf"), "--encrypt"}, args...), "--"), out)
 	if b, err := exec.CommandContext(t.Context(), "qpdf", args...).CombinedOutput(); err != nil {
 		t.Fatalf("qpdf making %s: %v: %s", name, err, b)
 	}
@@ -59,7 +70,7 @@ func TestDocumentStageEncryptedReal(t *testing.T) {
 		{encryptedPDF(t, "open-password.pdf", "--user-password=user", "--owner-password=owner", "--bits=256"), dispatch.Encrypted, true},
 		{encryptedPDF(t, "open-password-aes128.pdf", "--user-password=user", "--owner-password=owner", "--bits=128", "--use-aes=y"), dispatch.Encrypted, true},
 		{encryptedPDF(t, "permissions.pdf", "--user-password=", "--owner-password=owner", "--bits=256", "--extract=n", "--modify=none"), dispatch.Prepared, true},
-		{documentFixture("clean.pdf"), dispatch.Prepared, false},
+		{documentFixture(t, "clean.pdf"), dispatch.Prepared, false},
 	} {
 		name := filepath.Base(c.pdf)
 		ev := dispatchAll(t, d, c.pdf, nil)[0]
@@ -93,7 +104,7 @@ func TestDocumentStageFormsReal(t *testing.T) {
 			`{"name":"languages","type":"choice","options":["English","French","German"],"selected":["en","de"]}]}`,
 		"forms/signed.pdf": `{"fields":[{"name":"USGPOSignature","type":"signature","signed":true}]}`,
 	} {
-		ev := dispatchAll(t, d, documentFixture(name), nil)[0]
+		ev := dispatchAll(t, d, documentFixture(t, name), nil)[0]
 		if got := outputNames(ev); ev.Outcome != dispatch.Prepared || len(got) == 0 || got[0] != "record forms" || !slices.Contains(got, "image page 1") {
 			t.Errorf("%s: %s, %q, %q; want the forms record first and page 1's image", name, ev.Outcome, ev.Reason, got)
 			continue
@@ -105,7 +116,7 @@ func TestDocumentStageFormsReal(t *testing.T) {
 		t.Logf("%s: %s", name, rec.Value)
 	}
 
-	ev := dispatchAll(t, d, documentFixture("clean.pdf"), nil)[0]
+	ev := dispatchAll(t, d, documentFixture(t, "clean.pdf"), nil)[0]
 	if slices.Contains(outputNames(ev), "record forms") {
 		t.Error("clean.pdf, with no AcroForm, has a forms record")
 	}
@@ -116,7 +127,7 @@ func TestDocumentStageFormsReal(t *testing.T) {
 // SHA-256, inspected and routed again; the Screen annotation's clip.avi isn't extracted.
 func TestDocumentStageAttachmentsReal(t *testing.T) {
 	d, work := newDispatcherIn(t, allStages(t))
-	events := dispatchAll(t, d, documentFixture("attachments/attachments.pdf"), func(ev *dispatch.Event) {
+	events := dispatchAll(t, d, documentFixture(t, "attachments/attachments.pdf"), func(ev *dispatch.Event) {
 		if ev.Output == nil && ev.Part.Depth == 1 && filepath.Base(ev.Part.Path) != ev.Part.SHA256 {
 			t.Errorf("%s at %s: want it named by its SHA-256", ev.Part.Name, ev.Part.Path)
 		}

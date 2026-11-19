@@ -99,7 +99,10 @@ type Event struct {
 type Limits struct {
 	// Parts is the most parts one dispatch admits, the input among them.
 	Parts int
-	// Bytes is the most bytes the parts one dispatch admits may come to, their sizes summed.
+	// Bytes is the most bytes the parts one dispatch admits may come to, their sizes summed. It
+	// bounds what a stage writes too, not only what the dispatcher admits: a stage that writes the
+	// parts it finds holds them to what [Remaining] says is left, and a part it stops writing at
+	// the cap is an unread child, [Limited], with no size or SHA-256.
 	Bytes int64
 	// Depth is the deepest part one dispatch admits, the input at depth 0.
 	Depth int
@@ -432,15 +435,29 @@ func (r *run) part(f Found, h *hashed, parent string, depth int) result {
 
 // unread dispatches p, an unread child a stage found as f: its event, with f's outcome, reason,
 // and flags, recorded as its parent's child.
+//
+// A limited child, which its stage stopped writing at the bytes cap, as [Remaining] says, has the
+// bytes cap's reason, whatever the stage gave, and leaves its parent's subtree incomplete, as a
+// found part past a cap does, so its parent isn't recorded and a dispatch under a larger cap
+// prepares it again. With no bytes cap set, nothing could have stopped it, and it fails.
 func (r *run) unread(p Part, f Found) result {
-	switch f.Outcome {
-	case Quarantined, Encrypted, NoProcessor, Failed:
-	default:
-		err := fmt.Errorf("dispatch: %s: an unread child's outcome is %q, want quarantined, encrypted, no processor yet, or failed", p.Name, f.Outcome)
+	refuse := func(err error) result {
 		return r.emit(Event{Part: p, Outcome: Failed, Reason: err.Error(), Err: err}, "", false, false)
 	}
+	complete := true
+	switch f.Outcome {
+	case Quarantined, Encrypted, NoProcessor, Failed:
+	case Limited:
+		limit := r.d.cfg.Limits.Bytes
+		if limit == 0 {
+			return refuse(fmt.Errorf("dispatch: %s: an unread child limited with no bytes cap set", p.Name))
+		}
+		f.Reason, complete = pastBytes(limit), false
+	default:
+		return refuse(fmt.Errorf("dispatch: %s: an unread child's outcome is %q, want quarantined, encrypted, no processor yet, failed, or limited", p.Name, f.Outcome))
+	}
 	p.Flags = sortFlags(slices.Clone(f.Flags))
-	return r.emit(Event{Part: p, Outcome: f.Outcome, Reason: f.Reason}, "", true, false)
+	return r.emit(Event{Part: p, Outcome: f.Outcome, Reason: f.Reason}, "", complete, false)
 }
 
 // childID returns the ID of the part found where in the part whose ID is parent: parent's
@@ -530,9 +547,35 @@ func (r *run) limit(p Part) string {
 	case l.Parts > 0 && r.parts >= l.Parts:
 		return fmt.Sprintf("past the parts cap, %d", l.Parts)
 	case l.Bytes > 0 && r.bytes+p.Size > l.Bytes:
-		return fmt.Sprintf("past the bytes cap, %d", l.Bytes)
+		return pastBytes(l.Bytes)
 	}
 	return ""
+}
+
+// pastBytes returns the reason of a part past the bytes cap, limit: a found part's that would
+// take the bytes admitted past it, and an unread child's whose stage stopped writing it there.
+func pastBytes(limit int64) string { return fmt.Sprintf("past the bytes cap, %d", limit) }
+
+// remainingKey is the key of the bytes a dispatch may still admit on a context passed to
+// Stage.Prepare.
+type remainingKey struct{}
+
+// Remaining returns the bytes the dispatch that called a stage's Prepare with ctx may still
+// admit: its [Limits].Bytes less the sizes of the parts it had admitted when Prepare started,
+// the part being prepared among them. ok is false when the dispatch has no bytes cap, or ctx is
+// neither the context the dispatcher passed to Prepare nor derived from it.
+//
+// The dispatcher sets the value on the context it passes to Prepare, read as Prepare starts, and
+// it never changes while the stage runs, though the parts the stage finds are admitted meanwhile.
+// A stage that writes the parts it finds, such as an archive's entries, holds what it writes to
+// it, less what it has written for the parts it found before in the same Prepare: it stops writing
+// a part whose bytes would pass what remains, removes what it wrote, and finds the part as an
+// unread child, [Limited], with no size or SHA-256, rather than writing what the dispatcher would
+// refuse once it was written. The dispatcher gives that child the bytes cap's reason, as it gives
+// a found part past the cap.
+func Remaining(ctx context.Context) (int64, bool) {
+	n, ok := ctx.Value(remainingKey{}).(int64)
+	return n, ok
 }
 
 // inspectContent returns the flags of p's content, as inspect.Content finds them in its file.

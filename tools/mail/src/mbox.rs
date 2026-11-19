@@ -46,8 +46,12 @@ pub fn read(
     out: &mut Lines<impl Write>,
     files: &mut Media,
 ) -> Result<(), Fault> {
-    let mut file = BufReader::new(File::open(path).map_err(unreadable)?);
-    if file.fill_buf().map_err(unreadable)?.starts_with(sniff::BOM) {
+    let mut file = BufReader::new(File::open(path).map_err(unreadable(path))?);
+    if file
+        .fill_buf()
+        .map_err(unreadable(path))?
+        .starts_with(sniff::BOM)
+    {
         file.consume(sniff::BOM.len());
     }
     let mut entries = (1u32..).zip(MessageIterator::new(file));

@@ -9,6 +9,77 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-19
+
+This release runs a PDF's pages through shared gs processes, holds what the stages write to the
+bytes cap, and checks each tool's version in the environment its runs get. The module still
+requires golang.org/x/text alone.
+
+### Added
+
+- `document.ImagesRequest.PagesPerProcess`, the most pages one gs process renders, and reads the
+  text layers of, for a PDF's pages: zero is a default of 8, and a negative value is refused by
+  `Images` and by `stages.Build`. Like `Concurrency`, it is outside the request's JSON and so the
+  document stage's identity.
+- `tool.Tool.Timeout`, the Spec's Timeout, for an adapter that runs many units in one process
+  and bounds its idleness by a unit's bound.
+- `dispatch.Remaining`, the bytes the dispatch that called a stage's `Prepare` may still admit:
+  `Limits.Bytes` less the sizes it had admitted as `Prepare` started, the part being prepared
+  among them, read from the context the dispatcher passes to `Prepare`. It says nothing when no
+  bytes cap is set. A stage that writes the parts it finds holds them to it, and finds a part it
+  stopped writing there as an unread child, `dispatch.Limited`, which `Found` now takes beside
+  quarantined, encrypted, no processor yet, and failed; the dispatcher gives it the bytes cap's
+  reason, `past the bytes cap, <cap>`, and doesn't record its parent, as for a found part past a
+  cap.
+
+### Changed
+
+- `document.Preparer.Images` runs a PDF's pages through shared gs processes, for every PDF: at
+  concurrency C, lane k takes pages k, k+C, k+2C, and so on, up to `PagesPerProcess` a process
+  through gs's page list, its PNGs split from one stdout, and, for a request with `Text`, one
+  txtwrite process before it whose files, a page each, go to a temporary directory of the
+  Preparer's own, never the input's. The run that counts the pages and the shared processes work in
+  that directory, which is their `TMPDIR`, so the temporary files a gs ended early leaves are
+  removed with it and never left beside the input. A process's pages go to gs as a page list, each
+  run of consecutive pages a range, and a batch ends early where its list would pass the 2047 bytes
+  gs takes in an argument. A page `MaxPixels` lowers gets a process of its own, as does a batch of
+  one page, and every page of a PDF portfolio, whose processes gs runs over its embedded documents'
+  pages. Pages are yielded in order, at most C held, and every page's PNG and text, the document
+  stage's identity, and its outputs and warnings are as before. A shared process takes the gs
+  Tool's Timeout as an idle bound between its writes, time waiting on the consumer not counted; a
+  process of a page's own takes it whole, as before. A shared process that fails as the content's
+  keeps the pages it handed over, and each other page is prepared in processes of its own, as
+  before, so only a page that fails there fails; one that fails as the run's fails the pages it
+  didn't hand over with its error, which ends the stage as before. Under the container runner,
+  whose runs see only the PDF's directory, each page's text is still read by a process of its own.
+
+### Fixed
+
+- `Limits.Bytes` bounds what the stages package writes, not only what the dispatcher admits. The
+  archive stage's ZIP, tar, 7z, and cabinet entries and gzip and zstd content, and the document
+  stage's attachments, stop at the write that would take them past `dispatch.Remaining`, less what
+  the same `Prepare` has written for its earlier parts, so one archive's entries together stay
+  within it; the partial file is removed, and the entry is an unread child, limited, `past the
+  bytes cap, <cap>`, with no size or SHA-256. Before, such an entry was written whole, then hashed
+  and refused: a 107 MB ZIP whose one entry expands 999:1 to 100 GiB wrote all 100 GiB, about
+  163 s, before it was limited. An entry within the cap is written and admitted as before. The
+  Rust tools' children, which their processes write, are still admitted once written.
+- `tool.NewExec`, and so `stages.Build`, checks a tool's version in the environment its runs get:
+  the fixed environment and the Spec's `Env`, with `HOME` and `TMPDIR` a new empty directory of
+  the check's own, standing in for each run's working directory, where the check gave them none.
+  A program that answers only under the host's `HOME`, such as a mise shim, which then refuses
+  the user's configuration as untrusted, is refused at construction: its row in the tools table
+  says why, the stages that need it are `missing`, and no part runs through it, where before its
+  route read `wired` and every run of it failed. A tool that answers under both builds as before.
+- `document.Ghostscript.Render`, and so `document.Preparer.Images`, renders a page gs renders with
+  a message of its own, such as `**** Error: Page drawing error occurred.` for a page whose
+  `/Annots` is null. gs's render runs, a page's own and a shared process's, take
+  `-sstdout=%stderr`, as its text runs did, so its messages go to stderr, dropped for a run that
+  succeeds, and stdout holds the PNGs alone; before, the message came ahead of the PNG on stdout,
+  the page failed with "no PNG on stdout", and its error quoted up to 4 KB of the PNG. A page past
+  the last is still an error carrying gs's message, now read from stderr. Every other page's PNG
+  is as before.
+
 ## [v0.3.0] - 2026-11-18
 
 This release names a run's report directory, which `cmd/docproc`'s report renders into. The
@@ -147,7 +218,8 @@ fixtures scripts stay in the spike.
 The [README](README.md#limits) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/v0.1.0
