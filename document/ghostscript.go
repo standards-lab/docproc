@@ -100,48 +100,68 @@ func (s pageSize) fit(dpi int, limit int64) (int, bool) {
 	return over - 1, over > 1
 }
 
-// sizes returns the size of every page of the PDF at pdf, in page order, in one gs run that sets
-// each page up as rendering does, its media box and rotation applied, and prints the device's
-// page size, so a page's size is the one Render renders. gs runs with -dSAFER, permitted to read
-// that one file.
-func (g *Ghostscript) sizes(ctx context.Context, pdf string) ([]pageSize, error) {
-	abs, err := filepath.Abs(pdf)
-	if err != nil {
-		return nil, fmt.Errorf("document: ghostscript: %w", err)
-	}
-	var out bytes.Buffer
-	if err := g.gs.Run(ctx, tool.Invocation{Args: sizesArgs(abs), Dir: filepath.Dir(abs), Stdout: &out}); err != nil {
-		return nil, err
-	}
-	sizes, err := parseSizes(out.String())
-	if err != nil {
-		return nil, fmt.Errorf("document: ghostscript: page sizes of %s: %w", abs, err)
-	}
-	return sizes, nil
+// survey is what the Preparer reads of a PDF before its pages: a size for each page, in page
+// order, zero sizes when it didn't ask for them, and whether the PDF is a portfolio.
+type survey struct {
+	sizes []pageSize
+	// portfolio is whether the PDF's catalog has a /Collection, which gs reads as a portfolio,
+	// rendering, and reading the text of, its embedded documents' pages in place of its own: the
+	// run's page range applied to each document in turn, so a run's output for a page is every
+	// document's page of that number, none of it the page's alone.
+	portfolio bool
 }
 
-// parseSizes reads sizesArgs' output: the page count on its own line, then each page's width and
-// height in points, one page a line.
-func parseSizes(out string) ([]pageSize, error) {
-	lines := strings.Split(strings.TrimSpace(out), "\n")
-	n, err := strconv.Atoi(strings.TrimSpace(lines[0]))
-	if err != nil || n < 0 || len(lines)-1 != n {
-		return nil, fmt.Errorf("gs printed %q", out)
+// survey reads the PDF at pdf in one gs run: whether it is a portfolio, by the test gs's own
+// runpdf makes of it, its PDFInfo holding /Collection; its page count; and, with sizes, each
+// page's size, the page set up as rendering does, its media box and rotation applied, and the
+// device's page size printed, so a page's size is the one Render renders. gs runs with -dSAFER,
+// permitted to read that one file.
+func (g *Ghostscript) survey(ctx context.Context, pdf string, sizes bool) (survey, error) {
+	abs, err := filepath.Abs(pdf)
+	if err != nil {
+		return survey{}, fmt.Errorf("document: ghostscript: %w", err)
 	}
-	sizes := make([]pageSize, n)
-	for i, line := range lines[1:] {
+	var out bytes.Buffer
+	if err := g.gs.Run(ctx, tool.Invocation{Args: surveyArgs(abs, sizes), Dir: filepath.Dir(abs), Stdout: &out}); err != nil {
+		return survey{}, err
+	}
+	sv, err := parseSurvey(out.String(), sizes)
+	if err != nil {
+		return survey{}, fmt.Errorf("document: ghostscript: survey of %s: %w", abs, err)
+	}
+	return sv, nil
+}
+
+// parseSurvey reads surveyArgs' output: true or false, whether the PDF is a portfolio, and the
+// page count, each on its own line, then, with sizes, each page's width and height in points, one
+// page a line.
+func parseSurvey(out string, sizes bool) (survey, error) {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) < 2 {
+		return survey{}, fmt.Errorf("gs printed %q", out)
+	}
+	portfolio, perr := strconv.ParseBool(strings.TrimSpace(lines[0]))
+	n, err := strconv.Atoi(strings.TrimSpace(lines[1]))
+	if perr != nil || err != nil || n < 0 || sizes && len(lines)-2 != n || !sizes && len(lines) != 2 {
+		return survey{}, fmt.Errorf("gs printed %q", out)
+	}
+	sv := survey{sizes: make([]pageSize, n), portfolio: portfolio}
+	if !sizes {
+		return sv, nil
+	}
+	for i, line := range lines[2:] {
 		f := strings.Fields(line)
 		if len(f) != 2 {
-			return nil, fmt.Errorf("page %d: gs printed %q", i+1, line)
+			return survey{}, fmt.Errorf("page %d: gs printed %q", i+1, line)
 		}
 		w, werr := strconv.ParseFloat(f[0], 64)
 		h, herr := strconv.ParseFloat(f[1], 64)
 		if werr != nil || herr != nil || !(w >= 0) || !(h >= 0) {
-			return nil, fmt.Errorf("page %d: gs printed %q", i+1, line)
+			return survey{}, fmt.Errorf("page %d: gs printed %q", i+1, line)
 		}
-		sizes[i] = pageSize{w, h}
+		sv.sizes[i] = pageSize{w, h}
 	}
-	return sizes, nil
+	return sv, nil
 }
 
 // Render writes page, 1-based, of the PDF at pdf to w as PNG at dpi, one gs run for the page. It
@@ -282,13 +302,76 @@ func textFile(dir string, i int) string {
 	return filepath.Join(dir, "page-"+strconv.Itoa(i)+".txt")
 }
 
-// pageList returns pages as gs's PageList takes them, numbers joined by commas.
+// pageList returns pages, ascending, as gs's PageList takes them: each run of consecutive pages
+// a range, such as 1-915, and a page alone its number, joined by commas.
 func pageList(pages []int) string {
-	list := make([]string, len(pages))
-	for i, p := range pages {
-		list[i] = strconv.Itoa(p)
+	var b strings.Builder
+	for i := 0; i < len(pages); {
+		j := i
+		for j+1 < len(pages) && pages[j+1] == pages[j]+1 {
+			j++
+		}
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.WriteString(strconv.Itoa(pages[i]))
+		if j > i {
+			b.WriteString("-" + strconv.Itoa(pages[j]))
+		}
+		i = j + 1
 	}
-	return strings.Join(list, ",")
+	return b.String()
+}
+
+// pageListFlag is the start of a shared run's page-list argument, the list after it.
+const pageListFlag = "-sPageList="
+
+// argLimit is the longest argument gs takes, in bytes: its argument buffer holds 2048 with the
+// terminating NUL, and gs refuses a longer one as "Command too long" and exits 1, as gs 10.08.0
+// does at 2048. A shared run's page list is held to it, as pageListLength measures it.
+const argLimit = 2047
+
+// pageListLength is the length of a page list as pageList writes it, measured a page at a time,
+// so a batch's list is known as it grows without writing it out again.
+type pageListLength struct {
+	// done is the length of the list's runs before the last, with the comma after each; first
+	// and last are the last run's pages; n is how many pages the list holds.
+	done, first, last, n int
+}
+
+// with returns the length of the page-list argument, pageListFlag's bytes among them, once page,
+// past the list's last, is added.
+func (l *pageListLength) with(page int) int {
+	switch {
+	case l.n == 0:
+		return len(pageListFlag) + runLength(page, page)
+	case page == l.last+1:
+		return len(pageListFlag) + l.done + runLength(l.first, page)
+	}
+	return len(pageListFlag) + l.done + runLength(l.first, l.last) + 1 + runLength(page, page)
+}
+
+// add adds page, past the list's last, to the list.
+func (l *pageListLength) add(page int) {
+	switch {
+	case l.n == 0:
+		l.first, l.last = page, page
+	case page == l.last+1:
+		l.last = page
+	default:
+		l.done += runLength(l.first, l.last) + 1
+		l.first, l.last = page, page
+	}
+	l.n++
+}
+
+// runLength returns the length of a run of pages from first to last in a page list: the page's
+// number when they are one page, and the range otherwise.
+func runLength(first, last int) int {
+	if first == last {
+		return len(strconv.Itoa(first))
+	}
+	return len(strconv.Itoa(first)) + 1 + len(strconv.Itoa(last))
 }
 
 // sharedRenderArgs returns gs's arguments for pages of the PDF at pdf at dpi, as renderArgs' for
@@ -296,7 +379,7 @@ func pageList(pages []int) string {
 func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
 	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
-		"-sPageList=" + pageList(pages), "-sOutputFile=-", pdf}
+		pageListFlag + pageList(pages), "-sOutputFile=-", pdf}
 }
 
 // sharedTextArgs returns gs's arguments for the text of pages of the PDF at pdf, a file a page at
@@ -304,7 +387,7 @@ func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
 // starts among them, go to stderr.
 func sharedTextArgs(pdf string, pages []int, out string) []string {
 	return []string{"-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
-		"-sPageList=" + pageList(pages), "-sOutputFile=" + out, pdf}
+		pageListFlag + pageList(pages), "-sOutputFile=" + out, pdf}
 }
 
 // renderArgs returns gs's arguments for page of the PDF at pdf at dpi. png16m is 24-bit RGB; the
@@ -330,14 +413,22 @@ func countArgs(pdf string) []string {
 		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount = quit"}
 }
 
-// sizesArgs returns gs's arguments to print the page count of the PDF at pdf and each page's size:
-// pdfshowpage_setpage sets the device's page size to the page's, as rendering does, which is
-// printed as its width and height. The path is escaped as countArgs escapes it.
-func sizesArgs(pdf string) []string {
-	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf,
-		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount dup = 1 1 3 -1 roll { " +
+// surveyArgs returns gs's arguments to print whether the PDF at pdf is a portfolio, true or false,
+// as gs's runpdf tests it, PDFInfo, a dictionary once the PDF opens, holding /Collection; then its
+// page count; then, with sizes, each page's size: pdfshowpage_setpage sets the device's page size
+// to the page's, as rendering does, which is printed as its width and height. The path is escaped
+// as countArgs escapes it.
+func surveyArgs(pdf string, sizes bool) []string {
+	script := "(" + psString(pdf) + ") (r) file runpdfbegin " +
+		"/PDFInfo where { /PDFInfo get dup type /dicttype eq { /Collection known } { pop false } ifelse } { false } ifelse = "
+	if sizes {
+		script += "pdfpagecount dup = 1 1 3 -1 roll { " +
 			"pdfgetpage pdfshowpage_setpage pop currentpagedevice /PageSize get aload pop exch =only ( ) print = " +
-			"} for runpdfend quit"}
+			"} for runpdfend quit"
+	} else {
+		script += "pdfpagecount = runpdfend quit"
+	}
+	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf, "-c", script}
 }
 
 // psString escapes s for a PostScript string: its backslashes and parentheses.

@@ -51,6 +51,12 @@ type settings struct {
 	// FailText, when set, makes the stand-in gs's txtwrite run fail as FailPage makes a render
 	// fail, at that page.
 	FailText int `json:"fail_text,omitzero"`
+	// Portfolio, when set, makes the stand-in gs a PDF portfolio's, as gs reads one: a survey run,
+	// whose PostScript asks for /Collection, prints true before the count; and a render or a text
+	// run writes, in place of each page's, each of the two documents' page of that number, the
+	// first document's pages, then the second's, as gs runs a portfolio's documents in turn over
+	// the run's pages.
+	Portfolio bool `json:"portfolio,omitzero"`
 	// Delay holds, by page, how many milliseconds the stand-in gs's render of that page waits
 	// before it writes the page.
 	Delay map[int]int `json:"delay,omitzero"`
@@ -94,15 +100,62 @@ func standinPage(page, dpi int) []byte {
 	return tooltest.PNG(fmt.Sprintf("stand-in gs page %d at %d dpi", page, dpi))
 }
 
+// portfolioDocuments is how many documents the stand-in gs's portfolio embeds.
+const portfolioDocuments = 2
+
+// portfolioPage returns the stand-in gs's PNG of page of the portfolio's document doc, from 1, at
+// dpi, as standinPage does a page's.
+func portfolioPage(doc, page, dpi int) []byte {
+	return tooltest.PNG(fmt.Sprintf("stand-in gs document %d page %d at %d dpi", doc, page, dpi))
+}
+
+// portfolioText returns the stand-in gs's text layer for page of the portfolio's document doc.
+func portfolioText(doc, page int) string {
+	return fmt.Sprintf("      Document %d\n      Page %d of document %d.\n", doc, page, doc)
+}
+
+// standinOutput is one page a stand-in gs render or text run writes: its PNG and its text, the
+// page's own or, for a portfolio, a document's page, and the page of the run it is written for.
+type standinOutput struct {
+	page int
+	png  func(dpi int) []byte
+	text string
+}
+
+// outputs returns what a stand-in gs render or text run over pages writes, in order: each page's
+// own, or, for a portfolio, each document's pages in turn.
+func outputs(s settings, pages []int) []standinOutput {
+	var out []standinOutput
+	if !s.Portfolio {
+		for _, page := range pages {
+			out = append(out, standinOutput{page, func(dpi int) []byte { return standinPage(page, dpi) }, standinText(page)})
+		}
+		return out
+	}
+	for doc := 1; doc <= portfolioDocuments; doc++ {
+		for _, page := range pages {
+			out = append(out, standinOutput{page, func(dpi int) []byte { return portfolioPage(doc, page, dpi) }, portfolioText(doc, page)})
+		}
+	}
+	return out
+}
+
+// argLimit is the longest argument gs takes, in bytes: a longer one is "Command too long", and gs
+// exits 1, as gs 10.08.0 does past 2047.
+const argLimit = 2047
+
 // gs is the stand-in gs. With --version alone it prints the version alone, as gs does.
-// Otherwise it appends its working directory and arguments to the log file, then fails when
-// Fail is set, or else writes Stderr to stderr, and Stdout to stdout when it is set, and its own
-// output when it isn't: for a run with -dNODISPLAY, its pages' sizes when its PostScript asks for
-// them and its page count when it doesn't; for a run with the txtwrite device, each page's text,
-// to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the page's place in
-// the run from 1, failing at FailText; and for a render, each page's PNG in turn, after the
-// page's Delay, failing at FailPage and killed at KillPage. A run's pages are its -sPageList, or its -dFirstPage alone.
-// A page that fails writes "told to fail" to stderr and exits 1, the pages before it written.
+// Otherwise it appends its working directory and arguments to the log file, then refuses an
+// argument past argLimit, as gs does, and fails when Fail is set, or else writes Stderr to
+// stderr, and Stdout to stdout when it is set, and its own output when it isn't: for a run with
+// -dNODISPLAY, whether the PDF is a portfolio when its PostScript asks for /Collection, then its
+// page count, then its pages' sizes when its PostScript asks for them; for a run with the
+// txtwrite device, each output's text, to stdout for an OutputFile of -, and otherwise to the
+// OutputFile, its %d the output's place in the run from 1, failing at FailText; and for a render,
+// each output's PNG in turn, after its page's Delay, failing at FailPage and killed at KillPage.
+// A run's outputs are its pages', as outputs gives them, its pages its -sPageList, or its
+// -dFirstPage alone. A page that fails writes "told to fail" to stderr and exits 1, the outputs
+// before it written.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -111,6 +164,12 @@ func gs(s settings, args []string) int {
 	if err := appendLog(s.Log, args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
+	}
+	for _, a := range args {
+		if len(a) > argLimit {
+			fmt.Fprintf(os.Stderr, "Command too long: %s\n", a[:64])
+			return 1
+		}
 	}
 	if s.Fail != "" {
 		fmt.Fprint(os.Stderr, s.Fail)
@@ -122,28 +181,34 @@ func gs(s settings, args []string) int {
 	switch {
 	case s.Stdout != nil:
 		out = string(*s.Stdout)
-	case slices.Contains(args, "-dNODISPLAY") && strings.Contains(args[len(args)-1], "/PageSize"):
+	case slices.Contains(args, "-dNODISPLAY"):
+		script := args[len(args)-1]
+		if strings.Contains(script, "/Collection") {
+			out = fmt.Sprintf("%t\n", s.Portfolio)
+		}
+		if !strings.Contains(script, "/PageSize") {
+			out += fmt.Sprintf("%d\n", pages)
+			break
+		}
 		sizes := s.Sizes
 		if sizes == nil {
 			sizes = slices.Repeat([]string{"612 792"}, pages)
 		}
-		out = fmt.Sprintf("%d\n%s\n", len(sizes), strings.Join(sizes, "\n"))
-	case slices.Contains(args, "-dNODISPLAY"):
-		out = fmt.Sprintf("%d\n", pages)
+		out += fmt.Sprintf("%d\n%s\n", len(sizes), strings.Join(sizes, "\n"))
 	case slices.Contains(args, "-sDEVICE=txtwrite"):
 		return standinTexts(s, args)
 	default:
 		dpi, _ := strconv.Atoi(strings.TrimPrefix(args[slices.IndexFunc(args, func(a string) bool { return strings.HasPrefix(a, "-r") })], "-r"))
-		for _, page := range pageArgs(args) {
-			time.Sleep(time.Duration(s.Delay[page]) * time.Millisecond)
-			if page == s.FailPage {
+		for _, o := range outputs(s, pageArgs(args)) {
+			time.Sleep(time.Duration(s.Delay[o.page]) * time.Millisecond)
+			if o.page == s.FailPage {
 				fmt.Fprint(os.Stderr, "told to fail")
 				return 1
 			}
-			if page == s.KillPage {
+			if o.page == s.KillPage {
 				_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
 			}
-			if _, err := os.Stdout.Write(standinPage(page, dpi)); err != nil {
+			if _, err := os.Stdout.Write(o.png(dpi)); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 				return 2
 			}
@@ -165,16 +230,16 @@ func standinTexts(s settings, args []string) int {
 			file = v
 		}
 	}
-	for i, page := range pageArgs(args) {
-		if page == s.FailText {
+	for i, o := range outputs(s, pageArgs(args)) {
+		if o.page == s.FailText {
 			fmt.Fprint(os.Stderr, "told to fail")
 			return 1
 		}
 		var err error
 		if file == "-" {
-			_, err = os.Stdout.WriteString(standinText(page))
+			_, err = os.Stdout.WriteString(o.text)
 		} else {
-			err = os.WriteFile(fmt.Sprintf(file, i+1), []byte(standinText(page)), 0o600)
+			err = os.WriteFile(fmt.Sprintf(file, i+1), []byte(o.text), 0o600)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -184,8 +249,8 @@ func standinTexts(s settings, args []string) int {
 	return 0
 }
 
-// pageArgs returns the pages a gs run names: its -sPageList's, or its -dFirstPage alone, and
-// none for a run that names neither.
+// pageArgs returns the pages a gs run names: its -sPageList's, a page or a range of them, such
+// as 3-7, between each comma, or its -dFirstPage alone, and none for a run that names neither.
 func pageArgs(args []string) []int {
 	var pages []int
 	for _, a := range args {
@@ -195,8 +260,15 @@ func pageArgs(args []string) []int {
 		}
 		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
 			for f := range strings.SplitSeq(v, ",") {
-				n, _ := strconv.Atoi(f)
-				pages = append(pages, n)
+				first, last, _ := strings.Cut(f, "-")
+				from, _ := strconv.Atoi(first)
+				to := from
+				if last != "" {
+					to, _ = strconv.Atoi(last)
+				}
+				for n := from; n <= to; n++ {
+					pages = append(pages, n)
+				}
 			}
 		}
 	}

@@ -28,6 +28,7 @@ var cleanFlags = map[string][]inspect.Check{
 	"../office/testdata/ooxml/media.libreoffice.docx":     {inspect.ExternalRelationship},
 	"../office/testdata/ooxml/word-with-attachments.docx": {inspect.OLEObject},
 	"../document/testdata/attachments/attachments.pdf":    {inspect.PDFEmbeddedFile},
+	"../document/testdata/portfolio/portfolio.pdf":        {inspect.PDFEmbeddedFile},
 }
 
 // TestCleanFixtures inspects the repository's clean fixtures, every file under cleanDirs but the

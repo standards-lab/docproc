@@ -90,8 +90,8 @@ func (f *fixture) rendered() (pages, dpi []int) {
 }
 
 // processes returns the pages of each run of the stand-in gs with device, "png16m" or
-// "txtwrite", as gs names them, "-sPageList=1,4" for a shared process and "-dFirstPage=2" for a
-// page's own, sorted, since lanes start their processes in no fixed order.
+// "txtwrite", as gs names them, "-sPageList=1,4" or "-sPageList=1-3" for a shared process and
+// "-dFirstPage=2" for a page's own, sorted, since lanes start their processes in no fixed order.
 func (f *fixture) processes(device string) []string {
 	var got []string
 	for _, r := range f.gs.runs() {
@@ -389,7 +389,7 @@ func TestImagesTextFails(t *testing.T) {
 	if err := errs[1]; err == nil || !strings.Contains(err.Error(), "page 2 of 3: text") || pages[1].Path != "" {
 		t.Errorf("page 2: %+v, %v; want its text failing", pages[1], err)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-sPageList=1,2,3"}; !slices.Equal(got, want) {
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-sPageList=1-3"}; !slices.Equal(got, want) {
 		t.Errorf("text processes %q, want %q", got, want)
 	}
 	if got, want := f.processes("png16m"), []string{"-dFirstPage=1", "-dFirstPage=3"}; !slices.Equal(got, want) {
@@ -448,26 +448,34 @@ func TestImagesMaxPixels(t *testing.T) {
 }
 
 // TestImagesShared checks the pages share gs processes: with concurrency C, lane k takes pages k,
-// k+C, k+2C, and so on, up to PagesPerProcess of them a process, through gs's page list, its text
-// in one process before its render in another; and every page, yielded in page order, holds the
-// PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither 7
-// pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
+// k+C, k+2C, and so on, up to PagesPerProcess of them a process, through gs's page list, its
+// consecutive pages a range, its text in one process before its render in another, and a process
+// that would take one page alone is the page's own; and every page, yielded in page order, holds
+// the PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither
+// 7 pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
 // the default, 4.
 func TestImagesShared(t *testing.T) {
 	t.Parallel()
+	own := func(pages ...int) []string {
+		var args []string
+		for _, page := range pages {
+			args = append(args, "-dFirstPage="+strconv.Itoa(page))
+		}
+		return args
+	}
 	for _, tc := range []struct {
 		per, concurrency int
 		want             []string
 	}{
-		{1, 1, []string{"1", "2", "3", "4", "5", "6", "7"}},
-		{2, 1, []string{"1,2", "3,4", "5,6", "7"}},
-		{4, 1, []string{"1,2,3,4", "5,6,7"}},
-		{10, 1, []string{"1,2,3,4,5,6,7"}},
-		{0, 1, []string{"1,2,3,4", "5,6,7"}},
-		{1, 3, []string{"1", "2", "3", "4", "5", "6", "7"}},
-		{2, 3, []string{"1,4", "7", "2,5", "3,6"}},
-		{4, 3, []string{"1,4,7", "2,5", "3,6"}},
-		{10, 3, []string{"1,4,7", "2,5", "3,6"}},
+		{1, 1, own(1, 2, 3, 4, 5, 6, 7)},
+		{2, 1, append([]string{"-sPageList=1-2", "-sPageList=3-4", "-sPageList=5-6"}, own(7)...)},
+		{4, 1, []string{"-sPageList=1-4", "-sPageList=5-7"}},
+		{10, 1, []string{"-sPageList=1-7"}},
+		{0, 1, []string{"-sPageList=1-4", "-sPageList=5-7"}},
+		{1, 3, own(1, 2, 3, 4, 5, 6, 7)},
+		{2, 3, append([]string{"-sPageList=1,4", "-sPageList=2,5", "-sPageList=3,6"}, own(7)...)},
+		{4, 3, []string{"-sPageList=1,4,7", "-sPageList=2,5", "-sPageList=3,6"}},
+		{10, 3, []string{"-sPageList=1,4,7", "-sPageList=2,5", "-sPageList=3,6"}},
 	} {
 		f := newFixture(t, 7)
 		f.req.PagesPerProcess, f.req.Concurrency, f.req.Text = tc.per, tc.concurrency, true
@@ -486,11 +494,7 @@ func TestImagesShared(t *testing.T) {
 				t.Errorf("%s: page %d's file holds %q, %v; want its own page", name, p.Number, b, err)
 			}
 		}
-		var want []string
-		for _, list := range tc.want {
-			want = append(want, "-sPageList="+list)
-		}
-		slices.Sort(want)
+		want := slices.Sorted(slices.Values(tc.want))
 		if got := f.processes("png16m"); !slices.Equal(got, want) {
 			t.Errorf("%s: render processes %q, want %q", name, got, want)
 		}
@@ -505,7 +509,7 @@ func TestImagesShared(t *testing.T) {
 // process, and that the directory is gone once the stream ends.
 func TestImagesSharedTextFiles(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 5)
+	f := newFixture(t, 8)
 	f.req.Text, f.req.Concurrency, f.req.PagesPerProcess = true, 2, 2
 	for _, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
 		if err != nil {
@@ -522,8 +526,8 @@ func TestImagesSharedTextFiles(t *testing.T) {
 			}
 		}
 	}
-	if len(outs) != 3 {
-		t.Fatalf("text processes wrote to %q, want 3", outs)
+	if len(outs) != 4 {
+		t.Fatalf("text processes wrote to %q, want 4", outs)
 	}
 	for _, out := range outs {
 		dir := filepath.Dir(out)
@@ -564,10 +568,10 @@ func TestImagesSharedFallback(t *testing.T) {
 			t.Errorf("page %d: %+v, %v, file %q; want its own page and text", i+1, p, errs[i], b)
 		}
 	}
-	if got, want := f.processes("png16m"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1,2,3,4,5,6,7"}; !slices.Equal(got, want) {
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1-7"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1,2,3,4,5,6,7"}; !slices.Equal(got, want) {
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1-7"}; !slices.Equal(got, want) {
 		t.Errorf("text processes %q, want %q", got, want)
 	}
 	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png", "page-3.png", "page-5.png", "page-6.png", "page-7.png"}) {
@@ -594,7 +598,7 @@ func TestImagesSharedRunFailure(t *testing.T) {
 			t.Errorf("page %d: %+v, %v; want gs's SIGKILL", i+1, pages[i], errs[i])
 		}
 	}
-	if got, want := f.processes("png16m"), []string{"-sPageList=1,2,3,4,5"}; !slices.Equal(got, want) {
+	if got, want := f.processes("png16m"), []string{"-sPageList=1-5"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
 	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png"}) {
@@ -603,16 +607,17 @@ func TestImagesSharedRunFailure(t *testing.T) {
 }
 
 // TestImagesMaxPixelsOwnProcess checks a page MaxPixels renders at a lower DPI gets a process of
-// its own, at that DPI, the lane's run of pages at the request's DPI broken around it, at
-// concurrency 1 and 2: page 3, a letter page, at 149 dpi, the half-letter pages at 150.
+// its own, at that DPI, the lane's run of pages at the request's DPI broken around it, a page the
+// break leaves alone in its own as well, at concurrency 1 and 2: page 3, a letter page, at 149
+// dpi, the half-letter pages at 150.
 func TestImagesMaxPixelsOwnProcess(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		concurrency int
 		want        []string
 	}{
-		{1, []string{"-dFirstPage=3", "-sPageList=1,2", "-sPageList=4,5"}},
-		{2, []string{"-dFirstPage=3", "-sPageList=1", "-sPageList=2,4", "-sPageList=5"}},
+		{1, []string{"-dFirstPage=3", "-sPageList=1-2", "-sPageList=4-5"}},
+		{2, []string{"-dFirstPage=1", "-dFirstPage=3", "-dFirstPage=5", "-sPageList=2,4"}},
 	} {
 		f := newFixture(t, 0)
 		f.gs.set(func(s *settings) { s.Sizes = []string{"612 396", "612 396", "612 792", "612 396", "612 396"} })
@@ -651,7 +656,7 @@ func TestImagesIdleBound(t *testing.T) {
 			time.Sleep(3 * bound)
 		}
 	}
-	if got, want := f.processes("png16m"), []string{"-sPageList=1,2,3,4"}; !slices.Equal(got, want) {
+	if got, want := f.processes("png16m"), []string{"-sPageList=1-4"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
 
@@ -664,7 +669,115 @@ func TestImagesIdleBound(t *testing.T) {
 	if exit, ok := errors.AsType[*tool.ExitError](errs[2]); !ok || !exit.TimedOut || !strings.Contains(errs[2].Error(), "page 3 of 4: render") {
 		t.Errorf("page 3: %v; want its own process timed out", errs[2])
 	}
-	if got, want := f.processes("png16m"), []string{"-dFirstPage=3", "-dFirstPage=4", "-sPageList=1,2,3,4"}; !slices.Equal(got, want) {
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=3", "-dFirstPage=4", "-sPageList=1-4"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
+	}
+}
+
+// TestImagesOnePage checks a lane's batch of one page is the page's own process, never a shared
+// one: a one-page PDF whose page fails runs gs for it once, its text and its render, not a shared
+// process and then its own; and the page fails with gs's reason.
+func TestImagesOnePage(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 1)
+	f.gs.set(func(s *settings) { s.FailPage = 1 })
+	f.req.Text = true
+	pages, errs := f.images(t.Context())
+	if len(pages) != 1 || pages[0] != (document.PageImage{Number: 1, Count: 1}) || errs[0] == nil || !strings.Contains(errs[0].Error(), "told to fail") {
+		t.Fatalf("the stream yielded %+v, %v; want page 1 failing with gs's reason", pages, errs)
+	}
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=1"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1"}; !slices.Equal(got, want) {
+		t.Errorf("text processes %q, want %q", got, want)
+	}
+}
+
+// TestImagesPortfolio checks a PDF portfolio, whose pages gs renders as its documents' pages, a
+// process's output not a page's own, never shares a process: its survey says so, and every page
+// gets processes of its own, its file and its text what they give, every document's page of its
+// number, at PagesPerProcess 4 and concurrency 1 and 2, and with a MaxPixels, whose survey reads
+// the pages' sizes too.
+func TestImagesPortfolio(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		concurrency int
+		maxPixels   int64
+	}{{1, 0}, {2, 0}, {1, 1 << 30}} {
+		f := newFixture(t, 3)
+		f.gs.set(func(s *settings) { s.Portfolio = true })
+		f.req.Text, f.req.PagesPerProcess, f.req.Concurrency, f.req.MaxPixels = true, 4, tc.concurrency, tc.maxPixels
+		name := fmt.Sprintf("concurrency %d, MaxPixels %d", tc.concurrency, tc.maxPixels)
+		pages, errs := f.images(t.Context())
+		if len(pages) != 3 {
+			t.Fatalf("%s: the stream yielded %+v, %v; want 3 pages", name, pages, errs)
+		}
+		for i, p := range pages {
+			var png []byte
+			var text string
+			for doc := 1; doc <= portfolioDocuments; doc++ {
+				png, text = append(png, portfolioPage(doc, i+1, 150)...), text+portfolioText(doc, i+1)
+			}
+			b, err := os.ReadFile(p.Path)
+			if errs[i] != nil || err != nil || !bytes.Equal(b, png) || p.Text != text {
+				t.Errorf("%s: page %d: %+v, %v, file %q; want its own processes' PNGs and text", name, i+1, p, errs[i], b)
+			}
+		}
+		want := []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3"}
+		if got := f.processes("png16m"); !slices.Equal(got, want) {
+			t.Errorf("%s: render processes %q, want %q", name, got, want)
+		}
+		if got := f.processes("txtwrite"); !slices.Equal(got, want) {
+			t.Errorf("%s: text processes %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestImagesPageListLimit checks a shared process's page list never passes the 2047 bytes gs
+// takes in an argument, whatever PagesPerProcess and the concurrency: at concurrency 1, 3000
+// pages at PagesPerProcess 1000 are three ranges; at concurrency 2, each lane's 1500 pages, none
+// consecutive, are split where the next page would take its list past the limit, the four-digit
+// pages five bytes each with their comma: a lane's odd pages to 1035, 518 of them, its list 2045
+// bytes, then 407 pages to 1849, to 2663, and the rest. Every page is its own.
+func TestImagesPageListLimit(t *testing.T) {
+	t.Parallel()
+	list := func(from, to int) string {
+		var pages []string
+		for page := from; page <= to; page += 2 {
+			pages = append(pages, strconv.Itoa(page))
+		}
+		return "-sPageList=" + strings.Join(pages, ",")
+	}
+	for _, tc := range []struct {
+		concurrency int
+		want        []string
+	}{
+		{1, []string{"-sPageList=1-1000", "-sPageList=1001-2000", "-sPageList=2001-3000"}},
+		{2, []string{
+			list(1, 1035), list(1037, 1849), list(1851, 2663), list(2665, 2999),
+			list(2, 1034), list(1036, 1848), list(1850, 2662), list(2664, 3000),
+		}},
+	} {
+		f := newFixture(t, 3000)
+		f.req.PagesPerProcess, f.req.Concurrency = 1000, tc.concurrency
+		pages, errs := f.images(t.Context())
+		if len(pages) != 3000 {
+			t.Fatalf("concurrency %d: the stream yielded %d pages, want 3000", tc.concurrency, len(pages))
+		}
+		for i, p := range pages {
+			if b, err := os.ReadFile(p.Path); errs[i] != nil || err != nil || !bytes.Equal(b, standinPage(i+1, 150)) {
+				t.Fatalf("concurrency %d: page %d: %+v, %v; want its own page", tc.concurrency, i+1, p, errs[i])
+			}
+		}
+		got := f.processes("png16m")
+		for _, arg := range got {
+			if len(arg) > 2047 {
+				t.Errorf("concurrency %d: a page list of %d bytes, past gs's 2047", tc.concurrency, len(arg))
+			}
+		}
+		if want := slices.Sorted(slices.Values(tc.want)); !slices.Equal(got, want) {
+			t.Errorf("concurrency %d: render processes %.200q, want %.200q", tc.concurrency, got, want)
+		}
 	}
 }

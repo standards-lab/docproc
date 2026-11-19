@@ -86,12 +86,14 @@ type PageImage struct {
 //
 // The pages share gs processes. With concurrency C, the pages are dealt to C lanes, lane k taking
 // pages k, k+C, k+2C, and so on; each lane runs one gs process at a time over up to
-// req.PagesPerProcess of its pages, through gs's page list, the PNGs split from its stdout, and,
-// when req reads text, one process before it that writes the pages' text, a file a page, in a
-// temporary directory of the Preparer's own, never the PDF's nor req.Dir, read back a page at a
-// time and removed. A page MaxPixels renders at a lower DPI gets a process of its own, since gs
-// renders one resolution a run. Each page's PNG and text are byte for byte what a process of its
-// own gives. A shared process's bound is the gs Tool's Timeout read as an idle bound, between
+// req.PagesPerProcess of its pages, and no more than gs takes in one argument's page list, through
+// gs's page list, the PNGs split from its stdout, and, when req reads text, one process before it
+// that writes the pages' text, a file a page, in a temporary directory of the Preparer's own,
+// never the PDF's nor req.Dir, read back a page at a time and removed. A page MaxPixels renders at
+// a lower DPI gets a process of its own, since gs renders one resolution a run, as does a lane's
+// lone page, and every page of a PDF portfolio, whose output gs writes from its embedded
+// documents' pages rather than a page's own. Each page's PNG and text are byte for byte what a
+// process of its own gives. A shared process's bound is the gs Tool's Timeout read as an idle bound, between
 // its writes, and never counting time spent waiting on the consumer; a process of a page's own
 // takes it whole, as a unit's.
 //
@@ -148,7 +150,7 @@ type outcome struct {
 // a later page that finishes first waiting in its channel. Once the consumer stops, the outcomes
 // it never took have their files removed.
 func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yield func(PageImage, error) bool) {
-	sizes, err := p.count(ctx, path, req)
+	sv, err := p.render.survey(ctx, path, req.MaxPixels > 0)
 	if err != nil {
 		if cerr := ctx.Err(); cerr != nil {
 			err = cerr
@@ -156,9 +158,9 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 		yield(PageImage{}, err)
 		return
 	}
-	n := len(sizes)
-	r := &run{p: p, path: path, n: n, sizes: sizes, req: req, turns: make([]chan struct{}, n), done: make([]chan outcome, n)}
-	if req.Text && p.render.sharedText() {
+	n := len(sv.sizes)
+	r := &run{p: p, path: path, n: n, sizes: sv.sizes, portfolio: sv.portfolio, req: req, turns: make([]chan struct{}, n), done: make([]chan outcome, n)}
+	if req.Text && p.render.sharedText() && !r.portfolio {
 		// The run's scratch, which the shared text runs write in: the Preparer's own, never the
 		// input's directory nor the caller's.
 		if r.scratch, err = os.MkdirTemp("", "docproc-text-*"); err != nil {
@@ -214,40 +216,36 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 	}
 }
 
-// count returns a size for each page of the PDF at path: each page's own when req has a MaxPixels,
-// which needs it, and zero sizes, from the page count alone, when it doesn't.
-func (p *Preparer) count(ctx context.Context, path string, req ImagesRequest) ([]pageSize, error) {
-	if req.MaxPixels > 0 {
-		return p.render.sizes(ctx, path)
-	}
-	n, err := p.render.Count(ctx, path)
-	if err != nil {
-		return nil, err
-	}
-	return make([]pageSize, n), nil
-}
-
-// run is one stream's preparation of the n pages of the PDF at path, their sizes sizes, under
-// req, already checked: its context, which ends when the stream does, each page's turn, closed
-// once it may start, and each page's outcome channel. scratch is the directory the shared text
-// runs write in, "" when they don't run.
+// run is one stream's preparation of the n pages of the PDF at path, their sizes sizes, zero
+// unless req has a MaxPixels, which needs them, under req, already checked: its context, which
+// ends when the stream does, each page's turn, closed once it may start, and each page's outcome
+// channel. portfolio is whether the PDF is a portfolio, as survey reads it, whose pages never
+// share a process. scratch is the directory the shared text runs write in, "" when they don't
+// run.
 type run struct {
-	p       *Preparer
-	ctx     context.Context
-	path    string
-	n       int
-	sizes   []pageSize
-	req     ImagesRequest
-	scratch string
-	turns   []chan struct{}
-	done    []chan outcome
+	p         *Preparer
+	ctx       context.Context
+	path      string
+	n         int
+	sizes     []pageSize
+	portfolio bool
+	req       ImagesRequest
+	scratch   string
+	turns     []chan struct{}
+	done      []chan outcome
 }
 
 // lane prepares the pages of lane k, from 1: pages k, k+C, k+2C, and so on, C the concurrency, in
 // order. The pages that render at the request's DPI go through shared processes, as shared
-// prepares them, up to the request's PagesPerProcess in each, a run of them broken by any page
-// that doesn't; a page MaxPixels renders at a lower DPI, or that fits at none, gets a process of
-// its own, as single prepares it, since gs renders one resolution a run.
+// prepares them, up to the request's PagesPerProcess in each, and no more than gs's page list
+// holds within argLimit, a run of them broken by any page that doesn't; a page MaxPixels renders
+// at a lower DPI, or that fits at none, gets a process of its own, as single prepares it, since gs
+// renders one resolution a run. So does every page of a portfolio, whose processes' output gs
+// writes from its documents' pages, a run's PNGs and text files not the run's pages one for one,
+// so a shared process could hand a page over before the output that tells it wrong is written;
+// survey reads a portfolio before any page runs, so its pages are never shared. A batch of one
+// page is the page's own process too: it is the same work, and, when the page fails, it fails
+// once, where a shared process would fail and then rerun it alone.
 //
 // When a shared process fails as the content's, by contentFailure, the pages it handed over
 // stand, and each page it didn't is prepared by single, alone, so only a page that fails there
@@ -256,12 +254,16 @@ type run struct {
 // has ended.
 func (r *run) lane(k int) {
 	var batch []int
+	var list pageListLength
 	flush := func() bool {
-		if len(batch) == 0 {
-			return true
-		}
 		pages := batch
-		batch = nil
+		batch, list = nil, pageListLength{}
+		switch len(pages) {
+		case 0:
+			return true
+		case 1:
+			return r.single(pages[0])
+		}
 		rest, step, err := r.shared(pages)
 		switch {
 		case err == nil:
@@ -282,19 +284,35 @@ func (r *run) lane(k int) {
 		return true
 	}
 	for page := k; page <= r.n; page += r.req.Concurrency {
-		if r.req.MaxPixels > 0 {
-			if dpi, ok := r.sizes[page-1].fit(r.req.DPI, r.req.MaxPixels); !ok || dpi != r.req.DPI {
-				if !flush() || !r.single(page) {
-					return
-				}
-				continue
+		if !r.shares(page) {
+			if !flush() || !r.single(page) {
+				return
 			}
+			continue
 		}
-		if batch = append(batch, page); len(batch) == r.req.PagesPerProcess && !flush() {
+		if len(batch) > 0 && list.with(page) > argLimit && !flush() {
+			return
+		}
+		batch = append(batch, page)
+		list.add(page)
+		if len(batch) == r.req.PagesPerProcess && !flush() {
 			return
 		}
 	}
 	flush()
+}
+
+// shares reports whether page may share a process: the PDF isn't a portfolio, and the page
+// renders at the request's DPI, MaxPixels lowering it to none.
+func (r *run) shares(page int) bool {
+	if r.portfolio {
+		return false
+	}
+	if r.req.MaxPixels > 0 {
+		dpi, ok := r.sizes[page-1].fit(r.req.DPI, r.req.MaxPixels)
+		return ok && dpi == r.req.DPI
+	}
+	return true
 }
 
 // turn waits for page's turn, and reports false when the run's context ends first.

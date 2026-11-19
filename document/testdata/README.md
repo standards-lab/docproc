@@ -1,8 +1,9 @@
 # testdata
 
 The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
-AcroForm and a page of a signed PDF for the forms record; and a generated PDF of embedded files. Each set is one multi-page PDF, so a renderer test names
-a page of it and a page stream test takes the whole PDF. The clean and degraded sets are
+AcroForm and a page of a signed PDF for the forms record; a generated PDF of embedded files; and
+a generated PDF portfolio. Each set is one multi-page PDF, so a renderer test names a page of it
+and a page stream test takes the whole PDF. The clean and degraded sets are
 generated from `clean.typ`; the scanned set is real scans.
 
 - `clean.pdf` is six pages, one layout each: prose, two columns, a table, 8 pt print, a filled-in
@@ -209,4 +210,27 @@ Its SHA-256 sum, which `TestFixtureSums` holds it to:
 
 ```
 2512e73aaca5a4d2df650018fedea34fcf05caecb5106172a713cd34ed8edf7f  attachments/attachments.pdf
+```
+
+## The portfolio fixture
+
+`portfolio/portfolio.pdf` is this repository's, Apache-2.0: a PDF portfolio, written by hand by
+`portfolio/generate.go`, every byte fixed, so a rerun writes the same bytes. Run it in
+`document/testdata/portfolio`:
+
+```sh
+mise exec -- go run generate.go
+```
+
+Its cover has two letter pages, `Portfolio cover, page 1` and `page 2`, and its catalog a
+`/Collection`, with two embedded documents of two letter pages each: `harbor.pdf`, whose pages
+read `Harbor survey, page 1` and `page 2`, and `tides.pdf`, `Tide tables, page 1` and `page 2`. gs
+renders a portfolio's documents in place of its pages, the run's page range applied to each
+document in turn, so a run of the cover's page 1 writes two PNGs, each document's page 1, and its
+text both documents' first lines.
+
+Its SHA-256 sum, which `TestFixtureSums` holds it to:
+
+```
+c459d50b851ac5fcad70ea49c2b3491d158bc975a70c2a03839c41b53c3d1754  portfolio/portfolio.pdf
 ```

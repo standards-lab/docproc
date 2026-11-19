@@ -37,9 +37,10 @@ type gsSettings struct {
 	Fail  int `json:"fail,omitzero"`
 }
 
-// gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A count run, with
-// -dNODISPLAY, prints its settings' Pages. Any other run's pages are its -sPageList, or its
-// -dFirstPage alone, each in turn: a run of the txtwrite device writes "page N" for each, but a
+// gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A survey run, with
+// -dNODISPLAY, prints false, no portfolio, when its PostScript asks for /Collection, then its
+// settings' Pages. Any other run's pages are its -sPageList's, a page or a range of them between
+// each comma, or its -dFirstPage alone, each in turn: a run of the txtwrite device writes "page N" for each, but a
 // blank line for Empty, to stdout for an OutputFile of -, and otherwise to a file of the
 // OutputFile, its %d the page's place in the run from 1; and a render writes each page's PNG,
 // naming "page N", but fails at Fail, the pages before it written.
@@ -55,6 +56,9 @@ func gsStandin(r tooltest.Run) int {
 		return 0
 	}
 	if slices.Contains(args, "-dNODISPLAY") {
+		if strings.Contains(args[len(args)-1], "/Collection") {
+			fmt.Println(false)
+		}
 		fmt.Println(settings.Pages)
 		return 0
 	}
@@ -67,8 +71,15 @@ func gsStandin(r tooltest.Run) int {
 		}
 		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
 			for f := range strings.SplitSeq(v, ",") {
-				n, _ := strconv.Atoi(f)
-				pages = append(pages, n)
+				first, last, _ := strings.Cut(f, "-")
+				from, _ := strconv.Atoi(first)
+				to := from
+				if last != "" {
+					to, _ = strconv.Atoi(last)
+				}
+				for n := from; n <= to; n++ {
+					pages = append(pages, n)
+				}
 			}
 		}
 		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
