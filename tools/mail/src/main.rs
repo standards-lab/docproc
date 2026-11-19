@@ -24,7 +24,7 @@ mod sniff;
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use docproc_envelope::{Fault, Lines, Media, stderr};
@@ -88,7 +88,7 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
     let mut prefix = Vec::with_capacity(sniff::PREFIX);
     File::open(path)
         .and_then(|file| file.take(sniff::PREFIX as u64).read_to_end(&mut prefix))
-        .map_err(unreadable)?;
+        .map_err(unreadable(path))?;
     let mut out = Lines::new(BufWriter::new(io::stdout().lock()));
     let mut files = Media::new(args.media);
     match sniff::sniff(&prefix) {
@@ -114,7 +114,7 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
         Format::Other => {
             let shaped = File::open(path)
                 .and_then(|file| sniff::header_shape(BufReader::new(file)))
-                .map_err(unreadable)?;
+                .map_err(unreadable(path))?;
             if !shaped {
                 return Err(Fault::Refused(NO_MAIL.to_owned()));
             }
@@ -125,10 +125,15 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
     out.flush().map_err(Fault::Output)
 }
 
-/// The refusal of an input that can't be opened or read, its path left to the caller, which
-/// knows it.
-pub fn unreadable(err: io::Error) -> Fault {
-    Fault::Refused(format!("the input can't be read: {err}"))
+/// The refusal of the input at `path` that can't be opened or read: missing, a directory, or
+/// without read permission, named by its path after the reason (docproc-envelope's
+/// [`input_refusal`](docproc_envelope::input_refusal)); for any other error, the error alone,
+/// the path left to the caller, which knows it.
+pub fn unreadable(path: &Path) -> impl Fn(io::Error) -> Fault + '_ {
+    move |err| {
+        docproc_envelope::input_refusal(path, &err)
+            .unwrap_or_else(|| Fault::Refused(format!("the input can't be read: {err}")))
+    }
 }
 
 /// Refuses `--after` for an input that is a single message, `kind`, as a usage error: there is no

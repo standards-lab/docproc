@@ -9,6 +9,13 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+### Changed
+
+- An input that is missing, a directory, or without read permission is refused, still exit 3,
+  with a reason that says which and names the input's path as given, after it: `no such file:
+  <path>`, `is a directory: <path>`, or `permission denied: <path>`, in place of `the input can't
+  be read:` and the operating system's message. Every other refusal and warning reads as before.
+
 ## [v0.1.2] - 2026-11-18
 
 ### Changed

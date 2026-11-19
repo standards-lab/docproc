@@ -160,7 +160,9 @@ is more than nine times what its data can yield (not decompressed), an image sou
 nothing, a TNEF or opaque S/MIME part, and a `.pst` embedded message listed without its content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
-an input that can't be read; an input in none of the four formats, an mbox among them none of
+an input that is missing, a directory, or without read permission, `no such file: <path>`, `is a
+directory: <path>`, or `permission denied: <path>`, the path as given; any other input that
+can't be read; an input in none of the four formats, an mbox among them none of
 whose entries is a message (an empty mbox is read, giving its store line); an `.ost`, the
 offline cache of a server mailbox, to be exported from Outlook as a `.pst`; a PST version
 outlook-pst doesn't read (it reads 14 and 15, ANSI, and 23, Unicode); a store whose IPM subtree
