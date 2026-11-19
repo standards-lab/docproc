@@ -453,7 +453,7 @@ func TestImagesMaxPixels(t *testing.T) {
 // that would take one page alone is the page's own; and every page, yielded in page order, holds
 // the PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither
 // 7 pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
-// the default, 4.
+// the default, 8, past the count.
 func TestImagesShared(t *testing.T) {
 	t.Parallel()
 	own := func(pages ...int) []string {
@@ -471,7 +471,7 @@ func TestImagesShared(t *testing.T) {
 		{2, 1, append([]string{"-sPageList=1-2", "-sPageList=3-4", "-sPageList=5-6"}, own(7)...)},
 		{4, 1, []string{"-sPageList=1-4", "-sPageList=5-7"}},
 		{10, 1, []string{"-sPageList=1-7"}},
-		{0, 1, []string{"-sPageList=1-4", "-sPageList=5-7"}},
+		{0, 1, []string{"-sPageList=1-7"}},
 		{1, 3, own(1, 2, 3, 4, 5, 6, 7)},
 		{2, 3, append([]string{"-sPageList=1,4", "-sPageList=2,5", "-sPageList=3,6"}, own(7)...)},
 		{4, 3, []string{"-sPageList=1,4,7", "-sPageList=2,5", "-sPageList=3,6"}},

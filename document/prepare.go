@@ -47,7 +47,7 @@ type ImagesRequest struct {
 	// until the consumer takes its outcome; it is at least 1, and anything less is refused.
 	Concurrency int `json:"-"`
 	// PagesPerProcess is the most pages one gs process renders, and reads the text of, for a
-	// lane of pages that share processes, as Images says. Zero means a default of 4; a negative
+	// lane of pages that share processes, as Images says. Zero means a default of 8; a negative
 	// PagesPerProcess is refused. Like Concurrency, it changes how the pages are prepared, never
 	// what they are, so it is outside the request's identity.
 	PagesPerProcess int `json:"-"`
@@ -125,9 +125,10 @@ func (p *Preparer) Images(ctx context.Context, path string, req ImagesRequest) i
 }
 
 // defaultPagesPerProcess is the most pages one gs process renders for a request of zero
-// PagesPerProcess: the smallest count whose time, on the 915-page CFR volume at cmd/docproc's
-// starting settings, came within 5% of one process for the whole PDF (context/acceptance.md).
-const defaultPagesPerProcess = 4
+// PagesPerProcess: the smallest count whose median time, on the 915-page CFR volume at
+// cmd/docproc's starting settings, came within 5% of the fastest count's median, 97.6 s against
+// 64's 94.2 s (context/acceptance.md).
+const defaultPagesPerProcess = 8
 
 // outcome is one page's file, its DPI, and its text, or its error, as its lane hands it to the
 // stream.

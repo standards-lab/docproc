@@ -249,7 +249,7 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
 - **document.** A PDF that needs a password is flagged and not read. A page past the request's
   MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's
   pages share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
-  `ImagesRequest.PagesPerProcess` pages a process (zero is 4), with one process before it that
+  `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
   writes their text layers to a temporary directory of its own, never the input's; a page
   MaxPixels lowers gets a process of its own. Every page's PNG and text are byte for byte what a
   process of its own gives. A shared process's bound is `stages.Options.Timeout` read as an idle
