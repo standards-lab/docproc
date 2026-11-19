@@ -184,3 +184,257 @@ output directory before and after each run.
 7. Temporary files: after each run, list the files beside the PDF that aren't PDFs, and delete
    them. Stop the stream after a few pages with a `break` to see what an early end leaves.
    `inotifywait -m -r -e create,delete` on the copies shows every file gs creates during a run.
+
+## Tool bench reruns
+
+Measured 2026-11-19, from 17:31 to 17:38 UTC, on the same laptop as the spikes' runs: Intel Core
+Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy. Each spike's own bench ran against
+the tool's published linux-x64 release, downloaded with `gh release download <tag> -R
+standards-lab/docproc` and checked against the release's `SHA256SUMS`:
+
+| Release | Archive SHA-256 | Binary SHA-256 | `--version` |
+| --- | --- | --- | --- |
+| tools/ooxml/v0.1.1 | `4ea3de23330f8c637d7ee0dd2f817e6b0e9aac03d8a14fc0a4a34896b5d6de33` | `e2a0fe997d34bbbf5eeb79e40e2969bf555771ec48d5c653d556de4b06133671` | 0.1.1, schema 2 |
+| tools/mail/v0.1.2 | `1846c2016932dda71fab9525505c5af04a11c20f3a63c13b20bf5d03d671b9e1` | `2fbf7e2dab0012c8f9a16fc4e0cf9ac7bd360bd67554f27f559e4cc03cf52dbd` | 0.1.2, schema 2 |
+| tools/onenote/v0.1.0 | `28f82553162fbdd211620734566e65686eac3943c43fcfacd6e8952a258ead1a` | `a6b908801601270115c08bba344b3cf931ce05f580ad3fb3d826e5d363d88090` | 0.1.0, schema 2 |
+
+Each bench ran from a detached `git worktree` of its spike checkout in `~/experiments`, at the
+checkout's HEAD (office b9bb1a2, mail 9cbbdd3, onenote 866ffc6), with its run counts unchanged:
+office 5 runs a file, mail and onenote 3 runs of each large input and 1 of each committed store
+(mail) or 3 of every input (onenote). The large inputs were the spikes' own, read in place through
+symlinks: mail's scale store (`.state/scale`, built 2026-11-05 for run v0.3.0) and plaso's store,
+and onenote's three large sections, each checked against its pinned SHA-256. Outputs went to a
+tmpfs scratch directory, where the spikes wrote to btrfs. The WER measurement was scheduled on the
+host at the same time; no ffmpeg process was running at the start or the end of the mail run, and
+the load average was between 0.4 and 2.8 throughout.
+
+A spike figure is the one its findings page records in `docs/findings/`: office's run `office`
+(2026-10-31, office 0.1.0+6ed0d0e), mail's run `v0.3.0` (2026-11-05, 0.3.0, the run that repeats
+every table), and onenote's run `v0.1.0` (2026-11-04). Each difference is judged equal, better,
+worse, or not comparable. Times within a run's own spread, or within the 12% the mail finding
+records between two days' runs on this laptop, are equal.
+
+### docproc-ooxml: the baseline
+
+The bench is `mise run baseline` (`scripts/baseline.sh`, `bench/SpikeAiPipeline.Office.Baseline`):
+each of the 72 pool files (42 generated, 30 real-world) run 5 times through `bench/rusage.c`, the
+first run's Markdown scored against the file's ground truth.
+
+Adaptations, in `bench/SpikeAiPipeline.Office.Baseline`:
+
+- `Program.cs`: `Arguments(file)` is `[file]`, where it was `[file, "--format", "markdown"]`. A
+  new local function, `MarkdownOf(stdout)`, parses each stdout line as JSON and joins the lines'
+  `markdown` fields in order with nothing between them, the whole rendering by the contract; the
+  scored text and `markdownBytes` are that join. The output identity (`sameOutputEveryRun`) still
+  hashes the whole stdout.
+- `Footprint.cs`: `Office()` returns the binary's size with `packages` null when the spike's
+  `obj/project.assets.json` is absent; the release ships `THIRD-PARTY-NOTICES.txt` instead.
+
+The bench was built and run without the script's publish step:
+`mise exec -- dotnet build bench/SpikeAiPipeline.Office.Baseline -c Release -warnaserror -o
+.state/baseline/bench`, `cc -O2 -Wall -Wextra -Werror -o .state/baseline/rusage bench/rusage.c`,
+then `.state/baseline/bench/SpikeAiPipeline.Office.Baseline --root . --office
+<release>/docproc-ooxml --rusage .state/baseline/rusage --runs 5 --timeout 60 --out
+<scratch>/results.json`.
+
+Cut fields: none scored. The bench reads the Markdown alone, and schema "2" moved it into the
+JSON lines whole. The structured fields schema "2" cut (the block tree, the chart fields, the
+picture `alt`) were never scored.
+
+| Kind | Spike, whole pool | Release, whole pool | Spike, real-world | Release, real-world |
+| --- | --- | --- | --- | --- |
+| Heading | 62 / 62 | 62 / 62 | 18 / 18 | 18 / 18 |
+| Paragraph | 179 / 179 | 179 / 179 | 89 / 89 | 89 / 89 |
+| List item | 167 / 167 | 167 / 167 | 91 / 91 | 91 / 91 |
+| Table cell | 825 / 825 | 825 / 825 | 577 / 577 | 577 / 577 |
+| Sheet name | 39 / 39 | 39 / 39 | 17 / 17 | 17 / 17 |
+| Slide order | 38 / 38 | 38 / 38 | 18 / 18 | 18 / 18 |
+| Slide notes | 14 / 14 | 14 / 14 | 4 / 4 | 4 / 4 |
+| Chart value, region rule | 331 / 331 | 331 / 331 | 294 / 294 | 294 / 294 |
+| Chart value, table-only rule | 331 / 331 | 331 / 331 | 294 / 294 | 294 / 294 |
+| Media reference | 50 / 50 | 50 / 50 | 18 / 18 | 18 / 18 |
+| Header or footer | 32 / 32 | 32 / 32 | 11 / 11 | 11 / 11 |
+| Footnote or endnote | 13 / 13 | 13 / 13 | 3 / 3 | 3 / 3 |
+| Comment | 18 / 18 | 18 / 18 | 4 / 4 | 4 / 4 |
+
+| Measure | Spike | Release | Verdict |
+| --- | --- | --- | --- |
+| Files exiting 0 | 72 of 72 | 72 of 72 | equal |
+| Same output on every run | 72 of 72 | 72 of 72 | equal |
+| Median file, median of 5 | 16.37 ms | 15.39 ms | equal, within the 3 ms median spread |
+| Whole pool, sum of medians | 1,306.1 ms | 1,200.0 ms | equal |
+| Fastest and slowest file's median | 12.08, 29.98 ms | 10.40, 26.23 ms | equal |
+| First invocation | 24.76 ms | 20.93 ms | equal |
+| Peak memory of the median file | 35.29 MiB | 33.94 MiB | better, slightly |
+| Smallest and largest peak | 30.47, 44.25 MiB | 28.89, 42.93 MiB | better, slightly; the largest is sections.libreoffice.docx in both |
+| Binary | 30,197,712 B | 29,363,352 B | equal |
+| Markdown, all 72 files | 46,418 B | 47,484 B | not comparable: the release's Markdown adds text |
+
+The Markdown of 8 files differs from the spike's: a hyperlink's text is written as a Markdown
+link (delins.docx, shapes.pptx, word-with-attachments.docx, unit-test-formatting.docx among them),
+and an xlsx cell's `->` loses the spike's backslash. The scoring reads a link as its text, so no
+score moves.
+
+### docproc-mail: the findings
+
+The bench is `mise run findings` (`scripts/findings.sh`, `bench/findings.rs`): the fields the
+tool recovers per kind against the fixtures' truth, in nine tables, and its time and peak memory
+on every committed .pst, plaso's 59 MB store, and the 2.1 GB scale store as a .pst and as a
+2.7 GB mboxrd, each without and with its media directory, and the scale store resumed with
+`--after`.
+
+Adaptations, in `bench/findings.rs`:
+
+- `time_store`: the media flag passed is `--media <dir>`, where it was `--attachments <dir>`.
+- `Args` and `run`: `--glibc-bin` is optional, and without it the three glibc rows are not run.
+  The release has no glibc build.
+- `score_generated`: the `body (plain text)` and `body (HTML)` kinds, read from `body.text` and
+  `body.html`, are removed.
+- `tika_msg` and `poi_msg`: a truth pointer into `/body` is skipped (a new function, `cut`), in
+  the fields and in the Java hashes.
+- `time_store`: once a row's runs are counted, its media directory is removed, so the large
+  stores' 1.9 GB each don't accumulate on the tmpfs.
+
+The scorer was built with `CARGO_TARGET_DIR=<scratch>/target-mail mise exec -- cargo build
+--release --locked --example findings`, and run from the worktree as the script runs it, with
+`--bin <release>/docproc-mail --rusage .state/findings/rusage --plaso <plaso's store>
+--plaso-commit f5bf35fcc102585eed58b930392da56a318690f6 --scale .state/scale --state
+.state/findings --out <scratch>/results.json --commit <describe> --runs 3`, no `--glibc-bin`.
+
+Cut fields left unscored: `body.text` and `body.html` (the generated tables, the MIME group's
+.eml, and POI's two body pointers and their two Java hashes); `body.rtf` and `body.derived.html`,
+which no truth names; and folder `display_name`, which no truth names. The two mbox tables
+compare each message with the tool's read of its source, field by field, so their `body derived`,
+`body text`, and `body html` kinds become one `markdown` kind on both sides.
+
+| Table | Spike: expected, recovered, gap, mismatched | Release, cut kinds removed | Verdict |
+| --- | --- | --- | --- |
+| Generated .pst | 94, 80, 14, 0 | 84, 70, 14, 0 | equal: the 10 removed are the body kinds the spike recovered |
+| Generated .msg | 86, 67, 19, 0 | 76, 57, 19, 0 | equal |
+| Generated .eml | 86, 86, 0, 0 | 76, 76, 0, 0 | equal |
+| MIME .eml | 15, 15, 0, 0 | 14, 14, 0, 0 | equal |
+| nine.mboxrd against its sources | 116, 116, 0, 0 | 105, 105, 0, 0 | equal |
+| mbox.rlug against its splits | 59, 59, 0, 0 | 54, 54, 0, 0 | equal |
+| Tika's stores, threading | 47, 47, 0, 0; 8 of 8 absences | 47, 47, 0, 0; 8 of 8 absences | equal |
+| Tika's .msg | 22, 21, 0, 1 | 22, 21, 0, 1 | equal; the miss is better read |
+| POI's .msg | 31, 31, 0, 0 | 27, 27, 0, 0 | equal |
+
+The generator gaps are the same 33, kind for kind. Tika's one mismatch is still
+testMSG_chinese.msg's `/to/0/address`, an X.500 DN where Tika asserts the SMTP address; the
+release writes that address, `tests.chang@fengttt.com`, in the recipient's new `smtp_address`,
+which the truth's pointer doesn't read.
+
+Time and peak memory, the median of 3 runs and the most of 3:
+
+| Store | Media | Spike | Release | Verdict |
+| --- | --- | --- | --- | --- |
+| plaso's, 540 messages | no | 1.609 s, 41.7 MiB | 3.338 s, 33.1 MiB | time worse, 2.07 times; memory better |
+| plaso's | yes | 1.607 s, 41.7 MiB | 3.364 s, 33.0 MiB | time worse; memory better |
+| scale.pst, 50,000 messages | no | 14.322 s, 65.1 MiB | 14.244 s, 50.2 MiB | time equal; memory better |
+| scale.pst | yes | 15.783 s, 66.6 MiB | 15.751 s, 52.6 MiB | time equal; memory better |
+| scale.mboxrd | no | 6.727 s, 41.0 MiB | 8.516 s, 43.3 MiB | time worse, 1.27 times; memory equal |
+| scale.mboxrd | yes | 7.408 s, 42.1 MiB | 8.418 s, 44.7 MiB | time worse, 1.14 times; memory equal |
+| scale.pst after the 25,000th | no | 6.848 s, 58.6 MiB | 7.229 s, 46.7 MiB | time equal; memory better |
+| scale.pst after the 25,000th | yes | 8.405 s, 59.5 MiB | 7.562 s, 47.9 MiB | time equal; memory better |
+| scale.pst after the 50,000th | no | 0.105 s, 15.8 MiB | 0.097 s, 16.5 MiB | equal |
+| scale.mboxrd after the 25,000th | no | 4.226 s, 41.4 MiB | 5.043 s, 42.7 MiB | time worse, 1.19 times; memory equal |
+| scale.mboxrd after the 25,000th | yes | 4.552 s, 41.5 MiB | 5.115 s, 42.3 MiB | time worse, 1.12 times; memory equal |
+| scale.mboxrd after the 50,000th | no | 1.925 s, 24.0 MiB | 1.833 s, 24.8 MiB | equal |
+| Committed .pst, 6 stores | both | 2 to 8 ms, 2.1 to 3.0 MiB | 2 to 8 ms, 2.9 to 3.9 MiB | time equal; memory worse by about 1 MiB, the process's start |
+| glibc build, 3 stores | no | 0.733, 7.004, 4.021 s | not run | not comparable: no glibc release |
+
+What else the run shows, against the spike's:
+
+- The slower rows are CPU time. plaso's store took 3.02 to 3.07 s of user time a run against
+  1.31 to 1.36 s, and scale.mboxrd 5.48 to 5.54 s against 3.90 to 4.00 s; system time barely
+  moved. The run doesn't profile it. Schema "2" makes every message's Markdown by the content rule,
+  on htmd 0.6 with its `bare` pass.
+- Every stdout was byte-identical across its runs and with and without `--media`. Every resumed
+  stdout was the whole read's tail, byte for byte. `--media` wrote the same files as
+  `--attachments` did: 21,202 files of 1,877,202,474 B from each scale store, 10,489 and 10,584
+  after the middle message, and 5 files of 14,533,959 B from plaso's store.
+- stdout is smaller, the bodies cut: scale.pst's 77,903,482 B against 141,220,403 B, and
+  scale.mboxrd's 100,620,613 B against 164,389,002 B.
+- Warnings rose from 3 to 1,530 on plaso's store and from 1 to 8 on Tika's testPST.pst. Each new
+  one is an `http:` or `https:` image source that names no attachment, kept as written, as the
+  README states for a source that names nothing; plaso's 3 skipped contacts keep theirs.
+
+### docproc-onenote: the findings
+
+The bench is `mise run findings` (`scripts/findings.sh`, `bench/findings.rs`): every field of the
+committed sections and notebooks against `sections.json` and `notebooks.json`, the content fields
+against `content.json`, and the time and peak memory of every committed input and three large
+sections, each without and with `--media`, 3 runs each.
+
+Adaptations, in `bench/findings.rs`:
+
+- `NAME`, the prefix of the tool's stderr lines, is `docproc-onenote`.
+- `score_sections`: a refusal's reason is read after `docproc-onenote: error: `, since schema
+  "2"'s error line never leads with the input path; the expected notebook line's `schema` is `"2"`;
+  the `Section display name` and `Containers: <kind>` kinds are removed.
+- `score_notebooks`: the expected `Notebook schema` is `"2"`; the `Section display name` kind is
+  removed.
+- `score_content`: a pointer into `/content`, `/ink`, or `/ink_text` is skipped (a new function,
+  `cut`). Every pointer `content.json` holds is into one of them.
+
+The CLI call is unchanged: the spike already passed `--media <dir>`. The scorer was built as
+mail's was, into `<scratch>/target-onenote`, and run from the worktree with `--bin
+<release>/docproc-onenote --rusage .state/findings/rusage --large .state/findings/large --state
+.state/findings --out <scratch>/results.json --commit <describe> --runs 3`.
+
+Cut fields left unscored: a section's `display_name` (23), the page's `content` counted by
+container kind (31), and the whole of `content.json` (129 fields and 6 absences), which points
+into `content`, `ink`, and `ink_text` alone: containers, paragraph styles, runs, links, note tags,
+list markers, tables, math, images, embedded files, ink, and recognised words. Their text is in
+the Markdown, which the bench doesn't score.
+
+| Table | Spike: expected, recovered; absences | Release, cut kinds removed | Verdict |
+| --- | --- | --- | --- |
+| Sections | 236, 236; 34 of 34 | 192, 191; 34 of 34 | equal, but the refusal reason, not comparable |
+| Notebooks | 138, 138; 26 of 26 | 128, 126; 21 of 26 | equal, but 7 not comparable |
+| Content | 129, 129; 6 of 6 | none left | not comparable: all cut |
+
+Every kept kind is recovered as the spike's was, but these, each changed by a settled decision:
+
+- Encryption.one is refused, exit 3 in both, with the reason `encrypted section (…); remove its
+  password in OneNote first`, where the expectation holds the parser's `Unexpected end of file`.
+  Inside interop/SUT's notebook its `skipped` line carries that reason and `encrypted: true`, and
+  its warning that reason. Layers' docproc-onenote section settles this.
+- Four notebooks that read no section (AlternativePackaging, NoSection, interop's Resources Open
+  Notebook, and onenote-rs's object-revision) warn `/: no section or section group is read`,
+  where the expectations hold no warning. Layers' docproc-onenote section and the tool's
+  CHANGELOG settle this.
+
+| Input | Media | Spike, median wall and median peak | Release | Verdict |
+| --- | --- | --- | --- | --- |
+| LargeData.one, 11 MB | no | 1.296 s, 19.5 MiB | 0.953 s, 8.6 MiB | better |
+| LargeData.one | yes | 1.307 s, 19.4 MiB | 1.183 s, 10.3 MiB | better |
+| Large Desktop.one, 113 MB | no | 0.253 s, 135.0 MiB | 0.161 s, 8.8 MiB | better |
+| Large Desktop.one | yes | 0.267 s, 134.8 MiB | 0.197 s, 8.6 MiB | better |
+| Large OneDrive.one, 161 MB | no | 0.240 s, 134.9 MiB | 0.161 s, 6.9 MiB | better |
+| Large OneDrive.one | yes | 0.253 s, 135.1 MiB | 0.198 s, 6.5 MiB | better |
+| Committed inputs, 23, both ways | both | each under 8.0 ms, 137 ms summed; at most 4.4 MiB | each under 9.7 ms, 155 ms summed; at most 3.7 MiB | equal |
+
+`--media` wrote the same files as the spike's from every input: 2 of 8,127,445 B from
+LargeData.one, 11 of 112,889,106 B from each large twin, and 17 of 1,642,020 B over the
+committed inputs. Every stdout was byte-identical across its runs. The committed inputs' times
+are mostly the process's start, and the 18 ms summed over 46 rows is within the run's noise.
+
+### Verdicts and findings
+
+| Tool | Fields | Time | Memory |
+| --- | --- | --- | --- |
+| docproc-ooxml | equal: every kind 1.000, as the spike's | equal | better, slightly |
+| docproc-mail | equal on every kept kind; Tika's SMTP address now written, in `smtp_address` | equal on the scale .pst; worse on plaso's store (2.07 times) and the mboxrd (1.12 to 1.27 times) | better on plaso's and the scale .pst; equal on the mboxrd; about 1 MiB more on the small stores |
+| docproc-onenote | equal on every kept kind; the refusal and empty-notebook warnings changed by settled decisions | better on the large sections; equal on the committed inputs | better: the large twins 135 MiB to under 9 MiB |
+
+No finding. No shipped tool falls short of its README, its CHANGELOG, or a settled decision on
+anything the benches measure. docproc-mail's slower rows are not a regression in that sense: its
+README states no time of the tool's own, and the figures under "Limits" are cited as the spike's.
+The slowdown is CPU time spent making the Markdown, which schema "2" adds to every message, and
+the run doesn't attribute it further. docproc-mail's memory stays within the README's bound, the
+largest attachment's small multiple: 52.6 MiB at most on the scale store, whose largest is
+16 MiB.
+
+Not run: the three glibc rows of the mail bench, since no glibc build is released, and the
+onenote content table, all of whose fields are cut.
