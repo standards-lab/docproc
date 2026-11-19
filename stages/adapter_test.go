@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -63,31 +62,13 @@ func gsStandin(r tooltest.Run) int {
 		}
 		return 0
 	}
-	var pages []int
 	out := "-"
 	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-			n, _ := strconv.Atoi(v)
-			pages = []int{n}
-		}
-		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
-			for f := range strings.SplitSeq(v, ",") {
-				first, last, _ := strings.Cut(f, "-")
-				from, _ := strconv.Atoi(first)
-				to := from
-				if last != "" {
-					to, _ = strconv.Atoi(last)
-				}
-				for n := from; n <= to; n++ {
-					pages = append(pages, n)
-				}
-			}
-		}
 		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
 			out = v
 		}
 	}
-	for i, page := range pages {
+	for i, page := range tooltest.GSPages(args) {
 		var b []byte
 		switch {
 		case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:

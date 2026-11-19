@@ -30,6 +30,7 @@
 //   - [Runs] returns the runs a link's log holds, in order; [Logged] is one of them.
 //   - [Zone] is the zone Main makes local, which isn't UTC.
 //   - [PNG] is a stand-in's PNG, whole by its chunks, naming a text.
+//   - [GSPages] returns the pages a gs run's arguments name, its page list's or its first page.
 //   - [Tools] returns the path of a file or directory under tools/, skipping when the tree is
 //     absent and failing when the file is.
 package tooltest

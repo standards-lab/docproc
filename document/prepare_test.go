@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/standards-lab/docproc/document"
+	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -81,7 +82,7 @@ func (f *fixture) rendered() (pages, dpi []int) {
 				at, _ = strconv.Atoi(v)
 			}
 		}
-		for _, page := range pageArgs(r.Args) {
+		for _, page := range tooltest.GSPages(r.Args) {
 			pages = append(pages, page)
 			dpi = append(dpi, at)
 		}
@@ -500,6 +501,53 @@ func TestImagesShared(t *testing.T) {
 		}
 		if got := f.processes("txtwrite"); !slices.Equal(got, want) {
 			t.Errorf("%s: text processes %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestImagesContainer checks a Preparer over gs through the container runner, which mounts a
+// run's working directory alone: every run, the survey's among them, works in the PDF's
+// directory, the pages' text is read a page a run, as Text reads it, and the renders still share
+// processes; every page is its own.
+func TestImagesContainer(t *testing.T) {
+	t.Parallel()
+	st := newStandin(t, "docker", "10.08.0")
+	st.set(func(s *settings) { s.Pages = 5 })
+	image := tool.Image{Ref: "example.invalid/gs:1@sha256:" + strings.Repeat("0", 64)}
+	boxed, err := tool.NewContainer(t.Context(), st.link, image, document.GhostscriptSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := document.NewGhostscript(document.Config{Ghostscript: boxed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pdf := filepath.Join(t.TempDir(), "doc.pdf")
+	if err := os.WriteFile(pdf, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f := &fixture{
+		prep: document.NewPreparer(document.Config{Renderer: g}), gs: st, pdf: pdf,
+		req: document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1, PagesPerProcess: 4, Text: true},
+	}
+	pages, errs := f.images(t.Context())
+	if len(pages) != 5 {
+		t.Fatalf("the stream yielded %+v, %v; want 5 pages", pages, errs)
+	}
+	for i, p := range pages {
+		if b, err := os.ReadFile(p.Path); errs[i] != nil || err != nil || !bytes.Equal(b, standinPage(i+1, 150)) || p.Text != standinText(i+1) {
+			t.Errorf("page %d: %+v, %v, file %q; want its own page and text", i+1, p, errs[i], b)
+		}
+	}
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=5", "-sPageList=1-4"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-dFirstPage=4", "-dFirstPage=5"}; !slices.Equal(got, want) {
+		t.Errorf("text processes %q, want %q", got, want)
+	}
+	for _, r := range st.runs() {
+		if r.Dir != filepath.Dir(pdf) {
+			t.Errorf("gs %q worked in %s, want the PDF's directory", r.Args, r.Dir)
 		}
 	}
 }

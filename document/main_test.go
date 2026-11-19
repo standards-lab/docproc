@@ -81,6 +81,7 @@ func TestMain(m *testing.M) {
 		"gs":        withSettings(gs),
 		"qpdf":      withSettings(qpdf),
 		"pdfdetach": withSettings(pdfdetach),
+		"docker":    withSettings(docker),
 	})
 }
 
@@ -161,9 +162,9 @@ const argLimit = 2047
 // sizes when its PostScript asks for them; for a run with the txtwrite device, each output's text,
 // to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the output's place in
 // the run from 1, failing at FailText; and for a render, its Message, then each output's PNG in
-// turn, after its page's Delay, failing at FailPage and killed at KillPage. A run's outputs are its pages', as
-// outputs gives them, its pages its -sPageList, or its -dFirstPage alone. A page that fails writes
-// "told to fail" to stderr and exits 1, the outputs before it written.
+// turn, after its page's Delay, failing at FailPage and killed at KillPage. A run's outputs are
+// its pages', as outputs gives them, its pages its -sPageList, or its -dFirstPage alone. A page
+// that fails writes "told to fail" to stderr and exits 1, the outputs before it written.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -229,7 +230,7 @@ func gs(s settings, args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
-		for _, o := range outputs(s, pageArgs(args)) {
+		for _, o := range outputs(s, tooltest.GSPages(args)) {
 			time.Sleep(time.Duration(s.Delay[o.page]) * time.Millisecond)
 			if o.page == s.FailPage {
 				fmt.Fprint(os.Stderr, "told to fail")
@@ -260,7 +261,7 @@ func standinTexts(s settings, args []string) int {
 			file = v
 		}
 	}
-	for i, o := range outputs(s, pageArgs(args)) {
+	for i, o := range outputs(s, tooltest.GSPages(args)) {
 		if o.page == s.FailText {
 			fmt.Fprint(os.Stderr, "told to fail")
 			return 1
@@ -277,32 +278,6 @@ func standinTexts(s settings, args []string) int {
 		}
 	}
 	return 0
-}
-
-// pageArgs returns the pages a gs run names: its -sPageList's, a page or a range of them, such
-// as 3-7, between each comma, or its -dFirstPage alone, and none for a run that names neither.
-func pageArgs(args []string) []int {
-	var pages []int
-	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-			n, _ := strconv.Atoi(v)
-			return []int{n}
-		}
-		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
-			for f := range strings.SplitSeq(v, ",") {
-				first, last, _ := strings.Cut(f, "-")
-				from, _ := strconv.Atoi(first)
-				to := from
-				if last != "" {
-					to, _ = strconv.Atoi(last)
-				}
-				for n := from; n <= to; n++ {
-					pages = append(pages, n)
-				}
-			}
-		}
-	}
-	return pages
 }
 
 // qpdf is the stand-in qpdf. With --version alone it prints qpdf's two lines, its version and
@@ -358,6 +333,29 @@ func scripted(s settings, args []string) int {
 type standinRun struct {
 	Dir  string   `json:"dir"`
 	Args []string `json:"args"`
+}
+
+// docker is a stand-in docker CLI, enough for the container runner over the stand-in gs: its
+// daemon's version, every image present, and a run that runs the stand-in gs, in the directory
+// its --workdir names, over the arguments after the image's reference, the first that isn't a
+// flag.
+func docker(s settings, args []string) int {
+	if len(args) == 0 || args[0] != "run" {
+		if len(args) > 0 && args[0] == "version" {
+			fmt.Println("27.0.0")
+		}
+		return 0
+	}
+	ref := slices.IndexFunc(args[1:], func(a string) bool { return !strings.HasPrefix(a, "-") }) + 1
+	for _, a := range args[1:ref] {
+		if dir, ok := strings.CutPrefix(a, "--workdir="); ok {
+			if err := os.Chdir(dir); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 2
+			}
+		}
+	}
+	return gs(s, args[ref+1:])
 }
 
 // appendLog appends the working directory and args to file as one JSON object and a newline.
