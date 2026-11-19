@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.2.0
+go get github.com/standards-lab/docproc@v0.4.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -152,25 +152,26 @@ suite for their store.
 
 `stages.Build` looks up each tool a stage requires on the host, checks it against its package's
 minimum in the environment its runs get, and leaves out every stage that requires a tool it can't
-build, missing, too old, or failing in that environment, so that route has no processor; `Set.Rows` reports each route's stage and tools.
+build, missing, too old, or failing in that environment, so that route has no processor;
+`Set.Rows` reports each route's stage and tools.
 
 ### docproc's own tools
 
 | Tool | Minimum | Current release | Stage |
 | --- | --- | --- | --- |
-| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.1` | office |
-| docproc-mail | 0.1.0 | `tools/mail/v0.1.1` | email |
-| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.0` | onenote |
+| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.2` | office |
+| docproc-mail | 0.1.0 | `tools/mail/v0.1.3` | email |
+| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.1` | onenote |
 
 Each minimum is the tool's first schema `"2"` release, which its reader requires. Fetch a tool by
 its own tag, never as the latest release: the repository's releases include the base module's
 and every tool's, so "latest" names whichever was tagged last. For linux-x64:
 
 ```sh
-gh release download tools/mail/v0.1.1 --repo standards-lab/docproc \
-  --pattern 'docproc-mail-v0.1.1-linux-x64.tar.gz' --pattern SHA256SUMS
+gh release download tools/mail/v0.1.3 --repo standards-lab/docproc \
+  --pattern 'docproc-mail-v0.1.3-linux-x64.tar.gz' --pattern SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.1-linux-x64.tar.gz docproc-mail
+tar -xzf docproc-mail-v0.1.3-linux-x64.tar.gz docproc-mail
 ```
 
 Put each binary on the host's PATH. Each tool's README states its install, its output, and its
@@ -245,7 +246,10 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   the memory bound, at least 8 MiB and at most 256 MiB, which counts against the bound.
 - **archive.** A listing past `inspect.Options.Entries` fails its part; an entry flagged by name
   or type (a traversal, an absolute name, a link, a device), an encrypted one, and a bomb as
-  written are unread children, not read.
+  written are unread children, not read. An archive's entry, or a PDF's attachment, is stopped at
+  the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file removed,
+  and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
+  docproc-mail, and docproc-onenote write are held to the cap only once written.
 - **document.** A PDF that needs a password is flagged and not read. A page past the request's
   MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
   share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to

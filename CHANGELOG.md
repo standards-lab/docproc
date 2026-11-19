@@ -9,6 +9,12 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.4.0] - 2026-11-19
+
+This release runs a PDF's pages through shared gs processes, holds what the stages write to the
+bytes cap, and checks each tool's version in the environment its runs get. The module still
+requires golang.org/x/text alone.
+
 ### Added
 
 - `document.ImagesRequest.PagesPerProcess`, the most pages one gs process renders, and reads the
@@ -212,7 +218,8 @@ fixtures scripts stay in the spike.
 The [README](README.md#limits) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.0...HEAD
+[v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/v0.1.0

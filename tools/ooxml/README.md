@@ -26,7 +26,7 @@ archive against `SHA256SUMS` before unpacking it:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-ooxml-v0.1.1-linux-x64.tar.gz
+tar -xzf docproc-ooxml-v0.1.2-linux-x64.tar.gz
 ./docproc-ooxml --version
 ```
 
@@ -50,7 +50,7 @@ by its target, never fetched.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.1
+0.1.2
 schema 2
 ```
 
@@ -105,10 +105,11 @@ stderr holds one line each:
 A refusal comes before anything is written to stdout or the media directory. docproc-ooxml
 refuses an input that is missing, a directory, or without read permission, `no such file:
 <path>`, `is a directory: <path>`, or `permission denied: <path>`, the path as given; any other
-input that is not a regular file, such as a device, `not a file`, or that can't be read; one that is not a docx, xlsx, or pptx
-package (an xlsb among them); an encrypted package, its reason beginning `encrypted`; an OLE
-compound file, such as a legacy doc, xls, or ppt, which is to be converted to OOXML first; a
-package malformed at the ZIP or part level; and a docx with tables nested more than eight deep.
+input that is not a regular file, such as a device, `not a file`, or that can't be read; one that
+is not a docx, xlsx, or pptx package (an xlsb among them); an encrypted package, its reason
+beginning `encrypted`; an OLE compound file, such as a legacy doc, xls, or ppt, which is to be
+converted to OOXML first; a package malformed at the ZIP or part level; and a docx with tables
+nested more than eight deep.
 
 The envelope these follow, its cases stated once for every tool, is
 [`tools/envelope/cases.json`](../envelope/cases.json).
