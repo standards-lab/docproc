@@ -254,9 +254,11 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
   share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
   `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
-  writes their text layers to a temporary directory of the stream's own, never the input's. The run
-  that counts the pages and the shared processes work in that directory, their `TMPDIR`, so the
-  temporary files a gs ended early leaves are removed with it. A process's pages go to gs as a page
+  writes their text layers to a temporary directory of the stream's own, never the input's. Under
+  the container runner, which mounts only the PDF's directory, each page's text is read by a process
+  of its own while the renders still share. The run that counts the pages and the shared
+  processes work in that directory, their `TMPDIR`, so the temporary files a gs ended early leaves
+  are removed with it. A process's pages go to gs as a page
   list, each run of consecutive pages a range, such as 1-8, and a batch ends early where its list
   would pass the 2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
   own, as does a batch of one page, and every page of a PDF portfolio, whose processes gs runs over

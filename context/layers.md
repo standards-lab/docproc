@@ -811,13 +811,24 @@ and a quarantine verdict stops the stage; a flag yielded later is recorded and r
 part's own event, and never unwinds events already out.
 
 A found part (`Found`) names an occurrence. It may carry no file and instead an outcome
-(quarantined, encrypted, no processor yet, failed), a reason, and flags: an unread child, such as
-an archive's link or encrypted entry, an entry past the bomb rule, a reader's medium or attachment
-with no content, or a `skipped` line naming a section or message. The dispatcher yields its own
-event and records it as a `Child`, its `Part` with a name and `Where` and no SHA-256 or size, so
-counts by outcome are true. A part has three ways to say what it didn't read: a flag, a warning,
+(quarantined, encrypted, no processor yet, failed, limited), a reason, and flags: an unread child,
+such as an archive's link or encrypted entry, an entry past the bomb rule, an entry the bytes cap
+stopped, a reader's medium or attachment with no content, or a `skipped` line naming a section or
+message. The dispatcher yields its own event and records it as a `Child`, its `Part` with a name
+and `Where` and no SHA-256 or size, so counts by outcome are true. A part has three ways to say what it didn't read: a flag, a warning,
 or a child; no Meta key and no record output says it. An archive entry whose flags come to
 quarantine is such a child, never extracted.
+
+`Limits.Bytes` bounds what a stage writes, not only what the dispatcher admits.
+`dispatch.Remaining(ctx)` returns the bytes the dispatch may still admit: the cap less the sizes of
+the parts admitted when `Prepare` started, read on the walk's goroutine before the stage's
+goroutine starts. The archive stages and the document stage's attachments write each found part
+against it, less what the same `Prepare` has written whole before; a part whose bytes would pass it
+is stopped at that write, its partial file removed, and found as an unread child, `limited`, with
+no size or SHA-256. The dispatcher gives that child its own reason, "past the bytes cap, <cap>",
+and marks its parent's subtree incomplete, so the parent isn't indexed and a larger cap prepares
+it again. The cap check precedes the bomb check. The media docproc-ooxml, docproc-mail, and
+docproc-onenote write are held to the cap only once written.
 
 A stage that holds content a later item names again, as a store's tool writes each distinct
 content once, sets `Found.Release`. The dispatcher calls it once the part is settled: its entry
@@ -1075,7 +1086,9 @@ type Options struct { // the zero value wires every route, with no bound
     Document    document.ImagesRequest // each stage's request, its own defaults where zero;
     Picture     picture.Request        // a part's own fields (Dir, Path, Kind, Stem) are the
     Audio       audio.Request          // part's; Document.Text is false, no text layer read,
-    Video       media.Request          // unless the host sets it
+    Video       media.Request          // unless the host sets it; Document.PagesPerProcess,
+                                       // outside the identity, is the most pages one gs
+                                       // process takes, zero being 8
     Magick      picture.Limits  // ImageMagick's -limit values on every magick run
 }
 type Set struct {
@@ -2147,8 +2160,8 @@ spike-ai-pipeline-office 0.1.0. What it leaves to later tasks:
   the root's `TOOLS` lists it. CI's tool matrix runs the tools whose path filter in the `changes`
   job matched, each tool with its own filter. `tools/pack.sh` and the release workflow take any
   tool by its name.
-- **Memory.** Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in
-  the spike.
+- **Memory.** Its peak resident memory over ~/docs is 42.8 MiB (`acceptance.md`, "Peak memory");
+  its arm64 address-space floor is unmeasured.
 - **Unread kinds.** Reading text boxes, equations, SmartArt, pptx comments, and xlsx notes is
   backlog; each kind a document holds is one warning.
 
@@ -2174,8 +2187,7 @@ spike-ai-pipeline-mail 0.3.1. What it leaves to later tasks:
   subtrees too, so the notices name those crates.
 - **Code pages.** A DOS code page the review of ~/docs finds, which the `codepage` crate doesn't
   know, becomes a table in the tool, as US-ASCII (20127) is in `src/codepage.rs`.
-- **Memory.** Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in
-  the spike.
+- **Memory.** Its peak resident memory over ~/docs is 3.7 MiB (`acceptance.md`, "Peak memory").
 
 ### docproc-onenote [onenote]
 
@@ -2189,8 +2201,8 @@ its gaps is the tool's own tested code. What it leaves to later tasks:
   only with onenote_parser.
 - **Memory.** The read thread's stack is an address-space reservation of at most a quarter of
   RLIMIT_AS (README, "Limits"), so `cmd/docproc`'s memory-bound starting value leaves room for
-  it. Acceptance measures the tool's peak memory over ~/docs, the bench having stayed in the
-  spike; a per-tool timing, if one is wanted, is one harness for all three tools.
+  it. Its peak resident memory over ~/docs is 10.6 MiB (`acceptance.md`, "Peak memory"); a
+  per-tool timing, if one is wanted, is one harness for all three tools.
 - **Unicode.** docproc-envelope's general-category predicates (Cf, Zs, N*, Sm), which the math
   port reads, make the crate the Rust tools' one Unicode home; the Go and .NET sides are later
   tasks'.
@@ -2228,13 +2240,22 @@ postgres (module)   built [providers]: postgres.New(ctx, Config{DB *sqlate.DB, L
 ```
 
 The memory bound has no default: `tool.Spec.MemoryLimit` and `stages.Options.Memory` are none
-until the host sets them. The acceptance task dispatches PI-1's
-two bombs, a many-entry one and a 999:1 one, through `cmd/docproc`; counts recorded failures by
-class over ~/docs; measures each of the three tools' peak memory under the bound, for
-`cmd/docproc`'s starting value of it; measures word error rate on ~/docs' audio under the tracker
-before the tag; and times the 1,823-page PDF per page and by ranges of pages in one gs process,
-which the library adopts only if the per-process cost matters at that size (`design.md`,
-"processing").
+until the host sets them. `cmd/docproc`'s starting value, 2 GiB, stands: no part of a ~/docs run
+fails by it, every tool peaks under it, and neither of PI-1's bombs moves a starting bound
+(`acceptance.md`, "Peak memory", "Bombs").
+
+Built [acceptance]: a PDF's pages share gs processes. At concurrency C, pages k, k+C, k+2C, and so
+on go to the k-th of C concurrent processes through gs's page list, at most
+`document.ImagesRequest.PagesPerProcess` pages to a process, a count outside the stage identity as
+`Concurrency` is; zero is 8, the smallest count within 5% of the fastest on the 915-page CFR volume
+(cfr-2024-title32-vol1.pdf), and a negative count is refused. A page list writes consecutive pages
+as ranges and ends a batch where it would pass the 2047 bytes gs takes in an argument. A portfolio,
+a one-page batch, and a page `MaxPixels` lowers take the per-page path, and a shared process that
+fails on the content leaves each undelivered page a process of its own. `DOCPROC_UNIT_TIMEOUT`
+bounds a shared process as an idle bound between its pages. Under the container runner, which
+mounts only the PDF's directory, text is read a page a process while renders share. Every page's
+PNG and text is identical to the per-page path's (`acceptance.md`, "PDF pages in shared gs
+processes").
 
 Three gaps the build found are backlog: a full disk during a LibreOffice run exits 77, which
 `stages` reads as the content's failure, recorded, rather than the run's; `sevenzip`'s `Extract`
@@ -2349,6 +2370,12 @@ docproc/cmd/docproc    [docproc]   built from cmd/docproc and internal/docproc/{
                                    committed run directory; the base module tagged v0.3.0 for
                                    ReportDir, then cmd/docproc/v0.1.0; internal/report's package
                                    doc states the pages
+                       [acceptance] built: DOCPROC_AUDIO_LIMIT, stages.Options.Audio's Limit,
+                                   starting 30s; a value of 4 s or less, not over twice the 2 s
+                                   overlap, or one that doesn't parse, fails the run before any
+                                   tool is looked up; whether audio that fits one model request
+                                   goes unsplit is the host's choice, made by setting it to the
+                                   model's request size, docproc's own default staying 30 s
 docinfer/cmd/docinfer  [docinfer   cmd/docinfer, internal/docinfer/{app, apptest, config,
                         goal]      infer, models, outdir, source, report}; requires docinfer,
                                    docproc, go-ai, go-cli-sdk, and go-core; builds

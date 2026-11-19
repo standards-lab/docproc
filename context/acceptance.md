@@ -543,12 +543,12 @@ bound.
 
 | Input | Part | Tool | Reason | Verdict |
 | --- | --- | --- | --- | --- |
-| `pdf/edge/malformed/no-document-catalog.pdf` | `/` | gs, its page sizes | gs printed "Couldn't initialise file" and a count of 0 | expected |
+| `pdf/edge/malformed/no-document-catalog.pdf` | `/` | gs, its page sizes | gs printed "Couldn't initialise file" and a count of 0 | no fix: a correct failure |
 | `onenote/large/LargeData.one` | `/page 875519ac-…, media 1`, "testing - large.docx" | docproc-ooxml, exit 3 | refused: not a docx, xlsx, or pptx package | backlog |
 | `email/pst/java-libpst/passworded.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
 | `email/pst/java-libpst/dist-list.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
 
-- **no-document-catalog.pdf: expected, a correct failure.** The file has no document catalog, and
+- **no-document-catalog.pdf: no fix, a correct failure.** The file has no document catalog, and
   gs can't open it. qpdf's form read (exit 2, no trailer dictionary) and pdfdetach's attachment
   list (exit 1, no catalog) are warnings on the same part.
 - **LargeData.one's docx: backlog.** The bytes are an XPS package, `FixedDocumentSequence.fdseq`
@@ -626,7 +626,9 @@ records kept.
 | 999:1 entry: peak physical | 3.71 GiB | 1.02 GiB |
 
 The 2 TiB ZIP is quarantined at inspection, before any entry is written: "declared compressed
-sizes sum to 2097152000 bytes, past the 185802-byte ZIP, and 1 more". The run exited 0.
+sizes sum to 2097152000 bytes, past the 185802-byte ZIP, and 1 more". The "and 1 more" is the
+summed-entry bomb rule: `inspect/zip.go` flags both the declared compressed sum and the declared
+expanded sum, and the reason quotes the first. The run exited 0.
 
 The 999:1 entry is stopped while it is written. The archive part itself is prepared, with one
 child; the child `/zip entry payload.bin` is recorded `limited`, with size 0 and no SHA-256, and
@@ -645,3 +647,9 @@ free on the run's filesystem. No tool runs for either, since ZIP is read in Go, 
 `DOCPROC_UNIT_TIMEOUT` nor `DOCPROC_STREAM_IDLE` applies. `DOCPROC_MAX_BYTES` at 32 GiB,
 `DOCPROC_BOMB_RATIO` at 1000, `DOCPROC_BOMB_SIZE` at 1 GiB, and `DOCPROC_ARCHIVE_ENTRIES` at
 100,000 stand.
+
+## Word error rate
+
+**Measurement pending.** The Framework row's audio requests returned HTTP 500 on 2026-11-19, so no
+word error rate is recorded. The excerpts, the windows (tracker 23, 24, 24, and 24; silencedetect
+24, 24, 23, and 24), and the scorer are prepared.

@@ -16,8 +16,10 @@ boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) 
 schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
 disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
-each artifact's tags and the task that releases each. The built base module is stated by the
-repository's [README](../README.md) and each package's documentation.
+each artifact's tags and the task that releases each. [`acceptance.md`](acceptance.md), dated
+2026-11-19, holds the acceptance task's results: the bench reruns, the ~/docs run and its failures
+by class, each tool's peak memory, the bombs, and the shared gs processes' timing. The built base
+module is stated by the repository's [README](../README.md) and each package's documentation.
 
 ## Capability map
 
@@ -31,9 +33,11 @@ repository's [README](../README.md) and each package's documentation.
   [`tools/onenote/`](../tools/onenote/README.md). The Rust tools share the docproc-envelope crate,
   [`tools/envelope/`](../tools/envelope/src/lib.rs), and every tool reads the envelope's cases
   from [`tools/envelope/cases.json`](../tools/envelope/cases.json).
-- **Media**: audio windows and pictures prepared for transcription and vision.
+- **Media**: audio windows and pictures prepared for transcription and vision, and a PDF's pages
+  rendered in gs processes they share (`layers.md`, "docproc's packages").
 - **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
-  parts yielded as events (`layers.md`, "Dispatch", "Event shapes").
+  parts yielded as events, the bytes cap bounding what a stage writes (`layers.md`, "Dispatch",
+  "Event shapes").
 - **Stores**: the content store and the content-addressed index, interfaces with filesystem and
   memory implementations (`layers.md`, "Content", "Index"). Two nested modules provide them over
   stack libraries: `docproc/storage`, the content store over go-storage
@@ -45,7 +49,7 @@ repository's [README](../README.md) and each package's documentation.
   "2" (`layers.md`, "The nested modules").
 - **Command**: `cmd/docproc`, a thin composition of the library, with three commands: `version`,
   `run`, and `report`. The root [README](../README.md#the-command), "The command", states its
-  commands, exit statuses, and configuration (`layers.md`, "The nested modules"; `design.md`,
-  "cmd/docproc").
+  commands, exit statuses, and configuration, `DOCPROC_AUDIO_LIMIT`, the longest audio window,
+  among it (`layers.md`, "The nested modules"; `design.md`, "cmd/docproc").
 - **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
   linux-arm64 (`design.md`, "Releases").
