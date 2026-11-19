@@ -197,7 +197,9 @@ at `/`; a creation time the parser couldn't read, left out; an image or embedded
 is missing or invalid; and an equation whose structure is lost.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-onenote
-refuses an input that is missing or can't be read; a ZIP, `a ZIP archive; extract the OneDrive
+refuses an input that is missing, `no such file: <path>`, or a file or notebook directory without
+read permission, `permission denied: <path>`, the path as given; any other input that can't be
+read; a ZIP, `a ZIP archive; extract the OneDrive
 download first`; a directory with no `.onetoc2`, or more than one; anything else, `not a OneNote
 section, notebook, or package`; under `--file-only`, a table of contents; and a section,
 notebook, or package onenote_parser can't read, with its reason, or that panics it, `the reader

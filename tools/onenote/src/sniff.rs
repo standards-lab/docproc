@@ -7,10 +7,10 @@
 //! header ([MS-ONESTORE] 2.3.1's guidFileType), so the header alone can't tell them apart.
 
 use std::fs::{self, File};
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
-use docproc_envelope::Fault;
+use docproc_envelope::{Fault, input_refusal};
 
 /// What the input is.
 #[derive(Debug, PartialEq)]
@@ -57,16 +57,22 @@ const ONESTORE_FORMATS: [[u8; 16]; 2] = [
 
 /// The input at `path`, or the refusal of it.
 pub fn sniff(path: &Path) -> Result<Input, Fault> {
-    // A reason never leads with the input's path, which docproc already knows.
+    // A reason never leads with the input's path, which docproc already knows. An input that is
+    // missing or without read permission says so and names its path after the reason
+    // (docproc-envelope's input_refusal); any other error is the error alone. A directory is
+    // no refusal: it is a notebook.
     let refuse = Fault::Refused;
-    let metadata = fs::metadata(path).map_err(|err| refuse(err.to_string()))?;
+    let unreadable =
+        |err: io::Error| input_refusal(path, &err).unwrap_or_else(|| refuse(err.to_string()));
+    let metadata = fs::metadata(path).map_err(unreadable)?;
     if metadata.is_dir() {
-        return toc_in(path).map(Input::Directory).map_err(refuse);
+        let entries = fs::read_dir(path).map_err(unreadable)?;
+        return toc_in(entries).map(Input::Directory).map_err(refuse);
     }
     let mut prefix = Vec::with_capacity(PREFIX);
     File::open(path)
         .and_then(|file| file.take(PREFIX as u64).read_to_end(&mut prefix))
-        .map_err(|err| refuse(err.to_string()))?;
+        .map_err(unreadable)?;
     match content(&prefix) {
         Content::OneStore => Ok(Input::OneStore),
         Content::Cabinet => Ok(Input::Package),
@@ -96,12 +102,12 @@ fn content(prefix: &[u8]) -> Content {
     Content::Other
 }
 
-/// The one .onetoc2 in `dir`, told by its name, as OneNote names a notebook's table of
-/// contents; or why there isn't one. A section group's .onetoc2, in a directory below, is the
-/// notebook's to find.
-fn toc_in(dir: &Path) -> Result<PathBuf, String> {
+/// The one .onetoc2 among a directory's `entries`, told by its name, as OneNote names a
+/// notebook's table of contents; or why there isn't one. A section group's .onetoc2, in a
+/// directory below, is the notebook's to find.
+fn toc_in(entries: fs::ReadDir) -> Result<PathBuf, String> {
     let mut tocs = Vec::new();
-    for entry in fs::read_dir(dir).map_err(|err| err.to_string())? {
+    for entry in entries {
         let path = entry.map_err(|err| err.to_string())?.path();
         let is_toc = path
             .extension()

@@ -159,7 +159,6 @@ fn the_input_is_sniffed_by_content_not_name() {
 /// nothing on stdout.
 #[test]
 fn refused_inputs_exit_3_before_any_output() {
-    let missing = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no-such-section.one");
     let zip = built("download.one", b"PK\x03\x04\x14\x00\x00\x00\x08\x00");
     let empty_zip = built(
         "empty.zip",
@@ -172,7 +171,6 @@ fn refused_inputs_exit_3_before_any_output() {
     let license = fixture("onenote-rs/LICENSE");
     let empty = built("empty.one", b"");
     let cases: &[(&Path, &str)] = &[
-        (&missing, "No such file or directory (os error 2)"),
         (&zip, "a ZIP archive; extract the OneDrive download first"),
         (
             &empty_zip,
@@ -193,6 +191,77 @@ fn refused_inputs_exit_3_before_any_output() {
         assert_eq!(out.code, Some(3), "{}", input.display());
         assert_eq!(out.stdout, "", "{}", input.display());
         assert_eq!(out.stderr, error(reason), "{}", input.display());
+    }
+}
+
+/// A missing input, and a file or a notebook directory without read permission, are each refused,
+/// exit 3 with nothing on stdout, the reason saying which and naming the input's path after it,
+/// never leading with it. A directory is no refusal of its own: it is a notebook.
+#[test]
+fn a_missing_or_unreadable_input_is_refused_by_its_path() {
+    let missing = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no-such-section.one");
+    let file = Locked::new("locked.one", |path| {
+        std::fs::copy(fixture(DESKTOP), path).unwrap();
+    });
+    let dir = Locked::new("locked-notebook", |path| {
+        std::fs::create_dir(path).unwrap();
+        std::fs::copy(fixture(DESKTOP), path.join("a.one")).unwrap();
+    });
+    let mut cases = vec![(&*missing, "no such file")];
+    if file.readable() || dir.readable() {
+        eprintln!("skipped: an input without permission can be read, as root");
+    } else {
+        cases.extend([
+            (&*file.0, "permission denied"),
+            (&*dir.0, "permission denied"),
+        ]);
+    }
+    for (input, which) in cases {
+        let out = run(&[input]);
+        assert_eq!(out.code, Some(3), "{}", input.display());
+        assert_eq!(out.stdout, "", "{}", input.display());
+        let reason = format!("{which}: {}", input.display());
+        assert_eq!(out.stderr, error(&reason), "{}", input.display());
+    }
+}
+
+/// An input under Cargo's temporary directory with no permission at all, given its permissions
+/// back when dropped, so nothing that walks the tree is stopped by it.
+struct Locked(std::path::PathBuf);
+
+impl Locked {
+    /// The input `make` writes at `name`, a previous run's removed first, then locked.
+    fn new(name: &str, make: impl FnOnce(&Path)) -> Self {
+        let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
+        if path.is_dir() {
+            std::fs::remove_dir_all(&path).unwrap();
+        } else if path.exists() {
+            std::fs::remove_file(&path).unwrap();
+        }
+        make(&path);
+        let locked = Self(path);
+        locked.set(0o000);
+        locked
+    }
+
+    /// Whether it can be read regardless, as root.
+    fn readable(&self) -> bool {
+        if self.0.is_dir() {
+            std::fs::read_dir(&self.0).is_ok()
+        } else {
+            File::open(&self.0).is_ok()
+        }
+    }
+
+    fn set(&self, mode: u32) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(mode)).unwrap();
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        self.set(0o700);
     }
 }
 
@@ -270,7 +339,10 @@ fn file_only_refuses_a_table_of_contents_and_reads_the_rest() {
     let missing = Path::new(env!("CARGO_TARGET_TMPDIR")).join("no-such-toc.onetoc2");
     let out = run(&["--file-only".as_ref(), missing.as_os_str()]);
     assert_eq!(out.code, Some(3));
-    assert_eq!(out.stderr, error("No such file or directory (os error 2)"));
+    assert_eq!(
+        out.stderr,
+        error(&format!("no such file: {}", missing.display()))
+    );
 }
 
 /// One run of the binary over [`DESKTOP`] under an address-space limit of `limit` bytes, with
