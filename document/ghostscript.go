@@ -3,10 +3,12 @@ package document
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -34,7 +36,8 @@ func GhostscriptSpec() tool.Spec {
 }
 
 // Ghostscript is the PDF renderer: it counts, renders, and reads the text layer of a PDF's pages
-// with Ghostscript's gs, one process per call. Ghostscript is AGPL-licensed; the renderer runs gs
+// with Ghostscript's gs, one process per call; the Preparer's shared processes take many pages
+// each, through gs's page list. Ghostscript is AGPL-licensed; the renderer runs gs
 // as a separate program through a tool.Tool and never links it.
 //
 // gs reads the PDF by its path, which Count and Render make absolute, and each run's working
@@ -213,6 +216,97 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 	return out.String(), nil
 }
 
+// errOutput marks a shared run's output that doesn't hold its pages as asked: a stdout that isn't
+// a stream of whole PNGs, one a page, or a text file missing. It is the content's failure, as
+// output that doesn't parse is, so the run's pages fall back to a process each.
+var errOutput = errors.New("gs's output doesn't hold the pages asked for")
+
+// renderPages renders pages, 1-based and in order, of the PDF at pdf at dpi, in one gs run, its
+// stdout the pages' PNGs one after another, which it splits by their chunks and hands to sink, a
+// PNG at a time. It returns how many PNGs sink was handed whole, and the run's error: gs's own,
+// the Tool's, or one wrapping errOutput when stdout isn't a PNG a page.
+//
+// The run's bound is the Tool's Timeout read as an idle bound, between gs's writes, rather than a
+// bound on the whole run: a unit's bound is a page's, and one run renders many. Time sink spends
+// blocked, waiting for the consumer, isn't idleness.
+func (g *Ghostscript) renderPages(ctx context.Context, pdf string, pages []int, dpi int, sink pngSink) (int, error) {
+	abs, err := filepath.Abs(pdf)
+	if err != nil {
+		return 0, fmt.Errorf("document: ghostscript: %w", err)
+	}
+	split := &pngSplit{n: len(pages), sink: sink}
+	err = g.gs.Run(ctx, tool.Invocation{Args: sharedRenderArgs(abs, pages, dpi), Dir: filepath.Dir(abs), Stdout: split, Idle: g.gs.Timeout()})
+	whole, serr := split.finish()
+	if err == nil && serr != nil {
+		err = fmt.Errorf("document: ghostscript: pages %s of %s: %w", pageList(pages), abs, serr)
+	}
+	return whole, err
+}
+
+// sharedText reports whether textPages' files can be read back: through the exec runner they
+// can, written wherever the caller says; the container runner mounts only a run's working
+// directory, the PDF's, and textPages never writes there, so a container's text is read a page a
+// run, through Text.
+func (g *Ghostscript) sharedText() bool {
+	_, container := g.gs.Image()
+	return !container
+}
+
+// textPages writes the text of pages, 1-based and in order, of the PDF at pdf into dir, the
+// caller's, in one gs run with the txtwrite device: the run's i-th page, from 1, to textFile(dir,
+// i), as Text reads one page. Every page's file is there once it returns nil; a file missing is
+// an error wrapping errOutput.
+//
+// gs runs without -q, so it writes "Page N" to stderr as each page starts, and the run's bound
+// is the Tool's Timeout read as an idle bound, as renderPages' is.
+func (g *Ghostscript) textPages(ctx context.Context, pdf string, pages []int, dir string) error {
+	abs, err := filepath.Abs(pdf)
+	if err != nil {
+		return fmt.Errorf("document: ghostscript: %w", err)
+	}
+	// gs reads a % in OutputFile as a format's, which %% escapes.
+	out := filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "page-%d.txt")
+	if err := g.gs.Run(ctx, tool.Invocation{Args: sharedTextArgs(abs, pages, out), Dir: filepath.Dir(abs), Idle: g.gs.Timeout()}); err != nil {
+		return err
+	}
+	for i := range pages {
+		if _, err := os.Stat(textFile(dir, i+1)); err != nil {
+			return fmt.Errorf("document: ghostscript: text of page %d of %s: %w: %w", pages[i], abs, errOutput, err)
+		}
+	}
+	return nil
+}
+
+// textFile is the file in dir textPages writes a run's i-th page's text to, i from 1.
+func textFile(dir string, i int) string {
+	return filepath.Join(dir, "page-"+strconv.Itoa(i)+".txt")
+}
+
+// pageList returns pages as gs's PageList takes them, numbers joined by commas.
+func pageList(pages []int) string {
+	list := make([]string, len(pages))
+	for i, p := range pages {
+		list[i] = strconv.Itoa(p)
+	}
+	return strings.Join(list, ",")
+}
+
+// sharedRenderArgs returns gs's arguments for pages of the PDF at pdf at dpi, as renderArgs' for
+// one page but for the page list: gs writes each page's PNG to stdout in turn.
+func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
+	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
+		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
+		"-sPageList=" + pageList(pages), "-sOutputFile=-", pdf}
+}
+
+// sharedTextArgs returns gs's arguments for the text of pages of the PDF at pdf, a file a page at
+// out, whose %d gs numbers from 1 in the run; without -q, gs's messages, a "Page N" as each page
+// starts among them, go to stderr.
+func sharedTextArgs(pdf string, pages []int, out string) []string {
+	return []string{"-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
+		"-sPageList=" + pageList(pages), "-sOutputFile=" + out, pdf}
+}
+
 // renderArgs returns gs's arguments for page of the PDF at pdf at dpi. png16m is 24-bit RGB; the
 // alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default and
 // gs doesn't. -sOutputFile=- writes the PNG to stdout.
@@ -299,4 +393,100 @@ func (g *pngGuard) keep(p []byte) {
 		p = p[:min(len(p), max(pngGuardLimit-len(g.head), 0))]
 	}
 	g.head = append(g.head, p...)
+}
+
+// pngSink takes the PNGs a pngSplit splits from a shared run's stdout, the i-th from 0, in turn.
+type pngSink interface {
+	// begin starts the i-th PNG and returns the writer its bytes go to, which never fails, a
+	// page's own failure kept by the sink; an error stops the run's stdout, and is for the run's
+	// end alone, its context ended.
+	begin(i int) (io.Writer, error)
+	// end ends the i-th PNG, written whole.
+	end(i int)
+	// abandon ends the i-th PNG unfinished: the run failed or its stdout stopped parsing first.
+	abandon(i int)
+}
+
+// pngSplit splits a stdout of PNGs one after another, as gs writes a page list's, into each PNG
+// by its own structure: the eight-byte signature, then chunks, each a four-byte big-endian length,
+// a four-byte type, that many bytes of data, and a four-byte CRC, through the IEND chunk. It reads
+// no chunk's data and checks no CRC: gs's PNGs are passed through as written, byte for byte.
+//
+// Output past n PNGs, or that isn't a PNG where one begins, stops the split: the rest of stdout is
+// discarded, never written to a page, and finish reports it.
+type pngSplit struct {
+	n    int
+	sink pngSink
+	// i is the PNG being split, or the next, and w its writer, nil between PNGs.
+	i int
+	w io.Writer
+	// head gathers the signature, or a chunk's length and type, until have is eight.
+	head [8]byte
+	have int
+	// inChunk is whether head is a chunk's, the signature read; rest is what is left of a chunk's
+	// data and CRC once its head is read, and iend whether the chunk is IEND.
+	inChunk bool
+	rest    int64
+	iend    bool
+	// err is the reason the split stopped.
+	err error
+}
+
+func (s *pngSplit) Write(p []byte) (int, error) {
+	total := len(p)
+	for len(p) > 0 && s.err == nil {
+		if s.w == nil {
+			if s.i == s.n {
+				s.err = fmt.Errorf("%w: output past %d PNGs", errOutput, s.n)
+				break
+			}
+			w, err := s.sink.begin(s.i)
+			if err != nil {
+				return 0, err
+			}
+			s.w, s.have, s.inChunk, s.rest = w, 0, false, 0
+		}
+		if s.rest > 0 {
+			k := int(min(int64(len(p)), s.rest))
+			_, _ = s.w.Write(p[:k])
+			p, s.rest = p[k:], s.rest-int64(k)
+			if s.rest == 0 && s.iend {
+				s.sink.end(s.i)
+				s.i, s.w = s.i+1, nil
+			}
+			continue
+		}
+		k := copy(s.head[s.have:], p)
+		_, _ = s.w.Write(p[:k])
+		p, s.have = p[k:], s.have+k
+		if s.have < len(s.head) {
+			continue
+		}
+		s.have = 0
+		if !s.inChunk {
+			if string(s.head[:]) != route.PNGSignature {
+				s.err = fmt.Errorf("%w: PNG %d of %d doesn't begin with PNG's signature", errOutput, s.i+1, s.n)
+			}
+			s.inChunk = true
+			continue
+		}
+		// A chunk's length is at most 2^31-1 bytes, so its data and CRC fit an int64.
+		s.rest = int64(binary.BigEndian.Uint32(s.head[:4])) + 4
+		s.iend = string(s.head[4:]) == "IEND"
+	}
+	return total, nil
+}
+
+// finish ends the split once the run has returned: a PNG left unfinished is abandoned. It returns
+// how many PNGs were handed over whole, and why the split stopped, or, for a stdout that ended
+// short of n PNGs, an error saying so; nil when it held n whole PNGs and nothing else.
+func (s *pngSplit) finish() (int, error) {
+	if s.w != nil {
+		s.sink.abandon(s.i)
+		s.w = nil
+	}
+	if s.err == nil && s.i < s.n {
+		s.err = fmt.Errorf("%w: %d of %d PNGs on stdout", errOutput, s.i, s.n)
+	}
+	return s.i, s.err
 }

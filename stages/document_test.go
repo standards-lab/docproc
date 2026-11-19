@@ -296,8 +296,8 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 }
 
 // TestDocumentIdentity: the identity hashes the request resolved, its DPI's default filled, so a
-// zero DPI and the default are one identity, and the bomb rule; concurrency and the request's Dir
-// are out of it; and the tools' version lines are its Version.
+// zero DPI and the default are one identity, and the bomb rule; concurrency, PagesPerProcess, and
+// the request's Dir are out of it; and the tools' version lines are its Version.
 func TestDocumentIdentity(t *testing.T) {
 	prep := standinPreparer(t, gsSettings{Pages: 1})
 	id := func(req document.ImagesRequest, opts inspect.Options) dispatch.Identity {
@@ -310,8 +310,8 @@ func TestDocumentIdentity(t *testing.T) {
 	if base.Version != "gs 10.5 (2025)" || base.Name != "document" {
 		t.Errorf("identity %v", base)
 	}
-	if id(document.ImagesRequest{DPI: document.DefaultDPI, Concurrency: 4, Dir: "/elsewhere"}, inspect.Options{}) != base {
-		t.Error("the default DPI, concurrency, or Dir changed the identity")
+	if id(document.ImagesRequest{DPI: document.DefaultDPI, Concurrency: 4, PagesPerProcess: 3, Dir: "/elsewhere"}, inspect.Options{}) != base {
+		t.Error("the default DPI, concurrency, PagesPerProcess, or Dir changed the identity")
 	}
 	for name, other := range map[string]dispatch.Identity{
 		"dpi":        id(document.ImagesRequest{DPI: 300, Concurrency: 1}, inspect.Options{}),

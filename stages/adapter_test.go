@@ -38,9 +38,11 @@ type gsSettings struct {
 }
 
 // gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A count run, with
-// -dNODISPLAY, prints its settings' Pages; a run of the txtwrite device prints "page N", N its
-// -dFirstPage, but a blank line for Empty; and a render prints PNG's signature and "page N", but
-// fails for Fail.
+// -dNODISPLAY, prints its settings' Pages. Any other run's pages are its -sPageList, or its
+// -dFirstPage alone, each in turn: a run of the txtwrite device writes "page N" for each, but a
+// blank line for Empty, to stdout for an OutputFile of -, and otherwise to a file of the
+// OutputFile, its %d the page's place in the run from 1; and a render writes each page's PNG,
+// naming "page N", but fails at Fail, the pages before it written.
 func gsStandin(r tooltest.Run) int {
 	var settings gsSettings
 	if err := r.Settings(&settings); err != nil {
@@ -56,22 +58,46 @@ func gsStandin(r tooltest.Run) int {
 		fmt.Println(settings.Pages)
 		return 0
 	}
-	page := 0
+	var pages []int
+	out := "-"
 	for _, a := range args {
 		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-			page, _ = strconv.Atoi(v)
+			n, _ := strconv.Atoi(v)
+			pages = []int{n}
+		}
+		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
+			for f := range strings.SplitSeq(v, ",") {
+				n, _ := strconv.Atoi(f)
+				pages = append(pages, n)
+			}
+		}
+		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
+			out = v
 		}
 	}
-	switch {
-	case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:
-		fmt.Print("  \n")
-	case slices.Contains(args, "-sDEVICE=txtwrite"):
-		fmt.Printf("page %d", page)
-	case page == settings.Fail:
-		fmt.Fprint(os.Stderr, "told to fail")
-		return 1
-	default:
-		fmt.Printf("%spage %d", route.PNGSignature, page)
+	for i, page := range pages {
+		var b []byte
+		switch {
+		case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:
+			b = []byte("  \n")
+		case slices.Contains(args, "-sDEVICE=txtwrite"):
+			b = fmt.Appendf(nil, "page %d", page)
+		case page == settings.Fail:
+			fmt.Fprint(os.Stderr, "told to fail")
+			return 1
+		default:
+			b = tooltest.PNG(fmt.Sprintf("page %d", page))
+		}
+		var err error
+		if out == "-" {
+			_, err = os.Stdout.Write(b)
+		} else {
+			err = os.WriteFile(fmt.Sprintf(out, i+1), b, 0o600)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 	}
 	return 0
 }

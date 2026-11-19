@@ -1,9 +1,12 @@
 package tooltest_test
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/crc32"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -205,4 +208,22 @@ func TestToolsSkip(t *testing.T) {
 
 func equalLogged(a, b tooltest.Logged) bool {
 	return a.Program == b.Program && slices.Equal(a.Args, b.Args)
+}
+
+// TestPNG: the stand-in's PNG is PNG's signature, a tEXt chunk holding its text, and IEND, each
+// chunk its length, its type and data, and their CRC; and two texts give two PNGs.
+func TestPNG(t *testing.T) {
+	b := tooltest.PNG("page 1")
+	text := []byte("tEXtComment\x00page 1")
+	want := []byte("\x89PNG\r\n\x1a\n")
+	want = binary.BigEndian.AppendUint32(want, uint32(len(text)-4))
+	want = binary.BigEndian.AppendUint32(append(want, text...), crc32.ChecksumIEEE(text))
+	// IEND's CRC is fixed: every PNG ends with these twelve bytes.
+	want = append(want, "\x00\x00\x00\x00IEND\xaeB`\x82"...)
+	if !bytes.Equal(b, want) {
+		t.Errorf("PNG(page 1) = %q, want %q", b, want)
+	}
+	if bytes.Equal(b, tooltest.PNG("page 2")) {
+		t.Error("PNG(page 1) and PNG(page 2) are equal")
+	}
 }

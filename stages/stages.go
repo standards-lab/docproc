@@ -54,8 +54,8 @@ type Options struct {
 	// Concurrency is how many of a PDF's pages and an audio part's windows are held at once,
 	// overriding the Document and Audio requests' own. Zero is 1, one at a time.
 	Concurrency int
-	// Document is the request every PDF's pages are prepared under, its DPI, Text, and MaxPixels;
-	// its Dir is each part's own.
+	// Document is the request every PDF's pages are prepared under, its DPI, Text, MaxPixels,
+	// and PagesPerProcess; its Dir is each part's own.
 	Document document.ImagesRequest
 	// Picture is the request every converted picture is converted under, its MetafileScale and
 	// Density; its Dir, Path, Kind, and Stem are each part's own.
@@ -87,8 +87,8 @@ func (o Options) check() error {
 		return refuse("memory bound %d is below zero", o.Memory)
 	case o.Concurrency < 0:
 		return refuse("concurrency %d is below zero", o.Concurrency)
-	case o.Document.DPI < 0, o.Document.MaxPixels < 0:
-		return refuse("the document request's DPI or MaxPixels is below zero")
+	case o.Document.DPI < 0, o.Document.MaxPixels < 0, o.Document.PagesPerProcess < 0:
+		return refuse("the document request's DPI, MaxPixels, or PagesPerProcess is below zero")
 	case o.Picture.MetafileScale < 0, o.Picture.MetafileScale > picture.MaxMetafileScale, o.Picture.Density < 0:
 		return refuse("the picture request's MetafileScale or Density is out of range")
 	case min(o.Magick.Area, o.Magick.Width, o.Magick.Height, o.Magick.Memory, o.Magick.Map, o.Magick.Disk) < 0:

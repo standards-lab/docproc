@@ -148,6 +148,11 @@ func (t *Tool) Version() Version { return t.version }
 // apart, a development build from a release, where Version can't.
 func (t *Tool) VersionLine() string { return t.line }
 
+// Timeout returns the Spec's Timeout, the bound of every run whose Invocation sets neither bound of
+// its own; zero is none. An adapter that runs as one stream what the Spec bounds as units, such as
+// many pages in one process, reads it to bound the stream's idleness by the unit's bound instead.
+func (t *Tool) Timeout() time.Duration { return t.timeout }
+
 // AtLeast refuses the tool when its version is older than minimum, dotted numbers, whatever
 // minimum its own Spec declared, with a *VersionError wrapping ErrTooOld. A minimum that isn't
 // dotted numbers is an error of its own.

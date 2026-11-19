@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/standards-lab/docproc/document"
+	"github.com/standards-lab/docproc/tool"
 )
 
 // fixture is a Preparer over the stand-in gs at 10.08.0, the stand-in, a PDF path, and a request
@@ -31,9 +32,17 @@ type fixture struct {
 // stand-in reads no PDF, so the file is empty.
 func newFixture(t *testing.T, pages int) *fixture {
 	t.Helper()
+	return newTimedFixture(t, pages, 0)
+}
+
+// newTimedFixture is newFixture with timeout the Spec's Timeout, a unit's bound.
+func newTimedFixture(t *testing.T, pages int, timeout time.Duration) *fixture {
+	t.Helper()
 	st := newStandin(t, "gs", "10.08.0")
 	st.set(func(s *settings) { s.Pages = pages })
-	g, err := document.NewGhostscript(document.Config{Ghostscript: st.mustTool(document.GhostscriptSpec())})
+	spec := document.GhostscriptSpec()
+	spec.Timeout = timeout
+	g, err := document.NewGhostscript(document.Config{Ghostscript: st.mustTool(spec)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,25 +68,44 @@ func (f *fixture) images(ctx context.Context) ([]document.PageImage, []error) {
 	return pages, errs
 }
 
-// rendered returns the page and the DPI of every render run the stand-in gs logged, in the order
-// they began.
+// rendered returns the page and the DPI of every page a render run the stand-in gs logged names,
+// in the order the runs began, each run's pages in its order.
 func (f *fixture) rendered() (pages, dpi []int) {
 	for _, r := range f.gs.runs() {
 		if !slices.Contains(r.Args, "-sDEVICE=png16m") {
 			continue
 		}
+		var at int
 		for _, a := range r.Args {
-			if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-				n, _ := strconv.Atoi(v)
-				pages = append(pages, n)
-			}
 			if v, ok := strings.CutPrefix(a, "-r"); ok {
-				n, _ := strconv.Atoi(v)
-				dpi = append(dpi, n)
+				at, _ = strconv.Atoi(v)
 			}
+		}
+		for _, page := range pageArgs(r.Args) {
+			pages = append(pages, page)
+			dpi = append(dpi, at)
 		}
 	}
 	return pages, dpi
+}
+
+// processes returns the pages of each run of the stand-in gs with device, "png16m" or
+// "txtwrite", as gs names them, "-sPageList=1,4" for a shared process and "-dFirstPage=2" for a
+// page's own, sorted, since lanes start their processes in no fixed order.
+func (f *fixture) processes(device string) []string {
+	var got []string
+	for _, r := range f.gs.runs() {
+		if !slices.Contains(r.Args, "-sDEVICE="+device) {
+			continue
+		}
+		for _, a := range r.Args {
+			if strings.HasPrefix(a, "-sPageList=") || strings.HasPrefix(a, "-dFirstPage=") {
+				got = append(got, a)
+			}
+		}
+	}
+	slices.Sort(got)
+	return got
 }
 
 // files returns the names of the files in dir, sorted.
@@ -140,7 +168,7 @@ func TestImagesPages(t *testing.T) {
 			t.Errorf("yield %d: %+v, %v; want %+v", i+1, p, errs[i], want)
 			continue
 		}
-		if b, err := os.ReadFile(p.Path); err != nil || !bytes.Equal(b, standinPage) {
+		if b, err := os.ReadFile(p.Path); err != nil || !bytes.Equal(b, standinPage(p.Number, 150)) {
 			t.Errorf("page %d's file holds %q, %v; want the stand-in's page", p.Number, b, err)
 		}
 	}
@@ -161,9 +189,10 @@ func TestImagesDPI(t *testing.T) {
 }
 
 // TestImagesSlots checks a page's slot is released only when its outcome is taken: at
-// concurrency 2, while the consumer holds page 1, pages 2 and 3 render, page 2 waiting untaken in
-// its slot, and page 4 doesn't start until page 2 is taken. The test waits for page 3 before it
-// looks for page 4, so a slow render can't hide a slot released too early.
+// concurrency 2, while the consumer holds page 1, pages 2 and 3 are written, page 2 waiting
+// untaken in its slot, and page 4 isn't written until page 2 is taken, though its lane's process
+// has rendered it. The test waits for page 3's file before it looks for page 4's, so a slow
+// render can't hide a slot released too early.
 func TestImagesSlots(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 6)
@@ -176,16 +205,16 @@ func TestImagesSlots(t *testing.T) {
 			continue
 		}
 		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-			if rendered, _ := f.rendered(); slices.Contains(rendered, 3) {
+			if slices.Contains(files(t, f.req.Dir), "page-3.png") {
 				break
 			}
 			if time.Now().After(deadline) {
-				t.Fatal("page 3 didn't render within 10 s while page 1 was held")
+				t.Fatal("page 3 wasn't written within 10 s while page 1 was held")
 			}
 		}
 		time.Sleep(300 * time.Millisecond)
-		if rendered, _ := f.rendered(); slices.Max(rendered) > 3 {
-			t.Errorf("while page 1 was held, pages %v rendered, want none past 3", rendered)
+		if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png", "page-3.png"}) {
+			t.Errorf("while page 1 was held, the directory held %q, want pages 1 to 3", got)
 		}
 	}
 	if rendered, _ := f.rendered(); len(rendered) != 6 {
@@ -296,8 +325,8 @@ func TestImagesContextEnds(t *testing.T) {
 }
 
 // TestImagesRefusals checks a request Images can't run is refused, wrapping ErrRequest, before gs
-// runs: no directory, a negative DPI, a concurrency below 1, which has no default, and a negative
-// MaxPixels.
+// runs: no directory, a negative DPI, a concurrency below 1, which has no default, a negative
+// MaxPixels, and a negative PagesPerProcess.
 func TestImagesRefusals(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*document.ImagesRequest){
@@ -306,6 +335,7 @@ func TestImagesRefusals(t *testing.T) {
 		"zero concurrency":     func(r *document.ImagesRequest) { r.Concurrency = 0 },
 		"negative concurrency": func(r *document.ImagesRequest) { r.Concurrency = -1 },
 		"negative max pixels":  func(r *document.ImagesRequest) { r.MaxPixels = -1 },
+		"negative pages":       func(r *document.ImagesRequest) { r.PagesPerProcess = -1 },
 	} {
 		f := newFixture(t, 3)
 		change(&f.req)
@@ -319,15 +349,16 @@ func TestImagesRefusals(t *testing.T) {
 	}
 }
 
-// TestImagesText checks a request with Text reads every page's text layer, before rendering it,
-// into its PageImage, and renders every page as usual.
+// TestImagesText checks a request with Text reads every page's text layer into its PageImage,
+// in a shared process before the shared process that renders the pages, and renders every page as
+// usual.
 func TestImagesText(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 2)
 	f.req.Text = true
 	pages, errs := f.images(t.Context())
 	for i, p := range pages {
-		if errs[i] != nil || p.Text != standinText || p.Path == "" {
+		if errs[i] != nil || p.Text != standinText(i+1) || p.Path == "" {
 			t.Errorf("page %d: %+v, %v; want its text and its file", i+1, p, errs[i])
 		}
 	}
@@ -337,32 +368,32 @@ func TestImagesText(t *testing.T) {
 			return strings.HasPrefix(a, "-sDEVICE=") || a == "-dNODISPLAY"
 		})])
 	}
-	// One page at a time, its text before its render.
-	if want := []string{"-dNODISPLAY", "-sDEVICE=txtwrite", "-sDEVICE=png16m", "-sDEVICE=txtwrite", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
+	// The pages' text before their render.
+	if want := []string{"-dNODISPLAY", "-sDEVICE=txtwrite", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
 		t.Errorf("gs ran %q, want %q", devices, want)
 	}
 }
 
-// TestImagesTextFails checks a page whose text fails to read fails, unrendered, and the stream
-// carries on.
+// TestImagesTextFails checks a shared text process that fails falls back to a process a page,
+// its text and its render each, and a page whose text fails there fails, unrendered, and the
+// stream carries on.
 func TestImagesTextFails(t *testing.T) {
 	t.Parallel()
-	f := newFixture(t, 2)
+	f := newFixture(t, 3)
+	f.gs.set(func(s *settings) { s.FailText = 2 })
 	f.req.Text = true
-	// The stand-in fails every run once set, so it is set once the count has run.
-	first := true
-	for p, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
-		if first {
-			f.gs.set(func(s *settings) { s.Fail = "Error: /undefined" })
-			first = false
-			if err != nil {
-				t.Errorf("page 1: %v", err)
-			}
-			continue
-		}
-		if err == nil || !strings.Contains(err.Error(), "page 2 of 2: text") || p.Path != "" {
-			t.Errorf("page 2: %+v, %v; want its text failing", p, err)
-		}
+	pages, errs := f.images(t.Context())
+	if len(pages) != 3 || errs[0] != nil || errs[2] != nil || pages[0].Text != standinText(1) || pages[2].Text != standinText(3) {
+		t.Fatalf("the stream yielded %+v, %v; want 3 pages, page 2 alone failing", pages, errs)
+	}
+	if err := errs[1]; err == nil || !strings.Contains(err.Error(), "page 2 of 3: text") || pages[1].Path != "" {
+		t.Errorf("page 2: %+v, %v; want its text failing", pages[1], err)
+	}
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-sPageList=1,2,3"}; !slices.Equal(got, want) {
+		t.Errorf("text processes %q, want %q", got, want)
+	}
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=1", "-dFirstPage=3"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
 	}
 }
 
@@ -413,5 +444,226 @@ func TestImagesMaxPixels(t *testing.T) {
 	f.req.MaxPixels = 1
 	if pages, errs := f.images(t.Context()); len(pages) != 1 || !zero(pages[0]) || errs[0] == nil {
 		t.Errorf("an unreadable size: %+v, %v; want the stream's one error", pages, errs)
+	}
+}
+
+// TestImagesShared checks the pages share gs processes: with concurrency C, lane k takes pages k,
+// k+C, k+2C, and so on, up to PagesPerProcess of them a process, through gs's page list, its text
+// in one process before its render in another; and every page, yielded in page order, holds the
+// PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither 7
+// pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
+// the default, past 7 pages.
+func TestImagesShared(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		per, concurrency int
+		want             []string
+	}{
+		{1, 1, []string{"1", "2", "3", "4", "5", "6", "7"}},
+		{2, 1, []string{"1,2", "3,4", "5,6", "7"}},
+		{4, 1, []string{"1,2,3,4", "5,6,7"}},
+		{10, 1, []string{"1,2,3,4,5,6,7"}},
+		{0, 1, []string{"1,2,3,4,5,6,7"}},
+		{1, 3, []string{"1", "2", "3", "4", "5", "6", "7"}},
+		{2, 3, []string{"1,4", "7", "2,5", "3,6"}},
+		{4, 3, []string{"1,4,7", "2,5", "3,6"}},
+		{10, 3, []string{"1,4,7", "2,5", "3,6"}},
+	} {
+		f := newFixture(t, 7)
+		f.req.PagesPerProcess, f.req.Concurrency, f.req.Text = tc.per, tc.concurrency, true
+		pages, errs := f.images(t.Context())
+		name := fmt.Sprintf("PagesPerProcess %d, concurrency %d", tc.per, tc.concurrency)
+		if len(pages) != 7 {
+			t.Fatalf("%s: the stream yielded %+v, %v; want 7 pages", name, pages, errs)
+		}
+		for i, p := range pages {
+			want := document.PageImage{Number: i + 1, Count: 7, Path: filepath.Join(f.req.Dir, fmt.Sprintf("page-%d.png", i+1)), DPI: 150, Text: standinText(i + 1)}
+			if errs[i] != nil || p != want {
+				t.Errorf("%s: yield %d: %+v, %v; want %+v", name, i+1, p, errs[i], want)
+				continue
+			}
+			if b, err := os.ReadFile(p.Path); err != nil || !bytes.Equal(b, standinPage(p.Number, 150)) {
+				t.Errorf("%s: page %d's file holds %q, %v; want its own page", name, p.Number, b, err)
+			}
+		}
+		var want []string
+		for _, list := range tc.want {
+			want = append(want, "-sPageList="+list)
+		}
+		slices.Sort(want)
+		if got := f.processes("png16m"); !slices.Equal(got, want) {
+			t.Errorf("%s: render processes %q, want %q", name, got, want)
+		}
+		if got := f.processes("txtwrite"); !slices.Equal(got, want) {
+			t.Errorf("%s: text processes %q, want %q", name, got, want)
+		}
+	}
+}
+
+// TestImagesSharedTextFiles checks the shared text processes write their files in a directory
+// of the stream's own, neither the PDF's nor the request's, a file a page numbered within the
+// process, and that the directory is gone once the stream ends.
+func TestImagesSharedTextFiles(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 5)
+	f.req.Text, f.req.Concurrency, f.req.PagesPerProcess = true, 2, 2
+	for _, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var outs []string
+	for _, r := range f.gs.runs() {
+		if slices.Contains(r.Args, "-sDEVICE=txtwrite") {
+			for _, a := range r.Args {
+				if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
+					outs = append(outs, v)
+				}
+			}
+		}
+	}
+	if len(outs) != 3 {
+		t.Fatalf("text processes wrote to %q, want 3", outs)
+	}
+	for _, out := range outs {
+		dir := filepath.Dir(out)
+		if filepath.Base(out) != "page-%d.txt" || dir == filepath.Dir(f.pdf) || dir == f.req.Dir ||
+			strings.HasPrefix(dir, filepath.Dir(f.pdf)+string(filepath.Separator)) || strings.HasPrefix(dir, f.req.Dir+string(filepath.Separator)) {
+			t.Errorf("a text process wrote to %s, want a file a page in a directory of the stream's own", out)
+		}
+		if _, err := os.Stat(filepath.Dir(dir)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the text scratch %s is left: %v", filepath.Dir(dir), err)
+		}
+	}
+	if got := files(t, filepath.Dir(f.pdf)); !slices.Equal(got, []string{"doc.pdf"}) {
+		t.Errorf("the PDF's directory holds %q, want the PDF alone", got)
+	}
+}
+
+// TestImagesSharedFallback checks a shared process that fails partway as the content's: the pages
+// it handed over stand, each page it didn't gets processes of its own, its text and its render,
+// and only the page that fails there fails, with the error naming gs's reason, its file removed.
+func TestImagesSharedFallback(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 7)
+	f.gs.set(func(s *settings) { s.FailPage = 4 })
+	f.req.Text = true
+	pages, errs := f.images(t.Context())
+	if len(pages) != 7 {
+		t.Fatalf("the stream yielded %+v, %v; want 7 pages", pages, errs)
+	}
+	for i, p := range pages {
+		if i == 3 {
+			if p != (document.PageImage{Number: 4, Count: 7}) || errs[i] == nil ||
+				!strings.Contains(errs[i].Error(), "page 4 of 7: render") || !strings.Contains(errs[i].Error(), "told to fail") {
+				t.Errorf("page 4: %+v, %v; want it failing with gs's reason", p, errs[i])
+			}
+			continue
+		}
+		if b, err := os.ReadFile(p.Path); errs[i] != nil || err != nil || !bytes.Equal(b, standinPage(i+1, 150)) || p.Text != standinText(i+1) {
+			t.Errorf("page %d: %+v, %v, file %q; want its own page and text", i+1, p, errs[i], b)
+		}
+	}
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1,2,3,4,5,6,7"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1,2,3,4,5,6,7"}; !slices.Equal(got, want) {
+		t.Errorf("text processes %q, want %q", got, want)
+	}
+	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png", "page-3.png", "page-5.png", "page-6.png", "page-7.png"}) {
+		t.Errorf("the directory holds %q, want every page's but page 4's", got)
+	}
+}
+
+// TestImagesSharedRunFailure checks a shared process that fails as the run's, gs killed by a
+// SIGKILL docproc didn't send, falls back to nothing: the pages it handed over stand, and each
+// page it didn't fails with its error, no process of its own run.
+func TestImagesSharedRunFailure(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 5)
+	f.gs.set(func(s *settings) { s.KillPage = 3 })
+	pages, errs := f.images(t.Context())
+	if len(pages) != 5 || errs[0] != nil || errs[1] != nil {
+		t.Fatalf("the stream yielded %+v, %v; want 5 pages, the first two prepared", pages, errs)
+	}
+	for i := 2; i < 5; i++ {
+		var exit *tool.ExitError
+		if !errors.As(errs[i], &exit) || exit.Signal != "SIGKILL" || pages[i].Path != "" ||
+			!strings.Contains(errs[i].Error(), fmt.Sprintf("page %d of 5: render", i+1)) {
+			t.Errorf("page %d: %+v, %v; want gs's SIGKILL", i+1, pages[i], errs[i])
+		}
+	}
+	if got, want := f.processes("png16m"), []string{"-sPageList=1,2,3,4,5"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png"}) {
+		t.Errorf("the directory holds %q, want pages 1 and 2", got)
+	}
+}
+
+// TestImagesMaxPixelsOwnProcess checks a page MaxPixels renders at a lower DPI gets a process of
+// its own, at that DPI, the lane's run of pages at the request's DPI broken around it, at
+// concurrency 1 and 2: page 3, a letter page, at 149 dpi, the half-letter pages at 150.
+func TestImagesMaxPixelsOwnProcess(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		concurrency int
+		want        []string
+	}{
+		{1, []string{"-dFirstPage=3", "-sPageList=1,2", "-sPageList=4,5"}},
+		{2, []string{"-dFirstPage=3", "-sPageList=1", "-sPageList=2,4", "-sPageList=5"}},
+	} {
+		f := newFixture(t, 0)
+		f.gs.set(func(s *settings) { s.Sizes = []string{"612 396", "612 396", "612 792", "612 396", "612 396"} })
+		f.req.MaxPixels, f.req.Concurrency = 1275*1650-1, tc.concurrency
+		pages, errs := f.images(t.Context())
+		for i, p := range pages {
+			dpi := 150
+			if i == 2 {
+				dpi = 149
+			}
+			if b, err := os.ReadFile(p.Path); errs[i] != nil || err != nil || p.DPI != dpi || !bytes.Equal(b, standinPage(i+1, dpi)) {
+				t.Errorf("concurrency %d: page %d: %+v, %v; want it at %d dpi", tc.concurrency, i+1, p, errs[i], dpi)
+			}
+		}
+		if got := f.processes("png16m"); !slices.Equal(got, tc.want) {
+			t.Errorf("concurrency %d: render processes %q, want %q", tc.concurrency, got, tc.want)
+		}
+	}
+}
+
+// TestImagesIdleBound checks a shared process's bound is the Spec's Timeout read as an idle bound
+// between its pages: a process whose pages each take most of the bound, and whose consumer holds
+// a page for three times the bound, runs to its end, the time it waits on the consumer not idle;
+// and a page that takes past the bound ends its shared process, the pages before it standing, and
+// fails in its own process, which takes the bound whole, the pages after it rendered in their own.
+func TestImagesIdleBound(t *testing.T) {
+	t.Parallel()
+	const bound = time.Second
+	f := newTimedFixture(t, 4, bound)
+	f.gs.set(func(s *settings) { s.Delay = map[int]int{1: 600, 2: 600, 3: 600, 4: 600} })
+	for p, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+		if err != nil {
+			t.Fatalf("page %d: %v", p.Number, err)
+		}
+		if p.Number == 1 {
+			time.Sleep(3 * bound)
+		}
+	}
+	if got, want := f.processes("png16m"), []string{"-sPageList=1,2,3,4"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+
+	f = newTimedFixture(t, 4, bound)
+	f.gs.set(func(s *settings) { s.Delay = map[int]int{3: 2500} })
+	pages, errs := f.images(t.Context())
+	if len(pages) != 4 || errs[0] != nil || errs[1] != nil || errs[3] != nil {
+		t.Fatalf("the stream yielded %+v, %v; want page 3 alone failing", pages, errs)
+	}
+	if exit, ok := errors.AsType[*tool.ExitError](errs[2]); !ok || !exit.TimedOut || !strings.Contains(errs[2].Error(), "page 3 of 4: render") {
+		t.Errorf("page 3: %v; want its own process timed out", errs[2])
+	}
+	if got, want := f.processes("png16m"), []string{"-dFirstPage=3", "-dFirstPage=4", "-sPageList=1,2,3,4"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
 	}
 }

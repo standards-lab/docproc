@@ -3,6 +3,8 @@
 package document_test
 
 import (
+	"bytes"
+	"fmt"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -82,6 +84,58 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 			w, h := pngSize(t, img.Path)
 			if img.DPI != tc.dpi || w != tc.w || h != tc.h || int64(w*h) > tc.max {
 				t.Errorf("MaxPixels %d: page %d at %d dpi is %dx%d, want %d dpi, %dx%d", tc.max, img.Number, img.DPI, w, h, tc.dpi, tc.w, tc.h)
+			}
+		}
+	}
+}
+
+// TestImagesSharedHost checks shared processes on the host's gs give every page byte for byte
+// what a process of its own gives, Render's PNG and Text's text, at PagesPerProcess 1, 2, 4,
+// which divides neither PDF's page count, and 32, past both, at concurrency 1 and 3: over
+// clean.pdf, six pages with a text layer, and degraded.pdf, nine scanned pages, and over
+// clean.pdf with a MaxPixels that lowers its letter pages to 149 dpi in processes of their own.
+func TestImagesSharedHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	p := document.NewPreparer(document.Config{Renderer: g})
+	for _, set := range []struct {
+		pdf       string
+		maxPixels int64
+		dpi       int
+	}{{"clean", 0, 150}, {"degraded", 0, 150}, {"clean", 1275*1650 - 1, 149}} {
+		pdf := filepath.Join("testdata", set.pdf+".pdf")
+		n, err := g.Count(t.Context(), pdf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pngs, texts := make([][]byte, n), make([]string, n)
+		for i := range n {
+			var out bytes.Buffer
+			if err := g.Render(t.Context(), pdf, i+1, set.dpi, &out); err != nil {
+				t.Fatal(err)
+			}
+			if texts[i], err = g.Text(t.Context(), pdf, i+1); err != nil {
+				t.Fatal(err)
+			}
+			pngs[i] = out.Bytes()
+		}
+		for _, per := range []int{1, 2, 4, 32} {
+			for _, concurrency := range []int{1, 3} {
+				name := fmt.Sprintf("%s.pdf, MaxPixels %d, PagesPerProcess %d, concurrency %d", set.pdf, set.maxPixels, per, concurrency)
+				req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: concurrency, PagesPerProcess: per, Text: true, MaxPixels: set.maxPixels}
+				yielded := 0
+				for img, err := range p.Images(t.Context(), pdf, req) {
+					if err != nil {
+						t.Fatalf("%s: page %d: %v", name, img.Number, err)
+					}
+					yielded++
+					b, err := os.ReadFile(img.Path)
+					if err != nil || img.Number != yielded || img.DPI != set.dpi || !bytes.Equal(b, pngs[img.Number-1]) || img.Text != texts[img.Number-1] {
+						t.Errorf("%s: yield %d, page %d at %d dpi: its PNG or text isn't its own process's (%v)", name, yielded, img.Number, img.DPI, err)
+					}
+				}
+				if yielded != n {
+					t.Errorf("%s: the stream yielded %d pages, want %d", name, yielded, n)
+				}
 			}
 		}
 	}

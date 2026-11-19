@@ -149,18 +149,19 @@ func TestBuildRefuses(t *testing.T) {
 		return "", errors.New("not here")
 	}
 	for name, opts := range map[string]stages.Options{
-		"a negative bomb ratio":     {Inspect: inspect.Options{BombRatio: -1, BombSize: 1}},
-		"a negative timeout":        {Timeout: -time.Second},
-		"a negative idle bound":     {Idle: -time.Second},
-		"a negative memory bound":   {Memory: -1},
-		"a negative concurrency":    {Concurrency: -1},
-		"a negative DPI":            {Document: document.ImagesRequest{DPI: -1}},
-		"a negative MaxPixels":      {Document: document.ImagesRequest{MaxPixels: -1}},
-		"a metafile scale past 8":   {Picture: picture.Request{MetafileScale: picture.MaxMetafileScale + 1}},
-		"a negative density":        {Picture: picture.Request{Density: -1}},
-		"a negative magick limit":   {Magick: picture.Limits{Disk: -1}},
-		"an audio overlap too long": {Audio: audio.Request{Overlap: audio.DefaultWindowLimit / 2}},
-		"a video negative limit":    {Video: media.Request{Limit: -time.Second}},
+		"a negative bomb ratio":      {Inspect: inspect.Options{BombRatio: -1, BombSize: 1}},
+		"a negative timeout":         {Timeout: -time.Second},
+		"a negative idle bound":      {Idle: -time.Second},
+		"a negative memory bound":    {Memory: -1},
+		"a negative concurrency":     {Concurrency: -1},
+		"a negative DPI":             {Document: document.ImagesRequest{DPI: -1}},
+		"a negative MaxPixels":       {Document: document.ImagesRequest{MaxPixels: -1}},
+		"a negative PagesPerProcess": {Document: document.ImagesRequest{PagesPerProcess: -1}},
+		"a metafile scale past 8":    {Picture: picture.Request{MetafileScale: picture.MaxMetafileScale + 1}},
+		"a negative density":         {Picture: picture.Request{Density: -1}},
+		"a negative magick limit":    {Magick: picture.Limits{Disk: -1}},
+		"an audio overlap too long":  {Audio: audio.Request{Overlap: audio.DefaultWindowLimit / 2}},
+		"a video negative limit":     {Video: media.Request{Limit: -time.Second}},
 	} {
 		if _, err := stages.Build(t.Context(), lookup, opts); !errors.Is(err, stages.ErrRequest) {
 			t.Errorf("%s: %v, want ErrRequest", name, err)

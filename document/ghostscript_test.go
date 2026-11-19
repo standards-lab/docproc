@@ -59,8 +59,8 @@ func TestGhostscriptRenderArgs(t *testing.T) {
 		if err := g.Render(t.Context(), pdf, tc.page, tc.dpi, &out); err != nil {
 			t.Fatalf("Render(page %d, %d dpi): %v", tc.page, tc.dpi, err)
 		}
-		if !bytes.Equal(out.Bytes(), standinPage) {
-			t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), standinPage)
+		if want := standinPage(tc.page, tc.dpi); !bytes.Equal(out.Bytes(), want) {
+			t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), want)
 		}
 		want := []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
 			"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(tc.dpi),
@@ -257,7 +257,7 @@ func TestGhostscriptText(t *testing.T) {
 		stdout *string
 		want   string
 	}{
-		{1, nil, standinText},
+		{1, nil, standinText(1)},
 		{7, new(""), ""},
 		{3, new("\n\n  \n"), "\n\n  \n"},
 		{2, new("ofÏce\ttoday\r\n"), "ofÏce\ttoday\r\n"},

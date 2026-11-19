@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -42,8 +43,14 @@ type settings struct {
 	// when it isn't set.
 	Sizes []string `json:"sizes,omitzero"`
 	// FailPage, when set, makes the stand-in gs's render of that page write "told to fail" to
-	// stderr and exit 1.
+	// stderr and exit 1, in a run of many pages once the pages before it are written.
 	FailPage int `json:"fail_page,omitzero"`
+	// KillPage, when set, makes the stand-in gs's render send itself SIGKILL at that page, a
+	// signal docproc didn't send, once the pages before it are written.
+	KillPage int `json:"kill_page,omitzero"`
+	// FailText, when set, makes the stand-in gs's txtwrite run fail as FailPage makes a render
+	// fail, at that page.
+	FailText int `json:"fail_text,omitzero"`
 	// Delay holds, by page, how many milliseconds the stand-in gs's render of that page waits
 	// before it writes the page.
 	Delay map[int]int `json:"delay,omitzero"`
@@ -76,18 +83,26 @@ func withSettings(program func(s settings, args []string) int) tooltest.Program 
 	}
 }
 
-// standinText is the stand-in gs's text layer for a page: lines as txtwrite lays them out.
-const standinText = "      The Harbor Survey\n      The harbor survey began in the spring.\n"
+// standinText returns the stand-in gs's text layer for page: lines as txtwrite lays them out,
+// naming the page.
+func standinText(page int) string {
+	return fmt.Sprintf("      The Harbor Survey\n      Page %d of the harbor survey.\n", page)
+}
 
-// standinPage is the stand-in gs's page: the PNG signature and a tail that names it.
-var standinPage = []byte("\x89PNG\r\n\x1a\nstand-in gs page")
+// standinPage returns the stand-in gs's PNG of page at dpi: whole by its chunks, naming both.
+func standinPage(page, dpi int) []byte {
+	return tooltest.PNG(fmt.Sprintf("stand-in gs page %d at %d dpi", page, dpi))
+}
 
 // gs is the stand-in gs. With --version alone it prints the version alone, as gs does.
 // Otherwise it appends its working directory and arguments to the log file, then fails when
 // Fail is set, or else writes Stderr to stderr, and Stdout to stdout when it is set, and its own
 // output when it isn't: for a run with -dNODISPLAY, its pages' sizes when its PostScript asks for
-// them and its page count when it doesn't; a page's text for a run with the txtwrite device; and
-// standinPage for a render, after the page's Delay, or a failure for FailPage.
+// them and its page count when it doesn't; for a run with the txtwrite device, each page's text,
+// to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the page's place in
+// the run from 1, failing at FailText; and for a render, each page's PNG in turn, after the
+// page's Delay, failing at FailPage and killed at KillPage. A run's pages are its -sPageList, or its -dFirstPage alone.
+// A page that fails writes "told to fail" to stderr and exits 1, the pages before it written.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -116,15 +131,24 @@ func gs(s settings, args []string) int {
 	case slices.Contains(args, "-dNODISPLAY"):
 		out = fmt.Sprintf("%d\n", pages)
 	case slices.Contains(args, "-sDEVICE=txtwrite"):
-		out = standinText
+		return standinTexts(s, args)
 	default:
-		page := pageArg(args)
-		time.Sleep(time.Duration(s.Delay[page]) * time.Millisecond)
-		if page == s.FailPage {
-			fmt.Fprint(os.Stderr, "told to fail")
-			return 1
+		dpi, _ := strconv.Atoi(strings.TrimPrefix(args[slices.IndexFunc(args, func(a string) bool { return strings.HasPrefix(a, "-r") })], "-r"))
+		for _, page := range pageArgs(args) {
+			time.Sleep(time.Duration(s.Delay[page]) * time.Millisecond)
+			if page == s.FailPage {
+				fmt.Fprint(os.Stderr, "told to fail")
+				return 1
+			}
+			if page == s.KillPage {
+				_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+			}
+			if _, err := os.Stdout.Write(standinPage(page, dpi)); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				return 2
+			}
 		}
-		out = string(standinPage)
+		return 0
 	}
 	if _, err := os.Stdout.WriteString(out); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -133,15 +157,50 @@ func gs(s settings, args []string) int {
 	return 0
 }
 
-// pageArg returns the page a gs run's -dFirstPage names, and 0 for a run that names none.
-func pageArg(args []string) int {
+// standinTexts is the stand-in gs's txtwrite run, as gs says.
+func standinTexts(s settings, args []string) int {
+	var file string
 	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
-			n, _ := strconv.Atoi(v)
-			return n
+		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
+			file = v
+		}
+	}
+	for i, page := range pageArgs(args) {
+		if page == s.FailText {
+			fmt.Fprint(os.Stderr, "told to fail")
+			return 1
+		}
+		var err error
+		if file == "-" {
+			_, err = os.Stdout.WriteString(standinText(page))
+		} else {
+			err = os.WriteFile(fmt.Sprintf(file, i+1), []byte(standinText(page)), 0o600)
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
 		}
 	}
 	return 0
+}
+
+// pageArgs returns the pages a gs run names: its -sPageList's, or its -dFirstPage alone, and
+// none for a run that names neither.
+func pageArgs(args []string) []int {
+	var pages []int
+	for _, a := range args {
+		if v, ok := strings.CutPrefix(a, "-dFirstPage="); ok {
+			n, _ := strconv.Atoi(v)
+			return []int{n}
+		}
+		if v, ok := strings.CutPrefix(a, "-sPageList="); ok {
+			for f := range strings.SplitSeq(v, ",") {
+				n, _ := strconv.Atoi(f)
+				pages = append(pages, n)
+			}
+		}
+	}
+	return pages
 }
 
 // qpdf is the stand-in qpdf. With --version alone it prints qpdf's two lines, its version and
