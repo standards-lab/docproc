@@ -9,6 +9,32 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Added
+
+- `document.ImagesRequest.PagesPerProcess`, the most pages one gs process renders, and reads the
+  text layers of, for a PDF's pages: zero is a default of 32, and a negative value is refused by
+  `Images` and by `stages.Build`. Like `Concurrency`, it is outside the request's JSON and so the
+  document stage's identity.
+- `tool.Tool.Timeout`, the Spec's Timeout, for an adapter that runs many units in one process
+  and bounds its idleness by a unit's bound.
+
+### Changed
+
+- `document.Preparer.Images` runs a PDF's pages through shared gs processes, for every PDF: at
+  concurrency C, lane k takes pages k, k+C, k+2C, and so on, up to `PagesPerProcess` a process
+  through gs's page list, its PNGs split from one stdout, and, for a request with `Text`, one
+  txtwrite process before it whose files, a page each, go to a temporary directory of the
+  Preparer's own, never the input's. A page `MaxPixels` lowers gets a process of its own. Pages
+  are yielded in order, at most C held, and every page's PNG and text, the document stage's
+  identity, and its outputs and warnings are as before. A shared process takes the gs Tool's
+  Timeout as an idle bound between its writes, time waiting on the consumer not counted; a
+  process of a page's own takes it whole, as before. A shared process that fails as the content's
+  keeps the pages it handed over, and each other page is prepared in processes of its own, as
+  before, so only a page that fails there fails; one that fails as the run's fails the pages it
+  didn't hand over with its error, which ends the stage as before. Under the container runner,
+  whose runs see only the PDF's directory, each page's text is still read by a process of its
+  own.
+
 ### Fixed
 
 - `tool.NewExec`, and so `stages.Build`, checks a tool's version in the environment its runs get:
