@@ -48,6 +48,14 @@ tool under `tools/` keeps its own.
   the user's configuration as untrusted, is refused at construction: its row in the tools table
   says why, the stages that need it are `missing`, and no part runs through it, where before its
   route read `wired` and every run of it failed. A tool that answers under both builds as before.
+- `document.Ghostscript.Render`, and so `document.Preparer.Images`, renders a page gs renders with
+  a message of its own, such as `**** Error: Page drawing error occurred.` for a page whose
+  `/Annots` is null. gs's render runs, a page's own and a shared process's, take
+  `-sstdout=%stderr`, as its text runs did, so its messages go to stderr, dropped for a run that
+  succeeds, and stdout holds the PNGs alone; before, the message came ahead of the PNG on stdout,
+  the page failed with "no PNG on stdout", and its error quoted up to 4 KB of the PNG. A page past
+  the last is still an error carrying gs's message, now read from stderr. Every other page's PNG
+  is as before.
 
 ## [v0.3.0] - 2026-11-18
 

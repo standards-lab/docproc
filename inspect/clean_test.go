@@ -23,12 +23,15 @@ var cleanSkipped = map[string]bool{"../picture/testdata/script-bearing.svg": tru
 // picture is an external relationship, fetched when a reader renders the document, as an SVG's
 // external href is, so it is active content though the fixture is clean; an external
 // hyperlink, which word-with-attachments.docx holds three of, isn't. Its OLE object is one of
-// the embeddings the checks name, as are document's attachments.pdf's embedded files.
+// the embeddings the checks name, as are document's attachments.pdf's embedded files. document's
+// malformed compacted-syntax.pdf, SafeDocs' parser test, holds a print action, /AA, whose
+// /JavaScript /JS calls app.alert, which no stage runs.
 var cleanFlags = map[string][]inspect.Check{
 	"../office/testdata/ooxml/media.libreoffice.docx":     {inspect.ExternalRelationship},
 	"../office/testdata/ooxml/word-with-attachments.docx": {inspect.OLEObject},
 	"../document/testdata/attachments/attachments.pdf":    {inspect.PDFEmbeddedFile},
 	"../document/testdata/portfolio/portfolio.pdf":        {inspect.PDFEmbeddedFile},
+	"../document/testdata/malformed/compacted-syntax.pdf": {inspect.PDFAA, inspect.PDFJavaScript, inspect.PDFJS},
 }
 
 // TestCleanFixtures inspects the repository's clean fixtures, every file under cleanDirs but the

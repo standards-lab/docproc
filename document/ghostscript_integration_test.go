@@ -74,6 +74,22 @@ func TestGhostscriptRenderHost(t *testing.T) {
 	t.Logf("page past the last: %v", err)
 }
 
+// TestGhostscriptRenderMessageHost checks the host's gs renders the malformed fixture's page,
+// which it renders with "**** Error: Page drawing error occurred.": the message goes to stderr,
+// and Render writes the page's PNG alone.
+func TestGhostscriptRenderMessageHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	var out bytes.Buffer
+	if err := g.Render(t.Context(), filepath.Join("testdata", "malformed", "compacted-syntax.pdf"), 1, 150, &out); err != nil {
+		t.Fatalf("Render(compacted-syntax.pdf page 1): %v", err)
+	}
+	img, err := png.Decode(bytes.NewReader(out.Bytes()))
+	if err != nil {
+		t.Fatalf("compacted-syntax.pdf page 1 isn't a PNG: %v", err)
+	}
+	t.Logf("compacted-syntax.pdf page 1: %d PNG bytes, %v", out.Len(), img.Bounds())
+}
+
 // TestGhostscriptTextHost checks the host's gs reads clean.pdf's text layer, every page of it
 // having one, and finds none on scanned.pdf's pages, their text an image, and records each clean
 // page's character and word error rates against its ground truth. A page past the last is

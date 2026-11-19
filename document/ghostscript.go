@@ -191,9 +191,12 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 // refuses a DPI of zero or less and a page below 1 before gs runs, as CheckRender does. A gs that
 // exits nonzero gives the Tool's error, a *tool.ExitError, and w may hold part of a PNG then.
 //
-// gs asked for a page past the last exits zero, writing its message to stdout in place of a PNG:
-// "Requested FirstPage is greater than the number of pages in the file". Render writes nothing to
-// w unless stdout begins as a PNG, and returns gs's message as its error when it doesn't.
+// gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone,
+// as it does for Text. gs asked for a page past the last exits zero, writing no PNG and its
+// message, "Requested FirstPage is greater than the number of pages in the file", to stderr.
+// Render writes nothing to w unless stdout begins as a PNG, and returns gs's message as its error
+// when it doesn't. A page gs renders with a message, such as "**** Error: Page drawing error
+// occurred.", renders, and the message is dropped, as the stderr of every run that succeeds is.
 func (g *Ghostscript) Render(ctx context.Context, pdf string, page, dpi int, w io.Writer) error {
 	if err := CheckRender(page, dpi); err != nil {
 		return err
@@ -206,15 +209,20 @@ func (g *Ghostscript) Render(ctx context.Context, pdf string, page, dpi int, w i
 }
 
 // png runs gs as inv says, its stdout a page's PNG, and writes the PNG to w, holding back a stdout
-// that doesn't begin as a PNG and returning it as the error.
+// that doesn't begin as a PNG and returning gs's stderr, its message, as the error.
 func (g *Ghostscript) png(ctx context.Context, inv tool.Invocation, pdf string, page int, w io.Writer) error {
 	out := &pngGuard{w: w}
-	inv.Stdout = out
+	stderr := cli.LimitedBuffer{Limit: gsStderrLimit}
+	inv.Stdout, inv.Stderr = out, &stderr
 	if err := g.gs.Run(ctx, inv); err != nil {
+		// Run keeps stderr for its *tool.ExitError only when the caller doesn't take it.
+		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Message == "" {
+			exit.Message = stderr.String()
+		}
 		return err
 	}
 	if !out.png {
-		return fmt.Errorf("document: ghostscript: page %d of %s: no PNG on stdout: %s", page, pdf, strings.TrimSpace(string(out.head)))
+		return fmt.Errorf("document: ghostscript: page %d of %s: no PNG on stdout: %s", page, pdf, strings.TrimSpace(stderr.String()))
 	}
 	return nil
 }
@@ -222,8 +230,9 @@ func (g *Ghostscript) png(ctx context.Context, inv tool.Invocation, pdf string, 
 // pastLast is the start of the message gs prints for a FirstPage past a PDF's last page.
 const pastLast = "Requested FirstPage is greater than the number of pages"
 
-// textStderrLimit bounds how much of gs's stderr Text keeps, for its message and its errors.
-const textStderrLimit = 4 << 10
+// gsStderrLimit bounds how much of gs's stderr Render and Text keep, for their messages and their
+// errors.
+const gsStderrLimit = 4 << 10
 
 // Text returns the text of page, 1-based, of the PDF at pdf, as its text layer holds it, one gs
 // run with the txtwrite device: the page's text laid out in lines, gs's own spacing kept. A page
@@ -244,7 +253,7 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 		return "", fmt.Errorf("document: ghostscript: %w", err)
 	}
 	var out strings.Builder
-	stderr := cli.LimitedBuffer{Limit: textStderrLimit}
+	stderr := cli.LimitedBuffer{Limit: gsStderrLimit}
 	err = g.gs.Run(ctx, tool.Invocation{Args: textArgs(abs, page), Dir: filepath.Dir(abs), Stdout: &out, Stderr: &stderr})
 	if err != nil {
 		// Run keeps stderr for its *tool.ExitError only when the caller doesn't take it.
@@ -411,9 +420,10 @@ func runLength(first, last int) int {
 }
 
 // sharedRenderArgs returns gs's arguments for pages of the PDF at pdf at dpi, as renderArgs' for
-// one page but for the page list: gs writes each page's PNG to stdout in turn.
+// one page but for the page list: gs writes each page's PNG to stdout in turn, and its own messages
+// to stderr.
 func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
-	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
+	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
 		pageListFlag + pageList(pages), "-sOutputFile=-", pdf}
 }
@@ -428,9 +438,11 @@ func sharedTextArgs(pdf string, pages []int, out string) []string {
 
 // renderArgs returns gs's arguments for page of the PDF at pdf at dpi. png16m is 24-bit RGB; the
 // alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default and
-// gs doesn't. -sOutputFile=- writes the PNG to stdout.
+// gs doesn't. -sOutputFile=- writes the PNG to stdout, and -sstdout=%stderr gs's own messages to
+// stderr, which gs otherwise writes to stdout, even under -q, ahead of a page it renders with a
+// message, such as "**** Error: Page drawing error occurred.".
 func renderArgs(pdf string, page, dpi int) []string {
-	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sDEVICE=png16m",
+	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-", pdf}
 }
@@ -444,6 +456,9 @@ func textArgs(pdf string, page int) []string {
 
 // countArgs returns gs's arguments to print the page count of the PDF at pdf. The path is a
 // PostScript string there, whose backslashes and parentheses are escaped.
+//
+// The count, and surveyArgs' output, is printed with =, which writes to %stdout as gs's own
+// messages do, so neither run takes -sstdout=%stderr: it would send the count to stderr too.
 func countArgs(pdf string) []string {
 	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf,
 		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount = quit"}
@@ -476,15 +491,11 @@ func psString(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `(`, `\(`, `)`, `\)`).Replace(s)
 }
 
-// pngGuardLimit bounds how much of a stdout that isn't a PNG pngGuard keeps for the error.
-const pngGuardLimit = 4 << 10
-
-// pngGuard passes a PNG through to w, and holds back a stdout that doesn't begin with the PNG
-// signature, keeping its first pngGuardLimit bytes, so a gs message never reaches w as a page.
+// pngGuard passes a PNG through to w, and discards a stdout that doesn't begin with the PNG
+// signature, so nothing but a PNG reaches w as a page.
 type pngGuard struct {
 	w io.Writer
-	// head holds stdout until its first eight bytes are known, and all of it, to the limit, once
-	// they aren't the signature.
+	// head holds stdout until its first eight bytes are known.
 	head []byte
 	// png is whether stdout began with the signature, and decided whether that is known.
 	png, decided bool
@@ -495,14 +506,12 @@ func (g *pngGuard) Write(p []byte) (int, error) {
 		return g.w.Write(p)
 	}
 	if g.decided {
-		g.keep(p)
 		return len(p), nil
 	}
-	g.keep(p)
+	g.head = append(g.head, p...)
 	n := min(len(g.head), len(route.PNGSignature))
 	if string(g.head[:n]) != route.PNGSignature[:n] {
-		g.decided = true
-		g.head = g.head[:min(len(g.head), pngGuardLimit)]
+		g.decided, g.head = true, nil
 		return len(p), nil
 	}
 	if n < len(route.PNGSignature) {
@@ -515,15 +524,6 @@ func (g *pngGuard) Write(p []byte) (int, error) {
 	}
 	g.head = nil
 	return len(p), nil
-}
-
-// keep appends p to head, up to pngGuardLimit for a stdout that isn't a PNG. Until the signature
-// is decided head keeps everything, which is at most seven bytes plus p.
-func (g *pngGuard) keep(p []byte) {
-	if g.decided {
-		p = p[:min(len(p), max(pngGuardLimit-len(g.head), 0))]
-	}
-	g.head = append(g.head, p...)
 }
 
 // pngSink takes the PNGs a pngSplit splits from a shared run's stdout, the i-th from 0, in turn.

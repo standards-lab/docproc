@@ -6,3 +6,6 @@ office/testdata/rtf/** -text
 # The committed run directory is compared as text with what the writer writes, and one record ends
 # in a torn line with no newline, so git never converts it.
 rundir/testdata/** -text
+# The malformed PDF fixture holds CR line ends among its text and is pinned by SHA-256, byte for
+# byte, so git never converts it.
+document/testdata/malformed/** -text

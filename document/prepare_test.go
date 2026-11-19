@@ -579,6 +579,28 @@ func TestImagesSharedFallback(t *testing.T) {
 	}
 }
 
+// TestImagesSharedMessage checks that gs's own message in a shared process, written for a page it
+// renders nonetheless, goes to stderr, so the process's stdout is its pages' PNGs alone: every page
+// is its own, from the one process, none rerun in a process of its own.
+func TestImagesSharedMessage(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t, 7)
+	f.gs.set(func(s *settings) { s.Message = "   **** Error: Page drawing error occurred.\n" })
+	f.req.PagesPerProcess = 10
+	pages, errs := f.images(t.Context())
+	if len(pages) != 7 {
+		t.Fatalf("the stream yielded %+v, %v; want 7 pages", pages, errs)
+	}
+	for i, p := range pages {
+		if b, err := os.ReadFile(p.Path); errs[i] != nil || err != nil || !bytes.Equal(b, standinPage(i+1, 150)) {
+			t.Errorf("page %d: %+v, %v, file %q; want its own page", i+1, p, errs[i], b)
+		}
+	}
+	if got, want := f.processes("png16m"), []string{"-sPageList=1-7"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+}
+
 // TestImagesSharedRunFailure checks a shared process that fails as the run's, gs killed by a
 // SIGKILL docproc didn't send, falls back to nothing: the pages it handed over stand, and each
 // page it didn't fails with its error, no process of its own run.

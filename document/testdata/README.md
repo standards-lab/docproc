@@ -1,8 +1,8 @@
 # testdata
 
 The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
-AcroForm and a page of a signed PDF for the forms record; a generated PDF of embedded files; and
-a generated PDF portfolio. Each set is one multi-page PDF, so a renderer test names a page of it
+AcroForm and a page of a signed PDF for the forms record; a generated PDF of embedded files; a
+generated PDF portfolio; and a malformed PDF that gs renders with a message. Each set is one multi-page PDF, so a renderer test names a page of it
 and a page stream test takes the whole PDF. The clean and degraded sets are
 generated from `clean.typ`; the scanned set is real scans.
 
@@ -233,4 +233,21 @@ Its SHA-256 sum, which `TestFixtureSums` holds it to:
 
 ```
 c459d50b851ac5fcad70ea49c2b3491d158bc975a70c2a03839c41b53c3d1754  portfolio/portfolio.pdf
+```
+
+## The malformed fixture
+
+`malformed/compacted-syntax.pdf` is the PDF Association's SafeDocs `CompactedPDFSyntaxTest.pdf`,
+Apache-2.0, at commit `68f730ab8c39204844112c499c5707b79878533b` of
+<https://github.com/pdf-association/safedocs>, `CompactedSyntax/CompactedPDFSyntaxTest.pdf`,
+copied byte for byte: one page of about 4 KB, its syntax written with no whitespace a lexer can do
+without. Its catalog holds a print action, a JavaScript `app.alert`, which inspect flags and no
+stage runs. gs 10.08.0 renders its page, exiting zero, but writes `**** Error: Page drawing error
+occurred.` as it does, to stdout unless `-sstdout=%stderr` sends it to stderr, so a render without
+that flag writes the message ahead of the page's PNG.
+
+Its SHA-256 sum, which `TestFixtureSums` holds it to:
+
+```
+df9ab28a64f63896152934fb13e9ee1322cbd94874206b91107344ffff7aaa6c  malformed/compacted-syntax.pdf
 ```

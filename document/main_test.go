@@ -64,6 +64,10 @@ type settings struct {
 	// TMPDIR, named gs_ and six characters, as a gs killed before it removes its temporary files
 	// leaves its band list's.
 	Leave bool `json:"leave,omitzero"`
+	// Message, when set, is a message the stand-in gs's render writes ahead of its pages, as gs
+	// writes its own, such as "**** Error: Page drawing error occurred.", for a page it renders
+	// nonetheless: to stderr for a run with -sstdout=%stderr, and to stdout otherwise.
+	Message string `json:"message,omitzero"`
 	// Stderr is what the stand-in gs writes to stderr for a run that succeeds, and what the
 	// stand-in qpdf or pdfdetach writes to stderr for any run.
 	Stderr string `json:"stderr,omitzero"`
@@ -156,8 +160,8 @@ const argLimit = 2047
 // zero, whether the PDF is a portfolio when its PostScript asks for /Collection, then its pages'
 // sizes when its PostScript asks for them; for a run with the txtwrite device, each output's text,
 // to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the output's place in
-// the run from 1, failing at FailText; and for a render, each output's PNG in turn, after its
-// page's Delay, failing at FailPage and killed at KillPage. A run's outputs are its pages', as
+// the run from 1, failing at FailText; and for a render, its Message, then each output's PNG in
+// turn, after its page's Delay, failing at FailPage and killed at KillPage. A run's outputs are its pages', as
 // outputs gives them, its pages its -sPageList, or its -dFirstPage alone. A page that fails writes
 // "told to fail" to stderr and exits 1, the outputs before it written.
 func gs(s settings, args []string) int {
@@ -217,6 +221,14 @@ func gs(s settings, args []string) int {
 		return standinTexts(s, args)
 	default:
 		dpi, _ := strconv.Atoi(strings.TrimPrefix(args[slices.IndexFunc(args, func(a string) bool { return strings.HasPrefix(a, "-r") })], "-r"))
+		messages := os.Stdout
+		if slices.Contains(args, "-sstdout=%stderr") {
+			messages = os.Stderr
+		}
+		if _, err := messages.WriteString(s.Message); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
 		for _, o := range outputs(s, pageArgs(args)) {
 			time.Sleep(time.Duration(s.Delay[o.page]) * time.Millisecond)
 			if o.page == s.FailPage {

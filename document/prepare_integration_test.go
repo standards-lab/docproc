@@ -148,6 +148,67 @@ func TestImagesSharedHost(t *testing.T) {
 	}
 }
 
+// annotsNullPDF returns a PDF of pages pages, each a blue square, whose pages' /Annots is null,
+// which gs 10.08.0 renders with "**** Error: Page drawing error occurred.", as it does the
+// malformed fixture's page, whose /Annots is null too.
+func annotsNullPDF(pages int) []byte {
+	content := "0 0 1 rg 10 10 50 50 re f"
+	objs := []string{"<</Type/Catalog/Pages 2 0 R>>"}
+	kids := make([]string, pages)
+	for i := range pages {
+		kids[i] = fmt.Sprintf("%d 0 R", 3+i)
+	}
+	objs = append(objs, fmt.Sprintf("<</Type/Pages/Count %d/Kids[%s]>>", pages, strings.Join(kids, " ")))
+	for range pages {
+		objs = append(objs, fmt.Sprintf("<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]/Annots null/Contents %d 0 R>>", 3+pages))
+	}
+	objs = append(objs, fmt.Sprintf("<</Length %d>>stream\n%s\nendstream", len(content), content))
+	var b bytes.Buffer
+	b.WriteString("%PDF-1.7\n")
+	offsets := make([]int, len(objs))
+	for i, o := range objs {
+		offsets[i] = b.Len()
+		fmt.Fprintf(&b, "%d 0 obj\n%s\nendobj\n", i+1, o)
+	}
+	xref := b.Len()
+	fmt.Fprintf(&b, "xref\n0 %d\n0000000000 65535 f \n", len(objs)+1)
+	for _, off := range offsets {
+		fmt.Fprintf(&b, "%010d 00000 n \n", off)
+	}
+	fmt.Fprintf(&b, "trailer\n<</Root 1 0 R/Size %d>>\nstartxref\n%d\n%%%%EOF\n", len(objs)+1, xref)
+	return b.Bytes()
+}
+
+// TestImagesSharedMessageHost checks a shared process on the host's gs over pages it renders with
+// "**** Error: Page drawing error occurred.": the message goes to stderr, so the process's stdout
+// splits into its pages, each byte for byte Render's, none failing.
+func TestImagesSharedMessageHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	pdf := filepath.Join(t.TempDir(), "annots-null.pdf")
+	if err := os.WriteFile(pdf, annotsNullPDF(3), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := document.NewPreparer(document.Config{Renderer: g})
+	req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1, PagesPerProcess: 3}
+	yielded := 0
+	for img, err := range p.Images(t.Context(), pdf, req) {
+		if err != nil {
+			t.Fatalf("page %d: %v", img.Number, err)
+		}
+		yielded++
+		var want bytes.Buffer
+		if err := g.Render(t.Context(), pdf, img.Number, img.DPI, &want); err != nil {
+			t.Fatal(err)
+		}
+		if b, err := os.ReadFile(img.Path); err != nil || !bytes.Equal(b, want.Bytes()) {
+			t.Errorf("page %d isn't Render's (%v)", img.Number, err)
+		}
+	}
+	if yielded != 3 {
+		t.Errorf("the stream yielded %d pages, want 3", yielded)
+	}
+}
+
 // TestImagesPageListHost checks a shared process's page list on the host's gs at PagesPerProcess
 // 2000, past every page of a 1200-page PDF the test writes, each page its number: at concurrency
 // 1 its pages are one range, and at concurrency 2 each lane's 600, none consecutive, run past the
