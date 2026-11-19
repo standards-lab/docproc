@@ -4,7 +4,7 @@
 # tasks through its TOOLS list (`mise -C tools/mail run check`), and tools/pack.sh runs `publish`.
 # Each task runs in this directory.
 [tools]
-cargo-deny = "0.21.0"
+cargo-deny = "0.22.0"
 # tools/notices.sh runs it, in this environment, for the release's third-party notices and their
 # license check (about.toml). It is not in mise's registry, so it comes from its GitHub release.
 "github:EmbarkStudios/cargo-about" = "0.9.3"

@@ -14,8 +14,8 @@ covers docproc-onenote only.
 
 ### Changed
 
-- The crate graph locks uuid 1.29.3, a patch release, in place of 1.29.2. The output is
-  unchanged.
+- The crate graph locks uuid 1.29.3 and pin-project-lite 0.2.18, patch releases, in place of
+  1.29.2 and 0.2.17. The output is unchanged.
 - An input that is missing, or a file or notebook directory without read permission, is
   refused, still exit 3, with a reason that says which and names the input's path as given,
   after it: `no such file: <path>` or `permission denied: <path>`, in place of the operating

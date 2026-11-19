@@ -13,6 +13,8 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ### Changed
 
+- The crate graph locks pin-project-lite 0.2.18, a patch release, in place of 0.2.17. The
+  output is unchanged.
 - An input that is missing, a directory, or without read permission is refused, still exit 3,
   with a reason that says which and names the input's path as given, after it: `no such file:
   <path>`, `is a directory: <path>`, or `permission denied: <path>`, in place of `the input can't
