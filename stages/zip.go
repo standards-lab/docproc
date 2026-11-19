@@ -90,7 +90,7 @@ func (s *archiveStage) zipEntry(ctx context.Context, archive string, f *zip.File
 	case errors.Is(why, errBomb):
 		return s.bombChild(where, f.Name, fmt.Sprintf("entry %q, declared %d", f.Name, f.UncompressedSize64), written, f.CompressedSize64), nil
 	case why != nil:
-		return unread(where, f.Name, dispatch.Failed, why.Error()), nil
+		return notWritten(where, f.Name, why), nil
 	}
 	return dispatch.PartItem(dispatch.Found{Path: path, Name: f.Name, Where: where}), nil
 }

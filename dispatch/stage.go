@@ -175,8 +175,10 @@ func FlagItem(f inspect.Flag) Item { return Item{Flag: &f} }
 // A found part with no file and an Outcome is an unread child: an occurrence the stage names but
 // can't read, such as an archive's link or encrypted entry, an entry past the bomb rule, a medium
 // with no content, or a section a tool skipped. Its Outcome is [Quarantined], [Encrypted],
-// [NoProcessor], or [Failed], with its Reason and its Flags; it has a name and a Where and no
-// SHA-256 or size, and is reported and recorded as a child, so counts by outcome are true.
+// [NoProcessor], or [Failed], with its Reason and its Flags, or [Limited], an entry the stage
+// stopped writing at the bytes cap, as [Remaining] says, whose Reason the dispatcher gives; it has
+// a name and a Where and no SHA-256 or size, and is reported and recorded as a child, so counts by
+// outcome are true.
 //
 // Release serves a stage that holds content a later item names again, as a CLI that writes each
 // distinct content once: the dispatcher calls it, once, after the part's own event, when the part

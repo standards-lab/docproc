@@ -94,7 +94,7 @@ func (s *archiveStage) tarEntry(ctx context.Context, h *tar.Header, r io.Reader,
 	case errors.Is(why, errBomb):
 		return s.bombChild(where, h.Name, fmt.Sprintf("entry %q in a tar, declared %d", h.Name, h.Size), written, whole), nil
 	case why != nil:
-		return unread(where, h.Name, dispatch.Failed, why.Error()), nil
+		return notWritten(where, h.Name, why), nil
 	}
 	return dispatch.PartItem(dispatch.Found{Path: path, Name: h.Name, Where: where}), nil
 }
@@ -136,7 +136,7 @@ func (s *archiveStage) gzip(ctx context.Context, p dispatch.Part, dir string, yi
 	case errors.Is(why, errBomb):
 		yield(s.bombChild(where, name, fmt.Sprintf("content %q", name), written, compressed), nil)
 	case why != nil:
-		yield(unread(where, name, dispatch.Failed, why.Error()), nil)
+		yield(notWritten(where, name, why), nil)
 	default:
 		yield(dispatch.PartItem(dispatch.Found{Path: path, Name: name, Where: where}), nil)
 	}

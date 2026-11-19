@@ -160,6 +160,12 @@ func (pr *prep) run(stage Stage, dir string) error {
 	r.ancestors = append(r.ancestors, pr.p.SHA256)
 	defer func() { r.ancestors = r.ancestors[:len(r.ancestors)-1] }()
 	defer pr.drain()
+	// What the dispatch may still admit, read here, on the walk's goroutine, which alone admits
+	// parts: the stage's goroutine reads the copy on its context, never r.bytes.
+	ctx := r.ctx
+	if limit := r.d.cfg.Limits.Bytes; limit > 0 {
+		ctx = context.WithValue(ctx, remainingKey{}, limit-r.bytes)
+	}
 	items, ack := make(chan stageItem), make(chan bool)
 	go func() {
 		defer close(items)
@@ -168,7 +174,7 @@ func (pr *prep) run(stage Stage, dir string) error {
 				items <- stageItem{panicked: true, value: v}
 			}
 		}()
-		for item, err := range stage.Prepare(r.ctx, *pr.p, dir) {
+		for item, err := range stage.Prepare(ctx, *pr.p, dir) {
 			items <- stageItem{item: item, err: err}
 			if !<-ack {
 				return

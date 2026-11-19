@@ -21,19 +21,37 @@ import (
 // container is the test stage, for route.Text: a container whose content is lines, each a
 // directive. "file NAME" finds a part named NAME holding world[NAME]; "copy NAME" finds inspect's
 // fixture NAME; "fail", "noproc", and "encrypted" end the stage with a failure, ErrNoProcessor,
-// or ErrEncrypted; "block" tells entered the part's name and waits for release to close. Before
+// or ErrEncrypted; "block" tells entered the part's name and waits for release to close;
+// "remaining" keeps what dispatch.Remaining says on its context, by the part's name; and
+// "limited NAME" finds an unread child named NAME, limited, its reason the stage's own. Before
 // its directives it yields a text output in a file, its content's line count.
 type container struct {
 	world   map[string]string
 	entered chan string
 	release chan struct{}
 
-	mu    sync.Mutex
-	calls map[string]int
+	mu        sync.Mutex
+	calls     map[string]int
+	remaining map[string]remaining
+}
+
+// remaining is what dispatch.Remaining said to a Prepare.
+type remaining struct {
+	n  int64
+	ok bool
 }
 
 func newContainer(world map[string]string) *container {
-	return &container{world: world, calls: map[string]int{}}
+	return &container{world: world, calls: map[string]int{}, remaining: map[string]remaining{}}
+}
+
+// remainingOf returns what dispatch.Remaining said to the Prepare of the part named name, and
+// whether its "remaining" directive ran.
+func (c *container) remainingOf(name string) (remaining, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	r, ok := c.remaining[name]
+	return r, ok
 }
 
 func (c *container) Identity() dispatch.Identity {
@@ -85,6 +103,16 @@ func (c *container) Prepare(ctx context.Context, p dispatch.Part, dir string) it
 					return
 				}
 				if !yield(dispatch.PartItem(dispatch.Found{Path: path, Name: arg, Where: where}), nil) {
+					return
+				}
+			case "remaining":
+				n, ok := dispatch.Remaining(ctx)
+				c.mu.Lock()
+				c.remaining[p.Name] = remaining{n, ok}
+				c.mu.Unlock()
+			case "limited":
+				f := dispatch.Found{Name: arg, Where: where, Outcome: dispatch.Limited, Reason: "the stage's own words"}
+				if !yield(dispatch.PartItem(f), nil) {
 					return
 				}
 			case "fail":

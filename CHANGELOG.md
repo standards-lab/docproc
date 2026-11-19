@@ -17,6 +17,14 @@ tool under `tools/` keeps its own.
   document stage's identity.
 - `tool.Tool.Timeout`, the Spec's Timeout, for an adapter that runs many units in one process
   and bounds its idleness by a unit's bound.
+- `dispatch.Remaining`, the bytes the dispatch that called a stage's `Prepare` may still admit:
+  `Limits.Bytes` less the sizes it had admitted as `Prepare` started, the part being prepared
+  among them, read from the context the dispatcher passes to `Prepare`. It says nothing when no
+  bytes cap is set. A stage that writes the parts it finds holds them to it, and finds a part it
+  stopped writing there as an unread child, `dispatch.Limited`, which `Found` now takes beside
+  quarantined, encrypted, no processor yet, and failed; the dispatcher gives it the bytes cap's
+  reason, `past the bytes cap, <cap>`, and doesn't record its parent, as for a found part past a
+  cap.
 
 ### Changed
 
@@ -41,6 +49,15 @@ tool under `tools/` keeps its own.
 
 ### Fixed
 
+- `Limits.Bytes` bounds what the stages package writes, not only what the dispatcher admits. The
+  archive stage's ZIP, tar, 7z, and cabinet entries and gzip and zstd content, and the document
+  stage's attachments, stop at the write that would take them past `dispatch.Remaining`, less what
+  the same `Prepare` has written for its earlier parts, so one archive's entries together stay
+  within it; the partial file is removed, and the entry is an unread child, limited, `past the
+  bytes cap, <cap>`, with no size or SHA-256. Before, such an entry was written whole, then hashed
+  and refused: a 107 MB ZIP whose one entry expands 999:1 to 100 GiB wrote all 100 GiB, about
+  163 s, before it was limited. An entry within the cap is written and admitted as before. The
+  Rust tools' children, which their processes write, are still admitted once written.
 - `tool.NewExec`, and so `stages.Build`, checks a tool's version in the environment its runs get:
   the fixed environment and the Spec's `Env`, with `HOME` and `TMPDIR` a new empty directory of
   the check's own, standing in for each run's working directory, where the check gave them none.

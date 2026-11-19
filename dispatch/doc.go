@@ -57,7 +57,8 @@
 //     parts dispatched.
 //   - [Limited]: the part is past a cap the caller set in [Limits], on the parts, the bytes, or
 //     the depth one dispatch admits; it is neither inspected nor prepared, and its siblings go
-//     on. No cap applies by default.
+//     on. No cap applies by default. A part a stage stopped writing at the bytes cap, as
+//     [Remaining] says, is limited too, an unread child with no size or SHA-256.
 //
 // An error that stops the whole dispatch is yielded alone, last: the input unreadable, or its
 // SHA-256 not the one claimed, matching [ErrSHA256]; a failure of the index or the content store,
