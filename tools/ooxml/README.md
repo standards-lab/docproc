@@ -99,10 +99,13 @@ stderr holds one line each:
   invalid reference, such as a sheet whose relationship names no part, a properties part that
   can't be parsed, or a repeated property key, is skipped with a warning, and the rest is read
   with exit code 0.
-- `docproc-ooxml: error: <reason>` for exit codes 1 to 4. The reason never names the input path.
+- `docproc-ooxml: error: <reason>` for exit codes 1 to 4. The reason never leads with the input
+  path, and names it only for an input missing, a directory, or without read permission.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-ooxml
-refuses an input that is not a file or can't be read; one that is not a docx, xlsx, or pptx
+refuses an input that is missing, a directory, or without read permission, `no such file:
+<path>`, `is a directory: <path>`, or `permission denied: <path>`, the path as given; any other
+input that is not a regular file, such as a device, `not a file`, or that can't be read; one that is not a docx, xlsx, or pptx
 package (an xlsb among them); an encrypted package, its reason beginning `encrypted`; an OLE
 compound file, such as a legacy doc, xls, or ppt, which is to be converted to OOXML first; a
 package malformed at the ZIP or part level; and a docx with tables nested more than eight deep.

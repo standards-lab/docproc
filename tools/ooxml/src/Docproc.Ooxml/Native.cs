@@ -10,11 +10,13 @@ internal static partial class Native
 {
     private const int Interrupted = 4; // EINTR
     private const int NoSuchFile = 2; // ENOENT
+    private const int PermissionDenied = 13; // EACCES
     private const int NotADirectory = 20; // ENOTDIR
     private const int CurrentDirectory = -100; // AT_FDCWD
     private const uint StatxType = 0x1; // STATX_TYPE
     private const int FileTypeMask = 0xF000; // S_IFMT
     private const int RegularFile = 0x8000; // S_IFREG
+    private const int Directory = 0x4000; // S_IFDIR
 
     /// <summary>A path's kind, as <see cref="KindOf"/> finds it.</summary>
     public enum PathKind
@@ -22,14 +24,22 @@ internal static partial class Native
         /// <summary>A regular file, after any symbolic links.</summary>
         RegularFile,
 
-        /// <summary>Nothing at all, or anything but a regular file: a directory, a device, a
-        /// pipe, a socket.</summary>
+        /// <summary>Nothing at all, a dangling link among them, or a path one of whose
+        /// directories is a file.</summary>
+        Missing,
+
+        /// <summary>A directory, after any symbolic links.</summary>
+        Directory,
+
+        /// <summary>Anything else that is no regular file: a device, a pipe, a socket.</summary>
         NotAFile,
     }
 
     /// <summary>What the path names, following symbolic links.</summary>
-    /// <exception cref="IOException">The path can't be looked up, for a reason other than its
-    /// absence, such as a directory on it that can't be searched.</exception>
+    /// <exception cref="UnauthorizedAccessException">A directory on the path can't be
+    /// searched.</exception>
+    /// <exception cref="IOException">The path can't be looked up, for any other reason than its
+    /// absence.</exception>
     public static unsafe PathKind KindOf(string path)
     {
         // struct statx is the same on every architecture: 256 bytes, its u16 stx_mode at 28.
@@ -37,14 +47,20 @@ internal static partial class Native
         if (Statx(CurrentDirectory, path, 0, StatxType, buffer) != 0)
         {
             var error = Marshal.GetLastPInvokeError();
-            if (error is NoSuchFile or NotADirectory)
+            return error switch
             {
-                return PathKind.NotAFile;
-            }
-            throw new IOException(Marshal.GetPInvokeErrorMessage(error), error);
+                NoSuchFile or NotADirectory => PathKind.Missing,
+                PermissionDenied => throw new UnauthorizedAccessException(Marshal.GetPInvokeErrorMessage(error)),
+                _ => throw new IOException(Marshal.GetPInvokeErrorMessage(error), error),
+            };
         }
         var mode = *(ushort*)(buffer + 28);
-        return (mode & FileTypeMask) == RegularFile ? PathKind.RegularFile : PathKind.NotAFile;
+        return (mode & FileTypeMask) switch
+        {
+            RegularFile => PathKind.RegularFile,
+            Directory => PathKind.Directory,
+            _ => PathKind.NotAFile,
+        };
     }
 
     /// <summary>Writes all of buffer to the file descriptor, retrying an interrupted write.</summary>

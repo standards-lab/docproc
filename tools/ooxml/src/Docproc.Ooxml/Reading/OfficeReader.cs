@@ -49,7 +49,18 @@ internal static class OfficeReader
 {
     private static readonly byte[] ZipSignature = [0x50, 0x4B, 0x03, 0x04];
 
-    /// <summary>The refusal's reason for a path that isn't a regular file, absent included.</summary>
+    /// <summary>The refusal's reason for a path that names nothing, the path following it.</summary>
+    internal const string NoSuchFile = "no such file";
+
+    /// <summary>The refusal's reason for a directory, the path following it.</summary>
+    internal const string IsADirectory = "is a directory";
+
+    /// <summary>The refusal's reason for a file that can't be opened for want of permission, or
+    /// a path with a directory that can't be searched, the path following it.</summary>
+    internal const string PermissionDenied = "permission denied";
+
+    /// <summary>The refusal's reason for anything else that isn't a regular file, such as a
+    /// device.</summary>
     internal const string NotAFile = "not a file";
 
     /// <summary>The refusal's reason for a file that isn't a docx, xlsx, or pptx package.</summary>
@@ -65,7 +76,8 @@ internal static class OfficeReader
     internal const string Legacy = "an OLE compound file, such as a legacy binary document (doc, xls, ppt); convert it to docx, xlsx, or pptx first";
 
     /// <summary>Converts the document at path into the model.</summary>
-    /// <exception cref="RefusalException">The path isn't a regular file or can't be read, or the
+    /// <exception cref="RefusalException">The path is missing, a directory, or not a regular file,
+    /// or can't be read, or the
     /// file isn't a docx, xlsx, or pptx package, is encrypted or a legacy binary format, is
     /// malformed, or goes past a limit of docproc-ooxml's (tables nested more than eight
     /// deep).</exception>
@@ -78,13 +90,14 @@ internal static class OfficeReader
     {
         try
         {
-            if (Native.KindOf(path) != Native.PathKind.RegularFile)
-            {
-                throw new RefusalException(NotAFile);
-            }
+            RefuseUnlessAFile(path);
             return ConvertPackage(path, Sniff(path));
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException)
+        {
+            throw new RefusalException(Named(PermissionDenied, path));
+        }
+        catch (IOException e)
         {
             // A ZIP or XML failure inside the package is malformed; this is the file itself.
             throw new RefusalException($"cannot be read: {WithoutPath(e, path)}");
@@ -99,10 +112,7 @@ internal static class OfficeReader
     {
         try
         {
-            if (Native.KindOf(path) != Native.PathKind.RegularFile)
-            {
-                throw new RefusalException(NotAFile);
-            }
+            RefuseUnlessAFile(path);
             var format = Sniff(path);
             if (format != SourceFormat.Xlsx)
             {
@@ -121,17 +131,41 @@ internal static class OfficeReader
                 throw;
             }
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (UnauthorizedAccessException)
+        {
+            throw new RefusalException(Named(PermissionDenied, path));
+        }
+        catch (IOException e)
         {
             throw new RefusalException($"cannot be read: {WithoutPath(e, path)}");
         }
     }
 
-    // .NET's messages for a file name it, as given or in full; a reason never holds the path.
+    // Refuses a path that is missing or a directory, by a reason naming it, or that is anything
+    // else but a regular file, by one that doesn't.
+    private static void RefuseUnlessAFile(string path)
+    {
+        switch (Native.KindOf(path))
+        {
+            case Native.PathKind.RegularFile:
+                return;
+            case Native.PathKind.Missing:
+                throw new RefusalException(Named(NoSuchFile, path));
+            case Native.PathKind.Directory:
+                throw new RefusalException(Named(IsADirectory, path));
+            default:
+                throw new RefusalException(NotAFile);
+        }
+    }
+
+    // A reason that names the input: the reason, then the path as given, which a reason never
+    // leads with. Only a path missing, a directory, or without read permission is named so.
+    private static string Named(string reason, string path) => $"{reason}: {path}";
+
+    // .NET's messages for a file name it, as given or in full; any other reason never holds the
+    // path.
     private static string WithoutPath(Exception e, string path) =>
-        e is UnauthorizedAccessException
-            ? "permission denied"
-            : e.Message.Replace(Path.GetFullPath(path), "the input", StringComparison.Ordinal).Replace(path, "the input", StringComparison.Ordinal);
+        e.Message.Replace(Path.GetFullPath(path), "the input", StringComparison.Ordinal).Replace(path, "the input", StringComparison.Ordinal);
 
     private static Conversion ConvertPackage(string path, SourceFormat format) =>
         Guarded(path, () =>
