@@ -438,3 +438,210 @@ largest attachment's small multiple: 52.6 MiB at most on the scale store, whose 
 
 Not run: the three glibc rows of the mail bench, since no glibc build is released, and the
 onenote content table, all of whose fields are cut.
+
+## The ~/docs run
+
+Measured 2026-11-19, from 19:11:55 to 19:14:27 UTC, on the same laptop: Intel Core Ultra 9 185H,
+22 logical CPUs, Linux 7.2.15-1-omarchy, the run's output on btrfs. This run is the release
+candidate's result: docproc at `96a9cdbe35d179e636e27ff7f85844489f48f8cf`, the HEAD of
+`acceptance`, whose manifest reads the command as `v0.1.1-0.20261119190539-96a9cdbe35d1+dirty`.
+The tree's one change is the uncommitted goal record, no code. It carries three fixes the first
+measurement led to: gs's render runs send their messages to stderr (831f865), the bytes cap bounds
+what a stage writes (c61f750), and the integration tier runs no tool in testdata (78380e3).
+
+The three tools were built from the checkout with `mise -C tools/<tool> run publish` and put first
+on PATH; cmd/docproc was built with `GOWORK=off go build` in `cmd/docproc`, without `-race`. Every
+`DOCPROC_` variable was unset, mise's DSN and S3 ones among them, so every bound is its starting
+value, and the workers are the default, 22. The command was `docproc run ~/docs --out <dir>`, then
+`docproc report <dir>`.
+
+The corpus is `~/docs`: 592 files of 1,740,329,401 bytes, MANIFEST.json dated 2026-11-06. Its
+listing was taken before and after each run here, the two ~/docs runs, the soffice bench, and the
+bombs. Every file's path, size, and modification time is unchanged. The five directories whose
+own modification times changed are those where a PDF's page processes worked:
+`pdf/edge/malformed`, `pdf/edge/pdfa`, `pdf/edge/signed`, `pdf/edge/tagged`, and
+`pdf/scanned/olmocr-bench`. No `gs_*` or `gpdf-collection-*` file was left, and nothing was
+removed.
+
+| Tool | Version | From |
+| --- | --- | --- |
+| gs | 10.08.0 | /usr/bin/gs |
+| qpdf | 12.4.2 | /usr/bin/qpdf |
+| pdfdetach | 26.10.0 | /usr/bin/pdfdetach |
+| magick | 7.1.2-34 Q16-HDRI | /usr/bin/magick |
+| soffice | LibreOffice 26.8.2.2 | `gotenberg/gotenberg:9.1.0-libreoffice@sha256:4ff340bb7b0753e7d037ceb75a08b09c3a9aebd0e6484df9516ec29ec31074ff`, in its container |
+| docproc-ooxml | 0.1.1 | tools/ooxml/.state/publish |
+| docproc-mail | 0.1.2 | tools/mail/.state/publish |
+| docproc-onenote | 0.1.0 | tools/onenote/.state/publish |
+| 7zz | 26.06 | mise, `github:ip7z/7zip` |
+| ffmpeg, ffprobe | n9.0.2 | /usr/bin |
+
+The run exited 0 with nothing on stderr, in **152.7 s** at 22 workers. The stage table wires all
+ten routes. The counts, beside the spike's run and the first measurement's:
+
+| Outcome | Spike | First measurement | This run |
+| --- | --- | --- | --- |
+| prepared | 515 | 507 | 508 |
+| seen | 17 | 17 | 17 |
+| no processor yet | 51 | 51 | 51 |
+| encrypted | 5 | 6 | 6 |
+| failed | 4 | 2 | 1 |
+| read elsewhere | not an outcome | 9 | 9 |
+| total | 592 | 592 | 592 |
+| Wall time | 1,614.67 s (26 min 55 s) | 142.7 s | 152.7 s |
+
+By route: document 61 prepared, 2 seen, 3 encrypted, 1 failed; office 104 prepared, 2 seen, 10 no
+processor yet, 1 encrypted; vision-converted 20; vision 9 and 1 seen; nested 71 and 1 seen;
+onenote 16 prepared, 9 read elsewhere, 1 encrypted; archive 8 and 1 encrypted; audio 41; video 9;
+text 169 and 11 seen; unrouted 41 no processor yet. The record holds 971 part events, 379 of them
+below an input, 11,188 output lines, and 29 warnings. Its "failed parts 138" is the 4 failures
+in "Failures by class" and 134 seen replays of one of them, LargeData.one's docx.
+
+Against the spike, cfr-2024-title32-vol1.pdf and compacted-syntax.pdf now prepare, the 9
+`.onetoc2` tables of contents are read elsewhere, and Encryption.one is refused as an encrypted
+section. Against the first measurement, one input moved:
+
+- **compacted-syntax.pdf** (`pdf/edge/malformed/`) is prepared, with one image and one text, where
+  it failed with "no PNG on stdout". gs renders its page with "Page drawing error occurred", and
+  that message now goes to stderr, so stdout holds the PNG alone (831f865).
+- **The bytes cap** changes no outcome here: no input comes near 32 GiB, the largest being
+  295,621,088 bytes.
+- **The wall time** is 10.0 s longer, 152.7 s against 142.7 s; this measurement's wrapped run took
+  154.6 s, with the same counts. The slowest inputs each took 4 to 12 s longer: the large OneNote
+  sections 145.5 s and 145.3 s, the CFR volume 137.0 s, and the Stella Maberly scan 116.2 s. The
+  run doesn't attribute the difference, and no outcome depends on it.
+
+**The CFR volume**, `pdf/large/cfr-2024-title32-vol1.pdf`, 915 pages: prepared in 137.0 s with
+1,824 outputs, 915 page images, 908 texts, and 1 forms record holding its one signed signature
+field. No warning.
+
+**The audiobook**, `audio/long/librivox-stella-maberly.m4b`, 126,864,276 bytes: prepared in
+37.7 s with 607 outputs, 606 audio windows cut at silence and 1 record. The spike took 1,613.87 s
+for 646 outputs.
+
+`docproc report` exited 0 and wrote the report to `<out>/runs/<run id>/report/index.html`, with
+one page for each entry beside it, named by a 64-hex-digit hash; this run's id is
+`01a1f538-fc4f-7ecd-8573-17a54f77dada`.
+
+## Failures by class
+
+Each failure in the run's record, classed by what stopped it, with each part that failed counted
+once:
+
+| Class | Parts failed |
+| --- | --- |
+| The tool's own exit | 1, with 134 seen replays |
+| The tool's own signal | 0 |
+| The tool's time bound | 0 |
+| Output that doesn't parse | 1 |
+| The tool's in-band refusal of one item, a `skipped` line | 2 |
+| The 2 GiB memory bound | 0 |
+| The run's own classes, retried and unrecorded | 0 ("error inputs 0") |
+
+"memory bound" appears in neither ~/docs run's record, so no part failed by the 2 GiB memory
+bound.
+
+| Input | Part | Tool | Reason | Verdict |
+| --- | --- | --- | --- | --- |
+| `pdf/edge/malformed/no-document-catalog.pdf` | `/` | gs, its page sizes | gs printed "Couldn't initialise file" and a count of 0 | expected |
+| `onenote/large/LargeData.one` | `/page 875519ac-…, media 1`, "testing - large.docx" | docproc-ooxml, exit 3 | refused: not a docx, xlsx, or pptx package | backlog |
+| `email/pst/java-libpst/passworded.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
+| `email/pst/java-libpst/dist-list.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
+
+- **no-document-catalog.pdf: expected, a correct failure.** The file has no document catalog, and
+  gs can't open it. qpdf's form read (exit 2, no trailer dictionary) and pdfdetach's attachment
+  list (exit 1, no catalog) are warnings on the same part.
+- **LargeData.one's docx: backlog.** The bytes are an XPS package, `FixedDocumentSequence.fdseq`
+  among its entries, named `.docx` and routed office by its extension, so docproc-ooxml refuses it
+  as its README says. XPS has no processor, and routing by name against content is PI-10's ground.
+- **passworded.pst and dist-list.pst: backlog.** tools/mail/README.md's Limits documents it: an
+  item outlook-pst 1.2.0 can't open, such as a contact stored without a sub-node tree, is skipped.
+
+No failure is new. The other 24 warnings are informational: text decoded as windows-1252, mail
+decoded lossily, embedded messages outlook-pst doesn't open, image sources that name no
+attachment, and docproc-ooxml's "text boxes not read".
+
+## Peak memory
+
+The peak resident memory of each tool's calls, through a stand-in on PATH for every program
+docproc runs on the host, which runs the real program with docproc's exact arguments, under its
+2 GiB RLIMIT_AS, and logs the call's ru_maxrss. The run was a full ~/docs run, `docproc run`
+again with every tool wrapped: 154.6 s, the same counts, 1,347 calls, none ended by a signal.
+soffice runs in its container under docker's `--memory=2147483648`, a cgroup bound, so it was
+measured apart: docproc's lockdown flags and soffice arguments, with a static rusage as the
+container's entrypoint, on the five largest legacy office inputs, the largest .xls, and the
+largest EMF and WMF.
+
+| Tool | Calls | Peak RSS | The peak call's input | Longest call |
+| --- | --- | --- | --- | --- |
+| magick | 36 | 344.3 MiB | bbb-alpha-inverted.avif, 8,468 B | 1.97 s |
+| soffice | 8, in its container | 224.2 MiB | lists.libreoffice.rtf, 30,836 B | 1.15 s |
+| gs | 751 | 152.7 MiB | balloon-a1b-jp2k.pdf's page render, 698,427 B | 15.15 s |
+| ffmpeg | 53 | 107.7 MiB | a video's frame extraction | 41.03 s |
+| ffprobe | 53 | 70.0 MiB | librivox-stella-maberly.m4b, 126,864,276 B | 0.23 s |
+| docproc-ooxml | 115 | 42.8 MiB | form-footnotes.docx, 27,824 B | 0.09 s |
+| pdfdetach | 83 | 19.0 MiB | cfr-2024-title32-vol1.pdf, 7,415,782 B | 0.10 s |
+| qpdf | 149 | 14.0 MiB | a PDF attachment's form read | 0.12 s |
+| docproc-onenote | 27 | 10.6 MiB | LargeData.one, 11,288,928 B | 2.76 s |
+| 7zz | 5 | 7.5 MiB | mixed-bundle.tar.zst, 44,020 B | 0.03 s |
+| docproc-mail | 75 | 3.7 MiB | outlook.pst, 271,360 B | 3.52 s |
+
+**The 2 GiB bound stands.** No part failed by it, and every peak is under it: the highest,
+magick's 344.3 MiB, is 16.8% of 2 GiB, and no peak comes within 50% of the bound, 1 GiB. The bound
+is on address space, which resident memory understates; the two runs' zero memory-bound failures
+are the evidence for that side.
+
+One gap: docproc-ooxml's arm64 floor is unmeasured, because this host is x86_64. On x64, about 1
+run in 20 of the .NET tool aborts at a 256 MiB address-space bound, and all 20 pass at 512 MiB.
+
+## Bombs
+
+Both bombs follow PI-1's recipe (`git show 8b03243:context/evaluations/processing-inspect.md`),
+built by the first measurement's script on disk:
+
+- **2 TiB across 2,000 entries**, `many-entries.zip`, 185,802 bytes, SHA-256
+  `aed45de8c2acb337d7cacd56c47d6e445fc83829e778aafc2415a5a8b80dde09`. Entries `0.bin` to
+  `1999.bin` each declare 1,073,741,823 bytes, 1 GiB less one byte, expanded from 1,048,576
+  compressed, and each one's data is an empty final Deflate block, so the declared compressed
+  sizes overlap the file. Each entry alone passes the per-entry rule, under 1 GiB.
+- **100 GiB in one entry at 999:1**, `one-entry.zip`, 107,417,762 bytes, SHA-256
+  `f293a9c6e3ad26aa25a5655530c137b3cc021ed8aa9593a69ae41bf171598cc8`. Its one ZIP64 entry,
+  `payload.bin`, is 102,400 copies of one full-flushed Deflate stream of a 1 MiB chunk, zeros with
+  a random byte every 300,000, so the copies concatenate: 107,374,182,400 bytes expanded, 999.6:1,
+  under the rule's 1,000:1.
+
+Each went through `docproc run` at the starting bounds, with the tools wrapped, in its own run
+directory on btrfs with zstd:3 compression. The apparent size of the run directory and the bytes
+used on its filesystem were sampled every second; the run output was deleted afterwards and the
+records kept.
+
+| Bomb | Before the write-time cap (cb82087) | This run (96a9cdb) |
+| --- | --- | --- |
+| 2 TiB ZIP: outcome | quarantined, `archive-bomb`, unsafe | quarantined, `archive-bomb`, unsafe |
+| 2 TiB ZIP: time | 0.70 s | 0.66 s |
+| 2 TiB ZIP: disk | no entry written | no entry written |
+| 999:1 entry: outcome | `limited`, "past the bytes cap, 34359738368", size 107,374,182,400 | `limited`, "past the bytes cap, 34359738368", no size or SHA-256 |
+| 999:1 entry: time | 168.5 s | 31.4 s |
+| 999:1 entry: peak apparent | 100.0 GiB | 30.9 GiB at the last sample, under the 31.9 GiB the cap leaves |
+| 999:1 entry: peak physical | 3.71 GiB | 1.02 GiB |
+
+The 2 TiB ZIP is quarantined at inspection, before any entry is written: "declared compressed
+sizes sum to 2097152000 bytes, past the 185802-byte ZIP, and 1 more". The run exited 0.
+
+The 999:1 entry is stopped while it is written. The archive part itself is prepared, with one
+child; the child `/zip entry payload.bin` is recorded `limited`, with size 0 and no SHA-256, and
+the run exited 0. The entry was written at about 1.13 GiB a second; the last sample before its
+removal, at 28.3 s, read 30.92 GiB apparent, and the next, at 29.3 s, found the partial file
+removed. The cap leaves the entry 32 GiB less the bytes already admitted, the ZIP's own
+107,417,762, so the file stopped at no more than 34,252,320,606 bytes, 31.9 GiB. Its physical
+size is 1.02 GiB only because btrfs compresses the near-zero payload; on an uncompressed
+filesystem it is the apparent size. Before the cap bounded writes, the same entry was written
+whole, 100 GiB, and hashed before dispatch refused it, in 168.5 s.
+
+**No starting value moved.** A bound's starting value moves when a bomb uses up the run's scratch
+or runs longer than the unit timeout, 10 minutes. Neither bomb does: the 2 TiB ZIP writes
+nothing, and the 999:1 entry is stopped by `DOCPROC_MAX_BYTES` at 32 GiB in 31.4 s, with 1.7 TB
+free on the run's filesystem. No tool runs for either, since ZIP is read in Go, so neither
+`DOCPROC_UNIT_TIMEOUT` nor `DOCPROC_STREAM_IDLE` applies. `DOCPROC_MAX_BYTES` at 32 GiB,
+`DOCPROC_BOMB_RATIO` at 1000, `DOCPROC_BOMB_SIZE` at 1 GiB, and `DOCPROC_ARCHIVE_ENTRIES` at
+100,000 stand.
