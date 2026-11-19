@@ -115,11 +115,10 @@ type survey struct {
 }
 
 // survey reads the PDF at pdf in one gs run, in the working directory dir, as workDir says: its
-// page count; whether it is a portfolio, by the
-// test gs's own runpdf makes of it, its PDFInfo holding /Collection; and, with sizes, each page's
-// size, the page set up as rendering does, its media box and rotation applied, and the device's
-// page size printed, so a page's size is the one Render renders. gs runs with -dSAFER, permitted
-// to read that one file.
+// page count; whether it is a portfolio, by the test gs's own runpdf makes of it, its PDFInfo
+// holding /Collection; and, with sizes, each page's size, the page set up as rendering does, its
+// media box and rotation applied, and the device's page size printed, so a page's size is the one
+// Render renders. gs runs with -dSAFER, permitted to read that one file.
 func (g *Ghostscript) survey(ctx context.Context, pdf, dir string, sizes bool) (survey, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
@@ -275,8 +274,9 @@ var errOutput = errors.New("gs's output doesn't hold the pages asked for")
 
 // renderPages renders pages, 1-based and in order, of the PDF at pdf at dpi, in one gs run in the
 // working directory dir, as workDir says, its stdout the pages' PNGs one after another, which it
-// splits by their chunks and hands to sink, a PNG at a time. It returns how many PNGs sink was handed whole, and the run's error: gs's own,
-// the Tool's, or one wrapping errOutput when stdout isn't a PNG a page.
+// splits by their chunks and hands to sink, a PNG at a time. It returns how many PNGs sink was
+// handed whole, and the run's error: gs's own, the Tool's, or one wrapping errOutput when stdout
+// isn't a PNG a page.
 //
 // The run's bound is the Tool's Timeout read as an idle bound, between gs's writes, rather than a
 // bound on the whole run: a unit's bound is a page's, and one run renders many. Time sink spends
@@ -319,8 +319,8 @@ func workDir(dir, pdf string) string {
 
 // textPages writes the text of pages, 1-based and in order, of the PDF at pdf into dir, the
 // caller's, in one gs run with the txtwrite device, dir its working directory too: the run's i-th
-// page, from 1, to textFile(dir, i), as Text reads one page. Every page's file is there once it returns nil; a file missing is
-// an error wrapping errOutput.
+// page, from 1, to textFile(dir, i), as Text reads one page. Every page's file is there once it
+// returns nil; a file missing is an error wrapping errOutput.
 //
 // gs runs without -q, so it writes "Page N" to stderr as each page starts, and the run's bound
 // is the Tool's Timeout read as an idle bound, as renderPages' is.
@@ -373,50 +373,13 @@ const pageListFlag = "-sPageList="
 
 // argLimit is the longest argument gs takes, in bytes: its argument buffer holds 2048 with the
 // terminating NUL, and gs refuses a longer one as "Command too long" and exits 1, as gs 10.08.0
-// does at 2048. A shared run's page list is held to it, as pageListLength measures it.
+// does at 2048. A shared run's page list is held to it, as listFits measures it.
 const argLimit = 2047
 
-// pageListLength is the length of a page list as pageList writes it, measured a page at a time,
-// so a batch's list is known as it grows without writing it out again.
-type pageListLength struct {
-	// done is the length of the list's runs before the last, with the comma after each; first
-	// and last are the last run's pages; n is how many pages the list holds.
-	done, first, last, n int
-}
-
-// with returns the length of the page-list argument, pageListFlag's bytes among them, once page,
-// past the list's last, is added.
-func (l *pageListLength) with(page int) int {
-	switch {
-	case l.n == 0:
-		return len(pageListFlag) + runLength(page, page)
-	case page == l.last+1:
-		return len(pageListFlag) + l.done + runLength(l.first, page)
-	}
-	return len(pageListFlag) + l.done + runLength(l.first, l.last) + 1 + runLength(page, page)
-}
-
-// add adds page, past the list's last, to the list.
-func (l *pageListLength) add(page int) {
-	switch {
-	case l.n == 0:
-		l.first, l.last = page, page
-	case page == l.last+1:
-		l.last = page
-	default:
-		l.done += runLength(l.first, l.last) + 1
-		l.first, l.last = page, page
-	}
-	l.n++
-}
-
-// runLength returns the length of a run of pages from first to last in a page list: the page's
-// number when they are one page, and the range otherwise.
-func runLength(first, last int) int {
-	if first == last {
-		return len(strconv.Itoa(first))
-	}
-	return len(strconv.Itoa(first)) + 1 + len(strconv.Itoa(last))
+// listFits reports whether the page-list argument of pages, ascending, with page, past their
+// last, added fits within argLimit, pageListFlag's bytes among it.
+func listFits(pages []int, page int) bool {
+	return len(pageListFlag)+len(pageList(append(slices.Clip(pages), page))) <= argLimit
 }
 
 // sharedRenderArgs returns gs's arguments for pages of the PDF at pdf at dpi, as renderArgs' for

@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/standards-lab/docproc/dispatch"
@@ -67,6 +68,16 @@ func (e *ExitError) Refusal() error {
 
 // Unwrap returns the run's *tool.ExitError.
 func (e *ExitError) Unwrap() error { return e.ExitError }
+
+// faultSignals are the signals a tool dies by through its own fault: a bad access, an abort, a
+// bus error, an arithmetic fault, or an illegal instruction. An allocation refused under the
+// memory bound ends a tool by one of them, SIGABRT or SIGSEGV, never by an exit code.
+var faultSignals = []string{"SIGSEGV", "SIGABRT", "SIGBUS", "SIGFPE", "SIGILL"}
+
+// OwnFault reports whether signal, a *tool.ExitError's Signal, is one a tool dies by through its
+// own fault, which a stage reads as the content's failure; any other signal, a SIGKILL or SIGTERM
+// docproc didn't send among them, is the run's.
+func OwnFault(signal string) bool { return slices.Contains(faultSignals, signal) }
 
 // TableOfContents is docproc-onenote's fixed reason for a table of contents it refuses under
 // --file-only, its sections being read as their own inputs.

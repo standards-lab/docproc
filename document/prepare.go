@@ -8,10 +8,10 @@ import (
 	"iter"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"sync"
 
+	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -96,9 +96,9 @@ type PageImage struct {
 // process of its own gives. Through the exec runner, the run that counts the pages and the shared
 // processes work in that temporary directory, which is their TMPDIR, so the temporary files a gs
 // ended early leaves are removed with it; a page's own processes work in the PDF's directory, as
-// Render and Text do. A shared process's bound is the gs Tool's Timeout read as an idle bound, between
-// its writes, and never counting time spent waiting on the consumer; a process of a page's own
-// takes it whole, as a unit's.
+// Render and Text do. A shared process's bound is the gs Tool's Timeout read as an idle bound,
+// between its writes, and never counting time spent waiting on the consumer; a process of a
+// page's own takes it whole, as a unit's.
 //
 // A shared process that fails as the content's, gs exiting nonzero, dying by its own fault,
 // passing its bound, or writing output that doesn't hold its pages, keeps the pages it handed
@@ -263,10 +263,9 @@ type run struct {
 // has ended.
 func (r *run) lane(k int) {
 	var batch []int
-	var list pageListLength
 	flush := func() bool {
 		pages := batch
-		batch, list = nil, pageListLength{}
+		batch = nil
 		switch len(pages) {
 		case 0:
 			return true
@@ -299,11 +298,10 @@ func (r *run) lane(k int) {
 			}
 			continue
 		}
-		if len(batch) > 0 && list.with(page) > argLimit && !flush() {
+		if len(batch) > 0 && !listFits(batch, page) && !flush() {
 			return
 		}
 		batch = append(batch, page)
-		list.add(page)
 		if len(batch) == r.req.PagesPerProcess && !flush() {
 			return
 		}
@@ -490,11 +488,6 @@ func (s *pageSink) removeFile() {
 	}
 }
 
-// faultSignals are the signals gs dies by through its own fault, which the stage above reads as
-// the content's: a bad access, an abort, a bus error, an arithmetic fault, or an illegal
-// instruction, an allocation refused under the memory bound among them.
-var faultSignals = []string{"SIGSEGV", "SIGABRT", "SIGBUS", "SIGFPE", "SIGILL"}
-
 // contentFailure reports whether err, a shared process's failure, is the content's, as the stage
 // above classifies a gs run's, so its pages fall back to a process each: gs exiting nonzero,
 // dying by its own fault, or passing its bound, or output that doesn't hold its pages. The rest
@@ -505,7 +498,7 @@ func contentFailure(err error) bool {
 		return true
 	}
 	exit, ok := errors.AsType[*tool.ExitError](err)
-	return ok && (exit.TimedOut || exit.Signal == "" || slices.Contains(faultSignals, exit.Signal))
+	return ok && (exit.TimedOut || exit.Signal == "" || cli.OwnFault(exit.Signal))
 }
 
 // page prepares page of the n pages of the PDF at path, its size size, req already checked, in

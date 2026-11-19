@@ -48,6 +48,8 @@
 //   - [ExitError] is a run that exited nonzero or died by a signal; [ErrNotWritten], [ErrUsage],
 //     [ErrRefused], and [ErrFailed] are exit codes 1 to 4, ErrFailed a signal's too.
 //   - [Outcome] returns an exit code's error.
+//   - [OwnFault] reports whether a signal is one a tool dies by through its own fault, the
+//     content's failure, for stages' classification and document's shared gs processes alike.
 //   - [RefusalClass] maps a refusal's reason to dispatch's class: one beginning "encrypted" to
 //     dispatch.ErrEncrypted, onenote's [TableOfContents] to dispatch.ErrReadElsewhere;
 //     [ExitError.Refusal] gives a run's, and the ExitError matches it.
