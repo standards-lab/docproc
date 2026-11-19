@@ -326,8 +326,8 @@ it.
   error rate on three corpora; silencedetect stays in the spike at v0.9.0. Whether audio that fits
   one model request goes unsplit is the host's choice, through `cmd/docproc`'s
   `DOCPROC_AUDIO_LIMIT` (starting 30s; 4 s or less refused); docproc's default stays 30 s. The
-  tracker's word error rate against silencedetect on acceptance's four excerpts is pending
-  (`acceptance.md`, "Word error rate"). Rejected: both detectors, three decodes.
+  tracker's word error rate on acceptance's four excerpts is within 0.021 of silencedetect's on
+  every one (`acceptance.md`, "Word error rate"). Rejected: both detectors, three decodes.
 - **14 · Live sources (Q15).** Settled → library. `media`'s reader, URL, and pacing surface stays
   in the spike, by the rule applied to every callerless surface, until `protocol` names an owner.
   Rejected: promoting it with a doc saying no stage uses it.
