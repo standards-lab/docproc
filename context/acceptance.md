@@ -650,6 +650,105 @@ free on the run's filesystem. No tool runs for either, since ZIP is read in Go, 
 
 ## Word error rate
 
-**Measurement pending.** The Framework row's audio requests returned HTTP 500 on 2026-11-19, so no
-word error rate is recorded. The excerpts, the windows (tracker 23, 24, 24, and 24; silencedetect
-24, 24, 23, and 24), and the scorer are prepared.
+Measured 2026-11-19 on the Framework row, `http://framework:8001/v1` direct, model `audio`:
+google/gemma-4-E4B-it in BF16 on vLLM v0.34.0 ROCm, `max_model_len` 8192. Each window went
+through infer v0.2.0 (`github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0`),
+`infer --model audio --retries 1 transcribe --mode chat`, with the row's own sampling and no
+language named. The tracker windows came from docproc at e14389c, cut by `audio.Splitter.Windows`
+with `audio.Request{Limit: 30 s}`, as cmd/docproc's audio stage cuts them. The silencedetect
+windows came from the spike, `~/experiments/spike-ai-pipeline-processing` at v0.9.0, its
+`Splitter.Plan` and `Windows` at their defaults.
+
+The row's image sets `MIOPEN_FIND_MODE=FAST`; before it, every request with 10 s or more of audio
+crashed vLLM's engine, and the first attempt at this measurement returned HTTP 500 on every audio
+request.
+
+### Excerpts and truths
+
+Each excerpt is its source's first 10 minutes, its first audio stream, as 16 kHz mono 16-bit WAV:
+`ffmpeg -nostdin -hide_banner -loglevel error -i <source> -map 0:a:0 -t 600 -ac 1 -ar 16000 -c:a pcm_s16le -y <excerpt>.wav`.
+Both arms cut their windows from the same excerpt. Each truth is read by the spike's own readers,
+every file checked against `~/docs/MANIFEST.json`, and each run is joined by the spike's
+`audio.Join` at its defaults and scored by `textscore.NormalizedWordErrors`. Rescoring the spike's
+recorded windowed transcripts reproduced its figures exactly: AMI 0.2967, 0.3003, and 0.2967;
+LibriVox 0.0563, 0.0582, and 0.0575.
+
+| Excerpt | Source | Truth | Truth words |
+| --- | --- | --- | --- |
+| AMI | `ami-es2002a-mix-headset.wav` | `ami-es2002a-truth/ES2002a.{A,B,C,D}.{words,segments}.xml`, every word whose middle is before 600 s | 1,129 |
+| Earnings-21 | `earnings21-4330115.mp3` | `earnings21-4330115.truth.nlp`, the first 1,574 normalized words | 1,574 |
+| Earnings-22 | `earnings22-4479944.mp3` | `earnings22-4479944.truth.nlp`, the first 1,588 normalized words | 1,588 |
+| LibriVox | `librivox-stella-maberly.m4b` | `librivox-stella-maberly.truth-approx.txt`, cleaned by `cleanBookOCR`, the first 1,582 normalized words; approximate | 1,582 |
+
+The three untimed cuts are the spike's recorded derivations, fixed, so both arms are scored
+against the spike's exact truths.
+
+### Results
+
+Three runs of each arm, at most 4 requests in flight. All 570 requests completed on the first
+attempt: no 500, no refused connection, no retry, and no window without a transcript. No window of
+either arm was cut at its 30 s limit.
+
+| Excerpt | Arm | Windows | Run 1 | Run 2 | Run 3 | Median | Spread |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| AMI | tracker | 23 | 0.3233 | 0.3206 | 0.3295 | 0.3233 | 0.0089 |
+| AMI | silencedetect | 24 | 0.3463 | 0.3260 | 0.3268 | 0.3268 | 0.0204 |
+| Earnings-21 | tracker | 24 | 0.0737 | 0.0731 | 0.0699 | 0.0731 | 0.0038 |
+| Earnings-21 | silencedetect | 24 | 0.1201 | 0.1067 | 0.1061 | 0.1067 | 0.0140 |
+| Earnings-22 | tracker | 24 | 0.1014 | 0.1045 | 0.1026 | 0.1026 | 0.0031 |
+| Earnings-22 | silencedetect | 23 | 0.0938 | 0.1039 | 0.1020 | 0.1020 | 0.0101 |
+| LibriVox | tracker | 24 | 0.0664 | 0.0721 | 0.0664 | 0.0664 | 0.0057 |
+| LibriVox | silencedetect | 24 | 0.0512 | 0.0531 | 0.0588 | 0.0531 | 0.0076 |
+
+An excerpt passes when its median tracker WER is no more than its median silencedetect WER plus
+0.021.
+
+| Excerpt | Pass line | Tracker median | Verdict |
+| --- | --- | --- | --- |
+| AMI | 0.3478 | 0.3233 | pass, 0.0035 under silencedetect |
+| Earnings-21 | 0.1277 | 0.0731 | pass, 0.0337 under silencedetect |
+| Earnings-22 | 0.1230 | 0.1026 | pass, 0.0006 over silencedetect |
+| LibriVox | 0.0741 | 0.0664 | pass, 0.0133 over silencedetect |
+
+**Every excerpt passes.** No miss goes to v1.ai.inference. LibriVox is nearest its line, 0.0077
+under it.
+
+### The spike's figures, for context only
+
+The spike's excerpt WER, windowed against unsplit: AMI 0.298 and 0.258, Earnings-21 0.069 and
+0.053, Earnings-22 0.101 and 0.101, LibriVox 0.057 and 0.061. That row was llama.cpp with Gemma 4
+E4B in Q8_0, at temperature 0 with English named; this one is BF16 on vLLM with the row's own
+sampling and no language named. The absolute figures aren't comparable, and the pass line compares
+the two arms on this row only.
+
+### Recipe
+
+`S` is a scratch directory; `~/docs` holds the sources and truths.
+
+```sh
+GOBIN=$S/bin go install github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0
+git clone -q ~/experiments/spike-ai-pipeline-processing $S/spike && git -C $S/spike checkout -q v0.9.0
+
+mkdir -p $S/excerpts
+for p in "ami audio/long/ami-es2002a-mix-headset.wav" "earnings21 audio/long/earnings21-4330115.mp3" \
+         "earnings22 audio/long/earnings22-4479944.mp3" "librivox audio/long/librivox-stella-maberly.m4b"; do
+  set -- $p
+  ffmpeg -nostdin -hide_banner -loglevel error -i ~/docs/$2 -map 0:a:0 -t 600 -ac 1 -ar 16000 -c:a pcm_s16le -y $S/excerpts/$1.wav
+done
+```
+
+1. **Tracker windows.** A scratch module whose go.mod replaces `github.com/standards-lab/docproc`
+   with this checkout runs `audio.NewSplitter` over `audio.FFmpegSpec` and `audio.FFprobeSpec`,
+   then `Splitter.Windows` with `audio.Request{Limit: 30 * time.Second}`, and copies each window
+   to `$S/windows/tracker/<excerpt>/NNN.wav` in plan order.
+2. **Silencedetect windows.** A findings-tier test in the spike's `audio` package runs
+   `Splitter.Plan` and `Windows` at their defaults into `$S/windows/silencedetect/<excerpt>/`.
+3. **Transcribe.** For each run 1 to 3, arm, and excerpt, every window through
+   `INFER_BASE_URL=http://framework:8001/v1 $S/bin/infer --model audio --retries 1 transcribe --mode chat <window.wav>`,
+   at most 4 in flight (`xargs -P4`), each retried at most twice, into
+   `$S/transcripts/<arm>/<excerpt>/run<N>/NNN.txt`.
+4. **Score.** A findings-tier test in the spike's `audio` package reads each run's transcripts in
+   plan order, a missing one joined as the empty string as `audiotest.Run` does, joins them with
+   `audio.Join` at its defaults, and scores the join with `textscore.NormalizedWordErrors`
+   against the truths above. The median is of the 3 runs' rates, and the spread their max less
+   min.
