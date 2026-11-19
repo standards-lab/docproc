@@ -12,7 +12,7 @@ tool under `tools/` keeps its own.
 ### Added
 
 - `document.ImagesRequest.PagesPerProcess`, the most pages one gs process renders, and reads the
-  text layers of, for a PDF's pages: zero is a default of 32, and a negative value is refused by
+  text layers of, for a PDF's pages: zero is a default of 4, and a negative value is refused by
   `Images` and by `stages.Build`. Like `Concurrency`, it is outside the request's JSON and so the
   document stage's identity.
 - `tool.Tool.Timeout`, the Spec's Timeout, for an adapter that runs many units in one process

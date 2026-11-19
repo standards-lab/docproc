@@ -452,7 +452,7 @@ func TestImagesMaxPixels(t *testing.T) {
 // in one process before its render in another; and every page, yielded in page order, holds the
 // PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither 7
 // pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
-// the default, past 7 pages.
+// the default, 4.
 func TestImagesShared(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -463,7 +463,7 @@ func TestImagesShared(t *testing.T) {
 		{2, 1, []string{"1,2", "3,4", "5,6", "7"}},
 		{4, 1, []string{"1,2,3,4", "5,6,7"}},
 		{10, 1, []string{"1,2,3,4,5,6,7"}},
-		{0, 1, []string{"1,2,3,4,5,6,7"}},
+		{0, 1, []string{"1,2,3,4", "5,6,7"}},
 		{1, 3, []string{"1", "2", "3", "4", "5", "6", "7"}},
 		{2, 3, []string{"1,4", "7", "2,5", "3,6"}},
 		{4, 3, []string{"1,4,7", "2,5", "3,6"}},
@@ -547,7 +547,7 @@ func TestImagesSharedFallback(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 7)
 	f.gs.set(func(s *settings) { s.FailPage = 4 })
-	f.req.Text = true
+	f.req.Text, f.req.PagesPerProcess = true, 10
 	pages, errs := f.images(t.Context())
 	if len(pages) != 7 {
 		t.Fatalf("the stream yielded %+v, %v; want 7 pages", pages, errs)
@@ -582,6 +582,7 @@ func TestImagesSharedRunFailure(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 5)
 	f.gs.set(func(s *settings) { s.KillPage = 3 })
+	f.req.PagesPerProcess = 10
 	pages, errs := f.images(t.Context())
 	if len(pages) != 5 || errs[0] != nil || errs[1] != nil {
 		t.Fatalf("the stream yielded %+v, %v; want 5 pages, the first two prepared", pages, errs)
