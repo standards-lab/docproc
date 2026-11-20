@@ -197,13 +197,17 @@ func TestExtract(t *testing.T) {
 }
 
 // TestExtractStops: a writer that fails stops 7zz while it writes bomb.7z's 8 MiB of zeros, and
-// Extract returns once 7zz has exited, with an error, writing nothing after the failed write.
+// Extract returns once 7zz has exited, with the writer's error, not 7zz's exit, writing nothing
+// after the failed write.
 func TestExtractStops(t *testing.T) {
 	r := reader(t)
 	w := &failAfter{n: 64 << 10}
 	err := r.Extract(t.Context(), sevenzip.ExtractRequest{Path: fixture("generated/bomb.7z"), Kind: route.SevenZip, Name: "zeros.bin"}, w)
-	if err == nil {
-		t.Error("an extraction whose writer failed succeeded")
+	if !errors.Is(err, errFull) {
+		t.Errorf("%v, want the writer's error", err)
+	}
+	if _, ok := errors.AsType[*tool.ExitError](err); ok {
+		t.Errorf("%v, want the writer's error, not 7zz's exit", err)
 	}
 	if w.late != 0 {
 		t.Errorf("%d writes after the writer failed, want none", w.late)

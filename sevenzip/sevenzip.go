@@ -148,9 +148,10 @@ func (r *Reader) List(ctx context.Context, req ListRequest) (Listing, error) {
 // Extract writes the content of the item req names to w, through one 7zz run whose output is its
 // standard output alone, -so: 7zz writes no file. The name is matched whole, -spd keeping it from
 // being a wildcard and -i! from being a list file. An item that needs a password is refused with
-// ErrEncrypted. A write to w that fails stops 7zz, and Extract returns once it has exited. An item
-// the name matches none of writes nothing and is no error: the caller holds what it reads to the
-// listing's size and CRC.
+// ErrEncrypted. A write to w that fails stops 7zz, and Extract returns once it has exited, with
+// that write's error, which errors.Is and errors.As match, in preference to 7zz's exit at the
+// broken pipe. An item the name matches none of writes nothing and is no error: the caller holds
+// what it reads to the listing's size and CRC.
 func (r *Reader) Extract(ctx context.Context, req ExtractRequest, w io.Writer) error {
 	path, format, err := check(req.Path, req.Kind)
 	if err != nil {
@@ -165,10 +166,31 @@ func (r *Reader) Extract(ctx context.Context, req ExtractRequest, w io.Writer) e
 	}
 	args = append(args, "--", path)
 	stderr := &cli.LimitedBuffer{Limit: stderrLimit}
-	if err := r.run(ctx, args, w, stderr); err != nil {
+	out := &failedWriter{w: w}
+	err = r.run(ctx, args, out, stderr)
+	// The write's own failure is why 7zz stopped, when it failed, as a parse's is List's: os/exec
+	// reports 7zz's exit at the broken pipe in preference to it.
+	if out.err != nil {
+		err = out.err
+	}
+	if err != nil {
 		return fmt.Errorf("sevenzip: extract %q from %s: %w", req.Name, filepath.Base(req.Path), err)
 	}
 	return nil
+}
+
+// failedWriter writes to w, keeping in err the error of the first write that failed.
+type failedWriter struct {
+	w   io.Writer
+	err error
+}
+
+func (f *failedWriter) Write(p []byte) (int, error) {
+	n, err := f.w.Write(p)
+	if err != nil && f.err == nil {
+		f.err = err
+	}
+	return n, err
 }
 
 // check refuses a request with no path or a kind the package doesn't read, and returns the path
