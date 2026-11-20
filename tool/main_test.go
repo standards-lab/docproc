@@ -54,6 +54,9 @@ func TestMain(m *testing.M) {
 //	oom N             writes its oom_score_adj to stdout once it is N, or after 5 s, whatever
 //	                  it is then
 //	tick N D          writes a line N times, D apart, then exits 0
+//	tmp FILE CMD...   writes its TMPDIR, HOME, and the names in its TMPDIR to FILE as JSON, then
+//	                  leaves a file in its TMPDIR, gs_ and six characters, as a gs ended early
+//	                  leaves its band list's, then does CMD as the stand-in would
 func standin(link string, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "standin: no command")
@@ -170,6 +173,12 @@ func standin(link string, args []string) int {
 		}
 		_, _ = os.Stdout.Write(adj)
 		return 0
+	case "tmp":
+		if err := tmp(args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		return standin(link, args[2:])
 	case "tick":
 		for range atoi(args[1]) {
 			fmt.Println("tick")
@@ -253,6 +262,43 @@ func orphan(link, file string, held bool) int {
 	}
 	fmt.Fprintln(os.Stderr, "orphan: the child wrote no pid")
 	return 2
+}
+
+// tmpdir is what the stand-in's tmp command writes: its TMPDIR, its HOME, and the names in its
+// TMPDIR before it leaves its own file there.
+type tmpdir struct {
+	TMPDIR  string   `json:"tmpdir"`
+	HOME    string   `json:"home"`
+	Entries []string `json:"entries"`
+}
+
+// tmp writes the stand-in's tmpdir to file, whole, through a rename, then leaves a file of its
+// own in its TMPDIR.
+func tmp(file string) error {
+	dir := os.Getenv("TMPDIR")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	got := tmpdir{TMPDIR: dir, HOME: os.Getenv("HOME"), Entries: []string{}}
+	for _, e := range entries {
+		got.Entries = append(got.Entries, e.Name())
+	}
+	b, err := json.Marshal(got)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(file+".tmp", b, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(file+".tmp", file); err != nil {
+		return err
+	}
+	f, err := os.CreateTemp(dir, "gs_")
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // writePid writes the process's pid and a newline to file, whole, through a rename, so a reader

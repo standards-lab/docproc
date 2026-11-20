@@ -10,9 +10,14 @@
 //
 // The exec runner, NewExec, runs a program directly, a name looked up on PATH or a path with a
 // separator taken as given. Every program it starts leads a process group of its own, in a fixed
-// environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME and TMPDIR
-// the invocation's working directory when it has one, then the Spec's Env. The version command
-// runs in that environment too, its HOME and TMPDIR a new empty directory of its own, so a
+// environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME the
+// invocation's working directory when it has one, TMPDIR a new empty directory of the run's own
+// under the process's temporary directory, os.TempDir, which the host's TMPDIR steers, then the
+// Spec's Env. A tool's temporary files live in that directory, never beside its input, and it is
+// removed, with whatever the program left in it, once the program's group has been sent SIGKILL
+// and the program reaped, whether the run succeeded, failed, was cancelled, or passed its bound;
+// a run whose directory can't be made fails before the program starts. The version command runs
+// in that environment too, its HOME a new empty directory of its own, so a
 // program that answers only under the host's HOME, as a version manager's shim does, is refused
 // at construction rather than failing every run. Its parent-death
 // signal is SIGKILL, from an OS thread locked to the run, so the host's death ends it; its

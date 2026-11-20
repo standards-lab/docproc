@@ -94,9 +94,10 @@ type PageImage struct {
 // lone page, and every page of a PDF portfolio, whose output gs writes from its embedded
 // documents' pages rather than a page's own. Each page's PNG and text are byte for byte what a
 // process of its own gives. Through the exec runner, the run that counts the pages and the shared
-// processes work in that temporary directory, which is their TMPDIR, so the temporary files a gs
-// ended early leaves are removed with it; a page's own processes work in the PDF's directory, as
-// Render and Text do. A shared process's bound is the gs Tool's Timeout read as an idle bound,
+// processes work in that temporary directory; a page's own processes work in the PDF's directory,
+// as Render and Text do. Every run's TMPDIR, where gs keeps its temporary files, is the exec
+// runner's own directory for the run, removed once gs is reaped, so a gs ended early leaves none
+// beside the PDF. A shared process's bound is the gs Tool's Timeout read as an idle bound,
 // between its writes, and never counting time spent waiting on the consumer; a process of a
 // page's own takes it whole, as a unit's.
 //
@@ -157,9 +158,9 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 	var scratch string
 	if p.render.ownDir() {
 		// The run's scratch, the Preparer's own, never the input's directory nor the caller's:
-		// the working directory, and so the TMPDIR, of the survey and the shared processes, and
-		// where the shared text runs write. It is removed once every page's work has ended, with
-		// whatever a gs ended early left in it.
+		// the working directory of the survey and the shared processes, and where the shared
+		// text runs write. It is removed once every page's work has ended, with whatever a gs
+		// ended early left in it.
 		var err error
 		if scratch, err = os.MkdirTemp("", "docproc-gs-*"); err != nil {
 			yield(PageImage{}, fmt.Errorf("document: gs scratch: %w", err))

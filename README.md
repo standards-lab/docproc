@@ -179,13 +179,20 @@ limits: [docproc-ooxml](tools/ooxml/README.md), [docproc-mail](tools/mail/README
 [docproc-onenote](tools/onenote/README.md).
 
 The exec runner starts every tool in a fixed environment, never the host's: PATH as it was when
-the runner was built, `LANG=C.UTF-8`, and `HOME` and `TMPDIR` set to the run's own working
-directory. The program PATH finds must therefore be the program itself, not a version manager's
-shim, such as mise's or asdf's, which reads the user's configuration again on every run. Under
-that environment mise refuses the user's global configuration as untrusted. `stages.Build` checks
-each tool's version in the same environment, with `HOME` and `TMPDIR` a new empty directory of
-the check's own, so such a shim reads as unavailable: its row in the tools table says why, and
-the stages that need it are `missing`.
+the runner was built, `LANG=C.UTF-8`, `HOME` set to the run's own working directory, and `TMPDIR`
+set to a new empty directory of the run's own, `docproc-run-*`, under the host's `TMPDIR`. The
+program PATH finds must therefore be the program itself, not a version manager's shim, such as
+mise's or asdf's, which reads the user's configuration again on every run. Under that environment
+mise refuses the user's global configuration as untrusted. `stages.Build` checks each tool's
+version in the same environment, with `HOME` a new empty directory of the check's own, so such a
+shim reads as unavailable: its row in the tools table says why, and the stages that need it are
+`missing`.
+
+A tool's temporary files live in its run's own `TMPDIR`, never beside its input. The runner removes
+that directory, with whatever the tool left in it, once the tool's process group has been killed
+and the tool reaped, whether the run succeeded, failed, was cancelled, or passed its bound, so a
+tool ended early leaves nothing under the host's `TMPDIR` either. A run whose directory can't be
+made fails before the tool starts.
 
 ### Other system tools
 
@@ -257,15 +264,14 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   writes their text layers to a temporary directory of the stream's own, never the input's. Under
   the container runner, which mounts only the PDF's directory, each page's text is read by a process
   of its own while the renders still share. The run that counts the pages and the shared
-  processes work in that directory, their `TMPDIR`, so the temporary files a gs ended early leaves
-  are removed with it. A process's pages go to gs as a page
-  list, each run of consecutive pages a range, such as 1-8, and a batch ends early where its list
-  would pass the 2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
+  processes work in that directory. A process's pages go to gs as a page list, each run of
+  consecutive pages a range, such as 1-8, and a batch ends early where its list would pass the
+  2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
   own, as does a batch of one page, and every page of a PDF portfolio, whose processes gs runs over
   its embedded documents' pages. Every page's PNG and text are byte for byte what a process of its
-  own gives. A page's own processes work in the PDF's directory, as every tool's runs do, so one
-  ended early, by its bound or by the stream stopping, can leave gs's temporary files there: an
-  empty `gs_` file, or, for a portfolio, `gpdf-collection-` files. A shared process's bound is
+  own gives. A page's own processes work in the PDF's directory, as every tool's runs do, but keep
+  their temporary files in their run's own `TMPDIR`, so one ended early, by its bound or by the
+  stream stopping, leaves nothing beside the PDF. A shared process's bound is
   `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
   consumer not counted. When one fails on the content, the pages it handed over stand and each
   other page gets processes of its own, each bounded by the whole timeout, so only a page that

@@ -764,6 +764,41 @@ func TestImagesOnePage(t *testing.T) {
 	}
 }
 
+// TestImagesOwnTmpdir checks that a page's own gs processes, which work in the PDF's directory,
+// keep their temporary files out of it: each run's TMPDIR is the exec runner's, a directory of
+// the run's own under the process's temporary directory, removed with what gs left in it. The
+// stand-in gs leaves a file in its TMPDIR each run, as a gs ended early leaves its band list's,
+// and a portfolio's every page gets processes of its own. Whether the stream runs to its end or
+// the consumer stops after the first page, while the second's render is still in flight, the
+// PDF's directory holds the PDF alone and the TMPDIR the test sets is empty once the stream
+// returns. It sets TMPDIR, so it isn't parallel.
+func TestImagesOwnTmpdir(t *testing.T) {
+	for _, take := range []int{3, 1} {
+		f := newFixture(t, 3)
+		f.gs.set(func(s *settings) {
+			s.Portfolio, s.Leave, s.Delay = true, true, map[int]int{2: 500}
+		})
+		f.req.Text, f.req.Concurrency = true, 2
+		host := t.TempDir()
+		t.Setenv("TMPDIR", host)
+		taken := 0
+		for _, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			if taken++; taken == take {
+				break
+			}
+		}
+		if got := files(t, filepath.Dir(f.pdf)); !slices.Equal(got, []string{"doc.pdf"}) {
+			t.Errorf("taking %d pages: the PDF's directory holds %q, want the PDF alone", take, got)
+		}
+		if got := files(t, host); len(got) != 0 {
+			t.Errorf("taking %d pages: the TMPDIR holds %q, want it empty", take, got)
+		}
+	}
+}
+
 // TestImagesPortfolio checks a PDF portfolio, whose pages gs renders as its documents' pages, a
 // process's output not a page's own, never shares a process: its survey says so, and every page
 // gets processes of its own, its file and its text what they give, every document's page of its
@@ -882,11 +917,11 @@ func TestImagesSurveyUnreadable(t *testing.T) {
 }
 
 // TestImagesWorkDir checks the survey and the shared processes work in a scratch directory of the
-// stream's own, neither the PDF's nor the request's, which is their TMPDIR, so the temporary
-// files a gs ended early leaves, as the stand-in leaves one each run, are removed with it once the
-// stream ends, and none is left beside the PDF, whether the stream runs to its end or the
-// consumer stops after its first page. A page's own processes work in the PDF's directory, as
-// Render and Text do.
+// stream's own, neither the PDF's nor the request's, and that none of the temporary files a gs
+// ended early leaves, as the stand-in leaves one each run in its TMPDIR, is left beside the PDF,
+// whether the stream runs to its end or the consumer stops after its first page. A page's own
+// processes work in the PDF's directory, as Render and Text do; TestImagesOwnTmpdir checks where
+// their temporary files go.
 func TestImagesWorkDir(t *testing.T) {
 	t.Parallel()
 	for _, take := range []int{8, 1} {

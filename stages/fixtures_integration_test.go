@@ -50,9 +50,8 @@ func committedFixtures(t *testing.T) []string {
 // copyFixtures copies each of fixtures, paths from this package's directory, to the same path
 // from the module's root in a directory of the test's own, and returns each fixture's copy by its
 // path, and that directory by "". A dispatch of a committed PDF in place would run gs's runs over
-// a page of their own in its testdata directory, which is their TMPDIR, where gs keeps its
-// temporary files, a portfolio's documents among them, and leaves them when it is killed; a
-// dispatch of the copy keeps every tool's files out of testdata. Each copy keeps its fixture's
+// a page of their own in its testdata directory; a dispatch of the copy keeps whatever every
+// tool's runs write in their working directory out of testdata. Each copy keeps its fixture's
 // name, which routing reads, and its siblings, as a fixture that names another finds it.
 func copyFixtures(t *testing.T, fixtures []string) map[string]string {
 	t.Helper()

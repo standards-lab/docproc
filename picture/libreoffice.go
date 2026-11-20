@@ -66,7 +66,9 @@ const sofficeOutputLimit = 64 << 10
 // libreoffice-*, and copies each input into it under its Name, so soffice never opens the
 // caller's file and finds nothing beside the copy. The run's working directory is that
 // directory, which the container runner mounts alone and which the exec runner makes soffice's
-// HOME and TMPDIR, so the font cache and configuration soffice writes there go with it. It holds
+// HOME, so the font cache and configuration soffice writes there go with it; its TMPDIR, through
+// the exec runner, is a directory of the run's own that the runner removes once soffice is
+// reaped. It holds
 // soffice's user profile too, -env:UserInstallation, started with run.Registry when it is set, so
 // no run shares or leaves a profile elsewhere, and the output directory.
 //

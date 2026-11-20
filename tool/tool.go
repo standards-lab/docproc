@@ -76,7 +76,9 @@ type Invocation struct {
 	// Args are the program's arguments, the program's name not among them.
 	Args []string
 	// Dir is the working directory, which the caller owns; empty is the process's own. Through
-	// the exec runner it is the program's HOME and TMPDIR too.
+	// the exec runner it is the program's HOME too, but not its TMPDIR, a new empty directory of
+	// the run's own under the process's temporary directory, removed once the program is reaped,
+	// so a program ended early leaves no temporary file in Dir.
 	Dir string
 	// Stdin is the program's standard input; nil is none. An *os.File passes straight to the
 	// program. Any other reader is copied into a pipe by a goroutine of Run's own, which closes

@@ -305,11 +305,12 @@ func (g *Ghostscript) ownDir() bool {
 }
 
 // workDir returns the working directory of a run over the PDF at pdf, absolute: dir, the
-// caller's, or the PDF's directory when dir is "". Through the exec runner a run's TMPDIR is its
-// working directory, where gs keeps its temporary files, a page's band list and a portfolio's
-// documents among them, and removes them as it exits; a gs killed first, its run ended early,
-// leaves them there. A run in a directory of the Preparer's own leaves them where the Preparer
-// removes them, never beside the input.
+// caller's, or the PDF's directory when dir is "". gs keeps its temporary files, a page's band
+// list and a portfolio's documents among them, in its TMPDIR, and removes them as it exits; a gs
+// killed first, its run ended early, leaves them there. Through the exec runner a run's TMPDIR is
+// a directory of the run's own under the process's temporary directory, never its working
+// directory, and the runner removes it once gs is reaped, so a run ended early leaves nothing
+// beside the input.
 func workDir(dir, pdf string) string {
 	if dir != "" {
 		return dir

@@ -23,9 +23,8 @@ import (
 
 // documentFixture returns the path of a copy of one of document's committed fixtures, under its
 // testdata, under its own name in a directory of the test's own. The document stage's gs runs over
-// a page of its own work in the PDF's directory, which is their TMPDIR, where gs keeps its
-// temporary files, a portfolio's documents among them; a dispatch of the copy keeps them out of
-// testdata, which TestEveryFixture walks.
+// a page of its own work in the PDF's directory; a dispatch of the copy keeps whatever they write
+// there out of testdata, which TestEveryFixture walks.
 func documentFixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "document", "testdata", filepath.FromSlash(name)))

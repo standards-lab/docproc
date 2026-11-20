@@ -71,7 +71,8 @@ the tools part to the system tools under `tools/`.
 - `architecture/standards/go-elemental/principles/system-tools.md`: an adapter declares `Spec()`
   and `Minimum`, unprefixed with one tool and named for the tool with several. It checks its
   tools' versions through `Tool.AtLeast` alone, so a tool of another schema fails at startup, as
-  an outdated one does. A tool's temporary files live in a directory the caller owns.
+  an outdated one does. A tool's temporary files live in its run's own directory under the host's
+  `TMPDIR`, which the runner removes once the tool is reaped.
 - A tool's options, a bound or an output cap among them, are per-request values, never library
   policy.
 - No stage re-encodes a picture lossily; a conversion writes PNG.

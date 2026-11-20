@@ -22,15 +22,16 @@ import (
 // spec, then finds the program on PATH, or takes a path containing a separator as given, and,
 // for a spec with a MemoryLimit, util-linux's prlimit on PATH; then it runs the version command
 // under ctx, through prlimit under the bound and in the fixed environment, as every run is, with
-// HOME and TMPDIR a new empty directory of its own, and refuses a program it can't find, whose
+// HOME a new empty directory of its own, and refuses a program it can't find, whose
 // version command fails, or whose version is unmatched or older than the minimum. A spec with a
 // MemoryLimit and no prlimit on PATH is refused.
 //
 // Every run starts the program as the leader of a process group of its own, with:
 //
-//   - a fixed environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, and
-//     HOME and TMPDIR the invocation's Dir, made absolute, when it has one; then spec's Env, a key
-//     there replacing the fixed one's;
+//   - a fixed environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME
+//     the invocation's Dir, made absolute, when it has one, and TMPDIR a new empty directory of
+//     the run's own, docproc-run-*, under the process's temporary directory, os.TempDir, which the
+//     host's TMPDIR steers; then spec's Env, a key there replacing the fixed one's;
 //   - the memory bound, when spec has one, as RLIMIT_AS, set by `prlimit --as=<bytes> --` before
 //     the program is executed, so it holds from the program's first allocation;
 //   - SIGKILL as its parent-death signal, from an OS thread locked to the run, so a host that
@@ -41,7 +42,10 @@ import (
 //     already exited, leaves it unset.
 //
 // Whenever the leader exits, its group is sent SIGKILL before the leader is reaped, so no child it
-// started outlives the run, whether the run succeeded, failed, or was ended.
+// started outlives the run, whether the run succeeded, failed, or was ended. The run's TMPDIR is
+// removed once the leader is reaped, with whatever the program left in it, so a program ended
+// early leaves its temporary files neither beside its input nor under the host's. A run whose
+// TMPDIR can't be made fails before the program starts.
 func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 	name := filepath.Base(spec.Program)
 	minimum, err := spec.validate(name)
@@ -72,10 +76,10 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 }
 
 // execVersion checks spec's version, as checkVersion does, through the exec runner under cfg, in
-// the environment a run gets: the fixed environment, then HOME and TMPDIR a new empty directory of
-// the check's own, standing in for the working directory each run has, then spec's Env. The
-// command still works in the process's working directory, and the directory is removed once it
-// has run. So a program that answers only under the host's HOME, such as a version manager's
+// the environment a run gets: the fixed environment, then HOME a new empty directory of the
+// check's own, standing in for the working directory each run has, and TMPDIR a new empty
+// directory of the run's own, as every run's is, then spec's Env. The command still works in the
+// process's working directory, and both directories are removed once it has run. So a program that answers only under the host's HOME, such as a version manager's
 // shim, which reads the user's configuration again on every run and refuses it once HOME isn't
 // the user's, is refused here, as every run of it would fail.
 func execVersion(ctx context.Context, name string, spec Spec, minimum Version, cfg execConfig) (Version, string, error) {
@@ -86,7 +90,7 @@ func execVersion(ctx context.Context, name string, spec Spec, minimum Version, c
 	// Best effort: a directory left behind holds only what the version command wrote, and the
 	// tool's check stands either way.
 	defer func() { _ = os.RemoveAll(home) }()
-	cfg.fixed = slices.Concat(cfg.fixed, []string{"HOME=" + home, "TMPDIR=" + home})
+	cfg.fixed = slices.Concat(cfg.fixed, []string{"HOME=" + home})
 	return checkVersion(ctx, name, spec, minimum, execRun(cfg))
 }
 
@@ -100,11 +104,13 @@ type execConfig struct {
 	lead []string
 	// killAfter is the time between SIGTERM and SIGKILL for a run that is ended.
 	killAfter time.Duration
-	// lockdown gives the program the fixed environment and env, and an oom_score_adj of 1000. The
+	// lockdown gives the program the fixed environment and env, a TMPDIR of the run's own, and an
+	// oom_score_adj of 1000. The
 	// container runner's docker CLI runs without it, with the host's environment, which holds
 	// its daemon's address and its configuration, and the host's oom_score_adj.
 	lockdown bool
-	// fixed is the fixed environment, without HOME and TMPDIR, which each run's Dir gives.
+	// fixed is the fixed environment, without HOME, which each run's Dir gives, and TMPDIR, which
+	// each run makes.
 	fixed []string
 	// env is the spec's Env, which follows the fixed environment.
 	env []string
@@ -125,13 +131,25 @@ const oomScoreAdj = "1000"
 //
 // An *os.File stdin passes straight to the program; any other reader goes through a stdinFeed,
 // so a run never waits on a Read of the caller's.
+//
+// With lockdown, the run makes its TMPDIR before the program starts, and removes it as it returns,
+// which is only once startAndWait has sent the group SIGKILL and reaped the program: a run whose
+// caller streams its stdout returns, and so removes it, no earlier than any other.
 func execRun(cfg execConfig) runFunc {
 	name, killAfter := cfg.name, cfg.killAfter
 	return func(ctx context.Context, inv Invocation) error {
 		cmd := exec.CommandContext(ctx, cfg.path, slices.Concat(cfg.lead, inv.Args)...)
 		cmd.Dir = inv.Dir
 		if cfg.lockdown {
-			env, err := environ(cfg.fixed, cfg.env, inv.Dir)
+			tmp, err := os.MkdirTemp("", "docproc-run-")
+			if err != nil {
+				return fmt.Errorf("tool: %s: temporary directory: %w", name, err)
+			}
+			// Best effort, as the run returns: the program is reaped by then and its group sent
+			// SIGKILL, so nothing of the run's writes there any more, and the run's outcome stands
+			// whether the directory goes or not.
+			defer func() { _ = os.RemoveAll(tmp) }()
+			env, err := environ(cfg.fixed, cfg.env, inv.Dir, tmp)
 			if err != nil {
 				return fmt.Errorf("tool: %s: %w", name, err)
 			}
@@ -229,19 +247,19 @@ func startAndWait(cmd *exec.Cmd, feed *stdinFeed, lockdown bool) error {
 	return cmd.Wait()
 }
 
-// environ returns a run's environment: fixed; then HOME and TMPDIR, dir made absolute, when dir
-// isn't empty; then env, the spec's Env, last, so os/exec, which keeps a key's last value, gives
-// its keys precedence.
-func environ(fixed, env []string, dir string) ([]string, error) {
+// environ returns a run's environment: fixed; then HOME, dir made absolute, when dir isn't empty;
+// then TMPDIR, tmp, the run's own; then env, the spec's Env, last, so os/exec, which keeps a
+// key's last value, gives its keys precedence.
+func environ(fixed, env []string, dir, tmp string) ([]string, error) {
 	var home []string
 	if dir != "" {
 		abs, err := filepath.Abs(dir)
 		if err != nil {
 			return nil, fmt.Errorf("working directory %s: %w", dir, err)
 		}
-		home = []string{"HOME=" + abs, "TMPDIR=" + abs}
+		home = []string{"HOME=" + abs}
 	}
-	return slices.Concat(fixed, home, env), nil
+	return slices.Concat(fixed, home, []string{"TMPDIR=" + tmp}, env), nil
 }
 
 // waitSignal returns the name of the signal that ended the program, from its wait status; empty
