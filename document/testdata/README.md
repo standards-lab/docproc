@@ -225,9 +225,12 @@ mise exec -- go run generate.go
 Its cover has two letter pages, `Portfolio cover, page 1` and `page 2`, and its catalog a
 `/Collection`, with two embedded documents of two letter pages each: `harbor.pdf`, whose pages
 read `Harbor survey, page 1` and `page 2`, and `tides.pdf`, `Tide tables, page 1` and `page 2`. gs
-renders a portfolio's documents in place of its pages, the run's page range applied to each
-document in turn, so a run of the cover's page 1 writes two PNGs, each document's page 1, and its
-text both documents' first lines.
+renders a portfolio named on its command line as its documents in place of its pages, the run's
+page range applied to each document in turn, so a shared run of the cover's page 1 would write two
+PNGs, each document's page 1, and its text both documents' first lines. A page's own run, which
+`Render` and `Text` make and which the `Preparer` gives every page of a portfolio, reads the PDF
+through the non-portfolio half of gs's `runpdf`, so each of its two pages yields one PNG, the
+cover's page, and that page's text alone, `Portfolio cover, page 1` or `page 2`.
 
 Its SHA-256 sum, which `TestFixtureSums` holds it to:
 

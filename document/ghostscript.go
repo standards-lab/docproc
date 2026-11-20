@@ -107,10 +107,12 @@ func (s pageSize) fit(dpi int, limit int64) (int, bool) {
 // order, zero sizes when it didn't ask for them, and whether the PDF is a portfolio.
 type survey struct {
 	sizes []pageSize
-	// portfolio is whether the PDF's catalog has a /Collection, which gs reads as a portfolio,
-	// rendering, and reading the text of, its embedded documents' pages in place of its own: the
-	// run's page range applied to each document in turn, so a run's output for a page is every
-	// document's page of that number, none of it the page's alone.
+	// portfolio is whether the PDF's catalog has a /Collection, which gs reads as a portfolio
+	// when the PDF is named on its command line, as a shared run names it, rendering, and reading
+	// the text of, its embedded documents' pages in place of its own: the run's page range applied
+	// to each document in turn, so a shared run's output for a page is every document's page of
+	// that number, none of it the page's alone. A page's own runs read it through ownPages, and
+	// give the page's own.
 	portfolio bool
 }
 
@@ -188,7 +190,9 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 
 // Render writes page, 1-based, of the PDF at pdf to w as PNG at dpi, one gs run for the page. It
 // refuses a DPI of zero or less and a page below 1 before gs runs, as CheckRender does. A gs that
-// exits nonzero gives the Tool's error, a *tool.ExitError, and w may hold part of a PNG then.
+// exits nonzero gives the Tool's error, a *tool.ExitError, and w may hold part of a PNG then. gs
+// reads the PDF through ownPages, so a PDF portfolio's page is its cover's own, one PNG, not its
+// embedded documents' pages.
 //
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone,
 // as it does for Text. gs asked for a page past the last exits zero, writing no PNG and its
@@ -237,7 +241,8 @@ const gsStderrLimit = 4 << 10
 // run with the txtwrite device: the page's text laid out in lines, gs's own spacing kept. A page
 // with no text layer, such as a scanned page, returns blank text, which HasText reports as none.
 // It refuses a page below 1 before gs runs, as CheckRender does. A gs that exits nonzero gives
-// the Tool's error, a *tool.ExitError carrying gs's stderr.
+// the Tool's error, a *tool.ExitError carrying gs's stderr. gs reads the PDF through ownPages, so
+// a PDF portfolio's page is its cover's own text alone.
 //
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the text
 // alone. A page past the last prints gs's message there, "Requested FirstPage is greater than
@@ -404,18 +409,38 @@ func sharedTextArgs(pdf string, pages []int, out string) []string {
 // alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default and
 // gs doesn't. -sOutputFile=- writes the PNG to stdout, and -sstdout=%stderr gs's own messages to
 // stderr, which gs otherwise writes to stdout, even under -q, ahead of a page it renders with a
-// message, such as "**** Error: Page drawing error occurred.".
+// message, such as "**** Error: Page drawing error occurred.". gs reads the PDF as ownPageArgs
+// says, so a portfolio's page is its own.
 func renderArgs(pdf string, page, dpi int) []string {
-	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
+	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
-		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-", pdf}
+		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
 }
 
 // textArgs returns gs's arguments for the text of page of the PDF at pdf: the txtwrite device,
-// its text to stdout, and gs's own messages to stderr.
+// its text to stdout, and gs's own messages to stderr. gs reads the PDF as ownPageArgs says.
 func textArgs(pdf string, page int) []string {
-	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
-		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-", pdf}
+	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
+		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
+}
+
+// ownPages is the PostScript that runs an open PDF's pages, the run's FirstPage to its LastPage,
+// as the branch of gs's runpdf, in pdf_main.ps, for a PDF that isn't a portfolio: the whole of
+// that branch, word for word. runpdf, which gs runs for a PDF named on its command line, takes
+// its other branch for a PDF whose catalog has a /Collection, and runs the embedded documents'
+// pages in place of the PDF's own, the run's page range applied to each document in turn; gs has
+// no parameter that turns that off. Through ownPages a portfolio's page is its cover's own, and
+// any other PDF's page is byte for byte what the file named on the command line gives, its PNG,
+// its text, and gs's messages, a page past the last's among them, as gs 10.08.0 gives them over
+// every fixture.
+const ownPages = "runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend"
+
+// ownPageArgs returns the arguments, last of a page's own run, that open the PDF at pdf and run
+// its pages through ownPages. The path is a PostScript string there, escaped as countArgs
+// escapes it, and -dSAFER is permitted to read that one file, as it is for Count; gs splits a
+// permitted path at a colon, so a path holding one can't be read, as Count can't read it.
+func ownPageArgs(pdf string) []string {
+	return []string{"--permit-file-read=" + pdf, "-c", "(" + psString(pdf) + ") (r) file " + ownPages}
 }
 
 // countArgs returns gs's arguments to print the page count of the PDF at pdf. The path is a

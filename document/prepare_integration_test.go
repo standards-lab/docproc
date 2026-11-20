@@ -97,10 +97,11 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 // TestImagesSharedHost checks shared processes on the host's gs give every page byte for byte
 // what a process of its own gives, Render's PNG and Text's text, at PagesPerProcess 1, 2, 4,
 // which divides neither PDF's page count, and 32, past both, at concurrency 1 and 3: over
-// clean.pdf, six pages with a text layer, and degraded.pdf, nine scanned pages, over clean.pdf
-// with a MaxPixels that lowers its letter pages to 149 dpi in processes of their own, and over
-// portfolio.pdf, whose two pages gs writes as its two documents' pages of each number, two PNGs
-// and both documents' text a page.
+// clean.pdf, six pages with a text layer, degraded.pdf, nine scanned pages, scanned.pdf, the
+// malformed fixture, which gs renders with a message, and the forms and attachments fixtures,
+// every fixture PDF; over clean.pdf with a MaxPixels that lowers its letter pages to 149 dpi in
+// processes of their own; and over portfolio.pdf, whose pages are their own processes', the
+// cover's pages, as TestGhostscriptPortfolioHost checks them.
 func TestImagesSharedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})
@@ -108,7 +109,11 @@ func TestImagesSharedHost(t *testing.T) {
 		pdf       string
 		maxPixels int64
 		dpi       int
-	}{{"clean", 0, 150}, {"degraded", 0, 150}, {"clean", 1275*1650 - 1, 149}, {"portfolio/portfolio", 0, 150}} {
+	}{
+		{"clean", 0, 150}, {"degraded", 0, 150}, {"scanned", 0, 150}, {"malformed/compacted-syntax", 0, 150},
+		{"forms/acroform", 0, 150}, {"forms/signed", 0, 150}, {"attachments/attachments", 0, 150},
+		{"clean", 1275*1650 - 1, 149}, {"portfolio/portfolio", 0, 150},
+	} {
 		pdf := fixtureCopy(t, set.pdf+".pdf")
 		n, err := g.Count(t.Context(), pdf)
 		if err != nil {

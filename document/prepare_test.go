@@ -799,11 +799,12 @@ func TestImagesOwnTmpdir(t *testing.T) {
 	}
 }
 
-// TestImagesPortfolio checks a PDF portfolio, whose pages gs renders as its documents' pages, a
-// process's output not a page's own, never shares a process: its survey says so, and every page
-// gets processes of its own, its file and its text what they give, every document's page of its
-// number, at PagesPerProcess 4 and concurrency 1 and 2, and with a MaxPixels, whose survey reads
-// the pages' sizes too.
+// TestImagesPortfolio checks a PDF portfolio, whose pages gs renders as its documents' pages when
+// a shared process names it, a process's output not a page's own, never shares a process: its
+// survey says so, and every page gets processes of its own, which read it through the
+// non-portfolio half of runpdf, its file and its text the page's own, one PNG and its text alone,
+// at PagesPerProcess 4 and concurrency 1 and 2, and with a MaxPixels, whose survey reads the
+// pages' sizes too.
 func TestImagesPortfolio(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -819,14 +820,10 @@ func TestImagesPortfolio(t *testing.T) {
 			t.Fatalf("%s: the stream yielded %+v, %v; want 3 pages", name, pages, errs)
 		}
 		for i, p := range pages {
-			var png []byte
-			var text string
-			for doc := 1; doc <= portfolioDocuments; doc++ {
-				png, text = append(png, portfolioPage(doc, i+1, 150)...), text+portfolioText(doc, i+1)
-			}
+			png, text := standinPage(i+1, 150), standinText(i+1)
 			b, err := os.ReadFile(p.Path)
 			if errs[i] != nil || err != nil || !bytes.Equal(b, png) || p.Text != text {
-				t.Errorf("%s: page %d: %+v, %v, file %q; want its own processes' PNGs and text", name, i+1, p, errs[i], b)
+				t.Errorf("%s: page %d: %+v, %v, file %q; want the page's own PNG and text", name, i+1, p, errs[i], b)
 			}
 		}
 		want := []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3"}

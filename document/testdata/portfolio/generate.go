@@ -5,9 +5,11 @@
 // byte fixed, so a rerun writes the same bytes. Run it from document/testdata/portfolio with
 // `mise exec -- go run generate.go`; the check never runs it, and reads the committed file.
 //
-// gs renders a portfolio's embedded documents in place of its own pages, each of them through the
-// run's page range, so a run for the cover's page 1 writes both documents' page 1, two PNGs, and a
-// page list of 1 and 2 writes four.
+// gs renders a portfolio named on its command line as its embedded documents in place of its own
+// pages, each of them through the run's page range, so such a run for the cover's page 1 writes
+// both documents' page 1, two PNGs, and a page list of 1 and 2 writes four. A page's own run, the
+// document package's Render and Text, reads it through the non-portfolio half of gs's runpdf, and
+// writes the cover's page alone.
 package main
 
 import (
