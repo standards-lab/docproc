@@ -852,8 +852,9 @@ the content's, recorded     the tool exited nonzero by its own code: a docproc t
                             unlike its listing); a put over the store's size (ErrTooLarge)
 the run's, retried          the context ended; SIGKILL, SIGTERM, or another signal docproc didn't
                             send; the program didn't start; a docproc tool's exit 1 (not written)
-                            or 2 (usage); 7zz's exit 7 (command line) or 255 (stopped); any error
-                            on docproc's side of the pipe
+                            or 2 (usage); 7zz's exit 7 (command line) or 255 (stopped); soffice's
+                            exit 77 (a fatal error at its start); any error on docproc's side of
+                            the pipe
 encrypted                   a stage's ErrEncrypted alone, mapped from a refusal's reason by
                             internal/cli's one mapping ("Running the tools")
 read elsewhere              a stage's ErrReadElsewhere alone, onenote's table-of-contents

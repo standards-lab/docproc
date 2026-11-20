@@ -147,8 +147,9 @@ func TestClassificationNoBound(t *testing.T) {
 
 // TestClassify: the facts classify reads apart from a run, case by case: the context's end and a
 // failed start are the run's; a timed-out run is the content's whatever its exit; 7-Zip's command
-// line error is the run's and its out of memory the content's, while any other tool's every
-// nonzero exit is the content's; JSON that doesn't parse and a format package's content errors
+// line error is the run's and its out of memory the content's, soffice's 77, a fatal error at its
+// start, is the run's and its 1 the content's, while any other tool's every nonzero exit is the
+// content's; JSON that doesn't parse and a format package's content errors
 // are the content's; and a signal names the bound in the largest unit that holds it whole.
 func TestClassify(t *testing.T) {
 	t.Parallel()
@@ -171,6 +172,8 @@ func TestClassify(t *testing.T) {
 		{"qpdf's exit 2", t.Context(), exit("qpdf", 2), 0, true, ""},
 		{"7zz's command line error", t.Context(), exit("7zz", 7), 0, false, ""},
 		{"7zz's out of memory", t.Context(), exit("7zz", 8), 0, true, ""},
+		{"soffice's fatal error at its start", t.Context(), exit("soffice", 77), 0, false, ""},
+		{"soffice's exit 1", t.Context(), exit("soffice", 1), 0, true, ""},
 		{"docproc-ooxml's usage", t.Context(), exit("docproc-ooxml", 2), 0, false, ""},
 		{"a signal under 512 MiB", t.Context(), &tool.ExitError{Program: "docproc-ooxml", Code: -1, Signal: "SIGABRT", Message: "libssl"}, 512 << 20,
 			true, "docproc-ooxml: killed by SIGABRT under a 512 MiB memory bound: libssl"},

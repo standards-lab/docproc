@@ -29,14 +29,19 @@ var contentErrors = []error{
 // runCodes returns the exit codes of program that are the run's, not the content's: the common
 // envelope's 1, its output not written, and 2, a usage error, for docproc-ooxml, docproc-mail, and
 // docproc-onenote; 7-Zip's 7, a command line error, and 255, stopped by the user, its 8, out of
-// memory, being the content's, as an allocation refused under the bound is; and none for any
-// other tool, whose every nonzero exit is its reading of the content, as gs's 1 and qpdf's 2 are.
+// memory, being the content's, as an allocation refused under the bound is; LibreOffice's 77,
+// EXITHELPER_FATAL_ERROR, which soffice exits with only from a fatal error at its start (no disk
+// space, no write access, a broken profile or installation), never because of a document; and
+// none for any other tool, whose every nonzero exit is its reading of the content, as gs's 1 and
+// qpdf's 2 are.
 func runCodes(program string) []int {
 	switch {
 	case strings.HasPrefix(program, "docproc-"):
 		return []int{1, 2}
 	case program == "7zz":
 		return []int{7, 255}
+	case program == "soffice":
+		return []int{77}
 	}
 	return nil
 }
@@ -61,8 +66,8 @@ type fault struct {
 //     parse; and content a format package refuses as itself, contentErrors;
 //   - the run's, retried: the context ended; a SIGKILL or SIGTERM docproc didn't send, or any
 //     other signal; a program that didn't start; an exit runCodes names, a docproc tool's 1, its
-//     output not written, or 2, a usage error; and any other error, on docproc's side of the
-//     pipe.
+//     output not written, or 2, a usage error, or soffice's 77, a fatal error at its start; and
+//     any other error, on docproc's side of the pipe.
 //
 // dispatch.ErrEncrypted and dispatch.ErrReadElsewhere are neither: a stage returns them as they
 // are, and partErr passes them through.
