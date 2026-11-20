@@ -10,6 +10,27 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-11-20
+
+This release requires the docproc base module at v0.4.1, whose fixes reach `docproc run` as
+Changed says. Its command line, run directory, and exit codes are unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.4.1, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - Each tool run keeps its temporary files in a directory of its own under the host's `TMPDIR`,
+    removed once the run's program is reaped, so a gs ended early leaves nothing beside its input.
+    A host with a small tmpfs `/tmp` points `TMPDIR` at room enough.
+  - A PDF portfolio's page is the portfolio's own page, one PNG and that page's text, where before
+    it held each embedded document's pages. The stage adapters' version is 6, so a run over an
+    index prepares its content again.
+  - A ZIP holding an XPS package's `FixedDocumentSequence.fdseq`, whatever its name, is recorded
+    as no processor yet, rather than failing in docproc-ooxml.
+  - soffice's exit 77, a fatal error at its start such as a full disk, fails the part unrecorded,
+    so a later run tries it again, rather than recording it failed.
+  - docproc builds on 64-bit platforms only.
+
 ## [v0.2.0] - 2026-11-19
 
 This release adds the audio window's variable and requires the docproc base module at v0.4.0,
@@ -110,6 +131,7 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...HEAD
+[v0.2.1]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.0...cmd/docproc/v0.2.1
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.1.0...cmd/docproc/v0.2.0
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/cmd/docproc/v0.1.0
