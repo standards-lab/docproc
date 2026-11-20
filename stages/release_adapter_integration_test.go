@@ -3,11 +3,21 @@
 package stages_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 	"io/fs"
 	"iter"
+	"math/rand/v2"
+	"mime/multipart"
+	"net/textproto"
+	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 
@@ -52,21 +62,31 @@ func diskBytes(t *testing.T, dir string) int64 {
 	return size
 }
 
-// TestEmailStageReleases dispatches real stores through the email stage, a sink stage on every
+// TestEmailStageReleases dispatches mail stores through the email stage, a sink stage on every
 // other route so that each attachment is recorded, probing the working directory's bytes at
-// every event: no attachment fails or is lost, and a repeated one is seen. The tika store gives
-// mail no attachment content, and libyal's repeats one message's eleven attachments in a second.
-// No committed store spreads its attachments over messages enough that the peak must fall below
-// their sum, mail writing a small store's ahead of the dispatch, so the test logs the peak;
-// dispatch's TestReleaseBoundsDisk holds that each original is released once it is recorded.
+// every event: no attachment fails or is lost, and a repeated one is seen.
+//
+// The committed stores only log the peak: no one spreads its attachments over messages enough
+// that the peak must fall below their sum, mail writing a small store's ahead of the dispatch.
+// The tika store gives mail no attachment content, and libyal's repeats one message's eleven
+// attachments in a second. The generated mbox, [spreadMbox]'s, does: its lines fill the pipe
+// docproc-mail writes them to about ten messages in, so mail blocks there, and the working
+// directory holds the attachments of the messages in the pipe and the one in flight, not all of
+// them; its peak must fall below their sum. dispatch's TestReleaseBoundsDisk holds that each
+// original is released once it is recorded.
 func TestEmailStageReleases(t *testing.T) {
-	stores := []string{
-		filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"),
-		filepath.Join(mailFixtures(t), "pst", "tika", "testPST.pst"),
-		filepath.Join(mailFixtures(t), "pst", "libyal", "outlook.pst"),
+	stores := []struct {
+		path string
+		// bounded says the peak must fall below the distinct attachments' sum.
+		bounded bool
+	}{
+		{filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), false},
+		{filepath.Join(mailFixtures(t), "pst", "tika", "testPST.pst"), false},
+		{filepath.Join(mailFixtures(t), "pst", "libyal", "outlook.pst"), false},
+		{spreadMbox(t), true},
 	}
 	for _, store := range stores {
-		t.Run(filepath.Base(store), func(t *testing.T) {
+		t.Run(filepath.Base(store.path), func(t *testing.T) {
 			stages := dispatch.Stages{route.Nested: testEmailStage(t)}
 			for _, r := range []route.Route{
 				route.Document, route.Office, route.Vision, route.VisionConverted, route.OneNote,
@@ -83,7 +103,7 @@ func TestEmailStageReleases(t *testing.T) {
 			distinct := map[string]bool{}
 			found, seen := 0, 0
 			var last dispatch.Event
-			for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: store}) {
+			for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: store.path}) {
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -113,8 +133,80 @@ func TestEmailStageReleases(t *testing.T) {
 				t.Errorf("%d found, %d distinct, %d seen: each repeat should be seen", found, len(distinct), seen)
 			}
 			t.Logf("%d attachments, %d distinct, %d bytes; the working directory's peak %d bytes", found, len(distinct), sum, peak)
+			if store.bounded {
+				if found != spreadMessages {
+					t.Errorf("%d attachments found, want %d", found, spreadMessages)
+				}
+				if peak >= sum {
+					t.Errorf("the working directory's peak %d bytes, want below the %d distinct attachments' %d", peak, len(distinct), sum)
+				}
+			}
 		})
 	}
+}
+
+// spreadMbox's shape: its message count, each message's attachment's size, and its text body's,
+// which its line's Markdown carries. Each line is some 9 KiB, so the pipe between docproc-mail and
+// the stage, the OS's 64 KiB and the copies' buffers past it, holds about ten, and mail blocks
+// with that many messages' attachments written ahead: some 640 KiB, against the 6.4 MiB all 100
+// hold, which a stage that released none would reach.
+const (
+	spreadMessages   = 100
+	spreadAttachment = 64 << 10
+	spreadBody       = 8 << 10
+)
+
+// spreadMbox writes an mbox of spreadMessages messages into a temporary directory and returns its
+// path: each message a text body of spreadBody bytes and one attachment, base64, of
+// spreadAttachment bytes of its own, distinct from every other's.
+func spreadMbox(t *testing.T) string {
+	t.Helper()
+	var buf bytes.Buffer
+	line := strings.Repeat("spread ", 9) + "\n"
+	body := strings.Repeat(line, spreadBody/len(line))
+	for i := range spreadMessages {
+		content := make([]byte, spreadAttachment)
+		var seed [32]byte
+		binary.LittleEndian.PutUint64(seed[:], uint64(i))
+		_, _ = rand.NewChaCha8(seed).Read(content)
+
+		var part bytes.Buffer
+		mw := multipart.NewWriter(&part)
+		w, err := mw.CreatePart(textproto.MIMEHeader{"Content-Type": {"text/plain; charset=us-ascii"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = io.WriteString(w, body)
+		w, err = mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type":              {"application/octet-stream"},
+			"Content-Disposition":       {fmt.Sprintf(`attachment; filename="part-%d.bin"`, i+1)},
+			"Content-Transfer-Encoding": {"base64"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded := base64.StdEncoding.EncodeToString(content)
+		for len(encoded) > 76 {
+			_, _ = io.WriteString(w, encoded[:76]+"\r\n")
+			encoded = encoded[76:]
+		}
+		_, _ = io.WriteString(w, encoded+"\r\n")
+		if err := mw.Close(); err != nil {
+			t.Fatal(err)
+		}
+
+		buf.WriteString("From sender@example.com Mon Jan  1 00:00:00 2024\n")
+		fmt.Fprintf(&buf, "From: sender@example.com\nTo: recipient@example.com\nSubject: message %d\n", i+1)
+		fmt.Fprintf(&buf, "Message-ID: <%d@example.com>\nMIME-Version: 1.0\n", i+1)
+		fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=%q\n\n", mw.Boundary())
+		buf.Write(part.Bytes())
+		buf.WriteString("\n")
+	}
+	path := filepath.Join(t.TempDir(), "spread.mbox")
+	if err := os.WriteFile(path, buf.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 // sink is a stage that yields one output for each part, so each is recorded.
