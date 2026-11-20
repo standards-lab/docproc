@@ -97,6 +97,52 @@ func TestAtContent(t *testing.T) {
 	}
 }
 
+// TestAtXPS: a ZIP holding FixedDocumentSequence.fdseq, whole or as its first piece, is an XPS
+// package, unrouted whatever its name, a whole one even though it holds [Content_Types].xml too;
+// OOXML packages are still office's, by the entry or their name, and a plain ZIP still an
+// archive. The pieced package is laid out as LargeData.one's embedded "testing - large.docx" is.
+func TestAtXPS(t *testing.T) {
+	const (
+		ooxml   = "ZIP signature with a [Content_Types].xml entry, an OOXML package"
+		whole   = "ZIP signature with a FixedDocumentSequence.fdseq entry, an XPS package"
+		pieced  = "ZIP signature with a FixedDocumentSequence.fdseq/[0].piece entry, an XPS package"
+		archive = "ZIP signature without an OOXML extension, [Content_Types].xml, or ODF mimetype"
+	)
+	wholeXPS := zipOf(t, "[Content_Types].xml", "_rels/.rels", "FixedDocumentSequence.fdseq",
+		"Documents/1/FixedDocument.fdoc", "Documents/1/Pages/1.fpage")
+	piecedXPS := zipOf(t, "[Content_Types].xml/[0].piece", "_rels/.rels/[0].piece",
+		"FixedDocumentSequence.fdseq/[0].piece", "Documents/1/FixedDocument.fdoc/[0].piece",
+		"Documents/1/Pages/1.fpage/[0].piece", "Documents/1/Pages/1.fpage/[1].last.piece",
+		"[Content_Types].xml/[1].last.piece")
+	cases := []struct {
+		name, content, filename string
+		want                    route.Route
+		why                     string
+	}{
+		{"whole xps named .docx", wholeXPS, "testing - large.docx", route.Unrouted, whole},
+		{"whole xps named .xps", wholeXPS, "a.xps", route.Unrouted, whole},
+		{"pieced xps named .docx", piecedXPS, "testing - large.docx", route.Unrouted, pieced},
+		{"a later piece alone, named .docx", zipOf(t, "FixedDocumentSequence.fdseq/[1].last.piece"), "a.docx", route.Office, "ZIP signature, .docx extension"},
+		{"sequence in a folder, named .zip", zipOf(t, "docs/FixedDocumentSequence.fdseq"), "a.zip", route.Archive, archive},
+		{"docx", zipOf(t, "[Content_Types].xml", "_rels/.rels", "word/document.xml"), "a.docx", route.Office, ooxml},
+		{"xlsx", zipOf(t, "[Content_Types].xml", "_rels/.rels", "xl/workbook.xml"), "a.xlsx", route.Office, ooxml},
+		{"pptx", zipOf(t, "[Content_Types].xml", "_rels/.rels", "ppt/presentation.xml"), "a.pptx", route.Office, ooxml},
+		{"plain zip", zipOf(t, "notes.txt", "pictures/a.png"), "a.zip", route.Archive, archive},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			head := []byte(c.content[:min(len(c.content), route.HeadLen)])
+			got, why, err := route.At(strings.NewReader(c.content), int64(len(c.content)), head, c.filename, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != c.want || why != c.why {
+				t.Errorf("route %q (%s), want %q (%s)", got, why, c.want, c.why)
+			}
+		})
+	}
+}
+
 // TestExt: an extension is lowercased, with trailing dots and spaces trimmed, of a name or a path
 // by either separator.
 func TestExt(t *testing.T) {
