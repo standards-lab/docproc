@@ -9,6 +9,59 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.4.1] - 2026-11-20
+
+This release fixes how the tools' runs keep their temporary files, how a PDF portfolio's pages are
+rendered, and how three failures are classified or reported. Its exported API is unchanged, and
+the module still requires golang.org/x/text alone.
+
+### Changed
+
+- docproc supports 64-bit platforms only. The README and the package docs, which said the module
+  builds on every platform, say every 64-bit platform; nothing is checked or built for 32-bit.
+- `document.Ghostscript.Render` and `Text` give gs the PDF's path through
+  `--permit-file-read`, as `Count` does, and gs splits a permitted path at `:`, so a path holding
+  a colon is refused by Render and Text, as Count, and so `document.Preparer.Images`, already
+  refused it. A file that isn't a PDF is opened as a PDF rather than run as PostScript: gs reports
+  it can't open it and exits zero, so Render fails with "no PNG on stdout", quoting gs's message,
+  and Text's error wraps `document.ErrRequest`, where before gs exited 1.
+- The stage adapters' version, part of every adapter's configuration hash, is 6, from 5, since a
+  portfolio's page outputs change: an index prepares its content again.
+- The development harness's PostgreSQL, compose's one pin, is 19.0-alpine, from 18.7-alpine; the
+  index's live tier passes unchanged against it.
+- The stages package's release test also dispatches an mbox it generates, 100 messages each with
+  an 8 KiB body and a distinct 64 KiB attachment, and checks the working directory's peak stays
+  below the attachments' sum, so a mail stage that released nothing fails it.
+
+### Fixed
+
+- Each exec-runner run's `TMPDIR` is a new, empty directory of the run's own, `docproc-run-*`,
+  under the host's `TMPDIR`, removed once the program's group has been killed and reaped, whether
+  the run succeeded, failed, was cancelled, or passed its bound. A run with no working directory
+  gets one too, and a run whose directory can't be made fails before the program starts. Before,
+  `TMPDIR` was the run's working directory, so a gs ended early left its temporary files, an
+  empty `gs_` file or a portfolio's `gpdf-collection-` files, beside its input, and a read-only
+  input directory left gs nowhere to write. `HOME` is still the run's working directory, and the
+  version check's `HOME` is still a new empty directory of its own; its `TMPDIR` is now the run's,
+  as every run's is. The container runner is unchanged.
+- soffice's exit 77, LibreOffice's fatal error at its start, such as no disk space, no write
+  access, or a broken profile or installation, is the run's failure, as 7zz's 7 and 255 are: a
+  part's 77 fails it unrecorded, so a later dispatch tries it again, and a unit's ends the stage.
+  Before, it was the content's, and the part was recorded as failed. Every other nonzero soffice
+  exit is still the content's.
+- `sevenzip.Reader.Extract` returns its writer's error, wrapped with the item and the archive,
+  when a write to it fails. Before, 7zz's death at the broken pipe came back in its place, a
+  `*tool.ExitError`, and the writer's error was lost. Every other outcome is as before.
+- A ZIP holding `FixedDocumentSequence.fdseq`, whole or as its first piece, routes `Unrouted` as
+  "an XPS package", whatever its name, ahead of the OOXML rules; with no stage for it, its outcome
+  is "no processor yet". Before, an XPS package, an OPC package with `[Content_Types].xml` like
+  OOXML's, routed by its name, so one named `.docx` went to office and failed in docproc-ooxml.
+- A PDF portfolio's page, rendered or read by a process of its own, as `document.Preparer.Images`
+  prepares every portfolio page, is the portfolio's own page: one PNG and that page's text. Before,
+  gs rendered the portfolio's embedded documents in its place, the page range applied to each, so
+  Render wrote a PNG for each document and Text gave every document's text. Every other PDF's
+  pages, PNG, text, and messages, are byte for byte as before.
+
 ## [v0.4.0] - 2026-11-19
 
 This release runs a PDF's pages through shared gs processes, holds what the stages write to the
@@ -218,7 +271,8 @@ fixtures scripts stay in the spike.
 The [README](README.md#limits) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.1...HEAD
+[v0.4.1]: https://github.com/standards-lab/docproc/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/v0.1.0...v0.2.0
