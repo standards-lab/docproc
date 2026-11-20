@@ -6,6 +6,9 @@ import (
 	"bytes"
 	"errors"
 	"image/png"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -71,6 +74,71 @@ func TestGhostscriptRenderHost(t *testing.T) {
 		t.Errorf("Render(clean.pdf page 7) of 6 pages wrote %d bytes, want none", out.Len())
 	}
 	t.Logf("page past the last: %v", err)
+}
+
+// TestGhostscriptPortfolioHost checks the host's gs gives each page of portfolio.pdf, a PDF
+// portfolio whose catalog's /Collection gs runs its embedded documents' pages for in place of its
+// own, as the cover's own page: Render writes one PNG, letter size at 150 dpi, and Text reads that
+// page's text alone, and Images yields the same, a page's file and text. A page past the last is
+// an error carrying gs's message, from Render and from Text. The PDF's path holds parentheses and
+// a backslash, which the PostScript that opens it escapes.
+func TestGhostscriptPortfolioHost(t *testing.T) {
+	g, _ := hostGhostscript(t)
+	b, err := os.ReadFile(filepath.Join("testdata", "portfolio", "portfolio.pdf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(t.TempDir(), `in (a)\b`)
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	pdf := filepath.Join(dir, `cover (1)\.pdf`)
+	if err := os.WriteFile(pdf, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	pngs, texts := make([][]byte, 2), make([]string, 2)
+	for page := 1; page <= 2; page++ {
+		var out bytes.Buffer
+		if err := g.Render(t.Context(), pdf, page, 150, &out); err != nil {
+			t.Fatalf("Render(portfolio.pdf page %d): %v", page, err)
+		}
+		r := bytes.NewReader(out.Bytes())
+		img, err := png.Decode(r)
+		if err != nil {
+			t.Fatalf("portfolio.pdf page %d isn't a PNG: %v", page, err)
+		}
+		if b := img.Bounds(); b.Dx() != 1275 || b.Dy() != 1650 || r.Len() != 0 {
+			t.Errorf("portfolio.pdf page %d is %dx%d with %d bytes after its PNG, want one PNG, letter at 150 dpi, 1275x1650", page, b.Dx(), b.Dy(), r.Len())
+		}
+		text, err := g.Text(t.Context(), pdf, page)
+		if want := "Portfolio cover, page " + strconv.Itoa(page); err != nil || collapse(text) != want {
+			t.Errorf("Text(portfolio.pdf page %d) = %q, %v, want the cover's page alone, %q", page, text, err, want)
+		}
+		pngs[page-1], texts[page-1] = out.Bytes(), text
+	}
+	err = g.Render(t.Context(), pdf, 3, 150, &bytes.Buffer{})
+	if err == nil || !strings.Contains(err.Error(), "Requested FirstPage is greater than the number of pages in the file: 2") {
+		t.Errorf("Render(portfolio.pdf page 3) of 2 pages returned %v, want gs's message", err)
+	}
+	_, err = g.Text(t.Context(), pdf, 3)
+	if !errors.Is(err, document.ErrRequest) || !strings.Contains(err.Error(), "Requested FirstPage is greater than the number of pages in the file: 2") {
+		t.Errorf("Text(portfolio.pdf page 3) of 2 pages returned %v, want document.ErrRequest with gs's message", err)
+	}
+	p := document.NewPreparer(document.Config{Renderer: g})
+	yielded := 0
+	for img, err := range p.Images(t.Context(), pdf, document.ImagesRequest{Dir: t.TempDir(), Concurrency: 2, Text: true}) {
+		if err != nil {
+			t.Fatalf("Images(portfolio.pdf): page %d: %v", img.Number, err)
+		}
+		yielded++
+		b, err := os.ReadFile(img.Path)
+		if err != nil || img.Number != yielded || !bytes.Equal(b, pngs[img.Number-1]) || img.Text != texts[img.Number-1] {
+			t.Errorf("Images(portfolio.pdf): yield %d, page %d: its PNG or text isn't the cover's page (%v)", yielded, img.Number, err)
+		}
+	}
+	if yielded != 2 {
+		t.Errorf("Images(portfolio.pdf) yielded %d pages, want 2", yielded)
+	}
 }
 
 // TestGhostscriptRenderMessageHost checks the host's gs renders the malformed fixture's page,

@@ -25,8 +25,9 @@ func standinGhostscript(t *testing.T, version string, spec tool.Spec) (*tool.Too
 }
 
 // standinRenderer builds the released renderer over the stand-in gs at 10.08.0, and returns it
-// with the stand-in and a PDF path, relative to the working directory, in a directory
-// of its own. The stand-in reads no PDF, so the file is empty.
+// with the stand-in and a PDF path, relative to the working directory, in a directory of its own
+// whose name holds parentheses and a backslash, which a PostScript string escapes. The stand-in
+// reads no PDF, so the file is empty.
 func standinRenderer(t *testing.T) (*document.Ghostscript, *standin, string) {
 	t.Helper()
 	tl, st := standinGhostscript(t, "10.08.0", document.GhostscriptSpec())
@@ -36,18 +37,32 @@ func standinRenderer(t *testing.T) (*document.Ghostscript, *standin, string) {
 	}
 	dir := t.TempDir()
 	t.Chdir(dir)
-	if err := os.Mkdir("in (a)", 0o700); err != nil {
+	if err := os.Mkdir(`in (a)\b`, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	pdf := filepath.Join("in (a)", "doc.pdf")
+	pdf := filepath.Join(`in (a)\b`, "doc.pdf")
 	if err := os.WriteFile(pdf, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return g, st, pdf
 }
 
+// psEscaped returns path as a PostScript string's contents, its backslashes and parentheses
+// escaped.
+func psEscaped(path string) string {
+	return strings.NewReplacer(`\`, `\\`, "(", `\(`, ")", `\)`).Replace(path)
+}
+
+// ownPageArgs returns the arguments that end a page's own gs run over the PDF at abs: permission
+// to read it, and the PostScript that opens it and runs its pages through the non-portfolio half
+// of gs's runpdf, so a portfolio's page is its own.
+func ownPageArgs(abs string) []string {
+	return []string{"--permit-file-read=" + abs, "-c",
+		"(" + psEscaped(abs) + ") (r) file runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend"}
+}
+
 // TestGhostscriptRenderArgs checks gs's arguments for a page at a DPI, and that the run reads the
-// PDF by its absolute path from the PDF's directory.
+// PDF by its absolute path, escaped in PostScript, from the PDF's directory.
 func TestGhostscriptRenderArgs(t *testing.T) {
 	for _, tc := range []struct{ page, dpi int }{{1, 150}, {7, 300}, {1 << 20, 72}} {
 		g, st, pdf := standinRenderer(t)
@@ -62,9 +77,9 @@ func TestGhostscriptRenderArgs(t *testing.T) {
 		if want := standinPage(tc.page, tc.dpi); !bytes.Equal(out.Bytes(), want) {
 			t.Errorf("Render wrote %q, want the stand-in's page %q", out.Bytes(), want)
 		}
-		want := []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
+		want := append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 			"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(tc.dpi),
-			"-dFirstPage=" + strconv.Itoa(tc.page), "-dLastPage=" + strconv.Itoa(tc.page), "-sOutputFile=-", abs}
+			"-dFirstPage=" + strconv.Itoa(tc.page), "-dLastPage=" + strconv.Itoa(tc.page), "-sOutputFile=-"}, ownPageArgs(abs)...)
 		got := st.runs()
 		if len(got) != 1 || !slices.Equal(got[0].Args, want) {
 			t.Errorf("Render(page %d, %d dpi): gs ran %q, want one run with %q", tc.page, tc.dpi, got, want)
@@ -188,9 +203,8 @@ func TestGhostscriptCount(t *testing.T) {
 		if !tc.ok && err == nil {
 			t.Errorf("Count with gs printing %q returned %d, want an error", tc.stdout, n)
 		}
-		ps := strings.NewReplacer("(", `\(`, ")", `\)`).Replace(abs)
 		want := []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + abs,
-			"-c", "(" + ps + ") (r) file runpdfbegin pdfpagecount = quit"}
+			"-c", "(" + psEscaped(abs) + ") (r) file runpdfbegin pdfpagecount = quit"}
 		got := st.runs()
 		if len(got) != 1 || !slices.Equal(got[0].Args, want) || got[0].Dir != filepath.Dir(abs) {
 			t.Errorf("Count ran gs as %q, want one run with %q in %s", got, want, filepath.Dir(abs))
@@ -290,8 +304,8 @@ func TestGhostscriptText(t *testing.T) {
 		if err != nil || got != tc.want {
 			t.Errorf("Text(page %d) = %q, %v, want %q", tc.page, got, err, tc.want)
 		}
-		want := []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
-			"-dFirstPage=" + strconv.Itoa(tc.page), "-dLastPage=" + strconv.Itoa(tc.page), "-sOutputFile=-", abs}
+		want := append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
+			"-dFirstPage=" + strconv.Itoa(tc.page), "-dLastPage=" + strconv.Itoa(tc.page), "-sOutputFile=-"}, ownPageArgs(abs)...)
 		r := st.runs()
 		if len(r) != 1 || !slices.Equal(r[0].Args, want) || r[0].Dir != filepath.Dir(abs) {
 			t.Errorf("Text(page %d) ran gs as %q, want one run with %q in %s", tc.page, r, want, filepath.Dir(abs))

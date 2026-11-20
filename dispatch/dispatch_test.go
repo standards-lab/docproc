@@ -1,6 +1,8 @@
 package dispatch_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -156,6 +158,53 @@ func TestOutcomes(t *testing.T) {
 	}
 	if s1.Part.SHA256 != s2.Part.SHA256 || f.text.called("s2.txt") != 0 {
 		t.Errorf("s2.txt prepared %d times", f.text.called("s2.txt"))
+	}
+}
+
+// TestXPSNoProcessor: an XPS package named .docx, whole or pieced as an interleaved package
+// stores it, routes unrouted and is no processor yet, the office stage never running on it,
+// while an OOXML package named the same goes to office.
+func TestXPSNoProcessor(t *testing.T) {
+	office := &leaf{name: "office"}
+	d, err := dispatch.New(dispatch.Config{
+		Content: dispatch.NewMemoryContent(), Puts: 2, Stages: dispatch.Stages{route.Office: office},
+		Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name    string
+		entries []string
+		want    route.Route
+		outcome dispatch.Outcome
+		calls   int
+	}{
+		{"whole xps", []string{"[Content_Types].xml", "FixedDocumentSequence.fdseq"}, route.Unrouted, dispatch.NoProcessor, 0},
+		{"pieced xps", []string{"[Content_Types].xml/[0].piece", "FixedDocumentSequence.fdseq/[0].piece"}, route.Unrouted, dispatch.NoProcessor, 0},
+		{"docx", []string{"[Content_Types].xml", "word/document.xml"}, route.Office, dispatch.Prepared, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			w := zip.NewWriter(&buf)
+			for _, n := range c.entries {
+				if _, err := w.Create(n); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := w.Close(); err != nil {
+				t.Fatal(err)
+			}
+			before := office.called()
+			events := dispatchAll(t, d, input(t, "testing - large.docx", buf.String()), nil)
+			wantSteps(t, events, []step{{"testing - large.docx", 0, c.outcome}})
+			if ev := events[0]; ev.Part.ContentType.Route != c.want {
+				t.Errorf("route %q (%s), want %q", ev.Part.ContentType.Route, ev.Part.ContentType.RouteReason, c.want)
+			}
+			if got := office.called() - before; got != c.calls {
+				t.Errorf("office ran %d times, want %d", got, c.calls)
+			}
+		})
 	}
 }
 

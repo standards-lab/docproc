@@ -20,20 +20,21 @@
 // for a cabinet, for an mbox's "From " line, which prose named with a text extension begins too,
 // for a short signature, two or three bytes, that text named with a text extension begins, and
 // for content of no signature, which is a message by the .eml rule or text by its extension. A
-// ZIP is read by its central directory for a [Content_Types].xml entry, which makes it an OOXML
-// package whatever its name; an OLE2 file named with an OOXML extension is read whole for an
-// EncryptedPackage stream's directory entry, by [EncryptedPackage], which inspect calls too; and
-// content of no signature is read for a message's header, a header after a UTF-8 byte order mark
-// among them. The routes:
+// ZIP is read by its central directory, decompressing nothing, for a FixedDocumentSequence.fdseq
+// entry, whole or as its first piece, which makes it an XPS package whatever its name, and for a
+// [Content_Types].xml entry, which makes any other ZIP an OOXML package whatever its name; an
+// OLE2 file named with an OOXML extension is read whole for an EncryptedPackage stream's
+// directory entry, by [EncryptedPackage], which inspect calls too; and content of no signature is
+// read for a message's header, a header after a UTF-8 byte order mark among them. The routes:
 //
 //   - [Document]: a PDF, for the document package's stage.
 //   - [Office]: an office document: a ZIP holding [Content_Types].xml, or named with an OOXML
-//     extension office reads, an OLE2 compound file named with a legacy one, an encrypted OOXML
-//     package (an OLE2 compound file holding an EncryptedPackage stream, named with an OOXML
-//     extension or .xlsb), which office refuses as encrypted, an ODF package, an RTF, a
-//     WordPerfect document, or a ZIP named .xlsb, an Excel binary workbook. The last four go
-//     through LibreOffice, and office's stage has no processor yet for the last two, which a
-//     dispatcher reports.
+//     extension office reads, but for an XPS package, an OLE2 compound file named with a legacy
+//     one, an encrypted OOXML package (an OLE2 compound file holding an EncryptedPackage stream,
+//     named with an OOXML extension or .xlsb), which office refuses as encrypted, an ODF package,
+//     an RTF, a WordPerfect document, or a ZIP named .xlsb, an Excel binary workbook. The last
+//     four go through LibreOffice, and office's stage has no processor yet for the last two, which
+//     a dispatcher reports.
 //   - [Vision]: a picture a vision model decodes as stored: PNG, JPEG, GIF, or BMP.
 //   - [VisionConverted]: a picture a vision model decodes only once converted to PNG: TIFF, EMF,
 //     WMF, SVG, HEIC, WebP, or AVIF.
@@ -52,8 +53,10 @@
 //     .json, or marked by a byte order mark; and text named so whose head a short signature
 //     begins, such as a note that begins "#!/bin/sh".
 //   - [Unrouted]: anything else, an executable among it, whose reason names it an executable; an
-//     .ost, whose reason names it, since mail refuses one; and HTML, which is web content, not
-//     text, unless its root element is an SVG's.
+//     .ost, whose reason names it, since mail refuses one; an XPS package, a ZIP holding
+//     FixedDocumentSequence.fdseq, whole or as its first piece, whatever its name, ahead of the
+//     OOXML rules, since one is an OPC package too and may be named .docx; and HTML, which is web
+//     content, not text, unless its root element is an SVG's.
 //
 // Its exported identifiers:
 //

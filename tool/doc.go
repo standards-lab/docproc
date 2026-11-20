@@ -5,24 +5,29 @@
 // about the runner, so an adapter written against Tool runs the same code whichever runner built
 // it. The package reports a run's facts, its exit code, the signal that killed it, and whether it
 // passed its own time bound, and decides no outcome; its caller classifies them. It builds on
-// every platform, on the standard library alone; the exec runner, and so the container runner,
-// which runs the docker CLI through it, runs on Linux only, and NewExec elsewhere returns an error.
+// every 64-bit platform, on the standard library alone; the exec runner, and so the container
+// runner, which runs the docker CLI through it, runs on Linux only, and NewExec elsewhere returns
+// an error.
 //
 // The exec runner, NewExec, runs a program directly, a name looked up on PATH or a path with a
 // separator taken as given. Every program it starts leads a process group of its own, in a fixed
-// environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME and TMPDIR
-// the invocation's working directory when it has one, then the Spec's Env. The version command
-// runs in that environment too, its HOME and TMPDIR a new empty directory of its own, so a
-// program that answers only under the host's HOME, as a version manager's shim does, is refused
-// at construction rather than failing every run. Its parent-death
-// signal is SIGKILL, from an OS thread locked to the run, so the host's death ends it; its
-// oom_score_adj is 1000, written to /proc once it has started, so the OOM killer chooses it over
-// its host; and whenever it exits, its group is sent SIGKILL before it is reaped, so no child it
-// started outlives the run. A Spec's MemoryLimit, zero for none, is the program's RLIMIT_AS, set
-// by util-linux's `prlimit --as=<bytes> --` before the program is executed, for every run of the
-// Spec, the version command's included; NewExec refuses a bounded Spec when prlimit isn't on PATH.
-// An allocation the bound refuses fails as the program handles it, typically by a signal such as
-// SIGABRT or SIGSEGV.
+// environment, never the host's: PATH as it was at construction, LANG=C.UTF-8, HOME the
+// invocation's working directory when it has one, TMPDIR a new empty directory of the run's own
+// under the process's temporary directory, os.TempDir, which the host's TMPDIR steers, then the
+// Spec's Env. A tool's temporary files live in that directory, never beside its input, and it is
+// removed, with whatever the program left in it, once the program's group has been sent SIGKILL
+// and the program reaped, whether the run succeeded, failed, was cancelled, or passed its bound;
+// a run whose directory can't be made fails before the program starts. The version command runs
+// in that environment too, its HOME a new empty directory of its own, so a program that answers
+// only under the host's HOME, as a version manager's shim does, is refused at construction rather
+// than failing every run. Its parent-death signal is SIGKILL, from an OS thread locked to the
+// run, so the host's death ends it; its oom_score_adj is 1000, written to /proc once it has
+// started, so the OOM killer chooses it over its host; and whenever it exits, its group is sent
+// SIGKILL before it is reaped, so no child it started outlives the run. A Spec's MemoryLimit,
+// zero for none, is the program's RLIMIT_AS, set by util-linux's `prlimit --as=<bytes> --` before
+// the program is executed, for every run of the Spec, the version command's included; NewExec
+// refuses a bounded Spec when prlimit isn't on PATH. An allocation the bound refuses fails as the
+// program handles it, typically by a signal such as SIGABRT or SIGSEGV.
 //
 // The container runner, NewContainer, runs the program inside an Image through the docker CLI, the
 // only runtime, which it runs through the exec runner, in the host's environment, and checks

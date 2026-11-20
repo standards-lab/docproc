@@ -12,6 +12,15 @@ import (
 // holds at its root.
 const contentTypesName = "[Content_Types].xml"
 
+// xpsSequenceName is the name of an XPS package's fixed document sequence part, and
+// xpsSequencePiece its first piece's, the name an interleaved package stores it under, as
+// LargeData.one's embedded "testing - large.docx" does. Either makes a ZIP an XPS package, which
+// no stage reads, whatever its name.
+const (
+	xpsSequenceName  = "FixedDocumentSequence.fdseq"
+	xpsSequencePiece = xpsSequenceName + "/[0].piece"
+)
+
 // The ZIP records zipHolds reads: the end-of-central-directory record, ZIP64's locator and
 // record, and a central directory header, each by its signature and fixed length.
 var (
@@ -28,37 +37,44 @@ var (
 	errNoCentralDirectory = errors.New("no central directory")
 )
 
-// zipHolds reports whether the ZIP r holds, size bytes, has an entry named name, by its central
-// directory, read a header at a time, its memory a header's and its name's whatever the count.
-// A ZIP whose central directory can't be found or read holds nothing; an error is r's own.
-func zipHolds(r io.ReaderAt, size int64, name string) (bool, error) {
+// zipHolds reports which of names the ZIP r holds, size bytes, has an entry named, each as
+// held[i] for names[i], by its central directory, read a header at a time, its memory a header's
+// and its name's whatever the count; the scan ends once every name is found. A ZIP whose central
+// directory can't be found holds nothing, and one whose directory can't be read past a header
+// holds what the headers before it name; an error is r's own.
+func zipHolds(r io.ReaderAt, size int64, names ...string) (held []bool, err error) {
+	held = make([]bool, len(names))
 	offset, length, err := centralDirectory(r, size)
 	if errors.Is(err, errNoCentralDirectory) {
-		return false, nil
+		return held, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	br := bufio.NewReader(io.NewSectionReader(r, offset, length))
 	fixed := make([]byte, directoryHeaderLen)
 	var got []byte
-	for {
+	for found := 0; found < len(names); {
 		if _, err := io.ReadFull(br, fixed); err != nil || !bytes.HasPrefix(fixed, directoryHeaderSig) {
-			return false, ignoreEOF(err)
+			return held, ignoreEOF(err)
 		}
 		nameLen := int(binary.LittleEndian.Uint16(fixed[28:]))
 		rest := int(binary.LittleEndian.Uint16(fixed[30:])) + int(binary.LittleEndian.Uint16(fixed[32:]))
 		got = append(got[:0], make([]byte, nameLen)...)
 		if _, err := io.ReadFull(br, got); err != nil {
-			return false, ignoreEOF(err)
+			return held, ignoreEOF(err)
 		}
-		if string(got) == name {
-			return true, nil
+		for i, name := range names {
+			if !held[i] && string(got) == name {
+				held[i] = true
+				found++
+			}
 		}
 		if _, err := br.Discard(rest); err != nil {
-			return false, ignoreEOF(err)
+			return held, ignoreEOF(err)
 		}
 	}
+	return held, nil
 }
 
 // centralDirectory finds the central directory of the ZIP r holds, size bytes, by its

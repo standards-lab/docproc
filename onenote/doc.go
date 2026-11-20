@@ -2,7 +2,7 @@
 // downloaded from OneDrive, and .onepkg packages, and, for an operator, .onetoc2 notebooks and
 // notebook directories, for a model through docproc-onenote: an input in, its records streamed out
 // as typed Go values while docproc-onenote runs. It provides pre-inference preparation only; a
-// layer above sends what it returns to a model. The package builds on every platform, on the
+// layer above sends what it returns to a model. The package builds on every 64-bit platform, on the
 // standard library and this module's tool and internal/cli packages; the program it runs is a
 // tool.Tool the caller built through the exec runner.
 //

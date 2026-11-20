@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/standards-lab/docproc/internal/tooltest"
+	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/sevenzip"
 	"github.com/standards-lab/docproc/tool"
 )
@@ -161,6 +162,31 @@ func TestNewReaderMinimum(t *testing.T) {
 		t.Errorf("24.07: %v", err)
 	}
 }
+
+// TestExtractWriteFails: a writer that fails stops the stand-in's 1 MiB write, and Extract returns
+// the writer's error, not 7zz's exit at the broken pipe.
+func TestExtractWriteFails(t *testing.T) {
+	t.Parallel()
+	tl := standin(t, standinSettings{Version: "26.05", Items: []standinItem{{Name: "big", Content: strings.Repeat("x", 1<<20)}}})
+	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: tl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.Extract(t.Context(), sevenzip.ExtractRequest{Path: "a.7z", Kind: route.SevenZip, Name: "big"}, failingWriter{})
+	if !errors.Is(err, errWriterFull) {
+		t.Errorf("%v, want the writer's error", err)
+	}
+	if _, ok := errors.AsType[*tool.ExitError](err); ok {
+		t.Errorf("%v, want the writer's error, not 7zz's exit", err)
+	}
+}
+
+var errWriterFull = errors.New("writer full")
+
+// failingWriter is a writer whose every write fails with errWriterFull.
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errWriterFull }
 
 // fixture returns the path of one of the package's fixtures, under testdata.
 func fixture(name string) string { return filepath.Join("testdata", name) }

@@ -53,9 +53,10 @@ type settings struct {
 	FailText int `json:"fail_text,omitzero"`
 	// Portfolio, when set, makes the stand-in gs a PDF portfolio's, as gs reads one: a survey run,
 	// whose PostScript asks for /Collection, prints true after a count above zero; and a render or
-	// a text run writes, in place of each page's, each of the two documents' page of that number,
-	// the first document's pages, then the second's, as gs runs a portfolio's documents in turn
-	// over the run's pages.
+	// a text run that names the PDF as a file writes, in place of each page's, each of the two
+	// documents' page of that number, the first document's pages, then the second's, as gs runs a
+	// portfolio's documents in turn over the run's pages. A run whose PostScript runs the pages
+	// through the non-portfolio half of runpdf, dopdfpages, writes each page's own, the cover's.
 	Portfolio bool `json:"portfolio,omitzero"`
 	// Delay holds, by page, how many milliseconds the stand-in gs's render of that page waits
 	// before it writes the page.
@@ -131,11 +132,13 @@ type standinOutput struct {
 	text string
 }
 
-// outputs returns what a stand-in gs render or text run over pages writes, in order: each page's
-// own, or, for a portfolio, each document's pages in turn.
-func outputs(s settings, pages []int) []standinOutput {
+// outputs returns what a stand-in gs render or text run with args writes, in order: each of its
+// pages' own, or, for a portfolio named as a file, each document's pages in turn. A run that
+// reads the PDF through dopdfpages, the non-portfolio half of runpdf, writes the pages' own.
+func outputs(s settings, args []string) []standinOutput {
+	pages := tooltest.GSPages(args)
 	var out []standinOutput
-	if !s.Portfolio {
+	if !s.Portfolio || strings.Contains(args[len(args)-1], " dopdfpages ") {
 		for _, page := range pages {
 			out = append(out, standinOutput{page, func(dpi int) []byte { return standinPage(page, dpi) }, standinText(page)})
 		}
@@ -163,8 +166,9 @@ const argLimit = 2047
 // to stdout for an OutputFile of -, and otherwise to the OutputFile, its %d the output's place in
 // the run from 1, failing at FailText; and for a render, its Message, then each output's PNG in
 // turn, after its page's Delay, failing at FailPage and killed at KillPage. A run's outputs are
-// its pages', as outputs gives them, its pages its -sPageList, or its -dFirstPage alone. A page
-// that fails writes "told to fail" to stderr and exits 1, the outputs before it written.
+// its pages', as outputs gives them from its arguments, its pages its -sPageList, or its
+// -dFirstPage alone. A page that fails writes "told to fail" to stderr and exits 1, the outputs
+// before it written.
 func gs(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Println(s.Version)
@@ -230,7 +234,7 @@ func gs(s settings, args []string) int {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
-		for _, o := range outputs(s, tooltest.GSPages(args)) {
+		for _, o := range outputs(s, args) {
 			time.Sleep(time.Duration(s.Delay[o.page]) * time.Millisecond)
 			if o.page == s.FailPage {
 				fmt.Fprint(os.Stderr, "told to fail")
@@ -261,7 +265,7 @@ func standinTexts(s settings, args []string) int {
 			file = v
 		}
 	}
-	for i, o := range outputs(s, tooltest.GSPages(args)) {
+	for i, o := range outputs(s, args) {
 		if o.page == s.FailText {
 			fmt.Fprint(os.Stderr, "told to fail")
 			return 1

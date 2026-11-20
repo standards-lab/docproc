@@ -135,8 +135,10 @@ func TestMemoryLimitBelowZero(t *testing.T) {
 }
 
 // TestRunFixedEnvironment checks the exec runner's environment, whole: PATH, LANG=C.UTF-8, HOME
-// and TMPDIR the run's Dir when it has one, then the Spec's Env, whose LANG replaces the fixed
-// one. Nothing of the test binary's own environment reaches the program.
+// the run's Dir when it has one, TMPDIR a directory of the run's own, docproc-run-*, under the
+// process's temporary directory, with or without a Dir, then the Spec's Env, whose LANG replaces
+// the fixed one. Nothing of the test binary's own environment reaches the program.
+// TestRunTmpdir checks the run's TMPDIR itself.
 func TestRunFixedEnvironment(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "1.0", "1.0")
@@ -151,20 +153,12 @@ func TestRunFixedEnvironment(t *testing.T) {
 		dir  string
 		want []string
 	}{
-		"no dir": {"", []string{"DOCPROC_TEST=1", "LANG=en_US.UTF-8", path}},
-		"dir":    {dir, []string{"DOCPROC_TEST=1", "HOME=" + dir, "LANG=en_US.UTF-8", path, "TMPDIR=" + dir}},
+		"no dir": {"", []string{"DOCPROC_TEST=1", "LANG=en_US.UTF-8", path, "TMPDIR="}},
+		"dir":    {dir, []string{"DOCPROC_TEST=1", "HOME=" + dir, "LANG=en_US.UTF-8", path, "TMPDIR="}},
 	}
 	for label, tt := range tests {
 		t.Run(label, func(t *testing.T) {
-			var out bytes.Buffer
-			if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"env"}, Dir: tt.dir, Stdout: &out}); err != nil {
-				t.Fatal(err)
-			}
-			var got []string
-			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
-				t.Fatalf("decoding %q: %v", out.String(), err)
-			}
-			if !slices.Equal(got, tt.want) {
+			if got := runEnv(t, tl, tt.dir); !slices.Equal(got, tt.want) {
 				t.Errorf("environment =\n%q\nwant\n%q", got, tt.want)
 			}
 		})
@@ -174,18 +168,34 @@ func TestRunFixedEnvironment(t *testing.T) {
 // TestRunFixedEnvironmentLang checks the fixed LANG when the Spec's Env doesn't replace it.
 func TestRunFixedEnvironmentLang(t *testing.T) {
 	t.Parallel()
-	tl := newStandin(t)
+	got := runEnv(t, newStandin(t), "")
+	if want := []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH"), "TMPDIR="}; !slices.Equal(got, want) {
+		t.Errorf("environment = %q, want %q", got, want)
+	}
+}
+
+// runEnv runs the stand-in's env command through tl in dir and returns the environment it wrote,
+// sorted, its TMPDIR's value cut, as TMPDIR=, once it is checked to be docproc-run-* under the
+// process's temporary directory: the name is the run's own.
+func runEnv(t *testing.T, tl *tool.Tool, dir string) []string {
+	t.Helper()
 	var out bytes.Buffer
-	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"env"}, Stdout: &out}); err != nil {
+	if err := tl.Run(t.Context(), tool.Invocation{Args: []string{"env"}, Dir: dir, Stdout: &out}); err != nil {
 		t.Fatal(err)
 	}
 	var got []string
 	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
 		t.Fatalf("decoding %q: %v", out.String(), err)
 	}
-	if want := []string{"LANG=C.UTF-8", "PATH=" + os.Getenv("PATH")}; !slices.Equal(got, want) {
-		t.Errorf("environment = %q, want %q", got, want)
+	for i, kv := range got {
+		if tmp, ok := strings.CutPrefix(kv, "TMPDIR="); ok {
+			if filepath.Dir(tmp) != os.TempDir() || !strings.HasPrefix(filepath.Base(tmp), "docproc-run-") {
+				t.Errorf("TMPDIR = %s, want docproc-run-* under %s", tmp, os.TempDir())
+			}
+			got[i] = "TMPDIR="
+		}
 	}
+	return got
 }
 
 // TestRunOOMScoreAdj checks that the exec runner's program takes an oom_score_adj of 1000. The

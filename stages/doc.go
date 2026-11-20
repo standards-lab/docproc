@@ -43,7 +43,8 @@
 //	the run's, retried       the context ended; SIGKILL, SIGTERM, or another signal docproc
 //	                         didn't send; the program didn't start; a docproc tool's exit 1 (not
 //	                         written) or 2 (usage); 7zz's exit 7 (command line) or 255 (stopped);
-//	                         any error on docproc's side of the pipe
+//	                         soffice's exit 77 (a fatal error at its start); any error on
+//	                         docproc's side of the pipe
 //	encrypted                a stage's dispatch.ErrEncrypted alone, mapped from a refusal's
 //	                         reason by internal/cli's one mapping
 //	read elsewhere           a stage's dispatch.ErrReadElsewhere alone, onenote's

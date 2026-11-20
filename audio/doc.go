@@ -1,9 +1,9 @@
 // Package audio prepares speech for a model's audio input: it cuts a source into windows short
 // enough for the model to take whole, each ending in a silence so no cut splits a word. It provides
 // pre-inference preparation only; a layer above sends the windows to a model and joins their
-// transcripts. The package builds on every platform, on the standard library and this module's
-// tool package. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the caller
-// built through either runner: FFmpegSpec and FFprobeSpec declare them, minimum 9.0, and the
+// transcripts. The package builds on every 64-bit platform, on the standard library and this
+// module's tool package. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the
+// caller built through either runner: FFmpegSpec and FFprobeSpec declare them, minimum 9.0, and the
 // container runner runs them in FFmpegImage.
 //
 // A Splitter, built over a Config of the two Tools, both required, cuts a source's windows with one

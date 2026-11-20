@@ -91,14 +91,16 @@ type PageImage struct {
 // that writes the pages' text, a file a page, in a temporary directory of the Preparer's own,
 // never the PDF's nor req.Dir, read back a page at a time and removed. A page MaxPixels renders at
 // a lower DPI gets a process of its own, since gs renders one resolution a run, as does a lane's
-// lone page, and every page of a PDF portfolio, whose output gs writes from its embedded
-// documents' pages rather than a page's own. Each page's PNG and text are byte for byte what a
-// process of its own gives. Through the exec runner, the run that counts the pages and the shared
-// processes work in that temporary directory, which is their TMPDIR, so the temporary files a gs
-// ended early leaves are removed with it; a page's own processes work in the PDF's directory, as
-// Render and Text do. A shared process's bound is the gs Tool's Timeout read as an idle bound,
-// between its writes, and never counting time spent waiting on the consumer; a process of a
-// page's own takes it whole, as a unit's.
+// lone page, and every page of a PDF portfolio, whose shared processes' output gs writes from
+// its embedded documents' pages rather than a page's own; a process of a page's own gives a
+// portfolio's page as its cover's own, one PNG and that page's text. Each page's PNG and text are
+// byte for byte what a process of its own gives. Through the exec runner, the run that counts the
+// pages and the shared processes work in that temporary directory; a page's own processes work
+// in the PDF's directory, as Render and Text do. Every run's TMPDIR, where gs keeps its temporary
+// files, is the exec runner's own directory for the run, removed once gs is reaped, so a gs ended
+// early leaves none beside the PDF. A shared process's bound is the gs Tool's Timeout read as an
+// idle bound, between its writes, and never counting time spent waiting on the consumer; a
+// process of a page's own takes it whole, as a unit's.
 //
 // A shared process that fails as the content's, gs exiting nonzero, dying by its own fault,
 // passing its bound, or writing output that doesn't hold its pages, keeps the pages it handed
@@ -157,9 +159,9 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 	var scratch string
 	if p.render.ownDir() {
 		// The run's scratch, the Preparer's own, never the input's directory nor the caller's:
-		// the working directory, and so the TMPDIR, of the survey and the shared processes, and
-		// where the shared text runs write. It is removed once every page's work has ended, with
-		// whatever a gs ended early left in it.
+		// the working directory of the survey and the shared processes, and where the shared
+		// text runs write. It is removed once every page's work has ended, with whatever a gs
+		// ended early left in it.
 		var err error
 		if scratch, err = os.MkdirTemp("", "docproc-gs-*"); err != nil {
 			yield(PageImage{}, fmt.Errorf("document: gs scratch: %w", err))
@@ -249,9 +251,10 @@ type run struct {
 // prepares them, up to the request's PagesPerProcess in each, and no more than gs's page list
 // holds within argLimit, a run of them broken by any page that doesn't; a page MaxPixels renders
 // at a lower DPI, or that fits at none, gets a process of its own, as single prepares it, since gs
-// renders one resolution a run. So does every page of a portfolio, whose processes' output gs
-// writes from its documents' pages, a run's PNGs and text files not the run's pages one for one,
-// so a shared process could hand a page over before the output that tells it wrong is written;
+// renders one resolution a run. So does every page of a portfolio, whose shared processes' output
+// gs writes from its documents' pages, a run's PNGs and text files not the run's pages one for
+// one, so a shared process could hand a page over before the output that tells it wrong is
+// written; a page's own processes read the PDF through ownPages, and give the cover's page.
 // survey reads a portfolio before any page runs, so its pages are never shared. A batch of one
 // page is the page's own process too: it is the same work, and, when the page fails, it fails
 // once, where a shared process would fail and then rerun it alone.

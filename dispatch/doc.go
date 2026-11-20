@@ -1,8 +1,8 @@
 // Package dispatch walks an input and every part found in it to the stages that prepare them, on
-// the standard library and this module's route and inspect packages alone, on any platform. It
-// never calls a model: it reports what each part is and what its stage prepared, for a layer above
-// to send on. The stages are the caller's, registered by route; package stages builds docproc's
-// own, over the format packages and the tools, and holds their adapters.
+// the standard library and this module's route and inspect packages alone, on any 64-bit platform.
+// It never calls a model: it reports what each part is and what its stage prepared, for a layer
+// above to send on. The stages are the caller's, registered by route; package stages builds
+// docproc's own, over the format packages and the tools, and holds their adapters.
 //
 // [Dispatcher.Dispatch] takes an [Input], a file the caller owns and the dispatcher never
 // removes, or a stream it spools, and yields [Event]s, depth-first, in each stage's own order:

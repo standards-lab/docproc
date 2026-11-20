@@ -1,8 +1,8 @@
 // Package picture converts pictures to PNG for a model's vision. It provides pre-inference
 // preparation only; a layer above sends what it returns to a model. The package builds on every
-// platform, on the standard library and this module's tool and route packages; every program it
-// runs is a tool.Tool the caller built: ImageMagick's magick, MagickSpec declaring it, minimum 7.1,
-// and LibreOffice's soffice, LibreOfficeSpec declaring it, minimum 24.2, which the container
+// 64-bit platform, on the standard library and this module's tool and route packages; every program
+// it runs is a tool.Tool the caller built: ImageMagick's magick, MagickSpec declaring it, minimum
+// 7.1, and LibreOffice's soffice, LibreOfficeSpec declaring it, minimum 24.2, which the container
 // runner runs in LibreOfficeImage under its full lockdown.
 //
 // A Converter, built over a Config of the two Tools, both required, and magick's Limits, converts
@@ -38,8 +38,8 @@
 // RunLibreOffice is the one LibreOffice runner: it renders a batch's metafiles, and the office
 // package's legacy conversion runs it too. Each run works in a directory of its own in the
 // caller's working directory, which holds a copy of each input, soffice's user profile, started
-// with an optional registry, its output, and, under the exec runner, its HOME and TMPDIR, so no
-// run leaves anything elsewhere.
+// with an optional registry, its output, and, under the exec runner, its HOME, so no run leaves
+// anything elsewhere but in its TMPDIR, which the exec runner makes for the run and removes.
 //
 // ConvertPages converts one picture, read as its Request's Kind, writing its PNGs into the working
 // directory named by the Request's Stem: a TIFF's every page, named by the stem, -page, its number

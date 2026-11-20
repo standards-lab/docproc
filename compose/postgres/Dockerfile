@@ -1,6 +1,6 @@
 # The harness's PostgreSQL: the server the postgres module's live tier connects to through
 # DOCPROC_DSN, creating and dropping a database per test. This FROM line is PostgreSQL's one pin.
-FROM postgres:18.7-alpine
+FROM postgres:19.0-alpine
 
 # The user, password, and database DOCPROC_DSN names; development values, not secrets.
 ENV POSTGRES_USER=app \

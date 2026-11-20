@@ -21,14 +21,16 @@ const (
 	Document Route = "document"
 	// Office is an office document: a ZIP holding a [Content_Types].xml entry, an OOXML package,
 	// whatever its name, or whose name has an OOXML extension office reads, .docx, .docm, .dotx,
-	// .dotm, .xlsx, .xlsm, .xltx, .xltm, .pptx, .pptm, .potx, .potm, or .ppsx; an OLE2 compound file whose name has a legacy extension, .doc or .dot, .xls or .xlt,
-	// .ppt, .pps, or .pot; an encrypted OOXML package, an OLE2 compound file holding an
-	// EncryptedPackage stream whose name has one of the OOXML extensions or .xlsb, which office
-	// refuses as encrypted; an ODF package; an RTF; a WordPerfect document; or a ZIP whose name
-	// has the .xlsb extension, an Excel binary workbook. Extensions are matched in any case, and
-	// the caller gives office's Convert the same name so it reads the same extension. The last
-	// four go through LibreOffice; office's stage has no processor for the last two yet, which a
-	// dispatcher reports.
+	// .dotm, .xlsx, .xlsm, .xltx, .xltm, .pptx, .pptm, .potx, .potm, or .ppsx, but for an XPS
+	// package, a ZIP holding a FixedDocumentSequence.fdseq entry, whole or as its first piece,
+	// which is [Unrouted] whatever its name; an OLE2 compound file whose name has a legacy
+	// extension, .doc or .dot, .xls or .xlt, .ppt, .pps, or .pot; an encrypted OOXML package, an
+	// OLE2 compound file holding an EncryptedPackage stream whose name has one of the OOXML
+	// extensions or .xlsb, which office refuses as encrypted; an ODF package; an RTF; a
+	// WordPerfect document; or a ZIP whose name has the .xlsb extension, an Excel binary workbook.
+	// Extensions are matched in any case, and the caller gives office's Convert the same name so
+	// it reads the same extension. The last four go through LibreOffice; office's stage has no
+	// processor for the last two yet, which a dispatcher reports.
 	Office Route = "office"
 	// Vision is a picture a vision model decodes as stored: PNG, JPEG, GIF, or BMP.
 	Vision Route = "vision"
@@ -61,7 +63,9 @@ const (
 	Text Route = "text"
 	// Unrouted is anything else: an executable, by a PE, ELF, or Mach-O signature or a "#!"
 	// line; an OLE2 compound file without a legacy or .msg extension, nor an encrypted OOXML
-	// package's stream and name; an .ost, an offline store
+	// package's stream and name; an XPS package, a ZIP holding a FixedDocumentSequence.fdseq
+	// entry, whole or as its first piece, whatever its name, ahead of the OOXML rules, since one
+	// is an OPC package too and may be named .docx; an .ost, an offline store
 	// mail refuses; content named .eml or stored as a message whose header isn't a message's
 	// shape; HTML, by its .html, .htm, or .xhtml extension, web content no stage takes yet; and
 	// other content of no routed signature.
@@ -212,8 +216,10 @@ func File(path, name, mimeType string) (Route, string, error) {
 // file's own name, as a file named by its SHA-256 does; it decides within an OLE2 container, for
 // a ZIP holding no [Content_Types].xml, for a cabinet, whether an mbox's first line is text's
 // instead, and, with mimeType, whether content of no signature is a message. Only then is r read
-// beyond head: a ZIP's central directory, a name at a time, for a [Content_Types].xml entry, which
-// makes it an OOXML package whatever its name; an OLE2 file, 128 bytes at a time, for an
+// beyond head: a ZIP's central directory, a name at a time, for a FixedDocumentSequence.fdseq
+// entry, whole or as its first piece, FixedDocumentSequence.fdseq/[0].piece, which makes it an
+// XPS package, [Unrouted], whatever its name, and otherwise for a [Content_Types].xml entry,
+// which makes it an OOXML package whatever its name; an OLE2 file, 128 bytes at a time, for an
 // EncryptedPackage stream's directory entry, by [EncryptedPackage], when it is named as an OOXML
 // package; and content of no signature, a line at a time, each at most 64 KiB, for a message's
 // header. Content of no signature and no text extension whose header is a message's, From and
@@ -240,11 +246,19 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 			}
 		}
 	case ZIP:
-		holds, err := zipHolds(r, size, contentTypesName)
+		names := []string{xpsSequenceName, xpsSequencePiece, contentTypesName}
+		held, err := zipHolds(r, size, names...)
 		if err != nil {
 			return "", "", err
 		}
-		if holds {
+		// An XPS package is an OPC package too, [Content_Types].xml and all, and may be named
+		// .docx, so its sequence part is checked first.
+		for i, name := range names[:2] {
+			if held[i] {
+				return Unrouted, "ZIP signature with a " + name + " entry, an XPS package", nil
+			}
+		}
+		if held[2] {
 			return Office, "ZIP signature with a " + contentTypesName + " entry, an OOXML package", nil
 		}
 	}

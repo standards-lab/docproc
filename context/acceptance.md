@@ -157,6 +157,10 @@ processes still work in the PDF's directory, as the released per-page path's do:
 gs's files beside the input, as the released path can. Changing `TMPDIR` for every tool's runs
 belongs to the tool package and is on the backlog.
 
+Since v0.4.1, every exec-runner run's `TMPDIR` is a directory of the run's own under the host's
+`TMPDIR`, removed once gs is reaped, so a page's own process ended early leaves nothing beside the
+PDF either (`layers.md`, "Running the tools").
+
 ### Recipe
 
 The harness is a scratch Go program, never committed, over `document`'s exported API. It builds
@@ -554,6 +558,8 @@ bound.
 - **LargeData.one's docx: backlog.** The bytes are an XPS package, `FixedDocumentSequence.fdseq`
   among its entries, named `.docx` and routed office by its extension, so docproc-ooxml refuses it
   as its README says. XPS has no processor, and routing by name against content is PI-10's ground.
+  Since v0.4.1, route sends a ZIP holding `FixedDocumentSequence.fdseq`, whole or as its first
+  piece, as this part stores it, to `Unrouted`, whose outcome is "no processor yet".
 - **passworded.pst and dist-list.pst: backlog.** tools/mail/README.md's Limits documents it: an
   item outlook-pst 1.2.0 can't open, such as a contact stored without a sub-node tree, is skipped.
 

@@ -200,11 +200,10 @@ func Run(t testing.TB, args ...string) processtest.Result {
 // [ReadFixtures] reads them from the repository the module sits in, two directories up from its
 // root, each at its path from the repository's root in a directory of the test's own, in the
 // list's order. A run over a committed PDF in place would run gs's runs over a page of their own
-// in its testdata directory, which is their TMPDIR, where gs keeps its temporary files, a
-// portfolio's documents among them, and leaves them when it is killed, as a killed run's are; a
-// run over the copies keeps every tool's files out of the repository. An absent fixture tree skips
-// the test, naming what is missing; any other failure, a listed fixture missing among them, fails
-// it.
+// in its testdata directory, their working directory; a run over the copies keeps whatever every
+// tool's runs write in their working directory out of the repository, a killed run's among them.
+// An absent fixture tree skips the test, naming what is missing; any other failure, a listed
+// fixture missing among them, fails it.
 func Fixtures(t testing.TB) []string {
 	t.Helper()
 	if root == "" {
