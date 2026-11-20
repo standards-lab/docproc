@@ -266,14 +266,14 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   of its own while the renders still share. The run that counts the pages and the shared
   processes work in that directory. A process's pages go to gs as a page list, each run of
   consecutive pages a range, such as 1-8, and a batch ends early where its list would pass the
-  2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its
-  own, as does a batch of one page, and every page of a PDF portfolio, whose processes gs runs over
-  its embedded documents' pages. Every page's PNG and text are byte for byte what a process of its
-  own gives. A page's own processes work in the PDF's directory, as every tool's runs do, but keep
-  their temporary files in their run's own `TMPDIR`, so one ended early, by its bound or by the
-  stream stopping, leaves nothing beside the PDF. A shared process's bound is
-  `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
-  consumer not counted. When one fails on the content, the pages it handed over stand and each
+  2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its own, as does a
+  batch of one page, and every page of a PDF portfolio, whose shared processes gs would run over
+  its embedded documents' pages; a portfolio page's own process gives the cover's page. Every
+  page's PNG and text are byte for byte what a process of its own gives. A page's own processes
+  work in the PDF's directory, as every tool's runs do, but keep their temporary files in their
+  run's own `TMPDIR`, so one ended early, by its bound or by the stream stopping, leaves nothing
+  beside the PDF. A shared process's bound is `stages.Options.Timeout` read as an idle bound,
+  between its pages, the time it waits on the consumer not counted. When one fails on the content, the pages it handed over stand and each
   other page gets processes of its own, each bounded by the whole timeout, so only a page that
   fails there fails.
 - **audio and media.** A source ffprobe reports no duration for is refused. media reads files

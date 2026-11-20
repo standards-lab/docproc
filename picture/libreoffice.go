@@ -68,9 +68,8 @@ const sofficeOutputLimit = 64 << 10
 // directory, which the container runner mounts alone and which the exec runner makes soffice's
 // HOME, so the font cache and configuration soffice writes there go with it; its TMPDIR, through
 // the exec runner, is a directory of the run's own that the runner removes once soffice is
-// reaped. It holds
-// soffice's user profile too, -env:UserInstallation, started with run.Registry when it is set, so
-// no run shares or leaves a profile elsewhere, and the output directory.
+// reaped. It holds soffice's user profile too, -env:UserInstallation, started with run.Registry
+// when it is set, so no run shares or leaves a profile elsewhere, and the output directory.
 //
 // An empty Dir or ConvertTo, no inputs, and a Name that is no plain file name, or that shares
 // another's stem, are errors matching ErrRequest before anything runs. A run that fails removes

@@ -79,9 +79,10 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 // the environment a run gets: the fixed environment, then HOME a new empty directory of the
 // check's own, standing in for the working directory each run has, and TMPDIR a new empty
 // directory of the run's own, as every run's is, then spec's Env. The command still works in the
-// process's working directory, and both directories are removed once it has run. So a program that answers only under the host's HOME, such as a version manager's
-// shim, which reads the user's configuration again on every run and refuses it once HOME isn't
-// the user's, is refused here, as every run of it would fail.
+// process's working directory, and both directories are removed once it has run. So a program
+// that answers only under the host's HOME, such as a version manager's shim, which reads the
+// user's configuration again on every run and refuses it once HOME isn't the user's, is refused
+// here, as every run of it would fail.
 func execVersion(ctx context.Context, name string, spec Spec, minimum Version, cfg execConfig) (Version, string, error) {
 	home, err := os.MkdirTemp("", "docproc-version-")
 	if err != nil {
@@ -105,9 +106,9 @@ type execConfig struct {
 	// killAfter is the time between SIGTERM and SIGKILL for a run that is ended.
 	killAfter time.Duration
 	// lockdown gives the program the fixed environment and env, a TMPDIR of the run's own, and an
-	// oom_score_adj of 1000. The
-	// container runner's docker CLI runs without it, with the host's environment, which holds
-	// its daemon's address and its configuration, and the host's oom_score_adj.
+	// oom_score_adj of 1000. The container runner's docker CLI runs without it, with the host's
+	// environment, which holds its daemon's address and its configuration, and the host's
+	// oom_score_adj.
 	lockdown bool
 	// fixed is the fixed environment, without HOME, which each run's Dir gives, and TMPDIR, which
 	// each run makes.

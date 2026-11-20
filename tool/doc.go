@@ -18,10 +18,10 @@
 // removed, with whatever the program left in it, once the program's group has been sent SIGKILL
 // and the program reaped, whether the run succeeded, failed, was cancelled, or passed its bound;
 // a run whose directory can't be made fails before the program starts. The version command runs
-// in that environment too, its HOME a new empty directory of its own, so a
-// program that answers only under the host's HOME, as a version manager's shim does, is refused
-// at construction rather than failing every run. Its parent-death
-// signal is SIGKILL, from an OS thread locked to the run, so the host's death ends it; its
+// in that environment too, its HOME a new empty directory of its own, so a program that answers
+// only under the host's HOME, as a version manager's shim does, is refused at construction rather
+// than failing every run. Its parent-death signal is SIGKILL, from an OS thread locked to the
+// run, so the host's death ends it; its
 // oom_score_adj is 1000, written to /proc once it has started, so the OOM killer chooses it over
 // its host; and whenever it exits, its group is sent SIGKILL before it is reaped, so no child it
 // started outlives the run. A Spec's MemoryLimit, zero for none, is the program's RLIMIT_AS, set

@@ -94,13 +94,13 @@ type PageImage struct {
 // lone page, and every page of a PDF portfolio, whose shared processes' output gs writes from
 // its embedded documents' pages rather than a page's own; a process of a page's own gives a
 // portfolio's page as its cover's own, one PNG and that page's text. Each page's PNG and text are
-// byte for byte what a process of its own gives. Through the exec runner, the run that counts the pages and the shared
-// processes work in that temporary directory; a page's own processes work in the PDF's directory,
-// as Render and Text do. Every run's TMPDIR, where gs keeps its temporary files, is the exec
-// runner's own directory for the run, removed once gs is reaped, so a gs ended early leaves none
-// beside the PDF. A shared process's bound is the gs Tool's Timeout read as an idle bound,
-// between its writes, and never counting time spent waiting on the consumer; a process of a
-// page's own takes it whole, as a unit's.
+// byte for byte what a process of its own gives. Through the exec runner, the run that counts the
+// pages and the shared processes work in that temporary directory; a page's own processes work
+// in the PDF's directory, as Render and Text do. Every run's TMPDIR, where gs keeps its temporary
+// files, is the exec runner's own directory for the run, removed once gs is reaped, so a gs ended
+// early leaves none beside the PDF. A shared process's bound is the gs Tool's Timeout read as an
+// idle bound, between its writes, and never counting time spent waiting on the consumer; a
+// process of a page's own takes it whole, as a unit's.
 //
 // A shared process that fails as the content's, gs exiting nonzero, dying by its own fault,
 // passing its bound, or writing output that doesn't hold its pages, keeps the pages it handed
