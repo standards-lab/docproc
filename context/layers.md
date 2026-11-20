@@ -671,11 +671,13 @@ func (t *Tool) VersionLine() string     // the whole line the version was found 
 func (t *Tool) Image() (Image, bool)    // a container tool's image
 ```
 
-The exec runner starts each program with a fixed environment (`PATH`, `LANG=C.UTF-8`, `HOME` and
-`TMPDIR` the invocation's `Dir` when it has one, then `Spec.Env`), and kills its process group
-whenever the leader has exited. It writes the program's `oom_score_adj` of 1000 to /proc once the
-program has started, best effort. The container runner passes no `Spec.Env`, the image's
-environment being the container's, and a `--pids-limit` of 4096.
+The exec runner starts each program with a fixed environment (`PATH`, `LANG=C.UTF-8`, `HOME` the
+invocation's `Dir` when it has one, `TMPDIR` a new directory of the run's own under the host's
+`TMPDIR`, then `Spec.Env`), and kills its process group whenever the leader has exited. It removes
+the run's `TMPDIR` once the leader is reaped, whatever the run's outcome, and a run whose `TMPDIR`
+can't be made fails before the program starts. It writes the program's `oom_score_adj` of 1000
+to /proc once the program has started, best effort. The container runner passes no `Spec.Env`, the
+image's environment being the container's, and a `--pids-limit` of 4096.
 
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`, through the exec runner
 only: a constructor refuses a tool whose image is a container. `internal/cli` holds the one envelope
@@ -2259,11 +2261,17 @@ mounts only the PDF's directory, text is read a page a process while renders sha
 PNG and text is identical to the per-page path's (`acceptance.md`, "PDF pages in shared gs
 processes").
 
-Three gaps the build found are backlog: a full disk during a LibreOffice run exits 77, which
-`stages` reads as the content's failure, recorded, rather than the run's; `sevenzip`'s `Extract`
-returns 7zz's broken pipe rather than the error of the writer it was given; and the email stage's
-release has no test that asserts its peak stays below the sum of a store's attachments, which
-needs a mail fixture with many distinct attachments.
+Built [hardening]: each exec-runner run's `TMPDIR` is a directory of the run's own under the
+host's `TMPDIR`, removed once the program is reaped, so a gs ended early leaves nothing beside its
+input ("Running the tools"). A portfolio page's own gs runs read the PDF through the non-portfolio
+half of gs's `runpdf`, so the page is its cover's, one PNG and that page's text; the stage
+adapters' version is 6, so an index prepares its content again. A ZIP holding
+`FixedDocumentSequence.fdseq`, whole or as its first piece, routes `Unrouted` as an XPS package,
+whatever its name. The three gaps acceptance left are built: soffice's exit 77, LibreOffice's
+fatal error at its start, a full disk among its causes, is the run's failure, retried ("Dispatch");
+`sevenzip`'s `Extract` returns its writer's error rather than 7zz's broken pipe; and the email
+stage's release test dispatches a generated mbox of 100 messages, each with a distinct 64 KiB
+attachment, and asserts the working directory's peak stays below the attachments' sum.
 
 ### docinfer's packages [the docinfer goal]
 

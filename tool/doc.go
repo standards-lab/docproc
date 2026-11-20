@@ -21,14 +21,13 @@
 // in that environment too, its HOME a new empty directory of its own, so a program that answers
 // only under the host's HOME, as a version manager's shim does, is refused at construction rather
 // than failing every run. Its parent-death signal is SIGKILL, from an OS thread locked to the
-// run, so the host's death ends it; its
-// oom_score_adj is 1000, written to /proc once it has started, so the OOM killer chooses it over
-// its host; and whenever it exits, its group is sent SIGKILL before it is reaped, so no child it
-// started outlives the run. A Spec's MemoryLimit, zero for none, is the program's RLIMIT_AS, set
-// by util-linux's `prlimit --as=<bytes> --` before the program is executed, for every run of the
-// Spec, the version command's included; NewExec refuses a bounded Spec when prlimit isn't on PATH.
-// An allocation the bound refuses fails as the program handles it, typically by a signal such as
-// SIGABRT or SIGSEGV.
+// run, so the host's death ends it; its oom_score_adj is 1000, written to /proc once it has
+// started, so the OOM killer chooses it over its host; and whenever it exits, its group is sent
+// SIGKILL before it is reaped, so no child it started outlives the run. A Spec's MemoryLimit,
+// zero for none, is the program's RLIMIT_AS, set by util-linux's `prlimit --as=<bytes> --` before
+// the program is executed, for every run of the Spec, the version command's included; NewExec
+// refuses a bounded Spec when prlimit isn't on PATH. An allocation the bound refuses fails as the
+// program handles it, typically by a signal such as SIGABRT or SIGSEGV.
 //
 // The container runner, NewContainer, runs the program inside an Image through the docker CLI, the
 // only runtime, which it runs through the exec runner, in the host's environment, and checks

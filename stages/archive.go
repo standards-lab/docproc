@@ -306,8 +306,9 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 	switch {
 	case ctx.Err() != nil:
 		return "", w.n, nil, ctx.Err()
-	// A bomb, a bound, or the file's failure is the writer's own word, whatever fill returns of
-	// it: fill's error is the content's, which whole weighs, and a failed write is the stage's.
+	// A bomb, a bound, or the file's failure is decided by the writer's own record, whatever
+	// fill returns: fill's error is the content's, which whole weighs, and a failed write is the
+	// stage's.
 	case w.bomb:
 		return "", w.n, errBomb, nil
 	case w.limited:
@@ -341,8 +342,9 @@ func writeBySum(ctx context.Context, stage string, rule inspect.BombRule, fill f
 // bomb, once they pass the bomb rule against compressed, the bytes they come from, or with ctx's
 // error once it ends. With room set, the bytes its Prepare may still write, it refuses a write
 // that would take them past it, before writing it, with errLimited, setting limited. writeErr is
-// w's own failure, the stage's rather than the content's: every fill returns it, 7-Zip's Extract
-// among them, but within an error whole would take for the content's.
+// w's own failure, which is the stage's rather than the content's. Every fill, 7-Zip's Extract
+// among them, returns it wrapped in an error that whole would read as the content's, so
+// writeBySum checks writeErr before it calls whole.
 type bombWriter struct {
 	ctx        context.Context
 	w          io.Writer
