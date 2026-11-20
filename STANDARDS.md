@@ -43,8 +43,8 @@ the tools part to the system tools under `tools/`.
   matches its package's one `ErrRequest`.
 - `architecture/standards/go-elemental/principles/topology-and-naming.md`: the base module, the
   `storage` and `postgres` provider sub-modules, and the `cmd/docproc` command module, and their
-  tags; no root package; the module builds on every platform, the Linux tag on the exec runner
-  alone.
+  tags; no root package; the module builds on every 64-bit platform, the Linux tag on the exec
+  runner alone.
 - `architecture/standards/go-elemental/principles/utc-times.md`: every time the library and
   `rundir/schema` return or write is UTC, each package's `TestMain` setting a non-UTC zone.
 - `architecture/standards/go-elemental/principles/tests-and-docs.md`: the unit tier over

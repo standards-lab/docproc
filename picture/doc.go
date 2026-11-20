@@ -1,8 +1,8 @@
 // Package picture converts pictures to PNG for a model's vision. It provides pre-inference
 // preparation only; a layer above sends what it returns to a model. The package builds on every
-// platform, on the standard library and this module's tool and route packages; every program it
-// runs is a tool.Tool the caller built: ImageMagick's magick, MagickSpec declaring it, minimum 7.1,
-// and LibreOffice's soffice, LibreOfficeSpec declaring it, minimum 24.2, which the container
+// 64-bit platform, on the standard library and this module's tool and route packages; every program
+// it runs is a tool.Tool the caller built: ImageMagick's magick, MagickSpec declaring it, minimum
+// 7.1, and LibreOffice's soffice, LibreOfficeSpec declaring it, minimum 24.2, which the container
 // runner runs in LibreOfficeImage under its full lockdown.
 //
 // A Converter, built over a Config of the two Tools, both required, and magick's Limits, converts

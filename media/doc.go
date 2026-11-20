@@ -2,10 +2,10 @@
 // are complete, as the inputs a model takes: windows of its audio, cut by audio's stream cutter,
 // and frames of its video, taken at its scene changes and at least every so often. It provides
 // pre-inference preparation only; a layer above sends the windows and frames to a model. The
-// package builds on every platform, on the standard library and this module's audio, route, and
-// tool packages. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the caller
-// built through either runner, typically from audio.FFmpegSpec and audio.FFprobeSpec, minimum 9.0,
-// the container runner running them in audio.FFmpegImage.
+// package builds on every 64-bit platform, on the standard library and this module's audio, route,
+// and tool packages. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the
+// caller built through either runner, typically from audio.FFmpegSpec and audio.FFprobeSpec,
+// minimum 9.0, the container runner running them in audio.FFmpegImage.
 //
 // A Streamer, built over a Config of the two Tools, both required, takes a file and a Request: the
 // media directory its windows and frames are written into and left, and the settings of its

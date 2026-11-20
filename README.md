@@ -6,7 +6,7 @@ for its format and the system tools that stage runs, stores each output's conten
 what it prepared in an index. It calls no model and runs no inference: the text, pages, pictures,
 audio windows, and video frames it prepares are for a layer above, such as docinfer, to send on.
 
-The base module requires `golang.org/x/text` alone, builds on every platform, and has no root
+The base module requires `golang.org/x/text` alone, builds on every 64-bit platform, and has no root
 package. Running a tool needs Linux. Its three system tools, docproc-ooxml, docproc-mail, and
 docproc-onenote, are built in this repository under [`tools/`](tools), each released on its own
 tags.

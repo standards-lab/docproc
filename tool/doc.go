@@ -5,8 +5,9 @@
 // about the runner, so an adapter written against Tool runs the same code whichever runner built
 // it. The package reports a run's facts, its exit code, the signal that killed it, and whether it
 // passed its own time bound, and decides no outcome; its caller classifies them. It builds on
-// every platform, on the standard library alone; the exec runner, and so the container runner,
-// which runs the docker CLI through it, runs on Linux only, and NewExec elsewhere returns an error.
+// every 64-bit platform, on the standard library alone; the exec runner, and so the container
+// runner, which runs the docker CLI through it, runs on Linux only, and NewExec elsewhere returns
+// an error.
 //
 // The exec runner, NewExec, runs a program directly, a name looked up on PATH or a path with a
 // separator taken as given. Every program it starts leads a process group of its own, in a fixed

@@ -2,10 +2,10 @@
 // Microsoft cabinet, and a ZIP's entries of methods archive/zip doesn't read, such as Deflate64,
 // implode, LZMA, xz, zstd, and PPMd, each named by the route.Kind route identified it as. It
 // provides pre-inference preparation only: the stages package's archive stage reads these
-// kinds through it. It builds on every platform: its types on the standard library and route
+// kinds through it. It builds on every 64-bit platform: its types on the standard library and route
 // alone, its Reader on this module's tool package, and the program it runs is a tool.Tool the
-// caller built: 7-Zip's 7zz, SevenZipSpec declaring it, minimum 24.07, the oldest release with
-// no known defect in a decoder the package uses, its zstd decoder fixed of CVE-2024-11477.
+// caller built: 7-Zip's 7zz, SevenZipSpec declaring it, minimum 24.07, the oldest release with no
+// known defect in a decoder the package uses, its zstd decoder fixed of CVE-2024-11477.
 //
 // A Reader, built over a Config of the Tool, runs 7zz for three things, each run under the
 // caller's context. List reads an archive's headers through 7zz's technical listing, -slt, and

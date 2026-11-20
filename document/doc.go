@@ -1,7 +1,7 @@
 // Package document prepares a PDF's pages for a model's vision: each page rendered to a PNG file,
 // and its text layer read when a request says to. It provides pre-inference preparation only; a
 // layer above sends the prepared pages to a model and owns the requests, retries, and any final
-// step. The package builds on every platform, on the standard library and this module's tool
+// step. The package builds on every 64-bit platform, on the standard library and this module's tool
 // package; every system tool it runs is a tool.Tool the caller built. It also reads what a PDF
 // holds beside its pages, its password requirement, its form fields, and its embedded files,
 // through qpdf and pdfdetach.

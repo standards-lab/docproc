@@ -1,9 +1,9 @@
 // Package email reads mail stores, Outlook .pst stores and .msg messages, and MIME messages, .eml
 // and mbox files, for a model through docproc-mail: an input in, its records streamed out as typed
 // Go values while docproc-mail runs. It provides pre-inference preparation only; a layer above
-// sends what it returns to a model. The package builds on every platform, on the standard library
-// and this module's tool and internal/cli packages; the program it runs is a tool.Tool the caller
-// built through the exec runner.
+// sends what it returns to a model. The package builds on every 64-bit platform, on the standard
+// library and this module's tool and internal/cli packages; the program it runs is a tool.Tool the
+// caller built through the exec runner.
 //
 // A Reader is built at the composition root over a docproc-mail Tool, MailSpec declaring it.
 // NewReader refuses one older than MailMinimum, 0.1.0, its first schema "2" release, and one the

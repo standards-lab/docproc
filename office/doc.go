@@ -2,7 +2,7 @@
 // the legacy doc, xls, and ppt, and RTF, for a model through docproc-ooxml, a document's path in,
 // its records out, streamed, with the media the document embeds. It provides pre-inference
 // preparation only; a layer above sends what it yields to a model. The package builds on every
-// platform, on the standard library and this module's tool, route, picture, and internal/cli
+// 64-bit platform, on the standard library and this module's tool, route, picture, and internal/cli
 // packages; every program it runs is a tool.Tool the caller built.
 //
 // A Converter is built at the composition root over a docproc-ooxml Tool the exec runner built,

@@ -18,8 +18,8 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 )
 
-// Stage is the fixture stage: a stage that runs no tool, on any platform, whose part is lines of
-// directives, so a test writes the tree of parts it dispatches as text. Register it for
+// Stage is the fixture stage: a stage that runs no tool, on any 64-bit platform, whose part is
+// lines of directives, so a test writes the tree of parts it dispatches as text. Register it for
 // route.Text, which a part of plain text routes to.
 //
 // It first yields a text output in a file, named "lines", holding the part's line count, its Meta

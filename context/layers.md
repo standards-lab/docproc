@@ -563,7 +563,7 @@ dispatch                   the walk over an input's parts, the Stage contract an
                              classes, the content store and its layout, the index; the
                              shapes of its events, parts, outputs, warnings, and stage
                              table, the Meta keys and record media types consumers read;
-                             imports route and inspect only, any platform
+                             imports route and inspect only, any 64-bit platform
 dispatch/dispatchtest      the Index and Content conformance suites and the fixture stage
 stages                     Build and its Options, Routes and ParseRoutes, the stage
                              adapters, unexported, the failure classification, the
@@ -576,7 +576,8 @@ rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and wri
 
 No root package. Another module reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`,
 `stages.Build`, `rundir`, and the record types docinfer decodes (the plan records, the readers' line
-types, `email.Threader`); the module builds on every platform, and only running a tool needs Linux.
+types, `email.Threader`); the module builds on every 64-bit platform, and only running a tool needs
+Linux.
 
 ### Inspection and routing
 
