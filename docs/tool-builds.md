@@ -232,20 +232,21 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   date. It registers .NET's code pages, which only MimeKit registers for itself: without them
   MsgKit fails on a windows-1251 or GB2312 source. MsgKit refuses to overwrite a file, so each
   output is deleted before it is built.
-- Its dependencies: docproc-envelope, with its Markdown-to-plain reader (`markdown`); codepage and
-  encoding_rs, code pages to text (`src/codepage.rs`): codepage maps a Windows code page to its
-  encoding_rs encoding, which decodes it, and a charset an HTML body's `<meta>` names, a WHATWG
-  label encoding_rs knows, back to its code page; compressed-rtf, Microsoft's MS-OXRTFCP
-  decompressor, `PidTagRtfCompressed` to RTF; htmd, HTML to Markdown, for the derived Markdown
-  body, which brings html5ever and its default DOM, ego-tree (ISC alone, accepted for it alone in
+- Its dependencies: docproc-envelope, with its Markdown-to-plain reader (`markdown`); outlook-pst,
+  the `.pst` store reader, pinned exactly since `src/pst.rs` works around that release's faults;
+  codepage and encoding_rs, code pages to text (`src/codepage.rs`): codepage maps a Windows code
+  page to its encoding_rs encoding, which decodes it, and a charset an HTML body's `<meta>` names, a
+  WHATWG label encoding_rs knows, back to its code page; compressed-rtf, Microsoft's MS-OXRTFCP
+  decompressor, `PidTagRtfCompressed` to RTF; htmd, HTML to Markdown, for the derived Markdown body,
+  which brings html5ever and its default DOM, ego-tree (ISC alone, accepted for it alone in
   `about.toml`); pulldown-cmark, the CommonMark reader the envelope's `markdown` feature already
   links, which finds the code spans and code blocks of the Markdown htmd writes, so a text `&` is
   written escaped outside them and as itself within (`src/markdown.rs`); cfb, Compound File Binary
-  (MIT), the container of a `.msg`, under the CLI's own MS-OXMSG reader (`src/msg.rs`), which
-  brings fnv, uuid and web-time; and mail-parser, Stalwart's RFC 5322 and MIME parser (Apache-2.0
-  OR MIT), the reader of an `.eml` and of an mbox's messages (`src/eml.rs`, `src/mbox.rs`), which
-  brings hashify and encodify; `full_encoding` brings encoding_rs's multi-byte charsets,
-  ISO-2022-JP and GB2312 among them.
+  (MIT), the container of a `.msg`, under the CLI's own MS-OXMSG reader (`src/msg.rs`), which brings
+  fnv, uuid and web-time; and mail-parser, Stalwart's RFC 5322 and MIME parser (Apache-2.0 OR MIT),
+  the reader of an `.eml` and of an mbox's messages (`src/eml.rs`, `src/mbox.rs`), which brings
+  hashify and encodify; `full_encoding` brings encoding_rs's multi-byte charsets, ISO-2022-JP and
+  GB2312 among them.
 - Its `.gitattributes`: the `.eml` sources are hashed in the generated fixtures' manifest and keep
   MIME's CRLF line breaks, and the mboxrd holds those sources byte for byte, CRLF and all, and the
   check compares it so; mime4j's `mbox.rlug` and its splits, and its NOTICE's CRLF, are kept as

@@ -1,5 +1,5 @@
-// Ported from one2html 2.0.1, src/page/math/ast.rs (https://github.com/msiemens/one2html),
-// under its MIT licence:
+// Adapted from msiemens/one2html (4924024), src/page/math/ast.rs: only what the LaTeX reads kept.
+// one2html's MIT licence:
 //
 // Copyright 2020 Markus Siemens
 //
@@ -20,9 +20,8 @@
 
 //! The parsed equation: a list of operations, each math object with its arguments.
 //!
-//! Changed from one2html: only what the LaTeX renderer reads is kept. Alignment bits it never
-//! reads (a box's alignment and spacing, a boxed formula's, an equation array's, a sub-sup's) are
-//! left out, and the bitflags and primitive enums are plain fields.
+//! It holds only what the LaTeX renderer reads, as plain fields: no box's alignment or spacing,
+//! and no boxed formula's, equation array's, or sub-sup's alignment.
 
 pub(super) type Equation = Vec<Op>;
 

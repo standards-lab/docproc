@@ -29,19 +29,13 @@ the tools part to the system tools under `tools/`.
   module pins no tier; `storage` sits above go-storage's, and `postgres`, over sqlate, above none.
 - `architecture/principles/independent-releases.md`: the base module, `storage`, `postgres`,
   `cmd/docproc`, and each tool release on their own tags, with no umbrella version.
-- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and the `docs/`
-  pages are the homes, the tool contract on `docs/tool-contract.md`, each contract stated once, on
-  its symbol; the configuration's reasoning lives on `docs/development.md`, `docs/ci.md`, and
-  `docs/tool-builds.md`.
-- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests,
-  scripts, SQL, and every configuration file (TOML, YAML, `.gitignore`, `.gitattributes`,
-  Dockerfiles, compose, MSBuild, `go.mod`, `go.work`); a configuration file's header is at most a
-  short description plus `See` lines. A doc comment on an unexported identifier or a test function
-  is not package documentation. A SQL file's header is its package documentation, and in sqlate's
-  format also its template metadata. Each `.golangci.yml` enables nolintlint with
+- `architecture/principles/context-architecture.md`: the `docs/` pages, the tool contract on
+  `docs/tool-contract.md`, and the configuration's reasoning on `docs/development.md`,
+  `docs/ci.md`, and `docs/tool-builds.md`.
+- `architecture/principles/comments.md`: each `.golangci.yml` enables nolintlint with
   `require-explanation` and `require-specific`.
-- `architecture/standards/go-elemental/principles/dependencies.md`: the bottom-up line and no
-  provider in a base, across the base, `storage`, `postgres`, and `cmd/docproc` `go.mod` files.
+- `architecture/standards/go-elemental/principles/dependencies.md`: the base, `storage`,
+  `postgres`, and `cmd/docproc` `go.mod` files.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: the library ships no
   policy: `dispatch.Limits`, `stages.Options`' run bounds, and a stage's output caps have no
   library default, and `cmd/docproc` ships the operator's starting values.

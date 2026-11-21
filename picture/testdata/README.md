@@ -31,7 +31,7 @@ check.
   tells its place.
 - `scanned-g4.tiff`: three bilevel pages compressed with CCITT Group 4, as a fax or a scanner
   writes them: 64x48 with a black block at its left, 72x48 with one at its right, and 80x48
-  black. It stands in for `~/docs`' scans, which the tier no longer reads.
+  black. It stands in for `~/docs`' scans, which the tier never reads.
 - `lzw-gray.tiff`: two 8-bit grayscale pages compressed with LZW, 30x20 of gray 64 and a 40x20
   gradient.
 - `two-images.heic`: two top-level images, each with a thumbnail. The primary, item 1, is stored

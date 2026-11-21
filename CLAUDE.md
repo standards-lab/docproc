@@ -3,8 +3,10 @@
 The extraction library adjacent to Go Elemental, with the system tools it runs nested under
 `tools/`, a `code` project managed with the marathon workflow.
 
-- [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its packages,
-  the system tools each stage needs, its limits, and its development tasks.
+- [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its install,
+  providers, and the system tools each stage needs; it links
+  [`docs/packages.md`](docs/packages.md), [`docs/command.md`](docs/command.md),
+  [`docs/limits.md`](docs/limits.md), and [`docs/development.md`](docs/development.md).
 - [`docs/command.md`](docs/command.md): docproc/cmd/docproc, the docproc command,
   a nested module on its own tags; its changelog is
   [`cmd/docproc/CHANGELOG.md`](cmd/docproc/CHANGELOG.md).

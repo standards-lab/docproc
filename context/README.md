@@ -14,9 +14,8 @@ It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc, and
 spike-ai-pipeline-office, -mail, and -onenote. The repository's [README](../README.md) and each
 package's documentation state the built base module. [`docs/layers.md`](../docs/layers.md) and the
 pages it lists state docproc's boundaries with the system tools and its callers as signatures and
-schemas, and what each promotion changes from its spike.
-[`docs/design-review.md`](../docs/design-review.md) holds the design review of the five promoted
-artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance task's results.
+schemas. [`docs/design-review.md`](../docs/design-review.md) holds the design review of the five
+promoted artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance task's results.
 [`cerebro.md`](cerebro.md) holds Cerebro's planned boundary over docproc and docinfer.
 
 ## Capability map
@@ -38,5 +37,6 @@ artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance task
 - **Run directory** (built): [rundir/doc.go](../rundir/doc.go),
   [rundir/schema/doc.go](../rundir/schema/doc.go).
 - **Command** (built): [cmd/docproc/main.go](../cmd/docproc/main.go).
+- **Tool coverage** (planned): [tool-gaps.md](tool-gaps.md).
 - **Cerebro** (planned): [cerebro.md](cerebro.md).
 - **Releases** (built): [.github/workflows/release.yml](../.github/workflows/release.yml).

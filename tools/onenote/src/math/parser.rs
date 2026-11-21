@@ -1,5 +1,5 @@
-// Ported from one2html 2.0.1, src/page/math/parser.rs (https://github.com/msiemens/one2html),
-// under its MIT licence:
+// Adapted from msiemens/one2html (4924024), src/page/math/parser.rs: plain errors, no panic.
+// one2html's MIT licence:
 //
 // Copyright 2020 Markus Siemens
 //
@@ -22,9 +22,9 @@
 //! separated and closed by markers of its own type; an object left open, a stray separator or
 //! end, or an argument count the object doesn't take fails the equation.
 //!
-//! Changed from one2html: errors are plain strings; an object's alignment value is read only where
-//! the LaTeX uses it, so one the LaTeX ignores no longer fails the equation; an op-char is text
-//! without a log warning; a matrix of no columns fails rather than panics in the renderer.
+//! Its errors are plain strings. An object's alignment value is read only where the LaTeX uses
+//! it, so one the LaTeX ignores fails nothing; an op-char is text; and a matrix of no columns fails
+//! the equation.
 
 use onenote_parser::contents::MathObjectType;
 

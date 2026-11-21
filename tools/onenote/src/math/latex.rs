@@ -1,5 +1,6 @@
-// Ported from one2html 2.0.1, src/page/math/render/latex.rs and render/mod.rs
-// (https://github.com/msiemens/one2html), under its MIT licence:
+// Adapted from msiemens/one2html (4924024), src/page/math/render/latex.rs: bare, infallible LaTeX.
+// Adapted from msiemens/one2html (4924024), src/page/math/render/mod.rs: the LaTeX path alone.
+// one2html's MIT licence:
 //
 // Copyright 2020 Markus Siemens
 //
@@ -41,9 +42,7 @@
 //! `dx`-style typography, and a function-application operator left in text is dropped, its
 //! function apply's rendering spacing it.
 //!
-//! Changed from one2html: the equation is returned bare, not wrapped in \(…\) or \[…\]; the
-//! renderer can't fail; its log warnings for alignment it doesn't render are left out; and
-//! itertools' chunks and join are std's.
+//! The renderer can't fail, and an alignment it doesn't render is left out silently.
 
 use docproc_envelope::category;
 

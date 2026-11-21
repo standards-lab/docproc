@@ -34,8 +34,8 @@ run mail eml msg pst mbox
 run onenote one   # sections only: notebooks would count their sections twice
 ```
 
-office's publish needs `-p:NuGetAudit=false`: restore fails on Microsoft.DotNet.ILCompiler
-10.0.13's advisory GHSA-p3jp-9v83-76w9 as an error, which the move to .NET 11 clears.
+office's publish needs `-p:NuGetAudit=false`: the spike's .NET 10 restore fails on
+Microsoft.DotNet.ILCompiler 10.0.13's advisory GHSA-p3jp-9v83-76w9 as an error.
 
 The measure: a structured text field is a string the contract carries outside its Markdown; its
 bytes are the string's UTF-8 bytes before JSON escaping. A string is duplicated when, with
