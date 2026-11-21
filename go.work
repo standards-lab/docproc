@@ -1,7 +1,5 @@
-// The workspace over docproc's Go modules, kept in sync with the root mise.toml's GO_MODULES: the base
-// module, the storage and postgres provider modules, and the cmd/docproc command module, which
-// require it, so a change to the base is seen by the providers and the command before it is
-// tagged. The check runs every module with GOWORK=off, as a consumer resolves it.
+// The workspace over docproc's Go modules.
+// See docs/development.md
 go 1.27.4
 
 use (

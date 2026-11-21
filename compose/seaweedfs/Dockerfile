@@ -1,22 +1,13 @@
-# The harness's SeaweedFS: the single-process `weed mini` whose S3 gateway the storage module's
-# live tier runs against, on 8333, through DOCPROC_S3_ENDPOINT. This FROM line is SeaweedFS's one
-# pin.
+# The harness's SeaweedFS S3 gateway, for the storage module's live tier.
+# See docs/development.md
 FROM chrislusf/seaweedfs:4.54
 
-# The gateway's admin identity, which SeaweedFS reads at startup and the live tier signs with
-# through DOCPROC_S3_ACCESS_KEY and DOCPROC_S3_SECRET_KEY; development values, not secrets.
 ENV AWS_ACCESS_KEY_ID=admin \
     AWS_SECRET_ACCESS_KEY=secret
 
-# Healthy once a request signed with that identity lists the buckets, which proves the gateway,
-# its filer, and the credential together: the gateway answers unsigned requests before the
-# credential is loaded.
 HEALTHCHECK --start-period=30s --start-interval=1s --interval=5s --timeout=3s --retries=5 \
     CMD ["curl", "--silent", "--fail", "--output", "/dev/null", \
          "--aws-sigv4", "aws:amz:us-east-1:s3", "--user", "admin:secret", \
          "http://127.0.0.1:8333/"]
 
-# -s3.autoCreateBucket=false turns off SeaweedFS's default of creating a missing bucket on an
-# admin's upload, so a write to a missing bucket fails as it does on AWS. Data lives in /data, the
-# harness's tmpfs.
 CMD ["mini", "-dir=/data", "-s3.autoCreateBucket=false"]

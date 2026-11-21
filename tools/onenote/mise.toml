@@ -1,35 +1,17 @@
-# mise: docproc-onenote's toolchain and its check, publish, golden, currency, and upgrade tasks.
-# The toolchain is pinned here alone. docproc's root check, currency, and upgrade run this file's
-# tasks through its TOOLS list (`mise -C tools/onenote run check`), and tools/pack.sh runs
-# `publish`. Each task runs in this directory.
+# docproc-onenote's toolchain and its check, publish, golden, currency, and upgrade tasks.
+# See docs/tool-builds.md
 [tools]
 cargo-deny = "0.22.0"
-# tools/notices.sh runs it, in this environment, for the release's third-party notices and their
-# license check (about.toml). It is not in mise's registry, so it comes from its GitHub release.
 "github:EmbarkStudios/cargo-about" = "0.9.3"
 jq = "1.8.2"
 rust = { version = "1.100.0", profile = "minimal", components = "clippy,rustfmt", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" }
 shellcheck = "0.11.0"
 
-# A task's shell keeps the caller's PATH order, so where a host `cargo` (/usr/bin/cargo) comes
-# before mise's install, a bare `cargo` would run it, and the host's Rust. Each task that runs
-# cargo first puts rustup's proxies, in mise's CARGO_HOME, ahead of the rest of PATH; mise's
-# RUSTUP_TOOLCHAIN then picks the pinned toolchain.
 [env]
-# The hold list: a pin `upgrade` leaves where it is and `currency` reports as held, not trailing.
-# One line each, "<item> <pin>: <reason>", the item named as currency names it: a crate or a mise
-# tool. A hold names its pin, so a pin moved by hand is no longer held.
 HOLDS = '''
 typed-path 0.12.4: onenote_parser 2.1.0 requires ^0.12.3; it moves only with onenote_parser
 '''
 
-# The binary is static, linked against musl, so it needs no glibc and sets no GLIBC_FLOOR. Every
-# test runs the release musl binary, overflow checks on (Cargo.toml), so no debug build is made.
-# The shared envelope crate, tools/envelope, has no lock or toolchain of its own: each Rust tool's
-# check formats, lints, and tests it with the tool's, against the tool's Cargo.lock, so it is
-# tested in every graph that links it, this one without its `markdown` feature, and docproc's root
-# check reaches it through TOOLS. Its manifest is formatted by path, which reads no lock and writes
-# none.
 [tasks.check]
 description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
 dir = "{{config_root}}"
@@ -44,8 +26,6 @@ cargo test --release --locked --target "$target" -p docproc-onenote -p docproc-e
 "target/$target/release/docproc-onenote" --version
 '''
 
-# tools/pack.sh runs it to build the release binary it packs; the release workflow runs that on each
-# runner, natively.
 [tasks.publish]
 description = "Build the static musl release binary for this machine from the locked crate graph; writes only target/ and .state/publish/"
 dir = "{{config_root}}"
@@ -59,10 +39,6 @@ mkdir -p .state/publish
 cp "target/$target/release/docproc-onenote" .state/publish/
 '''
 
-# The goldens are the release binary's own output, so a change to it is reviewed as a diff of them;
-# the check compares against them and never writes them. The golden helper in the tests' common
-# module writes them under UPDATE_GOLDEN, each committed OneStore input's two at its path under
-# tests/golden.
 [tasks.golden]
 description = "Re-record the .jsonl and .stderr goldens from the static musl release binary, through the tests' UPDATE_GOLDEN; the check never runs it; writes only target/ and the goldens"
 dir = "{{config_root}}"
@@ -73,18 +49,11 @@ target="$(uname -m)-unknown-linux-musl"
 UPDATE_GOLDEN=1 cargo test --release --locked --target "$target" -p docproc-onenote
 '''
 
-# Read-only and development-time: it reads the network, so CI never runs it. tools/currency.sh
-# reports the crates, their RustSec advisories, and the mise tools, as it does for every Rust tool.
 [tasks.currency]
 description = "Report every crate behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, and every mise tool behind its latest, a held one as held; writes only cargo-deny's advisory database"
 dir = "{{config_root}}"
 run = "../currency.sh onenote report"
 
-# Development-time, as currency is, and its counterpart. tools/currency.sh moves every mise tool
-# here and every crate, but a held one, raising the shared envelope crate's requirements,
-# tools/envelope/Cargo.toml, as it does for every Rust tool, then re-locking this graph. It
-# rewrites only this directory's pins and the envelope's requirements, never the root's. Run it,
-# review the diff, and run the check, and every other Rust tool's.
 [tasks.upgrade]
 description = "Bump every mise tool here and every crate to its latest, but a held one, rewriting mise.toml, Cargo.toml, tools/envelope/Cargo.toml, and Cargo.lock"
 dir = "{{config_root}}"

@@ -3,7 +3,5 @@ services:
     build:
       context: postgres
     ports:
-      # 5436 by default so the harness coexists with sqlate on 5433, blobfs on 5434, go-messaging
-      # on 5435, and a service on 5432.
       - "127.0.0.1:${DOCPROC_POSTGRES_PORT:-5436}:5432"
     tmpfs: /var/lib/postgresql

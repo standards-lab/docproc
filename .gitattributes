@@ -1,11 +1,6 @@
-# The audio speech fixture and its transcript are pinned by SHA-256, byte for byte, so git never
-# converts them.
+# Fixtures pinned byte for byte, which git never converts.
+# See docs/development.md
 audio/testdata/speech.* -text
-# The hand-written RTF fixture is pinned by SHA-256, byte for byte, so git never converts it.
 office/testdata/rtf/** -text
-# The committed run directory is compared as text with what the writer writes, and one record ends
-# in a torn line with no newline, so git never converts it.
 rundir/testdata/** -text
-# The malformed PDF fixture holds CR line ends among its text and is pinned by SHA-256, byte for
-# byte, so git never converts it.
 document/testdata/malformed/** -text

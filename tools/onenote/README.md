@@ -280,7 +280,8 @@ crate, [`tools/envelope`](../envelope).
 The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-about) is pinned
 in [`mise.toml`](mise.toml) alone. Its tasks run from this directory, `mise run <task>`, or from
 the repository root, `mise -C tools/onenote run <task>`; docproc's own `mise run check` runs this
-tool's check.
+tool's check. The reasoning behind
+its configuration is on [`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: verifies formatting, lints with warnings as errors, and runs the tests of
   docproc-onenote and of the shared crate, [`tools/envelope`](../envelope), against the static

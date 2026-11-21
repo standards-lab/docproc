@@ -216,7 +216,8 @@ The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-ab
 in [`mise.toml`](mise.toml) alone, and the fixture generator's .NET SDK in
 [`mise.fixtures.toml`](mise.fixtures.toml). Its tasks run from this directory,
 `mise run <task>`, or from the repository root, `mise -C tools/mail run <task>`; docproc's own
-`mise run check` runs this tool's check.
+`mise run check` runs this tool's check. The reasoning behind
+its configuration is on [`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: shellchecks the scripts, verifies formatting, lints with warnings as errors, and runs
   the tests of docproc-mail and of the shared crate, [`tools/envelope`](../envelope), against the

@@ -134,7 +134,8 @@ The envelope these follow, its cases stated once for every tool, is
 
 The toolchain (the .NET SDK, jq, uv) is pinned in [`mise.toml`](mise.toml) alone. Its tasks run
 from this directory, `mise run <task>`, or from the repository root, `mise -C tools/ooxml run
-<task>`; docproc's own `mise run check` runs this tool's check.
+<task>`; docproc's own `mise run check` runs this tool's check. The reasoning behind
+its configuration is on [`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: restores the locked package graph, verifies formatting, builds with warnings as
   errors, publishes the NativeAOT binary, and runs the tests, which compare the published

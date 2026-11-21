@@ -1,3 +1,4 @@
+# See docs/tool-builds.md
 [package]
 name = "docproc-onenote"
 version = "0.1.1"
@@ -7,38 +8,21 @@ description = "docproc's OneNote tool: OneNote sections, packages, and notebooks
 publish = false
 
 [dependencies]
-# docproc's Rust tools' common envelope, and their one source of Unicode: the math port (src/math/)
-# sorts an equation's characters by its general-category predicates. Untagged, by path; its tests
-# run in this tool's check, against this Cargo.lock.
 docproc-envelope = { path = "../envelope" }
-# The OneNote reader (MPL-2.0), used unmodified: sections, notebooks, and, through onepkg,
-# packages. It brings cab 0.6 for .onepkg, and time and typed-path, which its API takes and
-# returns. Pinned exactly: the CLI works around this release's exact text and logic, so a new
-# release is a reviewed change. src/notebook.rs matches its warning for a section it can't read,
-# "failed to import section ", and follows its choice of a package's .onetoc2 and its cabinet
-# entry names' normalisation; src/section.rs matches its NotASectionFile message, "Not a section
-# file: "; src/stdout.rs keeps its dumps on malformed sections off the lines.
+# Pinned exactly: the CLI works around this release's exact text and logic, so a new release
+# is a reviewed change (docs/tool-builds.md).
 onenote_parser = { version = "=2.1.0", features = ["onepkg"] }
 typed-path = "0.12.4"
 time = "0.3.55"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-# dup2, to point file descriptor 1 at /dev/null while onenote_parser runs (src/stdout.rs).
 libc = "0.2.191"
-# The cabinet reader onenote_parser reads .onepkg packages with, taken directly to list a
-# package's entries for its recycle bin, which the parser drops without a word; and, in the
-# tests, its MSZIP writer, which builds the packages they read.
 cab = "0.6.0"
 
 [dev-dependencies]
-# utc_datetime!, for the unit tests' times.
 time = { version = "0.3.55", features = ["macros"] }
-# An XML reader, so the tests check each ink SVG is well-formed; the CLI writes SVG itself.
 roxmltree = "0.21.2"
 
-# A release binary checks integer arithmetic as a debug one does: an overflow panics, a fault the
-# CLI reports, instead of wrapping silently into a wrong offset or length. The check runs every
-# test against this profile.
 [profile.release]
 overflow-checks = true
 
