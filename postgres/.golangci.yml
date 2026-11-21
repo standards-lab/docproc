@@ -17,8 +17,12 @@ linters:
   default: standard
   enable:
     - depguard
+    - nolintlint
     - testpackage
   settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     testpackage:
       skip-regexp: export_test\.go
       allow-packages: [""]

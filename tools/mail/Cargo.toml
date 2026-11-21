@@ -44,3 +44,6 @@ mail-parser = { version = "1.0.1", features = ["full_encoding"] }
 # test against this profile.
 [profile.release]
 overflow-checks = true
+
+[lints.clippy]
+allow_attributes_without_reason = "deny"

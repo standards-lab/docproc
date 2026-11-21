@@ -1,3 +1,7 @@
+# See architecture/standards/go-elemental/principles/release-and-ci.md
+[settings]
+task.run_auto_install = false
+
 # The integration tier's 7-Zip, 7zz, pinned here so currency and upgrade keep it current: sevenzip
 # requires 24.07 or later. The test:integration task runs under it; CI never needs it, so its
 # workflows set MISE_DISABLE_TOOLS to it, and no job installs it. The tier's other system tools
@@ -5,6 +9,7 @@
 # compose harness's image pins; no CI job installs it either.
 [tools]
 "aqua:google/go-containerregistry" = "0.22.1"
+"github:standards-lab/claude-plugins" = { version = "0.22.0", version_prefix = "marathon/v" }
 "github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"

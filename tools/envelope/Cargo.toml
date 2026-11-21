@@ -38,3 +38,6 @@ pulldown-cmark = { version = "=0.13.6", default-features = false, optional = tru
 [features]
 # The content rule's Markdown-to-plain reader, which docproc-mail enables.
 markdown = ["dep:pulldown-cmark"]
+
+[lints.clippy]
+allow_attributes_without_reason = "deny"
