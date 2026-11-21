@@ -20,8 +20,6 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// TestParseRoutes: every route Routes names parses, in the order given, and a name that is no
-// route is refused, matching ErrRequest and naming it.
 func TestParseRoutes(t *testing.T) {
 	t.Parallel()
 	known := stages.Routes()
@@ -44,10 +42,6 @@ func TestParseRoutes(t *testing.T) {
 	}
 }
 
-// TestBuildRows: with no tool on the host, Build wires the vision and text stages, which run none,
-// marks every other route missing, naming the tool that isn't found, and an excluded route
-// excluded, looking up no tool only it requires; each tool it tried is a row with its error; and
-// Set.Inspect is the options' own.
 func TestBuildRows(t *testing.T) {
 	t.Parallel()
 	var looked []string
@@ -87,11 +81,6 @@ func TestBuildRows(t *testing.T) {
 	}
 }
 
-// TestBuildShim: a version manager's shim, which answers under the host's HOME but refuses under
-// the one a run gets, is checked under the run's environment, so it reads as unavailable: its
-// tool row holds the shim's refusal, the onenote route is missing for it, and nothing but the
-// version command ran through it. The same shim, given the host's HOME through Options.Env, which
-// every run's environment ends with, answers, and its route is wired.
 func TestBuildShim(t *testing.T) {
 	t.Parallel()
 	onenoteOnly := slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.OneNote })
@@ -139,9 +128,6 @@ func TestBuildShim(t *testing.T) {
 	}
 }
 
-// TestBuildRefuses: Build refuses options it can't take before it looks anything up, each
-// matching ErrRequest: inspection options inspect refuses, a negative bound, and a request its
-// own package refuses.
 func TestBuildRefuses(t *testing.T) {
 	t.Parallel()
 	lookup := func(program string) (string, error) {
@@ -169,8 +155,6 @@ func TestBuildRefuses(t *testing.T) {
 	}
 }
 
-// TestStagesPanic: each stage constructor panics on a config whose required field is nil, naming
-// the field, the wiring's mistake.
 func TestStagesPanic(t *testing.T) {
 	t.Parallel()
 	for want, build := range map[string]func(){

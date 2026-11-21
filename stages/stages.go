@@ -36,7 +36,10 @@ type Options struct {
 	Exclude []route.Route
 	// Inspect are the inspection options, validated once: the archive and document stages' bomb
 	// rule and the archive stage's Entries, in their identities, and Set.Inspect, for
-	// dispatch.Config.Inspect, so one value exists.
+	// dispatch.Config.Inspect, so one value exists. The bomb rule, none when BombRatio and
+	// BombSize are zero, is the one an archive entry's, a gzip or zstd stream's, and a PDF's
+	// embedded file's written bytes may not pass; Entries bounds a 7-Zip listing; and Policy is
+	// the one a 7-Zip listing's flags are weighed under, as inspect.CheckListing weighs them.
 	Inspect inspect.Options
 	// Timeout is a unit run's bound, on every run of a tool whose runs are units: gs, qpdf,
 	// pdfdetach, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.
@@ -70,9 +73,6 @@ type Options struct {
 	Video media.Request
 }
 
-// check refuses options Build can't take, each an error wrapping ErrRequest, before any tool is
-// looked up: inspection options inspect refuses, a negative bound, and a request its own package
-// refuses.
 func (o Options) check() error {
 	refuse := func(format string, args ...any) error {
 		return fmt.Errorf("stages: "+format+": %w", append(args, ErrRequest)...)
@@ -103,7 +103,6 @@ func (o Options) check() error {
 	return nil
 }
 
-// concurrency returns the pages and windows held at once: Options.Concurrency, or 1.
 func (o Options) concurrency() int { return max(o.Concurrency, 1) }
 
 // Set is what Build made of the host: the stages to register, every tool it tried, in a fixed
@@ -116,16 +115,12 @@ type Set struct {
 	Inspect inspect.Options
 }
 
-// spec is one tool's declaration: its package's Spec, for soffice the image the container runner
-// runs it in through the docker CLI, and whether its runs stream, taking Options.Idle, or are
-// units, taking Options.Timeout.
 type spec struct {
 	tool.Spec
 	image  string
 	stream bool
 }
 
-// specs are the tools a stage may need, in the order the tools table lists them.
 func specs() []spec {
 	return []spec{
 		{Spec: document.GhostscriptSpec()},
@@ -133,7 +128,6 @@ func specs() []spec {
 		{Spec: document.PDFDetachSpec()},
 		{Spec: picture.MagickSpec()},
 		{Spec: picture.LibreOfficeSpec(), image: picture.LibreOfficeImage},
-		// docproc-ooxml writes its lines once it has read the whole package, so its run is a unit.
 		{Spec: office.OfficeSpec()},
 		{Spec: email.MailSpec(), stream: true},
 		{Spec: onenote.OneNoteSpec(), stream: true},
@@ -143,19 +137,14 @@ func specs() []spec {
 	}
 }
 
-// tools are the Tools Build built, by program.
 type tools map[string]*tool.Tool
 
-// stage is one route's wiring: the programs its stage requires, every one of them, and how to
-// build it over them under the options.
 type stage struct {
 	route route.Route
 	needs []string
 	build func(ctx context.Context, t tools, opts Options) (dispatch.Stage, error)
 }
 
-// table is the ten routes' wiring, in [Routes] order. Each stage requires every tool it names, so
-// a stage either runs as the table names it or isn't wired at all.
 var table = []stage{
 	{route.Document, []string{"gs", "qpdf", "pdfdetach"}, buildDocument},
 	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, buildOffice},
@@ -197,7 +186,6 @@ func ParseRoutes(names []string) ([]route.Route, error) {
 	return routes, nil
 }
 
-// joinRoutes joins routes with ", ".
 func joinRoutes(routes []route.Route) string {
 	names := make([]string, len(routes))
 	for i, r := range routes {
@@ -282,10 +270,6 @@ func Build(ctx context.Context, lookup Lookup, opts Options) (Set, error) {
 	return set, nil
 }
 
-// buildTool finds sp's program through lookup and builds its Tool, which checks its version
-// against sp's minimum: through the exec runner, or, for an image, through the container runner
-// over the docker CLI lookup finds. It returns where the tool runs from, the path or the image,
-// even when the build fails past the lookup.
 func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string, error) {
 	if sp.image != "" {
 		docker, err := lookup("docker")
@@ -299,15 +283,12 @@ func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string,
 	if err != nil {
 		return nil, "", fmt.Errorf("%s: not found", sp.Program)
 	}
-	// A path with a separator is taken as given, and the Tool keeps the program's base name.
 	s := sp.Spec
 	s.Program = path
 	t, err := tool.NewExec(ctx, s)
 	return t, path, err
 }
 
-// buildDocument builds the document stage: gs renders each page and reads its text layer, qpdf
-// checks for a password and reads the AcroForm, and pdfdetach saves the embedded files.
 func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	gs, qt, dt := t["gs"], t["qpdf"], t["pdfdetach"]
 	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt}
@@ -332,14 +313,10 @@ func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, er
 	}), nil
 }
 
-// pictures builds the picture Converter the picture and office stages share the shape of, over
-// magick and LibreOffice in its pinned image, under the options' magick limits.
 func pictures(ctx context.Context, t tools, opts Options) (*picture.Converter, error) {
 	return picture.NewConverter(ctx, picture.Config{Magick: t["magick"], LibreOffice: t["soffice"], Limits: opts.Magick})
 }
 
-// buildOffice builds the office stage over docproc-ooxml, LibreOffice in its pinned image, and
-// magick.
 func buildOffice(ctx context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	of := t["docproc-ooxml"]
 	p, err := pictures(ctx, t, opts)
@@ -356,7 +333,6 @@ func buildOffice(ctx context.Context, t tools, opts Options) (dispatch.Stage, er
 	}), nil
 }
 
-// buildPicture builds the picture stage over magick and LibreOffice in its pinned image.
 func buildPicture(ctx context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	p, err := pictures(ctx, t, opts)
 	if err != nil {
@@ -367,7 +343,6 @@ func buildPicture(ctx context.Context, t tools, opts Options) (dispatch.Stage, e
 	}), nil
 }
 
-// buildEmail builds the email stage over docproc-mail.
 func buildEmail(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	mail := t["docproc-mail"]
 	r, err := email.NewReader(email.Config{Mail: mail})
@@ -377,7 +352,6 @@ func buildEmail(_ context.Context, t tools, opts Options) (dispatch.Stage, error
 	return newEmailStage(emailConfig{Reader: r, Version: versions(mail), Memory: opts.Memory}), nil
 }
 
-// buildOneNote builds the onenote stage over docproc-onenote.
 func buildOneNote(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	on := t["docproc-onenote"]
 	r, err := onenote.NewReader(onenote.Config{OneNote: on})
@@ -387,8 +361,6 @@ func buildOneNote(_ context.Context, t tools, opts Options) (dispatch.Stage, err
 	return newOneNoteStage(onenoteConfig{Reader: r, Version: versions(on), Memory: opts.Memory}), nil
 }
 
-// buildArchive builds the archive stage over 7-Zip, for what archive/zip and archive/tar don't
-// read.
 func buildArchive(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	sz := t["7zz"]
 	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: sz})
@@ -398,7 +370,6 @@ func buildArchive(_ context.Context, t tools, opts Options) (dispatch.Stage, err
 	return newArchiveStage(archiveConfig{SevenZip: r, Version: versions(sz), Inspect: opts.Inspect, Memory: opts.Memory}), nil
 }
 
-// buildAudio builds the audio stage over ffmpeg and ffprobe.
 func buildAudio(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	ff, fp := t["ffmpeg"], t["ffprobe"]
 	s, err := audio.NewSplitter(audio.Config{FFmpeg: ff, FFprobe: fp})
@@ -410,7 +381,6 @@ func buildAudio(_ context.Context, t tools, opts Options) (dispatch.Stage, error
 	return newAudioStage(audioConfig{Splitter: s, Version: versions(ff, fp), Request: req, Memory: opts.Memory}), nil
 }
 
-// buildVideo builds the video stage over ffmpeg and ffprobe.
 func buildVideo(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
 	ff, fp := t["ffmpeg"], t["ffprobe"]
 	s, err := media.NewStreamer(media.Config{FFmpeg: ff, FFprobe: fp})

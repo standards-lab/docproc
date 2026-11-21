@@ -31,13 +31,6 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// The video stage's hermetic tests run media's Streamer over the audio tests' stand-ins, whose
-// ffmpeg, given media's run, acts as mediaStandin says.
-
-// mediaStandin is the stand-in ffmpeg's run for media: it writes its settings' PCM to its stdout,
-// when its arguments have an audio output, half a second at a time, and its settings' frames,
-// when they have a video output, its last argument the image2 pattern, each reported on stderr as
-// the metadata filter does and written before the PCM from its time on.
 func mediaStandin(args []string, settings ffSettings) int {
 	if err := mediaStandinRun(args, settings); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -50,7 +43,6 @@ func mediaStandin(args []string, settings ffSettings) int {
 	return 0
 }
 
-// mediaPattern returns the image2 pattern of media's run's args, "" when it has no video output.
 func mediaPattern(args []string) string {
 	if slices.Contains(args, "image2") {
 		return args[len(args)-1]
@@ -58,7 +50,6 @@ func mediaPattern(args []string) string {
 	return ""
 }
 
-// mediaStandinRun is mediaStandin's output.
 func mediaStandinRun(args []string, settings ffSettings) error {
 	pattern := mediaPattern(args)
 	var pcm []byte
@@ -89,8 +80,6 @@ func mediaStandinRun(args []string, settings ffSettings) error {
 		})
 }
 
-// ffprobe's reports of the stand-in videos: one with a video stream and an audio stream, one with
-// video alone, one with audio alone, and one with neither, its one stream a subtitle's.
 const (
 	videoProbeBoth  = `{"streams":[{"index":0,"codec_type":"video"},{"index":1,"codec_type":"audio"}]}`
 	videoProbeVideo = `{"streams":[{"index":0,"codec_type":"video"}]}`
@@ -98,25 +87,18 @@ const (
 	videoProbeNone  = `{"streams":[{"index":0,"codec_type":"subtitle"}]}`
 )
 
-// The inputs the video tests dispatch, by their signatures, each routed route.Video: a Matroska,
-// a WebM, and an AVI file; the MP4 is the audio tests' mp4Bytes.
 const (
 	mkvBytes  = "\x1a\x45\xdf\xa3\x9f\x42\x82\x88matroska" + "stand-in Matroska"
 	webmBytes = "\x1a\x45\xdf\xa3\x9f\x42\x82\x84webm" + "stand-in WebM"
 	aviBytes  = "RIFF\x24\x00\x00\x00AVI LIST" + "stand-in AVI"
 )
 
-// videoFrames are the stand-in's frames: the first, a scene change at 1.2 s, and one taken at
-// 11.2 s that is past no threshold, which media names an interval frame, the gap since the last
-// being 10 s.
 var videoFrames = []mediatest.Frame{
 	{MS: 0, Score: 0, Width: 32, Height: 18},
 	{MS: 1200, Score: 0.9, Width: 32, Height: 18},
 	{MS: 11200, Score: 0.05, Width: 32, Height: 18},
 }
 
-// videoStage links the stand-ins, ffprobe reporting probe, ffmpeg writing 3 s of PCM and
-// videoFrames, and returns a video stage over them under req, and the stand-ins.
 func testVideoStage(t *testing.T, probe string, req media.Request) (*stages.VideoStage, *ffStandins) {
 	t.Helper()
 	ffmpeg, ffprobe, standins := standinTools(t, probe)
@@ -129,7 +111,6 @@ func testVideoStage(t *testing.T, probe string, req media.Request) (*stages.Vide
 	return st, standins
 }
 
-// videoArgs returns each media run's input and frame pattern, in turn, as ffmpeg's log holds them.
 func videoArgs(t *testing.T, standins *ffStandins) []string {
 	t.Helper()
 	var out []string
@@ -141,10 +122,6 @@ func videoArgs(t *testing.T, standins *ffStandins) []string {
 	return out
 }
 
-// videoDispatch dispatches the file at path through a dispatcher over stages in a working
-// directory of its own, which it returns, with its events. Each image output's PNG and each
-// audio output's WAV is checked while its part is in flight, and each must be inside the working
-// directory.
 func videoDispatch(t *testing.T, stages dispatch.Stages, path string) ([]dispatched, string) {
 	t.Helper()
 	work := t.TempDir()
@@ -170,8 +147,6 @@ func videoDispatch(t *testing.T, stages dispatch.Stages, path string) ([]dispatc
 	return events, work
 }
 
-// checkStandinWAV fails the test unless o's WAV, as checkWAV checks it, holds the stand-in
-// media run's samples from o's start: each sample its index in the source modulo 30011.
 func checkStandinWAV(t *testing.T, o dispatch.Output) {
 	t.Helper()
 	b := checkWAV(t, o)
@@ -184,8 +159,6 @@ func checkStandinWAV(t *testing.T, o dispatch.Output) {
 	}
 }
 
-// checkFrame fails the test unless the file at o.Path, read while its part is in flight, is a PNG
-// of o's Meta's size, named by its SHA-256.
 func checkFrame(t *testing.T, o dispatch.Output) {
 	t.Helper()
 	b, err := os.ReadFile(o.Path)
@@ -202,8 +175,6 @@ func checkFrame(t *testing.T, o dispatch.Output) {
 	}
 }
 
-// wantClean fails the test unless the working directory work is empty and the input at path is
-// alone in its directory, as the caller left it.
 func wantClean(t *testing.T, work, path string) {
 	t.Helper()
 	if entries, err := os.ReadDir(work); err != nil || len(entries) != 0 {
@@ -215,7 +186,6 @@ func wantClean(t *testing.T, work, path string) {
 	}
 }
 
-// kinds returns each output's kind and name.
 func kinds(outs []dispatch.Output) []string {
 	var got []string
 	for _, o := range outs {
@@ -224,10 +194,6 @@ func kinds(outs []dispatch.Output) []string {
 	return got
 }
 
-// TestVideoStage: a Matroska file's plan comes first, a record of its windows' and frames'
-// settings, defaults applied; then its frames, PNGs, and its window, a WAV, each with its Meta.
-// ffmpeg reads a link to the input in the part's directory and writes its frames there, never
-// beside the input, and the working directory is empty once the dispatch is done.
 func TestVideoStage(t *testing.T) {
 	t.Parallel()
 	stage, standins := testVideoStage(t, videoProbeBoth, media.Request{})
@@ -242,7 +208,6 @@ func TestVideoStage(t *testing.T) {
 	if len(got) == 0 || got[0] != "record plan" {
 		t.Fatalf("outputs %q, want the plan first", got)
 	}
-	// The frames and the window interleave as the run completes them.
 	slices.Sort(got[1:])
 	want := []string{"record plan", "audio window 0", "image frame 0", "image frame 1", "image frame 2"}
 	if !slices.Equal(got, want) {
@@ -301,8 +266,6 @@ func TestVideoStage(t *testing.T) {
 	wantClean(t, work, path)
 }
 
-// TestVideoStageRoutes: an MP4, a Matroska, a WebM, and an AVI file are each routed video and
-// prepared by the video stage.
 func TestVideoStageRoutes(t *testing.T) {
 	t.Parallel()
 	stage, _ := testVideoStage(t, videoProbeBoth, media.Request{})
@@ -317,9 +280,6 @@ func TestVideoStageRoutes(t *testing.T) {
 	}
 }
 
-// TestVideoStageTracks: a video with no audio stream yields its plan and frames only, its run
-// writing no PCM; one with no video stream, such as an MP4 holding audio alone, its plan and
-// windows only.
 func TestVideoStageTracks(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -343,9 +303,6 @@ func TestVideoStageTracks(t *testing.T) {
 	}
 }
 
-// TestVideoNoStream: a video file holding neither an audio nor a video stream fails, recorded, its
-// error wrapping media.ErrNoMedia, after ffprobe alone ran: it has no outputs, the plan among
-// them, and its entry records the failure, so a later dispatch doesn't read it again.
 func TestVideoNoStream(t *testing.T) {
 	t.Parallel()
 	index := dispatch.NewMemoryIndex(0)
@@ -365,9 +322,6 @@ func TestVideoNoStream(t *testing.T) {
 	}
 }
 
-// TestVideoFailedRun: a run that fails by ffmpeg's own exit after the plan and the frames and
-// window it completed is a warning at "stream" naming ffmpeg, its What ffmpeg's last line, and the
-// part is prepared with what it has; nothing is left behind.
 func TestVideoFailedRun(t *testing.T) {
 	t.Parallel()
 	stage, standins := testVideoStage(t, videoProbeBoth, media.Request{})
@@ -383,8 +337,6 @@ func TestVideoFailedRun(t *testing.T) {
 	wantClean(t, work, path)
 }
 
-// TestVideoCancel: a context that ends while the run is held stops ffmpeg; the dispatch yields
-// the context's error last, and nothing is left behind.
 func TestVideoCancel(t *testing.T) {
 	t.Parallel()
 	stage, standins := testVideoStage(t, videoProbeBoth, media.Request{})
@@ -421,8 +373,6 @@ func TestVideoCancel(t *testing.T) {
 	wantClean(t, work, path)
 }
 
-// TestVideoStageInArchive: an AVI in a ZIP is found by the archive stage and prepared by the video
-// stage, as any part is; ffmpeg reads a link to the entry in the AVI's own directory.
 func TestVideoStageInArchive(t *testing.T) {
 	t.Parallel()
 	zs := testArchiveStage(t, inspect.Options{})
@@ -437,8 +387,6 @@ func TestVideoStageInArchive(t *testing.T) {
 	wantClean(t, work, path)
 }
 
-// TestVideoNoProcessor: with no video stage, as a caller with no ffmpeg and ffprobe registers, a
-// video part is no processor yet, and nothing runs.
 func TestVideoNoProcessor(t *testing.T) {
 	t.Parallel()
 	_, standins := testVideoStage(t, videoProbeBoth, media.Request{})
@@ -453,9 +401,6 @@ func TestVideoNoProcessor(t *testing.T) {
 	}
 }
 
-// TestVideoStageIdentity: the video stage hashes its windows' and frames' settings, defaults
-// applied, and not its Dir; it panics on no streamer, naming the field, and refuses no
-// version and a windowing field audio refuses.
 func TestVideoStageIdentity(t *testing.T) {
 	t.Parallel()
 	ffmpeg, ffprobe, _ := standinTools(t, videoProbeBoth)

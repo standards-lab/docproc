@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 )
 
-// input writes content to a file named name in a directory of its own, returning its path.
 func input(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -24,7 +23,6 @@ func input(t *testing.T, name, content string) string {
 	return path
 }
 
-// step is one event, as the tests compare them: the part's name, its depth, and its outcome.
 type step struct {
 	name    string
 	depth   int
@@ -33,23 +31,17 @@ type step struct {
 
 func (s step) String() string { return fmt.Sprintf("%s@%d:%s", s.name, s.depth, s.outcome) }
 
-// dispatched is a part's own event as the tests compare them, with its outputs, gathered from
-// its output events as the caller's loop body left them.
 type dispatched struct {
 	dispatch.Event
 	Outputs  []dispatch.Output
 	Warnings []dispatch.Warning
 }
 
-// gatherer gathers each part's output and warning events into its own event, by the part's path, which is
-// unique within one dispatch.
 type gatherer struct {
 	pending  map[string][]dispatch.Output
 	warnings map[string][]dispatch.Warning
 }
 
-// add takes ev, returning the part's dispatched event and true when ev is a part's own event; it
-// fails the test when a part's event's output count isn't its output events'.
 func (g *gatherer) add(t *testing.T, ev dispatch.Event) (dispatched, bool) {
 	t.Helper()
 	if g.pending == nil {
@@ -73,9 +65,6 @@ func (g *gatherer) add(t *testing.T, ev dispatch.Event) (dispatched, bool) {
 	return dispatched{Event: ev, Outputs: outputs, Warnings: warnings}, true
 }
 
-// collect ranges over seq, calling each, when not nil, in the loop's body for every event, its
-// output events among them, and returns the parts' events, each with its outputs; an error fails
-// the test.
 func collect(t *testing.T, seq iter.Seq2[dispatch.Event, error], each func(*dispatch.Event)) []dispatched {
 	t.Helper()
 	var g gatherer
@@ -94,13 +83,11 @@ func collect(t *testing.T, seq iter.Seq2[dispatch.Event, error], each func(*disp
 	return events
 }
 
-// dispatchAll dispatches path, as collect says.
 func dispatchAll(t *testing.T, d *dispatch.Dispatcher, path string, each func(*dispatch.Event)) []dispatched {
 	t.Helper()
 	return collect(t, d.Dispatch(t.Context(), dispatch.Input{Path: path}), each)
 }
 
-// steps returns events' steps.
 func steps(events []dispatched) []step {
 	out := make([]step, 0, len(events))
 	for _, ev := range events {
@@ -109,7 +96,6 @@ func steps(events []dispatched) []step {
 	return out
 }
 
-// wantSteps fails the test unless events' steps are want.
 func wantSteps(t *testing.T, events []dispatched, want []step) {
 	t.Helper()
 	if got := steps(events); !slices.Equal(got, want) {
@@ -117,12 +103,10 @@ func wantSteps(t *testing.T, events []dispatched, want []step) {
 	}
 }
 
-// hasFlag reports whether flags hold one of check c.
 func hasFlag(flags []inspect.Flag, c inspect.Check) bool {
 	return slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == c })
 }
 
-// byName returns the first event of the part named name.
 func byName(t *testing.T, events []dispatched, name string) dispatched {
 	t.Helper()
 	for _, ev := range events {
@@ -134,7 +118,6 @@ func byName(t *testing.T, events []dispatched, name string) dispatched {
 	return dispatched{}
 }
 
-// outputNamed returns ev's first output of kind named name.
 func outputNamed(t *testing.T, ev dispatched, kind dispatch.OutputKind, name string) dispatch.Output {
 	t.Helper()
 	for _, o := range ev.Outputs {
@@ -146,7 +129,6 @@ func outputNamed(t *testing.T, ev dispatched, kind dispatch.OutputKind, name str
 	return dispatch.Output{}
 }
 
-// wheres returns the Where of each event below the input, in order.
 func wheres(events []dispatched) []string {
 	var out []string
 	for _, ev := range events {
@@ -157,7 +139,6 @@ func wheres(events []dispatched) []string {
 	return out
 }
 
-// sum returns content's lowercase hex SHA-256.
 func sum(content string) string {
 	s := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(s[:])

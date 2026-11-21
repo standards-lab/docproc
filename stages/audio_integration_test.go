@@ -18,13 +18,8 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// speechFixture is the audio package's speech fixture: 49.82 s of LibriSpeech speech, its plan
-// two windows cut in the inserted gap at 24.41 s.
 var speechFixture = filepath.Join("..", "audio", "testdata", "speech.flac")
 
-// audioRunners build ffmpeg and ffprobe through one runner each: the host's through the exec
-// runner, and audio.FFmpegImage's through the container runner, which pulls the image first when
-// it isn't present.
 var audioRunners = map[string]func(t *testing.T, spec tool.Spec) (*tool.Tool, error){
 	"exec": func(t *testing.T, spec tool.Spec) (*tool.Tool, error) { return tool.NewExec(t.Context(), spec) },
 	"container": func(t *testing.T, spec tool.Spec) (*tool.Tool, error) {
@@ -32,12 +27,7 @@ var audioRunners = map[string]func(t *testing.T, spec tool.Spec) (*tool.Tool, er
 	},
 }
 
-// TestAudioStageReal dispatches the speech fixture through the audio stage over each runner's
-// ffmpeg and ffprobe, and checks that each window comes in plan order, a WAV of its Meta's
-// samples, named by its SHA-256 and holding v0.9.0's bytes, and that the plan record comes last,
-// the Splitter's own plan of it; and that the runners prepare the same windows.
 func TestAudioStageReal(t *testing.T) {
-	// v0.9.0's windows of the fixture under DetectorTracker, audio/testdata/windows-v0.9.0.txt's.
 	v090 := []string{
 		"e142ddb2f6d968dc33d2858f20ba456718b0335be22f3be7eafba3bd97a8cbd5.wav",
 		"b5f802b375656c7fd2d06b6bc76c6da71b2b67ddab2f72d0ad12f2dd22293af3.wav",

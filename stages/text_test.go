@@ -14,9 +14,6 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// prepareText runs the text stage over content, written to a file named name, and returns its
-// one output, its text as the output's file holds it, the part's file, and what each of its
-// warnings says, each the stage's own, at "text", after the output.
 func prepareText(t *testing.T, ctx context.Context, name string, content []byte) (dispatch.Output, string, string, []string, error) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -54,10 +51,6 @@ func prepareText(t *testing.T, ctx context.Context, name string, content []byte)
 	return o, string(b), path, warnings, nil
 }
 
-// TestTextStage: the encoding is a byte order mark's, UTF-8's, UTF-32's before UTF-16's, either
-// byte order, the mark dropped; else UTF-8 when the whole part is; else windows-1252, with a
-// warning. Line endings are kept as stored. A byte the encoding can't decode becomes U+FFFD,
-// counted in a warning, and a U+FFFD the text stored is not counted.
 func TestTextStage(t *testing.T) {
 	const fallback = "no byte order mark and not UTF-8: decoded as windows-1252, which may not be the text's encoding"
 	cases := []struct {
@@ -99,8 +92,6 @@ func TestTextStage(t *testing.T) {
 			if !slices.Equal(warnings, c.warnings) {
 				t.Errorf("warnings %q, want %q", warnings, c.warnings)
 			}
-			// Valid UTF-8 without a mark is the part's own file; anything else a file of the
-			// stage's.
 			if pass := c.encoding == "utf-8"; (o.Path == path) != pass {
 				t.Errorf("output at %s, the part at %s", o.Path, path)
 			}
@@ -108,8 +99,6 @@ func TestTextStage(t *testing.T) {
 	}
 }
 
-// TestTextStageChunks: a rune split across the stage's 64 KiB reads is still UTF-8, and an
-// invalid byte far past the first read still falls back.
 func TestTextStageChunks(t *testing.T) {
 	split := strings.Repeat("a", 64<<10-1) + "é\n"
 	o, got, _, _, err := prepareText(t, t.Context(), "split.txt", []byte(split))
@@ -129,7 +118,6 @@ func TestTextStageChunks(t *testing.T) {
 	}
 }
 
-// TestTextStageCanceled: a dispatch whose context has ended stops the stage's reading.
 func TestTextStageCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -138,9 +126,6 @@ func TestTextStageCanceled(t *testing.T) {
 	}
 }
 
-// TestTextDispatch: a part route.Text names, by its extension or its byte order mark, reaches the
-// text stage through the dispatcher and is prepared, its one output the stage's, and nothing is
-// left once the dispatch is done.
 func TestTextDispatch(t *testing.T) {
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{

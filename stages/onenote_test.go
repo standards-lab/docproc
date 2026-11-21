@@ -23,39 +23,21 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// onenoteSettings are the stand-in docproc-onenote's settings, which its link names.
 type onenoteSettings struct {
-	// Stdout and Stderr are what a run writes, Exit its exit code.
-	Stdout string `json:"stdout"`
-	Stderr string `json:"stderr"`
-	Exit   int    `json:"exit"`
-	// Media are the files a run writes into its --media directory, by name.
-	Media map[string]string `json:"media"`
-	// HoldMS is how long a run waits, writing nothing, before it writes anything.
-	HoldMS int `json:"hold_ms,omitzero"`
-	// Signal, when set, such as "ABRT", is the signal a run kills itself by once it has written
-	// its Stdout and Stderr, through a shell it executes in its place, so it dies by the signal's
-	// default action rather than the Go runtime's.
-	Signal string `json:"signal,omitzero"`
-	// Limit, when set, has a run warn of its own RLIMIT_AS, at "limit", before anything else.
-	Limit bool `json:"limit,omitzero"`
-	// Home, when set, makes the stand-in a version manager's shim, such as mise's, on a host
-	// whose user's home is Home: a run, the version command's included, answers only when its HOME
-	// is Home or unset, which the shim reads as the password database's home, Home again. Under
-	// any other HOME it refuses the user's configuration as untrusted, as mise does, and exits 1.
-	Home string `json:"home,omitzero"`
+	Stdout string            `json:"stdout"`
+	Stderr string            `json:"stderr"`
+	Exit   int               `json:"exit"`
+	Media  map[string]string `json:"media"`
+	HoldMS int               `json:"hold_ms,omitzero"`
+	Signal string            `json:"signal,omitzero"`
+	Limit  bool              `json:"limit,omitzero"`
+	Home   string            `json:"home,omitzero"`
 }
 
-// envelopeStandin returns a stand-in docproc tool, docproc-onenote or docproc-ooxml, set by an
-// onenoteSettings: as a shim, when its Home is set, it refuses under another HOME; with
-// --version alone it prints minimum and schema 2; otherwise it waits its
-// settings' HoldMS, writes their Media into the directory after --media, then their Stdout and
-// Stderr, and exits with their Exit, or dies by their Signal.
 func envelopeStandin(minimum string) tooltest.Program {
 	return func(r tooltest.Run) int { return envelopeRun(r, minimum) }
 }
 
-// envelopeRun is one run of envelopeStandin's stand-in.
 func envelopeRun(r tooltest.Run, minimum string) int {
 	var s onenoteSettings
 	if err := r.Settings(&s); err != nil {
@@ -100,8 +82,6 @@ func envelopeRun(r tooltest.Run, minimum string) int {
 	return s.Exit
 }
 
-// standinOneNoteStage returns a onenote stage over the stand-in docproc-onenote, set to s, and the
-// stand-in's link.
 func standinOneNoteStage(t *testing.T, s onenoteSettings) (*stages.OneNoteStage, string) {
 	t.Helper()
 	spec := onenote.OneNoteSpec()
@@ -118,8 +98,6 @@ func standinOneNoteStage(t *testing.T, s onenoteSettings) (*stages.OneNoteStage,
 	return stages.NewOneNoteStage(stages.OneNoteConfig{Reader: r, Version: stages.Versions(tl)}), link
 }
 
-// prepare runs stage's Prepare over a part in a directory of its own, returning its items and the
-// error that ended them, if any.
 func prepare(t *testing.T, stage dispatch.Stage) ([]dispatch.Item, error) {
 	t.Helper()
 	var items []dispatch.Item
@@ -132,12 +110,6 @@ func prepare(t *testing.T, stage dispatch.Stage) ([]dispatch.Item, error) {
 	return items, nil
 }
 
-// TestOneNoteStageRecords: the stage runs docproc-onenote under --file-only; a page is its record,
-// then its Markdown, each of docproc-onenote's media type; each of its media whose file
-// docproc-onenote wrote is a found part named by its filename, else its media name, at "page
-// <id>, media <n>", carrying its SHA-256, a recording its stored type; a medium with no file is an
-// unread child at its place, failed, its reason why; a skipped section is an unread child,
-// encrypted for a password-protected one; and each warning is a dispatch.Warning naming the tool.
 func TestOneNoteStageRecords(t *testing.T) {
 	t.Parallel()
 	sum := sha256.Sum256([]byte("a jpg"))
@@ -159,7 +131,6 @@ func TestOneNoteStageRecords(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A warning arrives on stderr, so its place among the lines is best effort.
 	var got []string
 	warnings := 0
 	for _, it := range items {
@@ -206,9 +177,6 @@ func TestOneNoteStageRecords(t *testing.T) {
 	}
 }
 
-// TestOneNoteStageRefusals: a refusal internal/cli classes as encrypted ends the stage with
-// ErrEncrypted, one it classes as read elsewhere, the table of contents', with ErrReadElsewhere,
-// and any other with neither; each wraps the *cli.ExitError.
 func TestOneNoteStageRefusals(t *testing.T) {
 	t.Parallel()
 	for reason, want := range map[string]error{

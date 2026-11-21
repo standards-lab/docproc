@@ -13,32 +13,13 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// pictureConfig is what a [pictureStage] is built over: its Converter, the version of the tools
-// behind it, the request every picture is converted under, and the memory bound the tools run
-// under, which a death by a signal's reason names.
 type pictureConfig struct {
-	// Converter converts the pictures; it is required.
 	Converter *picture.Converter
-	// Version names magick's and LibreOffice's version lines, as [versions] gives them; it is
-	// required.
-	Version string
-	// Request is the request every picture is converted under, checked by Build: its
-	// MetafileScale and Density, each zero its default. Its Dir, Path, Kind, and Stem are each
-	// part's own.
-	Request picture.Request
-	Memory  int64
+	Version   string
+	Request   picture.Request
+	Memory    int64
 }
 
-// pictureStage prepares a picture a vision model decodes only once converted, route.
-// VisionConverted's parts, through picture's Converter, to PNGs in the part's directory: a TIFF
-// to one [dispatch.ImageOutput] per page, in page order, named "page N", its Meta naming the page
-// and the TIFF's page count, [dispatch.MetaPage] and [dispatch.MetaCount]; an EMF or WMF at the
-// request's MetafileScale, an SVG at its Density, and a HEIC, WebP, or AVIF to one ImageOutput
-// named "picture", a HEIC's primary image, a WebP's or AVIF's first frame, each read as the kind
-// the part's content type names and named by the part's SHA-256. Every output's Meta names the
-// kind it was converted from. It has no processor yet for a HEIC, WebP, or AVIF whose reader the
-// Converter's magick lacks: it ends with dispatch.ErrNoProcessor, its reason naming why. Any other
-// failure is classified once, by [partErr].
 type pictureStage struct {
 	converter *picture.Converter
 	request   picture.Request
@@ -46,8 +27,6 @@ type pictureStage struct {
 	id        dispatch.Identity
 }
 
-// newPictureStage builds a pictureStage over cfg, panicking naming Converter when it is nil, the
-// wiring's mistake.
 func newPictureStage(cfg pictureConfig) *pictureStage {
 	if cfg.Converter == nil {
 		panic("stages: pictureConfig.Converter is nil")
@@ -61,11 +40,8 @@ func newPictureStage(cfg pictureConfig) *pictureStage {
 	}{req})}
 }
 
-// Identity returns the stage's identity: "picture", its tools' version lines, and its request's
-// hash.
 func (s *pictureStage) Identity() dispatch.Identity { return s.id }
 
-// Prepare converts the picture at p.Path, as the type's doc says.
 func (s *pictureStage) Prepare(ctx context.Context, p dispatch.Part, dir string) iter.Seq2[dispatch.Item, error] {
 	return func(yield func(dispatch.Item, error) bool) {
 		req := s.request
@@ -85,7 +61,6 @@ func (s *pictureStage) Prepare(ctx context.Context, p dispatch.Part, dir string)
 				Meta: map[string]string{dispatch.MetaFrom: string(p.ContentType.Kind)},
 			}
 			if p.ContentType.Kind == route.TIFF {
-				// A TIFF yields its every page, as the document stage yields a PDF's.
 				o.Name = "page " + strconv.Itoa(i+1)
 				o.Meta[dispatch.MetaPage], o.Meta[dispatch.MetaCount] = strconv.Itoa(i+1), strconv.Itoa(len(pngs))
 			}

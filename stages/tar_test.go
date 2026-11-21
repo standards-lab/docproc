@@ -17,13 +17,8 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// inspectFixture returns the path of one of inspect's synthesized fixtures.
 func inspectFixture(name string) string { return filepath.Join(inspectFixtures, name) }
 
-// TestTarStage dispatches inspect's clean.tar, a directory, a text, and a picture: the directory
-// is no part; each file is named by its stored name, found "tar entry <name>", written under its
-// SHA-256 inside the working directory, and routed by its content; and nothing is left once the
-// dispatch is done.
 func TestTarStage(t *testing.T) {
 	d, zs, work := archiveDispatcher(t, inspect.Options{})
 	events := dispatchAll(t, d, inspectFixture("clean.tar"), func(ev *dispatch.Event) {
@@ -54,11 +49,6 @@ func TestTarStage(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestGzipStage dispatches inspect's clean.tar.gz and unnamed.tgz, each a gzip stream holding
-// clean.tar: the stream yields one part, its decompressed content, found "gzip content <name>"
-// and routed again, a tar, whose entries are dispatched below it. clean.tar.gz's content is named
-// by its header, "clean.tar"; unnamed.tgz's header names nothing, so its content is named by the
-// stream's stem, "unnamed.tar".
 func TestGzipStage(t *testing.T) {
 	for _, c := range []struct{ fixture, content string }{
 		{"clean.tar.gz", "clean.tar"},
@@ -86,8 +76,6 @@ func TestGzipStage(t *testing.T) {
 	}
 }
 
-// TestGzipStem: a gzip stream whose header names nothing names its content by its own name
-// without .gz, with a .tgz's .tar, or, with neither, as itself.
 func TestGzipStem(t *testing.T) {
 	gz := func(body string) string {
 		var b bytes.Buffer
@@ -112,12 +100,6 @@ func TestGzipStem(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestTarUnsafe: under a policy that quarantines them, inspect quarantines a tar with a
-// traversing, an absolute, or a drive letter name, a symbolic or hard link, or a device or a FIFO,
-// and the archive stage never sees it. By default, each flag active, each safe regular entry is
-// written by its SHA-256 inside the working directory, its stored name only its name, and each
-// flagged entry, a traversing or absolute name, a link, a device, or a FIFO, is an unread child,
-// quarantined with its flag, no file, link, or node made, and nothing lands outside.
 func TestTarUnsafe(t *testing.T) {
 	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
 		inspect.ArchiveTraversal: inspect.Quarantine, inspect.ArchiveAbsolutePath: inspect.Quarantine, inspect.ArchiveSymlink: inspect.Quarantine,
@@ -149,10 +131,6 @@ func TestTarUnsafe(t *testing.T) {
 	}
 }
 
-// checkUnsafe dispatches the archive at path through stage, an archive stage under the default
-// options, in work under root, and checks that its parts are the entries named parts, each
-// written by its SHA-256 inside work, and its unread children the entries children names, each
-// quarantined with its check, no file, and that nothing is left under root.
 func checkUnsafe(t *testing.T, stage *stages.ArchiveStage, path, root, work string, parts []string, children map[string]inspect.Check) {
 	t.Helper()
 	fixture := filepath.Base(path)
@@ -196,9 +174,6 @@ func checkUnsafe(t *testing.T, stage *stages.ArchiveStage, path, root, work stri
 	}
 }
 
-// TestTarGzipUnsafe: a gzip stream holding a tar a policy quarantines is safe itself, so it is
-// prepared, and the tar it holds is quarantined once inspected, its entries never written, its
-// file removed once its event is done.
 func TestTarGzipUnsafe(t *testing.T) {
 	d, zs, work := archiveDispatcher(t, inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.ArchiveTraversal: inspect.Quarantine}})
 	events := dispatchAll(t, d, inspectFixture("traversal.tar.gz"), nil)
@@ -212,11 +187,6 @@ func TestTarGzipUnsafe(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestTarBombAsWritten: sparse-bomb.tar's entry declares 4 GiB, all a hole but its last 512
-// bytes, in a 2 KiB tar, and inspect quarantines it by that header. Under a policy that lets
-// archive-bomb proceed, at lowered thresholds, the stage stops writing the hole's zeros once they
-// pass both, removes the partial file, and makes it an unread child, quarantined, flagged
-// archive-bomb with its evidence.
 func TestTarBombAsWritten(t *testing.T) {
 	lowered := inspect.Options{BombSize: 1 << 20, BombRatio: 100}
 	d, zs, _ := archiveDispatcher(t, lowered)
@@ -236,10 +206,6 @@ func TestTarBombAsWritten(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestGzipBombAsWritten: bomb.tar.gz expands about 1,000:1 to a tar of 8 MiB of zeros. At
-// lowered thresholds the stage stops decompressing it once its bytes pass both, removes the
-// partial file, and makes it an unread child, quarantined, flagged archive-bomb; with no bomb rule its tar is
-// written in full and dispatched, its entry no bomb, since a tar stores its bytes as they are.
 func TestGzipBombAsWritten(t *testing.T) {
 	d, _, work := archiveDispatcher(t, inspect.Options{BombSize: 1 << 20, BombRatio: 100})
 	events := dispatchAll(t, d, inspectFixture("bomb.tar.gz"), func(ev *dispatch.Event) {
@@ -264,10 +230,6 @@ func TestGzipBombAsWritten(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestArchiveDamaged: a gzip stream cut short is an unread child, failed, its content's partial
-// file removed; a gzip whose header doesn't read fails, recorded; and a tar cut short inside its
-// text's content, let past inspect's tar-unreadable, has the text an unread child, its content not
-// read whole, then fails, recorded, at the header after it.
 func TestArchiveDamaged(t *testing.T) {
 	gz, err := os.ReadFile(inspectFixture("clean.tar.gz"))
 	if err != nil {
@@ -291,7 +253,6 @@ func TestArchiveDamaged(t *testing.T) {
 	}
 	opts := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.TarUnreadable: inspect.Proceed}}
 	d, _, work = archiveDispatcher(t, opts)
-	// clean.tar's docs/notes.txt has its header at 512 and its 18 bytes at 1024.
 	events = dispatchAll(t, d, input(t, "cut.tar", string(whole[:1030])), nil)
 	wantSteps(t, events, []step{{"docs/notes.txt", 1, dispatch.Failed}, {"cut.tar", 0, dispatch.Failed}})
 	if ev := events[0]; !strings.HasPrefix(ev.Reason, "doesn't read") {
@@ -303,8 +264,6 @@ func TestArchiveDamaged(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// wantBomb fails the test unless ev is an unread child at where, quarantined, flagged
-// archive-bomb, unsafe, its evidence holding each of evidence.
 func wantBomb(t *testing.T, ev dispatched, where string, evidence ...string) {
 	t.Helper()
 	flags := ev.Part.Flags

@@ -20,44 +20,13 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// officeConfig is what an [officeStage] is built over: its Converter, the version of the tools
-// behind it, the scale metafiles are rendered at, and the memory bound the tools run under, which
-// a death by a signal's reason names.
 type officeConfig struct {
-	// Converter converts the documents; it is required.
-	Converter *office.Converter
-	// Version names the tools behind the Converter, docproc-ooxml's, LibreOffice's, and magick's
-	// version lines, as [versions] gives them; it is required.
-	Version string
-	// MetafileScale is the scale a document's EMF and WMF pictures are rendered at, as
-	// office.Request's, zero its default; part of the stage's identity.
+	Converter     *office.Converter
+	Version       string
 	MetafileScale int
 	Memory        int64
 }
 
-// officeStage prepares an office document, route.Office's parts, through office's Converter,
-// which reads the part's file in place. It yields the document line's Markdown as a
-// [dispatch.MarkdownOutput] named "document", its Meta naming the format a legacy document or an
-// RTF was converted from, "rtf" for an RTF; an xlsx's holds no sheet's. Each sheet of an xlsx then
-// yields two outputs, both named "sheet/<n>", n the sheet's ordinal from 1, as a medium's Sheet
-// names it, each with the sheet's name in its Meta under [dispatch.MetaSheet]: a Markdown output,
-// its sheet line's Markdown followed by its rows lines', and a [dispatch.RecordOutput] of
-// [dispatch.MediaOOXML], its rows lines as JSON Lines, each without its Markdown, so each sheet's
-// text exists once in the content store. A sheet's outputs are written to their files in the part's
-// directory as its lines stream, so nothing holds a whole sheet.
-//
-// The one media rule, [stash.item], then turns each medium the document names into its item at
-// "document, media <n>", in the document's order: a picture converted to PNG is found as its PNG,
-// "image/png"; any other picture, an embedded package, or an OLE object as stored, typed by its
-// stored content type and its SHA-256 claimed by its media name, so its own stage reads it; and a
-// linked picture, with no file, is an unread child, no processor yet. docproc-ooxml's warnings are
-// [dispatch.Warning]s, each with its tool's name.
-//
-// An RTF is office's to convert through LibreOffice to docx, as a .doc is. The stage has no
-// processor yet for an ODF package, a WordPerfect document, or an Excel binary workbook: each ends
-// with dispatch.ErrNoProcessor, its reason naming the kind. A refusal internal/cli classes as
-// encrypted ends it with dispatch.ErrEncrypted, and any other failure is classified once, by
-// [partErr].
 type officeStage struct {
 	converter *office.Converter
 	scale     int
@@ -65,8 +34,6 @@ type officeStage struct {
 	id        dispatch.Identity
 }
 
-// newOfficeStage builds an officeStage over cfg, panicking naming Converter when it is nil, the
-// wiring's mistake.
 func newOfficeStage(cfg officeConfig) *officeStage {
 	if cfg.Converter == nil {
 		panic("stages: officeConfig.Converter is nil")
@@ -78,17 +45,13 @@ func newOfficeStage(cfg officeConfig) *officeStage {
 	}{cli.Schema, office.Request{MetafileScale: scale}})}
 }
 
-// Identity returns the stage's identity: "office", its tools' version lines, and its request's
-// and schema's hash.
 func (s *officeStage) Identity() dispatch.Identity { return s.id }
 
-// officeUnread names the office kinds the stage has no processor for yet, each with its article.
 var officeUnread = map[route.Kind]string{
 	route.ODF:         "an ODF package",
 	route.WordPerfect: "a WordPerfect document",
 }
 
-// Prepare converts the document at p.Path, as the type's doc says.
 func (s *officeStage) Prepare(ctx context.Context, p dispatch.Part, dir string) iter.Seq2[dispatch.Item, error] {
 	return func(yield func(dispatch.Item, error) bool) {
 		what, ok := officeUnread[p.ContentType.Kind]
@@ -144,8 +107,6 @@ func (s *officeStage) Prepare(ctx context.Context, p dispatch.Part, dir string) 
 	}
 }
 
-// officeWalk is one conversion's walk of its records: the part's directory, the sheet being
-// written, if any, and the loop's yield.
 type officeWalk struct {
 	dir   string
 	sheet *sheetFiles
@@ -153,17 +114,12 @@ type officeWalk struct {
 	yield func(dispatch.Item, error) bool
 }
 
-// sheetFiles are one sheet's two outputs as they are written: its name and number, and its
-// Markdown's and its rows' files, each buffered.
 type sheetFiles struct {
 	name, number   string
 	md, rows       *os.File
 	mdBuf, rowsBuf *bufio.Writer
 }
 
-// record takes rec, the conversion's next record after doc, the Document once it has come, and
-// returns the Document: the Document yields its Markdown output; a Sheet ends the sheet before it
-// and begins its own files; a Rows record is written to them; a warning is yielded.
 func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Document, error) {
 	switch r := rec.(type) {
 	case *office.Document:
@@ -182,11 +138,9 @@ func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Do
 	case *office.Warning:
 		return doc, w.item(dispatch.WarningItem(dispatch.Warning(*r)))
 	}
-	// A line of a kind office doesn't know adds nothing to the outputs.
 	return doc, nil
 }
 
-// item yields it, or returns errStopped once the loop stops.
 func (w *officeWalk) item(it dispatch.Item) error {
 	if !w.yield(it, nil) {
 		return errStopped
@@ -194,7 +148,6 @@ func (w *officeWalk) item(it dispatch.Item) error {
 	return nil
 }
 
-// begin opens the files of sh, the next sheet, and writes its Markdown.
 func (w *officeWalk) begin(sh *office.Sheet) error {
 	w.n++
 	number := strconv.Itoa(w.n)
@@ -212,7 +165,6 @@ func (w *officeWalk) begin(sh *office.Sheet) error {
 	return err
 }
 
-// rows writes r to the current sheet's files: its Markdown, and its rows line without it.
 func (w *officeWalk) rows(r *office.Rows) error {
 	if w.sheet == nil {
 		return errors.New("office stage: a rows line before any sheet line")
@@ -230,7 +182,6 @@ func (w *officeWalk) rows(r *office.Rows) error {
 	return nil
 }
 
-// flush closes the current sheet's files, if any, and yields its two outputs.
 func (w *officeWalk) flush() error {
 	sh := w.sheet
 	if sh == nil {
@@ -253,7 +204,6 @@ func (w *officeWalk) flush() error {
 	}))
 }
 
-// close closes the current sheet's files, if any, once the conversion has stopped.
 func (w *officeWalk) close() {
 	if w.sheet != nil {
 		_ = w.sheet.md.Close()

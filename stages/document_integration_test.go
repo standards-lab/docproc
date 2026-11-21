@@ -21,10 +21,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// documentFixture returns the path of a copy of one of document's committed fixtures, under its
-// testdata, under its own name in a directory of the test's own. The document stage's gs runs over
-// a page of its own work in the PDF's directory; a dispatch of the copy keeps whatever they write
-// there out of testdata, which TestEveryFixture walks.
 func documentFixture(t *testing.T, name string) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "document", "testdata", filepath.FromSlash(name)))
@@ -34,8 +30,6 @@ func documentFixture(t *testing.T, name string) string {
 	return input(t, path.Base(name), string(b))
 }
 
-// encryptedPDF returns a PDF made from document's clean.pdf by this machine's qpdf, encrypted with
-// args, in a directory of the test's own.
 func encryptedPDF(t *testing.T, name string, args ...string) string {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), name)
@@ -46,7 +40,6 @@ func encryptedPDF(t *testing.T, name string, args ...string) string {
 	return out
 }
 
-// outputNames returns ev's outputs as their kind and name, in order.
 func outputNames(ev dispatched) []string {
 	var names []string
 	for _, o := range ev.Outputs {
@@ -55,10 +48,6 @@ func outputNames(ev dispatched) []string {
 	return names
 }
 
-// TestDocumentStageEncryptedReal: of PDFs encrypted from document's clean.pdf, through this
-// machine's qpdf, the two that need a password are Encrypted with nothing rendered; the one
-// restricted only by its permissions renders its pages as any PDF does, as does clean.pdf, which
-// isn't encrypted. inspect flags /Encrypt on the three encrypted, as before.
 func TestDocumentStageEncryptedReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	for _, c := range []struct {
@@ -86,10 +75,6 @@ func TestDocumentStageEncryptedReal(t *testing.T) {
 	}
 }
 
-// TestDocumentStageFormsReal: the generated acroform.pdf yields its forms record first, its
-// fields the generator's exactly, then its page; signed.pdf, a page of a signed PDF, yields its
-// one signature field, signed, its reference value failing nothing, then its page; and the clean
-// PDF, with no AcroForm, yields none.
 func TestDocumentStageFormsReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	for name, want := range map[string]string{
@@ -121,9 +106,6 @@ func TestDocumentStageFormsReal(t *testing.T) {
 	}
 }
 
-// TestDocumentStageAttachmentsReal: the generated attachments.pdf's name tree file, notes.txt, and
-// file attachment annotation's, data.csv, are each found "attachment <name>", written by their
-// SHA-256, inspected and routed again; the Screen annotation's clip.avi isn't extracted.
 func TestDocumentStageAttachmentsReal(t *testing.T) {
 	d, work := newDispatcherIn(t, allStages(t))
 	events := dispatchAll(t, d, documentFixture(t, "attachments/attachments.pdf"), func(ev *dispatch.Event) {
@@ -150,7 +132,6 @@ func TestDocumentStageAttachmentsReal(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// newDispatcherIn returns a dispatcher over stages and the working directory it makes parts' in.
 func newDispatcherIn(t *testing.T, stages dispatch.Stages) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	work := t.TempDir()
@@ -161,8 +142,6 @@ func newDispatcherIn(t *testing.T, stages dispatch.Stages) (*dispatch.Dispatcher
 	return d, work
 }
 
-// attachedPDF returns a one-page PDF whose name tree embeds name holding content, FlateDecode
-// compressed.
 func attachedPDF(t *testing.T, name string, content []byte) []byte {
 	t.Helper()
 	var z bytes.Buffer
@@ -199,10 +178,6 @@ func attachedPDF(t *testing.T, name string, content []byte) []byte {
 	return b.Bytes()
 }
 
-// TestDocumentStageAttachmentBombReal: a PDF of about 8 KiB embedding 8 MiB of zeros, through this
-// machine's pdfdetach, is saved whole under no bomb rule; under a 1 MiB size and a 100:1 ratio,
-// pdfdetach is stopped past them, the file is an unread child, quarantined, flagged archive-bomb,
-// and nothing of it is left.
 func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	gs := pinned(t, document.GhostscriptSpec())
 	render, err := document.NewGhostscript(document.Config{Ghostscript: gs})

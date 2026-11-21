@@ -19,13 +19,10 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// sevenZipFixtures are the sevenzip package's fixtures.
 var sevenZipFixtures = filepath.Join("..", "sevenzip", "testdata")
 
-// sevenZipFixture returns the path of one of the sevenzip package's fixtures.
 func sevenZipFixture(name string) string { return filepath.Join(sevenZipFixtures, name) }
 
-// sevenZipConfig returns an archive stage's configuration under opts over the 7zz mise pins.
 func sevenZipConfig(t *testing.T, opts inspect.Options) stages.ArchiveConfig {
 	t.Helper()
 	tl := pinned(t, sevenzip.SevenZipSpec())
@@ -36,17 +33,11 @@ func sevenZipConfig(t *testing.T, opts inspect.Options) stages.ArchiveConfig {
 	return stages.ArchiveConfig{Inspect: opts, SevenZip: r, Version: stages.Versions(tl)}
 }
 
-// sevenZipDispatcher returns a dispatcher as archiveDispatcher does, its archive stage reading
-// through the 7zz mise pins.
 func sevenZipDispatcher(t *testing.T, opts inspect.Options) (*dispatch.Dispatcher, *counting, string) {
 	t.Helper()
 	return archiveDispatcherWith(t, sevenZipConfig(t, opts))
 }
 
-// TestSevenZipStage dispatches clean.7z, a directory, a text, and a picture: the directory is no
-// part; each file is extracted through 7zz, named by its stored name, found "7z entry <name>",
-// written under its SHA-256 inside the working directory, and routed by its content; and nothing
-// is left once the dispatch is done.
 func TestSevenZipStage(t *testing.T) {
 	d, zs, work := sevenZipDispatcher(t, inspect.Options{})
 	events := dispatchAll(t, d, sevenZipFixture("generated/clean.7z"), func(ev *dispatch.Event) {
@@ -74,10 +65,6 @@ func TestSevenZipStage(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestSevenZipStreams: clean.tar.zst's content, named by the stream's stem, "clean.tar", is found
-// "zstd content clean.tar" and dispatched as a tar below it; notebook.cab's files are found
-// "cabinet entry <name>", each a OneNote file by its signature; and commons-compress's
-// bla.deflate64.7z, Deflate64 in a 7z, gives its two XML files.
 func TestSevenZipStreams(t *testing.T) {
 	d, _, work := sevenZipDispatcher(t, inspect.Options{})
 	events := dispatchAll(t, d, sevenZipFixture("generated/clean.tar.zst"), nil)
@@ -122,9 +109,6 @@ func TestSevenZipStreams(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// zipMethods are the ZIP fixtures whose one entry archive/zip doesn't read, but bzip2-zip.zip's,
-// which it reads through compress/bzip2: each fixture, its entry, the entry's size, and its
-// method.
 var zipMethods = []struct {
 	fixture, entry string
 	size           int64
@@ -139,9 +123,6 @@ var zipMethods = []struct {
 	{"libarchive/test_read_format_zip_zstd.zipx", "vimrc", 912, 93},
 }
 
-// TestZipMethods: each ZIP entry of a method archive/zip doesn't read is extracted through 7zz,
-// held to its central directory's size and CRC-32, and found "zip entry <name>", bzip2's through
-// compress/bzip2; the two lorem-ipsum ZIPs, Deflate64 and implode, give the same bytes.
 func TestZipMethods(t *testing.T) {
 	d, _, work := sevenZipDispatcher(t, inspect.Options{})
 	sums := map[string]string{}
@@ -160,11 +141,6 @@ func TestZipMethods(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestSevenZipUnsafe: under a policy that quarantines them, the archive stage quarantines a 7z or
-// a cabinet whose listing names a traversing, an absolute, or a drive letter name, a symbolic
-// link, or a FIFO, before anything is extracted. By default, each flag active, each safe entry is
-// extracted by its SHA-256 inside the working directory, and each flagged entry is an unread
-// child, quarantined with its flag, never extracted, no link or node made.
 func TestSevenZipUnsafe(t *testing.T) {
 	strict := inspect.Options{Policy: map[inspect.Check]inspect.Verdict{
 		inspect.ArchiveTraversal: inspect.Quarantine, inspect.ArchiveAbsolutePath: inspect.Quarantine,
@@ -202,9 +178,6 @@ func TestSevenZipUnsafe(t *testing.T) {
 	}
 }
 
-// TestSevenZipQuarantined: a 7z found inside a ZIP and quarantined by policy is removed once its
-// event is done, as a part inspect quarantines is, and its flags, the listing's among them, are
-// its event's.
 func TestSevenZipQuarantined(t *testing.T) {
 	traversal, err := os.ReadFile(sevenZipFixture("generated/traversal.7z"))
 	if err != nil {
@@ -227,12 +200,6 @@ func TestSevenZipQuarantined(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestSevenZipBombs: bomb.7z's and bomb.cab's listings declare 8 MiB and declared-bomb.zst's
-// frame header 4 GiB; past a rule of 1,000:1 and 1 GiB, lowered for the 8 MiB, each is
-// quarantined by its listing, nothing extracted. Under a policy that lets archive-bomb proceed,
-// the stage stops writing the zeros 7zz gives once they pass both, removes the partial file, and
-// records the entry quarantined, its check archive-bomb; bomb.zst, whose header declares no size,
-// passes its listing and is stopped as written.
 func TestSevenZipBombs(t *testing.T) {
 	lowered := inspect.Options{BombSize: 1 << 20, BombRatio: 100}
 	for _, c := range []struct {
@@ -279,10 +246,6 @@ func TestSevenZipBombs(t *testing.T) {
 	}
 }
 
-// TestSevenZipEncrypted: encrypted.7z's clear entry is found and its encrypted one an unread
-// child, encrypted, flagged archive-encrypted, and the archive is encrypted once its readable
-// entry is dispatched; encrypted-headers.7z, which lists nothing without its password, is
-// encrypted at once.
 func TestSevenZipEncrypted(t *testing.T) {
 	d, _, work := sevenZipDispatcher(t, inspect.Options{})
 	events := dispatchAll(t, d, sevenZipFixture("generated/encrypted.7z"), nil)
@@ -303,8 +266,6 @@ func TestSevenZipEncrypted(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestSevenZipDamaged: a 7z cut short fails, recorded, 7-Zip unable to open it, and a zstd stream
-// cut short is an unread child, failed, its content's partial file removed.
 func TestSevenZipDamaged(t *testing.T) {
 	whole, err := os.ReadFile(sevenZipFixture("generated/clean.7z"))
 	if err != nil {

@@ -16,13 +16,8 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// fixturesGolden is the whole-fixture test's golden: one line per committed fixture, its path from
-// the module's root, its route, and its outcome, tab-separated, in path order.
 const fixturesGolden = "testdata/fixtures.tsv"
 
-// committedFixtures returns every file under each of the base module's packages' testdata
-// directories, the stages package's own golden aside, as paths from this package's directory, in
-// path order: the module's committed fixtures, whatever their kind.
 func committedFixtures(t *testing.T) []string {
 	t.Helper()
 	var paths []string
@@ -47,12 +42,6 @@ func committedFixtures(t *testing.T) []string {
 	return paths
 }
 
-// copyFixtures copies each of fixtures, paths from this package's directory, to the same path
-// from the module's root in a directory of the test's own, and returns each fixture's copy by its
-// path, and that directory by "". A dispatch of a committed PDF in place would run gs's runs over
-// a page of their own in its testdata directory; a dispatch of the copy keeps whatever every
-// tool's runs write in their working directory out of testdata. Each copy keeps its fixture's
-// name, which routing reads, and its siblings, as a fixture that names another finds it.
 func copyFixtures(t *testing.T, fixtures []string) map[string]string {
 	t.Helper()
 	root := t.TempDir()
@@ -75,14 +64,6 @@ func copyFixtures(t *testing.T, fixtures []string) map[string]string {
 	return copies
 }
 
-// TestEveryFixture dispatches every committed fixture, its copy in a directory of the test's own,
-// through Build's Set over this machine's tools, the same-checkout docproc tools among them, under
-// a host's bomb rule and entry bound, so a bomb fixture is held to it rather than expanded, and
-// checks each fixture's route and outcome against the golden, as text: the whole module's
-// fixtures read as a host reads them, through stages and dispatch, four at once, as a host's pool
-// workers run them. The bomb rule matters to the others too: an expanded bomb fills the working
-// directory's filesystem, and soffice, its user installation not written, then fails whatever
-// legacy document runs beside it.
 func TestEveryFixture(t *testing.T) {
 	set := builtSet(t, stages.Options{Inspect: inspect.Options{BombRatio: 100, BombSize: 64 << 20, Entries: 10000}})
 	d, err := dispatch.New(dispatch.Config{
