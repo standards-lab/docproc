@@ -18,14 +18,10 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinPattern captures the version the stand-in prints as "standin version V".
 var standinPattern = regexp.MustCompile(`standin version (\d+(?:\.\d+)*)`)
 
-// standinKillAfter is the stand-in's KillAfter period unless a test sets its own: longer than any
-// test waits, so a test that ends sooner shows the run didn't wait for it.
 const standinKillAfter = 10 * time.Second
 
-// standinSpec declares the stand-in tool, printing version, with minimum and standinKillAfter.
 func standinSpec(program, version, minimum string) tool.Spec {
 	return tool.Spec{
 		Program:        program,
@@ -36,8 +32,6 @@ func standinSpec(program, version, minimum string) tool.Spec {
 	}
 }
 
-// TestNewExecFindsProgramOnPath: a program without a separator is looked up on PATH. It sets PATH,
-// so it runs alone; every other test names its stand-in by path.
 func TestNewExecFindsProgramOnPath(t *testing.T) {
 	t.Setenv("PATH", filepath.Dir(installStandin(t)))
 	tl, err := tool.NewExec(t.Context(), standinSpec("standin", "1.2.3", "1.0"))
@@ -52,8 +46,6 @@ func TestNewExecFindsProgramOnPath(t *testing.T) {
 	}
 }
 
-// TestNewExecTakesPathAsGiven: a program with a separator is taken as given, its link on no
-// PATH, and the Tool is named by its base name.
 func TestNewExecTakesPathAsGiven(t *testing.T) {
 	t.Parallel()
 	link := installStandin(t)
@@ -89,16 +81,16 @@ func TestNewExecVersionRule(t *testing.T) {
 		version, minimum string
 		ok               bool
 	}{
-		{"1.2.3", "1.2.3", true},    // equal
-		{"1.2.4", "1.2.3", true},    // newer in the last component
-		{"2.0", "1.9.9", true},      // newer in the first component
-		{"1.10", "1.9", true},       // numbers, not text
-		{"10.08.0", "10.8", true},   // leading zero, missing component as zero
-		{"9", "9.0.0", true},        // missing components as zero
-		{"1.2.2", "1.2.3", false},   // older in the last component
-		{"1.9", "1.10", false},      // numbers, not text
-		{"9", "9.0.1", false},       // a missing component is zero, older than 1
-		{"7.1.2", "7.1.2.1", false}, // a missing component is zero
+		{"1.2.3", "1.2.3", true},
+		{"1.2.4", "1.2.3", true},
+		{"2.0", "1.9.9", true},
+		{"1.10", "1.9", true},
+		{"10.08.0", "10.8", true},
+		{"9", "9.0.0", true},
+		{"1.2.2", "1.2.3", false},
+		{"1.9", "1.10", false},
+		{"9", "9.0.1", false},
+		{"7.1.2", "7.1.2.1", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.version+" vs "+tt.minimum, func(t *testing.T) {
@@ -159,9 +151,6 @@ func TestNewExecFailingVersionCommand(t *testing.T) {
 	}
 }
 
-// TestNewExecVersionExit: a version command that exits with the Spec's VersionExit, as
-// pdfdetach -v exits 99, has printed the version; any other nonzero exit still fails, and a Spec
-// with no VersionExit takes the same command's exit as the failure it is.
 func TestNewExecVersionExit(t *testing.T) {
 	t.Parallel()
 	link := installStandin(t)
@@ -186,8 +175,6 @@ func TestNewExecVersionExit(t *testing.T) {
 	}
 }
 
-// TestNewExecRefusesBadSpec checks that a malformed spec fails as itself, before the program is
-// looked up: the program is missing, and the error still names the spec's defect.
 func TestNewExecRefusesBadSpec(t *testing.T) {
 	t.Parallel()
 	noGroup := standinSpec("missing-tool", "1.0", "1.0")
@@ -301,8 +288,6 @@ func TestRunStderrWriter(t *testing.T) {
 	}
 }
 
-// newStandin installs the stand-ins and builds the stand-in tool over its link through the exec
-// runner.
 func newStandin(t *testing.T) *tool.Tool {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), standinSpec(installStandin(t), "1.0", "1.0"))
@@ -312,8 +297,6 @@ func newStandin(t *testing.T) *tool.Tool {
 	return tl
 }
 
-// assertNames checks that err names the program, the version found (when one was), and the
-// minimum.
 func assertNames(t *testing.T, err error, program, found, minimum string) {
 	t.Helper()
 	msg := err.Error()

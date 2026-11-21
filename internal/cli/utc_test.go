@@ -8,8 +8,6 @@ import (
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
-// TestUTC: a time written with an offset decodes, under cli.UTC, to the same instant in UTC, a
-// time inside a struct too; null leaves a time as it was.
 func TestUTC(t *testing.T) {
 	t.Parallel()
 	want := time.Date(2026, 3, 1, 10, 30, 0, 0, time.UTC)

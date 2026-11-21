@@ -8,8 +8,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// zipEntry returns a ZIP's first local file header, its entry named name, stored by method,
-// with content as its data and its sizes in the header.
 func zipEntry(name string, method uint16, content string) string {
 	b := make([]byte, 30)
 	copy(b, "PK\x03\x04")
@@ -21,11 +19,8 @@ func zipEntry(name string, method uint16, content string) string {
 	return string(b) + name + content + "PK\x03\x04"
 }
 
-// odfText is an ODF text document's first entry.
 var odfText = zipEntry("mimetype", 0, "application/vnd.oasis.opendocument.text")
 
-// ftyp returns an ISO-BMFF file's ftyp box, its major brand and compatible brands, then a moov
-// box's start.
 func ftyp(major string, compatible ...string) string {
 	body := major + "\x00\x00\x02\x00" + strings.Join(compatible, "")
 	b := make([]byte, 4)
@@ -33,18 +28,14 @@ func ftyp(major string, compatible ...string) string {
 	return string(b) + "ftyp" + body + "\x00\x00\x00\x08moov"
 }
 
-// ebml returns an EBML header holding docType as its DocType element.
 func ebml(docType string) string {
 	return "\x1a\x45\xdf\xa3\xa3\x42\x86\x81\x01\x42\xf7\x81\x01\x42\x82" + string([]byte{byte(0x80 | len(docType))}) + docType
 }
 
-// riffForm returns a RIFF file's header of form type form.
 func riffForm(form string) string {
 	return "RIFF\x24\x00\x00\x00" + form + "fmt "
 }
 
-// tarHeader returns a tar archive's first header, its member named name, with magic at offset
-// 257.
 func tarHeader(name, magic string) string {
 	b := make([]byte, 512)
 	copy(b, name)
@@ -52,13 +43,10 @@ func tarHeader(name, magic string) string {
 	return string(b)
 }
 
-// pstHeader returns a PST header's first bytes: the "!BDN" magic, a CRC, the client magic, and
-// version 23, Unicode.
 func pstHeader(client string) string {
 	return "!BDN\x00\x00\x00\x00" + client + "\x17\x00\x13\x00"
 }
 
-// Further constructed content, each its format's signature followed by filler.
 var (
 	wordPerfect = "\xffWPC\x10\x00\x00\x00\x01\x0a"
 	mboxBytes   = "From ann@example.org Sat Jan  3 01:05:34 1996\nFrom: ann@example.org\n\nbody\n"
@@ -71,7 +59,6 @@ var (
 		"<svg xmlns=\"http://www.w3.org/2000/svg\">"
 )
 
-// utf16LE returns s in UTF-16LE after its byte order mark; s is ASCII.
 func utf16LE(s string) string {
 	b := []byte{0xff, 0xfe}
 	for i := range len(s) {
@@ -80,7 +67,6 @@ func utf16LE(s string) string {
 	return string(b)
 }
 
-// utf16BE returns s in UTF-16BE after its byte order mark; s is ASCII.
 func utf16BE(s string) string {
 	b := []byte{0xfe, 0xff}
 	for i := range len(s) {
@@ -89,8 +75,6 @@ func utf16BE(s string) string {
 	return string(b)
 }
 
-// TestIdentify: each kind is named by a minimal head of its signature, and each near-miss of a
-// signature is another kind or none.
 func TestIdentify(t *testing.T) {
 	cases := []struct {
 		name string
@@ -169,7 +153,6 @@ func TestIdentify(t *testing.T) {
 		{"utf-32 little-endian bom", "\xff\xfe\x00\x00a\x00\x00\x00", route.UTF32BOM},
 		{"utf-32 big-endian bom", "\x00\x00\xfe\xff\x00\x00\x00a", route.UTF32BOM},
 
-		// Near-misses.
 		{"empty", "", route.Unknown},
 		{"text", "plain text", route.Unknown},
 		{"odf mimetype compressed", zipEntry("mimetype", 8, "application/vnd.oasis.opendocument.text"), route.ZIP},
@@ -217,7 +200,6 @@ func TestIdentify(t *testing.T) {
 	}
 }
 
-// TestPNGSignature: the exported signature is the one Identify names a PNG by.
 func TestPNGSignature(t *testing.T) {
 	if got := route.Identify([]byte(route.PNGSignature)); got != route.PNG {
 		t.Errorf("Identify(PNGSignature) = %q, want %q", got, route.PNG)

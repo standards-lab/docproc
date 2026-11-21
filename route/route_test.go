@@ -12,7 +12,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// Constructed content, each its format's signature followed by filler.
 var (
 	pdfBytes  = "%PDF-1.7\n%filler"
 	pngBytes  = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
@@ -27,8 +26,6 @@ var (
 	peBytes   = pe(0x40)
 )
 
-// pe returns a PE executable's first bytes: "MZ", e_lfanew at 0x3c naming at, and the PE
-// signature at at.
 func pe(at uint32) string {
 	b := make([]byte, 0x80)
 	copy(b, "MZ")
@@ -37,7 +34,6 @@ func pe(at uint32) string {
 	return string(b)
 }
 
-// bmp returns a BMP's first bytes, its DIB header size at offset 14 being dib.
 func bmp(dib uint32) string {
 	b := make([]byte, 54)
 	copy(b, "BM")
@@ -45,7 +41,6 @@ func bmp(dib uint32) string {
 	return string(b)
 }
 
-// emf returns an EMF's first bytes: a record of type typ, with sig at offset 40.
 func emf(typ uint32, sig string) string {
 	b := make([]byte, 88)
 	binary.LittleEndian.PutUint32(b, typ)
@@ -54,8 +49,6 @@ func emf(typ uint32, sig string) string {
 	return string(b)
 }
 
-// wmf returns a standard WMF META_HEADER's first bytes: its type, its size in words, and its
-// version.
 func wmf(typ, size, version uint16) string {
 	b := make([]byte, 18)
 	binary.LittleEndian.PutUint16(b, typ)
@@ -64,8 +57,6 @@ func wmf(typ, size, version uint16) string {
 	return string(b)
 }
 
-// writeContent writes content into dir under its SHA-256 and ext, as mail names it, and returns
-// the name.
 func writeContent(t *testing.T, dir, content, ext string) string {
 	t.Helper()
 	sum := sha256.Sum256([]byte(content))
@@ -76,11 +67,6 @@ func writeContent(t *testing.T, dir, content, ext string) string {
 	return name
 }
 
-// TestFileSignatures, email's v0.5.0 cases: content is routed by its signature, whatever its
-// stored MIME type says; the extension, in any case, decides only within a ZIP or OLE2 container,
-// so a ZIP without an OOXML extension is an archive, and an OLE2 file without a routed extension,
-// a legacy name without the signature, and a near-miss of a signature are unrouted. A
-// header-shaped .eml is nested, as TestFileMessages tells apart, and a .txt is text.
 func TestFileSignatures(t *testing.T) {
 	type tc struct {
 		name     string
@@ -107,7 +93,6 @@ func TestFileSignatures(t *testing.T) {
 		{"ole2 msg", ole2Bytes, "forwarded.msg", "application/vnd.ms-outlook", route.Nested},
 		{"ole2 MSG upper case", ole2Bytes, "FORWARDED.MSG", "", route.Nested},
 
-		// Near-misses.
 		{"bmp with no dib header", "BM" + strings.Repeat("x", 30), "a.bmp", "image/bmp", route.Unrouted},
 		{"emf type without signature", emf(1, "NOPE"), "a.emf", "image/x-emf", route.Unrouted},
 		{"emf signature on another record", emf(2, " EMF"), "a.emf", "", route.Unrouted},
@@ -128,7 +113,6 @@ func TestFileSignatures(t *testing.T) {
 		{"text", "plain text", "a.txt", "text/plain", route.Text},
 		{"empty", "", "a.pdf", "application/pdf", route.Unrouted},
 
-		// A stored MIME type that lies loses to the signature.
 		{"pdf stored as png", pdfBytes, "a.png", "image/png", route.Document},
 		{"png stored as pdf", pngBytes, "report.pdf", "application/pdf", route.Vision},
 		{"jpeg stored as docx", jpegBytes, "a.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", route.Vision},
@@ -155,18 +139,8 @@ func TestFileSignatures(t *testing.T) {
 	}
 }
 
-// headerShaped is content with a message's header: a From field first.
 const headerShaped = "From: ann@example.org\r\nSubject: x\r\n\r\nbody"
 
-// TestFileMessages: content of no routed signature is nested when its name has the .eml
-// extension, in any case, or its stored type is message/rfc822 or message/global, in any case
-// and whatever its parameters, and its header has mail's shape: its first line a field, and a
-// From or Date field, its name in any case, before the block ends at a blank line, a line that is
-// neither a field nor a folded continuation, the end of the input, or a line past 64 KiB. One so
-// named that isn't header-shaped is unrouted and says why, among them an mbox's "From " line in
-// a file named with a text extension, which is an mbox by its signature otherwise;
-// header-shaped content neither so named nor so stored is text by a text extension and
-// unrouted otherwise; and content with a signature is routed by it, whatever its name or type.
 func TestFileMessages(t *testing.T) {
 	const notShaped = "but not header-shaped"
 	long := strings.Repeat("x", 64*1024)
@@ -175,7 +149,6 @@ func TestFileMessages(t *testing.T) {
 		want                          route.Route
 		why                           string
 	}{
-		// Each condition on its own names a message.
 		{"eml extension alone", headerShaped, "fwd.eml", "application/octet-stream", route.Nested, ".eml extension, header-shaped"},
 		{"eml extension in upper case", headerShaped, "FWD.EML", "", route.Nested, ".eml extension, header-shaped"},
 		{"rfc822 type alone", headerShaped, "Fwd", "message/rfc822", route.Nested, "message/rfc822 type, header-shaped"},
@@ -183,7 +156,6 @@ func TestFileMessages(t *testing.T) {
 		{"rfc822 type in odd case with parameters", headerShaped, "", "Message/RFC822; name=\"fwd\"", route.Nested, "message/rfc822 type, header-shaped"},
 		{"global type with a malformed parameter", headerShaped, "fwd", "MESSAGE/Global; name", route.Nested, "message/global type, header-shaped"},
 
-		// The header's shape.
 		{"date field after a folded one", "Received: from a\r\n by b; Mon, 12 Jan 2026\r\nDate: x\r\n", "a.eml", "", route.Nested, "header-shaped"},
 		{"space before the colon, lower-case from, bare newlines", "Subject : hi\nfrom: ann@example.org\n", "a.eml", "", route.Nested, "header-shaped"},
 		{"date field without a newline", "date:x", "a.eml", "", route.Nested, "header-shaped"},
@@ -200,13 +172,11 @@ func TestFileMessages(t *testing.T) {
 		{"neither from nor date", "Subject: hi\r\nTo: bob@example.org\r\n", "a.eml", "", route.Unrouted, notShaped},
 		{"field without a name", ": no name\r\nFrom: ann@example.org\r\n", "a.eml", "", route.Unrouted, notShaped},
 
-		// Neither names a message.
 		{"header-shaped text", headerShaped, "a.txt", "text/plain", route.Text, "text by its .txt extension"},
 		{"header-shaped, no name or type", headerShaped, "", "", route.Unrouted, "no routed signature"},
 		{"another message type", headerShaped, "a.txt", "message/partial", route.Text, "text by its .txt extension"},
 		{"rfc822 as a parameter's value", headerShaped, "a", "text/plain; x=message/rfc822", route.Unrouted, "no routed signature"},
 
-		// A signature decides first.
 		{"pdf named and stored as a message", pdfBytes, "a.eml", "message/rfc822", route.Document, "PDF signature"},
 		{"zip named as a message", zipBytes, "a.eml", "message/rfc822", route.Archive, "ZIP signature without an OOXML extension, [Content_Types].xml, or ODF mimetype"},
 		{"ole2 stored as a message", ole2Bytes, "a.msg", "message/rfc822", route.Nested, "OLE2 signature, .msg extension"},
@@ -226,10 +196,6 @@ func TestFileMessages(t *testing.T) {
 	}
 }
 
-// TestFileStoredMedia: content of no signature Identify knows whose stored type's top-level type
-// is audio or video, a OneNote recording's bare "audio" or "video" among them, routes audio or
-// video, in any case and whatever the subtype; a text extension, a signature, and any other type
-// decide as they do without it.
 func TestFileStoredMedia(t *testing.T) {
 	cases := []struct {
 		name, content, filename, mime string

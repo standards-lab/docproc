@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// timeLayout is RFC 3339 with nine digits of fraction, always written, so every time in the
-// schema has the same width.
 const timeLayout = "2006-01-02T15:04:05.000000000Z07:00"
 
 // Time is a time as the schema writes it: a JSON string, RFC 3339, in UTC, with nine digits of

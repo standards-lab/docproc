@@ -43,7 +43,6 @@ func (v Version) Compare(w Version) int {
 	return 0
 }
 
-// component returns the i-th component, zero when v has fewer.
 func (v Version) component(i int) int {
 	if i < len(v.parts) {
 		return v.parts[i]

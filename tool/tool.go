@@ -50,9 +50,6 @@ type Spec struct {
 	Timeout, Idle time.Duration
 }
 
-// validate checks the spec's own fields, its version pattern, its minimum, and its memory bound,
-// so a malformed spec fails as itself before anything is looked up or run, and returns the
-// minimum version.
 func (s Spec) validate(name string) (Version, error) {
 	if s.VersionPattern == nil || s.VersionPattern.NumSubexp() < 1 {
 		return Version{}, fmt.Errorf("tool: %s: version pattern must have a capture group", name)
@@ -123,20 +120,16 @@ type Usage struct {
 	SystemCPU time.Duration
 }
 
-// runFunc runs one invocation of a bound program; each runner supplies its own.
 type runFunc func(ctx context.Context, inv Invocation) error
 
 // Tool is one program, found and version-checked by the runner's constructor that built it.
 type Tool struct {
-	name    string
-	version Version
-	// line is the version command's whole line the version was found on.
-	line string
-	// timeout and idle are the Spec's bounds, for a run whose Invocation sets neither.
+	name          string
+	version       Version
+	line          string
 	timeout, idle time.Duration
 	run           runFunc
-	// image is the image a container tool runs in; nil for the exec runner's.
-	image *Image
+	image         *Image
 }
 
 // Name returns the program's name.
@@ -202,7 +195,6 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error {
 	var tail *tailWriter
 	if inv.Idle > 0 {
 		if inv.Stderr == nil {
-			// Stderr's writes count toward Idle, so the runner's own tail can't hold them.
 			tail = &tailWriter{n: stderrTail}
 			inv.Stderr = tail
 		}
@@ -213,7 +205,6 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error {
 		shared := sameWriter(inv.Stdout, inv.Stderr)
 		inv.Stdout = &idleWriter{w: stdout, b: b}
 		if shared {
-			// One writer for both keeps its writes in one goroutine, as os/exec does.
 			inv.Stderr = inv.Stdout
 		} else {
 			inv.Stderr = &idleWriter{w: inv.Stderr, b: b}
@@ -229,7 +220,6 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error {
 		} else if ee, ok := errors.AsType[*ExitError](err); ok {
 			*e = *ee
 		} else if err == nil {
-			// The program exited 0 once its bound had passed, on SIGTERM or as it was sent.
 			e.Code = 0
 		}
 		e.TimedOut = true
@@ -241,31 +231,22 @@ func (t *Tool) Run(ctx context.Context, inv Invocation) error {
 	return err
 }
 
-// errTimedOut is the cause a run's context is ended with when the run passes its own Timeout or
-// Idle.
 var errTimedOut = errors.New("the run passed its own time bound")
 
-// bounds watches one run's own Timeout and Idle, and ends its context with errTimedOut once
-// either passes.
 type bounds struct {
 	timeout, idle time.Duration
 	cancel        context.CancelCauseFunc
 
-	mu sync.Mutex
-	// timer is the Timeout's and idleTimer the Idle's, each nil when that bound is zero.
+	mu               sync.Mutex
 	timer, idleTimer *time.Timer
-	// writing counts the writes in progress, during which Idle's timer is stopped.
-	writing int
-	// fired is set once a bound has passed, and ended once the run has returned; neither
-	// changes after ended.
-	fired, ended bool
+	writing          int
+	fired, ended     bool
 }
 
 func newBounds(timeout, idle time.Duration, cancel context.CancelCauseFunc) *bounds {
 	return &bounds{timeout: timeout, idle: idle, cancel: cancel}
 }
 
-// start starts the bounds' timers, as the run starts.
 func (b *bounds) start() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -277,7 +258,6 @@ func (b *bounds) start() {
 	}
 }
 
-// expire ends the run, unless it has already returned.
 func (b *bounds) expire() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -288,7 +268,6 @@ func (b *bounds) expire() {
 	b.cancel(errTimedOut)
 }
 
-// pause stops Idle's timer while a write is in progress.
 func (b *bounds) pause() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -296,7 +275,6 @@ func (b *bounds) pause() {
 	b.idleTimer.Stop()
 }
 
-// resume restarts Idle's timer once the last write in progress returns.
 func (b *bounds) resume() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -305,7 +283,6 @@ func (b *bounds) resume() {
 	}
 }
 
-// end stops the timers once the run has returned, and reports whether a bound passed first.
 func (b *bounds) end() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -318,7 +295,6 @@ func (b *bounds) end() bool {
 	return b.fired
 }
 
-// idleWriter passes writes to w, Idle's timer stopped during each.
 type idleWriter struct {
 	w io.Writer
 	b *bounds
@@ -330,8 +306,6 @@ func (w *idleWriter) Write(p []byte) (int, error) {
 	return w.w.Write(p)
 }
 
-// sameWriter reports whether a and b are the same writer, as os/exec compares a command's Stdout
-// and Stderr: an uncomparable writer is no other's.
 func sameWriter(a, b io.Writer) (same bool) {
 	defer func() {
 		if recover() != nil {
@@ -341,7 +315,6 @@ func sameWriter(a, b io.Writer) (same bool) {
 	return a != nil && a == b
 }
 
-// stderrTail is how much of a program's standard error an ExitError keeps.
 const stderrTail = 4 << 10
 
 // ExitError reports a run's own failure: a program that exited nonzero or died by a signal, or a
@@ -385,7 +358,6 @@ func (e *ExitError) Error() string {
 // container runner's docker CLI.
 func (e *ExitError) Unwrap() error { return e.err }
 
-// signalNames are Linux's signal names by number, 1 to 31, the same on amd64 and arm64.
 var signalNames = [...]string{
 	1: "SIGHUP", 2: "SIGINT", 3: "SIGQUIT", 4: "SIGILL", 5: "SIGTRAP", 6: "SIGABRT", 7: "SIGBUS",
 	8: "SIGFPE", 9: "SIGKILL", 10: "SIGUSR1", 11: "SIGSEGV", 12: "SIGUSR2", 13: "SIGPIPE",
@@ -394,8 +366,6 @@ var signalNames = [...]string{
 	26: "SIGVTALRM", 27: "SIGPROF", 28: "SIGWINCH", 29: "SIGIO", 30: "SIGPWR", 31: "SIGSYS",
 }
 
-// signalName returns the name of Linux's signal n: SIGKILL for 9, SIGRTMIN+n past 31, and
-// "signal n" for a number with no name.
 func signalName(n int) string {
 	switch {
 	case n > 0 && n < len(signalNames):
@@ -406,17 +376,11 @@ func signalName(n int) string {
 	return fmt.Sprintf("signal %d", n)
 }
 
-// cancelError reports a run that its context ended. It matches the context's error alone; the
-// program's own outcome, its exit or the runner's failure, is only named in the message, so a
-// cancelled run is never an *ExitError.
 type cancelError struct {
 	program string
 	ctxErr  error
-	// outcome is the run's own error, nil when the program exited 0.
 	outcome error
-	// exit is the program's exit, its code and signal, when it exited nonzero or died by a
-	// signal; Run makes it the ExitError of a run that passed its own bound.
-	exit *ExitError
+	exit    *ExitError
 }
 
 func (e *cancelError) Error() string {
@@ -428,9 +392,6 @@ func (e *cancelError) Error() string {
 
 func (e *cancelError) Unwrap() error { return e.ctxErr }
 
-// runOutcome returns the run's own outcome within err, a runner's error: a cancelError's outcome,
-// an ExitError's runner error, or err itself. A runner built on another's names the outcome it
-// gets once in its own error, without the inner runner's program or context.
 func runOutcome(err error) error {
 	if ce, ok := errors.AsType[*cancelError](err); ok {
 		return ce.outcome
@@ -441,7 +402,6 @@ func runOutcome(err error) error {
 	return err
 }
 
-// lookPath finds program on PATH, or takes a path containing a separator as given.
 func lookPath(program string) (string, error) {
 	path, err := exec.LookPath(program)
 	if err != nil {
@@ -481,8 +441,6 @@ var (
 	ErrNoVersion = errors.New("no version in the output")
 )
 
-// checkVersion runs the spec's version command through run and checks the version it prints
-// against minimum, the spec's, returning the version found and the whole line it was found on.
 func checkVersion(ctx context.Context, name string, spec Spec, minimum Version, run runFunc) (Version, string, error) {
 	var out bytes.Buffer
 	verr := &VersionError{Program: name, Minimum: spec.Minimum}
@@ -515,7 +473,6 @@ func checkVersion(ctx context.Context, name string, spec Spec, minimum Version, 
 	return found, matchLine(out.Bytes(), m[0]), nil
 }
 
-// matchLine returns the whole line of out that holds the byte at at, trimmed.
 func matchLine(out []byte, at int) string {
 	start := bytes.LastIndexByte(out[:at], '\n') + 1
 	end := bytes.IndexByte(out[at:], '\n')
@@ -525,7 +482,6 @@ func matchLine(out []byte, at int) string {
 	return string(bytes.TrimSpace(out[start : at+end]))
 }
 
-// firstLine returns the first line of out, at most 200 bytes, for an error's context.
 func firstLine(out []byte) string {
 	line, _, _ := bytes.Cut(bytes.TrimSpace(out), []byte("\n"))
 	if len(line) > 200 {
@@ -534,7 +490,6 @@ func firstLine(out []byte) string {
 	return string(line)
 }
 
-// tailWriter keeps the last n bytes written to it.
 type tailWriter struct {
 	n   int
 	buf []byte

@@ -18,7 +18,6 @@ import (
 	"github.com/standards-lab/docproc/rundir/schema"
 )
 
-// The run directory's files and directories, relative to its root.
 const (
 	schemaFile    = "rundir.json"
 	indexDir      = "index"
@@ -40,11 +39,10 @@ var ErrNotEnded = errors.New("rundir: run has not ended")
 type Dir struct {
 	root    string
 	write   bool
-	index   *dispatch.FileIndex // a writer's alone
+	index   *dispatch.FileIndex
 	content dispatch.Content
 }
 
-// rundirFile is rundir.json: the run directory's schema.
 type rundirFile struct {
 	Schema string `json:"schema"`
 }
@@ -69,7 +67,6 @@ func Open(root string) (*Dir, error) {
 	if !found {
 		return nil, fmt.Errorf("rundir: %s is no run directory, holding no %s: %w", root, schemaFile, fs.ErrNotExist)
 	}
-	// The content store's directory is opened only when it is there, since FileContent makes it.
 	var content *dispatch.FileContent
 	dir := filepath.Join(root, contentDir)
 	if info, err := os.Stat(dir); err == nil && info.IsDir() {
@@ -111,8 +108,6 @@ func Create(root string) (*Dir, error) {
 	return &Dir{root: root, write: true, index: index, content: content}, nil
 }
 
-// checkSchema reads root's rundir.json, reporting whether it is there, and refuses one naming
-// another schema, or its absence beside runs/.
 func checkSchema(root string) (bool, error) {
 	path := filepath.Join(root, schemaFile)
 	b, err := os.ReadFile(path)
@@ -136,18 +131,13 @@ func checkSchema(root string) (bool, error) {
 	return true, nil
 }
 
-// validID reports whether id can name a run: a version 7 UUID in its lowercase form, so it is one
-// path element and the ids sort by when their runs began.
 func validID(id string) bool {
 	u, err := uuid.Parse(id)
 	return err == nil && u.String() == id && u[6]>>4 == 7
 }
 
-// runPath returns the file name of the run id, relative to the run directory.
 func runPath(id, name string) string { return filepath.Join(runsDir, id, name) }
 
-// checkRun refuses an id that isn't a run of d: a directory under runs/, named by a valid id,
-// holding its manifest. The refusal matches fs.ErrNotExist.
 func (d *Dir) checkRun(id string) error {
 	if validID(id) {
 		info, err := os.Stat(filepath.Join(d.root, runPath(id, manifestFile)))
@@ -238,9 +228,6 @@ func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] {
 	}
 }
 
-// lines yields the decoded lines of the run id's record, reporting whether they all decoded and
-// the caller took them all. An unended run whose record is absent, killed before Begin made it,
-// has no lines.
 func (d *Dir) lines(id string, ended bool, yield func(schema.Event, error) bool) bool {
 	path := filepath.Join(d.root, runPath(id, recordFile))
 	f, err := os.Open(path)
@@ -251,7 +238,7 @@ func (d *Dir) lines(id string, ended bool, yield func(schema.Event, error) bool)
 		yield(schema.Event{}, fmt.Errorf("rundir: %w", err))
 		return false
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	r := bufio.NewReader(f)
 	for n := 1; ; n++ {
 		line, err := r.ReadBytes('\n')
@@ -305,19 +292,14 @@ func ContentPath(sha256 string) string {
 	return filepath.Join(contentDir, file)
 }
 
-// readContent is a reader's content store: the run directory's FileContent, nil when its
-// directory is absent, which refuses every put.
 type readContent struct {
 	c *dispatch.FileContent
 }
 
-// Put refuses: a Dir from Open writes nothing.
 func (r readContent) Put(_ context.Context, sha256 string, _ io.Reader) error {
 	return fmt.Errorf("rundir: put %s: the run directory is opened to read", sha256)
 }
 
-// Open opens the content sha256 names, missing it, with fs.ErrNotExist, when the content
-// directory is absent.
 func (r readContent) Open(ctx context.Context, sha256 string) (io.ReadCloser, error) {
 	if r.c != nil {
 		return r.c.Open(ctx, sha256)
@@ -328,8 +310,6 @@ func (r readContent) Open(ctx context.Context, sha256 string) (io.ReadCloser, er
 	return nil, fmt.Errorf("rundir: content %s: %w", sha256, fs.ErrNotExist)
 }
 
-// encodeIndented writes v to w as JSON, indented by two spaces, HTML left unescaped, with a
-// trailing newline: how every whole file here is written.
 func encodeIndented(w io.Writer, v any) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -337,9 +317,6 @@ func encodeIndented(w io.Writer, v any) error {
 	return enc.Encode(v)
 }
 
-// writeFile writes dst whole through write: to a temporary file in dst's directory, made when it
-// doesn't exist, synced, and renamed into place, replacing any dst, so a reader sees all of dst or
-// none of it.
 func writeFile(dst string, write func(io.Writer) error) (err error) {
 	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -351,7 +328,7 @@ func writeFile(dst string, write func(io.Writer) error) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			_ = os.Remove(tmp.Name()) // the write failed already; the leftover is the lesser loss
+			_ = os.Remove(tmp.Name())
 		}
 	}()
 	if err := write(tmp); err != nil {

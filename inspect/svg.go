@@ -10,13 +10,6 @@ import (
 	"unicode/utf8"
 )
 
-// svg reads an SVG's elements and attributes, a token at a time, for a script element, a
-// foreignObject, an event handler attribute, and an href, xlink's or SVG 2's, that leaves the
-// document: one that doesn't begin "#", a fragment of its own, or "data:", inline content. It
-// decodes the SVG's charset, a declared one or a UTF-16 byte order mark's, and reads leniently,
-// as a browser would, undefined entities kept as text and never expanded. Markup that doesn't
-// decode to its end is checked as far as it decodes, and is [SVGUnreadable]. Its memory follows
-// the token being read.
 func (in *inspection) svg(ctx context.Context) error {
 	d := xmlDecoder(io.NewSectionReader(in.file, 0, in.size))
 	d.Strict = false
@@ -60,10 +53,8 @@ func (in *inspection) svg(ctx context.Context) error {
 	}
 }
 
-// xlinkNS is XLink's namespace, which SVG 1.1's xlink:href is in.
 const xlinkNS = "http://www.w3.org/1999/xlink"
 
-// attrName returns an attribute's name as an SVG writes it: xlink:href for XLink's href.
 func attrName(n xml.Name) string {
 	if n.Space == xlinkNS || n.Space == "xlink" {
 		return "xlink:" + n.Local
@@ -71,16 +62,13 @@ func attrName(n xml.Name) string {
 	return n.Local
 }
 
-// line returns the line d has read to.
 func line(d *xml.Decoder) int {
 	l, _ := d.InputPos()
 	return l
 }
 
-// maxEvidence is the most of a value a flag's evidence quotes.
 const maxEvidence = 120
 
-// clip returns s cut to maxEvidence bytes, at a rune's start, and an ellipsis when cut.
 func clip(s string) string {
 	if len(s) <= maxEvidence {
 		return s

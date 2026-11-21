@@ -25,7 +25,6 @@ func (d *Dir) Index() dispatch.Index {
 	return d.index
 }
 
-// checkWrite refuses a writer's call on a Dir from Open.
 func (d *Dir) checkWrite(call string) error {
 	if !d.write {
 		return fmt.Errorf("rundir: %s: %s is opened to read", call, d.root)
@@ -50,7 +49,7 @@ func (d *Dir) Quarantine(sha256, path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("rundir: %w", err)
 	}
-	defer func() { _ = in.Close() }() // read only: a close error loses nothing
+	defer func() { _ = in.Close() }()
 	err = writeFile(dst, func(w io.Writer) error {
 		_, err := io.Copy(w, in)
 		return err
@@ -84,7 +83,7 @@ func (d *Dir) Kept(sha256 string) (string, bool, error) {
 // Run is one run over a run directory, begun by [Dir.Begin]: its manifest and its record, under
 // runs/<run>/. It is not safe for concurrent use.
 type Run struct {
-	dir      string // runs/<run>/ under the run directory's root
+	dir      string
 	manifest schema.Manifest
 	file     *os.File
 	enc      *json.Encoder
@@ -121,7 +120,6 @@ func (d *Dir) Begin(m schema.Manifest) (*Run, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, fmt.Errorf("rundir: %w", err)
 	}
-	// Mkdir, not MkdirAll: a run's directory is made once, so an id can't name two runs.
 	if err := os.Mkdir(dir, 0o755); err != nil {
 		return nil, fmt.Errorf("rundir: begin: %w", err)
 	}
@@ -133,8 +131,6 @@ func (d *Dir) Begin(m schema.Manifest) (*Run, error) {
 	if err != nil {
 		return nil, fmt.Errorf("rundir: %w", err)
 	}
-	// The encoder writes each line to the file in one write, unbuffered: a line written is on its
-	// way to the disk, and a killed run loses at most the one it was writing.
 	r.file, r.enc = f, json.NewEncoder(f)
 	r.enc.SetEscapeHTML(false)
 	return r, nil
@@ -166,7 +162,6 @@ func (r *Run) End(err error) error {
 	return errors.Join(closed, r.writeManifest())
 }
 
-// writeManifest writes the run's manifest whole, replacing the one written before.
 func (r *Run) writeManifest() error {
 	err := writeFile(filepath.Join(r.dir, manifestFile), func(w io.Writer) error {
 		return encodeIndented(w, r.manifest)

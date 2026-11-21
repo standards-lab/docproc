@@ -65,33 +65,19 @@ var (
 	ErrEntries = errors.New("past the entries bound")
 )
 
-// separator divides a technical listing's archive properties from its items' properties.
 const separator = "----------"
 
-// lineLimit is the longest line the parser takes: a property's line past it is no listing 7zz
-// writes for a name the archive formats it reads can hold.
 const lineLimit = 1 << 20
 
-// listingParser parses 7-Zip's technical listing, -slt, as 7zz writes it: it is the run's
-// standard output, splitting what it is given into lines at "\n" alone, so a carriage return is
-// part of a value, and parsing each. It holds no more of the listing than its current line and
-// item, beside the entries parsed, and fails the write that completes the item past limit, its
-// bound when not zero, which stops 7zz. The listing's form is the package doc's.
 type listingParser struct {
 	limit   int
 	listing Listing
-	// section is where the parse is: 0 before the archive's properties, 1 among them, 2 among
-	// the items'.
 	section int
-	// cur is the current item's properties, nil between items.
-	cur map[string]string
-	// partial is the current line's start, the rest not yet written.
+	cur     map[string]string
 	partial []byte
-	// err is the parse's failure, which every later write returns.
-	err error
+	err     error
 }
 
-// Write parses the lines p completes, keeping an unfinished one for the next write.
 func (lp *listingParser) Write(p []byte) (int, error) {
 	if lp.err != nil {
 		return 0, lp.err
@@ -118,7 +104,6 @@ func (lp *listingParser) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// line parses one line of the listing.
 func (lp *listingParser) line(line string) error {
 	switch {
 	case lp.section == 0:
@@ -132,7 +117,6 @@ func (lp *listingParser) line(line string) error {
 	}
 	name, value, ok := strings.Cut(line, " = ")
 	if !ok {
-		// "Name =" with no value has no space after its "=".
 		name, ok = strings.CutSuffix(line, " =")
 	}
 	if lp.section == 1 {
@@ -154,7 +138,6 @@ func (lp *listingParser) line(line string) error {
 	return nil
 }
 
-// flush ends the current item, if any, adding it to the listing, and refuses it past the bound.
 func (lp *listingParser) flush() error {
 	if lp.cur == nil {
 		return nil
@@ -171,8 +154,6 @@ func (lp *listingParser) flush() error {
 	return nil
 }
 
-// end ends the parse once 7zz has exited, parsing an unfinished last line, and returns the
-// listing, or the parse's failure.
 func (lp *listingParser) end() (Listing, error) {
 	if lp.err != nil {
 		return Listing{}, lp.err
@@ -191,13 +172,8 @@ func (lp *listingParser) end() (Listing, error) {
 	return lp.listing, nil
 }
 
-// contentSizeTotal is the word in a zstd stream's Method property that gives the content size its
-// frame headers declare, as "content-size-total:4294967296".
 const contentSizeTotal = "content-size-total:"
 
-// zstdSize sets a zstd stream's one item's size, which 7-Zip's listing leaves empty when it reads
-// the frame header alone, to the content size its Method property says the frame headers declare,
-// when it says one and the item has none.
 func zstdSize(l *Listing) {
 	if len(l.Entries) != 1 || l.Entries[0].Sized {
 		return
@@ -212,7 +188,6 @@ func zstdSize(l *Listing) {
 	}
 }
 
-// entry makes an Entry of one item's properties.
 func entry(props map[string]string) (Entry, error) {
 	e := Entry{
 		Path:      props["Path"],
@@ -238,9 +213,6 @@ func entry(props map[string]string) (Entry, error) {
 	return e, nil
 }
 
-// windowsDirectory reports whether an Attributes property's Windows attributes, the letters
-// before its Unix mode, as "D" in "D drwxr-xr-x", mark a directory. A property with none begins
-// with a space.
 func windowsDirectory(attrs string) bool {
 	if attrs == "" || attrs[0] == ' ' {
 		return false
@@ -249,8 +221,6 @@ func windowsDirectory(attrs string) bool {
 	return strings.Contains(letters, "D")
 }
 
-// number returns the decimal property name of props, and whether it has one; an empty value is
-// none.
 func number(props map[string]string, name string) (uint64, bool, error) {
 	v := props[name]
 	if v == "" {
@@ -263,8 +233,6 @@ func number(props map[string]string, name string) (uint64, bool, error) {
 	return n, true, nil
 }
 
-// unixMode returns the Unix mode an Attributes property carries after its Windows attributes, as
-// "A -rw-r--r--" or "D drwxr-xr-x" does, its type and permission bits; zero when it carries none.
 func unixMode(attrs string) fs.FileMode {
 	for field := range strings.FieldsSeq(attrs) {
 		if len(field) != 10 || strings.Trim(field[1:], "rwxsStT-") != "" {

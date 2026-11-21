@@ -6,12 +6,8 @@ import (
 	"path/filepath"
 )
 
-// The envelope's media name rule: a medium is named by the lowercase hex SHA-256 of its bytes,
-// then "." and its stored extension, its case kept, when that is 1 to 8 ASCII letters and digits.
 const (
-	// hashLen is the length of a media name's hash, a SHA-256 in hex.
-	hashLen = 64
-	// extensionMax is the longest stored extension a media name keeps.
+	hashLen      = 64
 	extensionMax = 8
 )
 
@@ -38,8 +34,6 @@ func ResolveMedium(dir, name string) (Medium, error) {
 	return m, nil
 }
 
-// isMediaName reports whether name is one the rule makes: a lowercase hex SHA-256, alone or
-// followed by "." and 1 to 8 ASCII letters and digits.
 func isMediaName(name string) bool {
 	if len(name) < hashLen {
 		return false
@@ -53,10 +47,6 @@ func isMediaName(name string) bool {
 	return rest == "" || rest[0] == '.' && isExtension(rest[1:])
 }
 
-// mediaName returns the name the rule gives a medium whose bytes hash to sha256, lowercase hex,
-// and which was stored under stored: the hash, then "." and the stored name's extension when that
-// is 1 to 8 ASCII letters and digits. The extension follows the stored name's last "." after its
-// last "/".
 func mediaName(sha256, stored string) string {
 	ext := path.Ext(path.Base("/" + stored))
 	if ext == "" || !isExtension(ext[1:]) {
@@ -65,8 +55,6 @@ func mediaName(sha256, stored string) string {
 	return sha256 + ext
 }
 
-// isExtension reports whether ext is a stored extension a media name keeps: 1 to 8 ASCII letters
-// and digits.
 func isExtension(ext string) bool {
 	if len(ext) == 0 || len(ext) > extensionMax {
 		return false

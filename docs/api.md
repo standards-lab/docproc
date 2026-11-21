@@ -126,6 +126,13 @@ every occurrence. A link, a device, and a traversing or absolute name in an arch
 the entry an unread child ("Dispatch") and the others read; a bomb and an unreadable directory
 are unsafe. The bomb rule weighs each entry and the sum of an archive's entries.
 
+`Identify` checks email's signatures first, as v0.5.0 ordered them, then the strong ones added
+since, and the weak ones after them, an mbox's `From ` line last but the byte order marks. A
+message's header is read as mail reads one: a line past mail's `LINE_MAX` ends the block, and a
+field's name is checked by route itself, not by net/textproto, which refuses the space before the
+colon that mail allows (RFC 5322 4.5.8's obsolete syntax). A OneNote file is told by its OneStore
+file type GUID, a section's or a table of contents' ([MS-ONESTORE] 2.3.1).
+
 ## Running the tools
 
 Cerebro runs the exec runner inside an image that bundles the tools (`tool-packaging`). The
@@ -173,6 +180,43 @@ the run's `TMPDIR` once the leader is reaped, whatever the run's outcome, and a 
 can't be made fails before the program starts. It writes the program's `oom_score_adj` of 1000
 to /proc once the program has started, best effort. The container runner passes no `Spec.Env`, the
 image's environment being the container's, and a `--pids-limit` of 4096.
+
+How the exec runner ends a run, and why:
+
+- The program starts and is reaped on one locked OS thread, since its parent-death signal is sent
+  when the thread that started it exits, not the process.
+- os/exec's `WaitDelay` timer starts in `Start`'s own goroutine when the context ends, so it
+  SIGKILLs a program that outlasts `KillAfter` while the runner waits for its exit. os/exec
+  reports an exit 0 after the context ended as the context's error, so the run's facts come from
+  the process state.
+- The runner waits for the exit with `waitid` and `WNOWAIT`, leaving the program unreaped: a
+  zombie keeps its pid, and so the group's ID, from reuse, so the group's SIGKILL reaches only what
+  the program started. Should `waitid` fail, the group is left alone rather than risk a reused ID.
+  The `os.Process`'s own wait then reaps it.
+- A `Stdin` that isn't an `*os.File` goes through a pipe the runner copies into itself. os/exec's
+  own copy is waited for without bound once the program exits, even past `WaitDelay`, so a copy
+  blocked in a `Read` of the caller's would keep `Run` from returning. The runner waits for its copy
+  at most `KillAfter`, not at all for a cancelled run, then closes the write end; an exited program
+  that left its input unread is no error.
+- The version check runs in a run's environment, its `HOME` a new empty directory, so a program
+  that answers only under the host's `HOME`, such as a version manager's shim, is refused at
+  construction rather than failing every run.
+
+How the container runner stops a run, and why:
+
+- The docker CLI forwards SIGTERM to its container but can't forward SIGKILL, and a CLI killed by
+  its `KillAfter` period would leave the container running. So the CLI runs under a context of its
+  own, which the run's context doesn't reach. When the run's context ends, the runner runs `docker
+  stop` on the run's container name, `KillAfter` rounded up to whole seconds, repeated each second
+  while the CLI runs, since a stop can come before the CLI has created its container, within
+  `KillAfter` plus a margin for the daemon's own work. Only once a stop succeeds or the bound passes
+  does it end the CLI's context; a CLI that doesn't then exit has a fixed `KillAfter` of its own.
+  Once the CLI has exited, `docker rm --force` removes any container a stop missed.
+- A run whose context has already ended never starts, so no container starts after the stop meant
+  for it.
+- A working directory holding a colon is refused, since it would split `--volume`. The version the
+  runner checks is the server's, so a daemon the CLI can't reach fails it; 20.10 is the first with
+  run's `--pull`.
 
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`, through the exec runner
 only: a constructor refuses a tool whose image is a container. `internal/cli` holds the one envelope

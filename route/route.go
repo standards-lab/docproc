@@ -72,17 +72,10 @@ const (
 	Unrouted Route = "unrouted"
 )
 
-// headerLineMax is the longest line headerShaped reads, mail's LINE_MAX; a longer one ends the
-// header block.
 const headerLineMax = 64 * 1024
 
-// messageTypes are the stored MIME types, as mime.ParseMediaType lowercases them, that name a
-// message.
 var messageTypes = map[string]bool{"message/rfc822": true, "message/global": true}
 
-// ooxmlExtensions are the extensions of OOXML packages: the documents, their macro-enabled
-// forms, templates, and slide show, which office reads, and .xlsb, an Excel binary workbook,
-// which it doesn't. inspect reads the same table through [OOXMLExtension].
 var ooxmlExtensions = map[string]bool{
 	".docx": true, ".docm": true, ".dotx": true, ".dotm": true,
 	".xlsx": true, ".xlsm": true, ".xltx": true, ".xltm": true, ".xlsb": true,
@@ -100,8 +93,6 @@ func Ext(name string) string {
 	return strings.ToLower(path.Ext(strings.TrimRight(strings.ReplaceAll(name, `\`, "/"), ". ")))
 }
 
-// legacyExtensions are the legacy extensions office converts from an OLE2 compound file, its
-// own rule, each with the OOXML format LibreOffice converts it to.
 var legacyExtensions = map[string]string{
 	".doc": "docx", ".dot": "docx",
 	".xls": "xlsx", ".xlt": "xlsx",
@@ -114,8 +105,6 @@ var legacyExtensions = map[string]string{
 // them, the one byKind routes by.
 func LegacyTarget(ext string) string { return legacyExtensions[ext] }
 
-// encryptedPackageName is the directory entry name of an encrypted OOXML package's stream,
-// "EncryptedPackage", in UTF-16LE, with its terminating null, as an OLE2 directory entry begins.
 var encryptedPackageName = func() []byte {
 	const name = "EncryptedPackage"
 	b := make([]byte, 0, 2*len(name)+2)
@@ -125,14 +114,8 @@ var encryptedPackageName = func() []byte {
 	return append(b, 0, 0)
 }()
 
-// ole2EntryLen is the length of an OLE2 directory entry. Every sector, the 512-byte header's
-// size or 4096 bytes, is a multiple of it, so every entry begins at a multiple of it.
 const ole2EntryLen = 128
 
-// textExtensions are the extensions that name content of no signature text: plain text, tables,
-// structured data, markup, subtitles, and logs. HTML, .html, .htm, and .xhtml, is none of them:
-// it is web content, which no stage takes yet, so it is unrouted, but for one whose root element
-// is an SVG's, which is an SVG.
 var textExtensions = map[string]bool{
 	".txt": true, ".text": true, ".csv": true, ".tsv": true, ".tab": true,
 	".json": true, ".ndjson": true, ".jsonl": true, ".xml": true, ".yaml": true, ".yml": true,
@@ -140,26 +123,24 @@ var textExtensions = map[string]bool{
 	".log": true,
 }
 
-// kindRoutes are the routes of the kinds whose signature decides alone, with their reasons.
 var kindRoutes = map[Kind]struct {
 	route Route
 	why   string
 }{
-	PDF:  {Document, "PDF signature"},
-	PNG:  {Vision, "PNG signature"},
-	JPEG: {Vision, "JPEG signature"},
-	GIF:  {Vision, "GIF signature"},
-	BMP:  {Vision, "BMP signature"},
-	TIFF: {VisionConverted, "TIFF signature"},
-	EMF:  {VisionConverted, "EMF signature"},
-	WMF:  {VisionConverted, "WMF signature"},
-	SVG:  {VisionConverted, "SVG root element"},
-	HEIC: {VisionConverted, "HEIC brand"},
-	WebP: {VisionConverted, "WebP signature"},
-	AVIF: {VisionConverted, "AVIF brand"},
-	ODF:  {Office, "ODF mimetype entry"},
-	RTF:  {Office, "RTF signature"},
-	// WordPerfect goes through LibreOffice, which office's stage has no processor for yet.
+	PDF:         {Document, "PDF signature"},
+	PNG:         {Vision, "PNG signature"},
+	JPEG:        {Vision, "JPEG signature"},
+	GIF:         {Vision, "GIF signature"},
+	BMP:         {Vision, "BMP signature"},
+	TIFF:        {VisionConverted, "TIFF signature"},
+	EMF:         {VisionConverted, "EMF signature"},
+	WMF:         {VisionConverted, "WMF signature"},
+	SVG:         {VisionConverted, "SVG root element"},
+	HEIC:        {VisionConverted, "HEIC brand"},
+	WebP:        {VisionConverted, "WebP signature"},
+	AVIF:        {VisionConverted, "AVIF brand"},
+	ODF:         {Office, "ODF mimetype entry"},
+	RTF:         {Office, "RTF signature"},
 	WordPerfect: {Office, "WordPerfect signature, a WordPerfect document"},
 	PST:         {Nested, "PST signature, a .pst"},
 	OST:         {Unrouted, "PST signature with an .ost's client magic, an offline store mail refuses"},
@@ -183,7 +164,6 @@ var kindRoutes = map[Kind]struct {
 	Shebang:     {Unrouted, `"#!" line, an executable script`},
 }
 
-// boms are the byte order marks' names, for Text's reason.
 var boms = map[Kind]string{UTF8BOM: "UTF-8", UTF16BOM: "UTF-16", UTF32BOM: "UTF-32"}
 
 // File returns the route of the file at path and why, in a few words, such as "PDF signature":
@@ -194,7 +174,7 @@ func File(path, name, mimeType string) (Route, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return "", "", err
@@ -251,8 +231,6 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 		if err != nil {
 			return "", "", err
 		}
-		// An XPS package is an OPC package too, [Content_Types].xml and all, and may be named
-		// .docx, so its sequence part is checked first.
 		for i, name := range names[:2] {
 			if held[i] {
 				return Unrouted, "ZIP signature with a " + name + " entry, an XPS package", nil
@@ -265,8 +243,6 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 	if route, why := byKind(kind, ext); route != "" {
 		return route, why, nil
 	}
-	// Content of no routed signature: a byte order mark's, or none. Its header is read only when
-	// a message's name or type, or no text extension, calls for it.
 	readHeader := func() (headerFields, error) { return header(io.NewSectionReader(r, 0, size)) }
 	if as := messageNamed(ext, mimeType); as != "" {
 		fields, err := readHeader()
@@ -299,9 +275,6 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 	return Unrouted, "no routed signature", nil
 }
 
-// storedMedia returns the route a stored MIME type's top-level type names for content of no known
-// signature, Audio for "audio" and Video for "video", such as "audio/ogg" or a OneNote
-// recording's bare "audio"; "" for any other.
 func storedMedia(mimeType string) Route {
 	top, _, _ := strings.Cut(strings.ToLower(strings.TrimSpace(mimeType)), "/")
 	switch top {
@@ -313,13 +286,8 @@ func storedMedia(mimeType string) Route {
 	return ""
 }
 
-// shortSignatures are the kinds whose signature is two or three bytes that text may begin:
-// JPEG's, BMP's, gzip's, PE's "MZ", a script's "#!", and MP3's "ID3" and frame sync. Content
-// whose head is text and whose name has a text extension is text whatever one of them says.
 var shortSignatures = map[Kind]bool{JPEG: true, BMP: true, Gzip: true, PE: true, Shebang: true, MP3: true}
 
-// isText reports whether head reads as text: UTF-8, but for a rune the head's end may cut, with
-// no control character but tab, line feed, form feed, and carriage return.
 func isText(head []byte) bool {
 	for i := 0; i < len(head); {
 		r, n := utf8.DecodeRune(head[i:])
@@ -334,10 +302,6 @@ func isText(head []byte) bool {
 	return true
 }
 
-// byKind routes content of kind, named with ext, as [Ext] returns it, which decides only within
-// a ZIP or OLE2 container, for a cabinet, and for an mbox. It returns no route for content of no
-// routed signature, a byte order mark's included, and for an mbox named with a text extension,
-// which At decides.
 func byKind(kind Kind, ext string) (Route, string) {
 	if r, ok := kindRoutes[kind]; ok {
 		return r.route, r.why
@@ -346,7 +310,6 @@ func byKind(kind Kind, ext string) (Route, string) {
 	case ZIP:
 		switch {
 		case ext == ".xlsb":
-			// An Excel binary workbook, which office doesn't read: it goes through LibreOffice.
 			return Office, "ZIP signature, .xlsb extension, an Excel binary workbook"
 		case ooxmlExtensions[ext]:
 			return Office, "ZIP signature, " + ext + " extension"
@@ -361,7 +324,6 @@ func byKind(kind Kind, ext string) (Route, string) {
 		}
 		return Unrouted, "OLE2 signature without a legacy or .msg extension"
 	case Mbox:
-		// "From " is a weak signature, which prose begins too: a text extension decides first.
 		if textExtensions[ext] {
 			return "", ""
 		}
@@ -382,7 +344,6 @@ func byKind(kind Kind, ext string) (Route, string) {
 // directory's sector chain, so an entry's name copied into a stream's data at such an offset
 // counts too. It returns an error only for r's own.
 func EncryptedPackage(r io.ReaderAt, size int64) (bool, error) {
-	// The header's 512 bytes hold no entry.
 	br := bufio.NewReader(io.NewSectionReader(r, 512, max(size-512, 0)))
 	entry := make([]byte, ole2EntryLen)
 	for {
@@ -395,7 +356,6 @@ func EncryptedPackage(r io.ReaderAt, size int64) (bool, error) {
 	}
 }
 
-// ignoreEOF returns nil for an error that ends a read at the end of its input, else err.
 func ignoreEOF(err error) error {
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil
@@ -403,9 +363,6 @@ func ignoreEOF(err error) error {
 	return err
 }
 
-// messageNamed returns what names content a message, its ext, the .eml extension, else its
-// stored type, mimeType, message/rfc822 or message/global; or "" when neither does. The type is
-// parsed as a media type, in any case and its parameters ignored, malformed ones included.
 func messageNamed(ext, mimeType string) string {
 	if ext == ".eml" {
 		return ".eml extension"
@@ -420,21 +377,14 @@ func messageNamed(ext, mimeType string) string {
 	return ""
 }
 
-// headerFields are what a header block holds of the fields that make it a message's: whether its
-// first line is a field, and whether it has a From, a Date, and a Received field.
 type headerFields struct {
 	first, from, date, received bool
 }
 
-// shaped reports whether the header has the shape mail reads a message by, its header_shape: its
-// first line a field, and a From or Date field.
 func (h headerFields) shaped() bool { return h.first && (h.from || h.date) }
 
-// message reports whether the header is a message's though nothing names it one: its first line
-// a field, a From field, and a Date or Received field.
 func (h headerFields) message() bool { return h.first && h.from && (h.date || h.received) }
 
-// dated returns the field that dates a message's header, for its reason: Date, else Received.
 func (h headerFields) dated() string {
 	if h.date {
 		return "Date"
@@ -442,16 +392,8 @@ func (h headerFields) dated() string {
 	return "Received"
 }
 
-// header reads r's header block, as RFC 5322 shapes one, after an optional UTF-8 byte order mark,
-// and returns which of the fields that make it a message's it holds. The block runs to its blank
-// line, to the end of the input, or to the first line that is neither a field nor a field's folded
-// continuation; a line past headerLineMax ends it once its first headerLineMax bytes are read. An
-// mbox's "From " separator is no field, so an input that begins with one has no first field. The
-// field's name is checked by fieldName, not net/textproto's, which refuses the space before the
-// colon mail allows.
 func header(r io.Reader) (headerFields, error) {
 	var h headerFields
-	// A line is read through its newline or to the buffer's size, whichever comes first.
 	br := bufio.NewReaderSize(r, headerLineMax)
 	if bom, err := br.Peek(len(utf8BOM)); err == nil && bytes.Equal(bom, utf8BOM) {
 		_, _ = br.Discard(len(utf8BOM))
@@ -479,15 +421,11 @@ func header(r io.Reader) (headerFields, error) {
 			return h, nil
 		}
 		if !bytes.HasSuffix(line, []byte("\n")) {
-			// The end of the input, or a line past headerLineMax.
 			return h, nil
 		}
 	}
 }
 
-// fieldName returns the name of the header field line starts, or nil if it starts none: printable
-// ASCII but the colon (RFC 5322 3.6.8's ftext), then the colon, after any spaces or tabs, as RFC
-// 5322 4.5.8's obsolete syntax allows.
 func fieldName(line []byte) []byte {
 	end := 0
 	for end < len(line) && (line[end] >= 33 && line[end] <= 126 && line[end] != ':') {

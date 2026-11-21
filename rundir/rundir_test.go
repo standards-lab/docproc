@@ -19,8 +19,6 @@ import (
 	"github.com/standards-lab/docproc/rundir/schema"
 )
 
-// The committed schema "2" run directory: two ended runs, the second stopped by an error, and a
-// third that never ended, its record's last line torn.
 const fixture = "testdata/rundir"
 
 const (
@@ -30,7 +28,6 @@ const (
 	otherRun = "019a5f3c-1d2e-7a10-8b00-0000000000ff"
 )
 
-// open opens the run directory at root to read it.
 func open(t *testing.T, root string) *rundir.Dir {
 	t.Helper()
 	d, err := rundir.Open(root)
@@ -40,8 +37,6 @@ func open(t *testing.T, root string) *rundir.Dir {
 	return d
 }
 
-// create opens a new run directory to write it, under a fresh temporary directory, and returns it
-// with its root.
 func create(t *testing.T) (*rundir.Dir, string) {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "out")
@@ -52,7 +47,6 @@ func create(t *testing.T) (*rundir.Dir, string) {
 	return d, root
 }
 
-// records collects the events d's record of id yields, and the errors, in order.
 func records(d *rundir.Dir, id string) ([]schema.Event, []error) {
 	var evs []schema.Event
 	var errs []error
@@ -66,7 +60,6 @@ func records(d *rundir.Dir, id string) ([]schema.Event, []error) {
 	return evs, errs
 }
 
-// readFile returns the file at path as text.
 func readFile(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -76,7 +69,6 @@ func readFile(t *testing.T, path string) string {
 	return string(b)
 }
 
-// writeFile writes text to path, making its directory.
 func writeFile(t *testing.T, path, text string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -87,7 +79,6 @@ func writeFile(t *testing.T, path, text string) {
 	}
 }
 
-// begin begins a run over d from a manifest with only its inputs.
 func begin(t *testing.T, d *rundir.Dir) *rundir.Run {
 	t.Helper()
 	r, err := d.Begin(schema.Manifest{Inputs: []string{"/docs"}})
@@ -97,10 +88,6 @@ func begin(t *testing.T, d *rundir.Dir) *rundir.Run {
 	return r
 }
 
-// The fixture read through the reader, then written again through the writer into a new run
-// directory, is the fixture again, file for file and byte for byte, but each manifest's end,
-// which the writer stamps when the run ends. The unended run is read, not written again: End
-// would end it.
 func TestRoundTrip_Fixture(t *testing.T) {
 	ctx := context.Background()
 	src := open(t, fixture)
@@ -110,7 +97,7 @@ func TestRoundTrip_Fixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ends := map[string][2]schema.Time{} // a run's end in the fixture, then as written
+	ends := map[string][2]schema.Time{}
 	for _, id := range ids {
 		m, err := src.Manifest(id)
 		if err != nil {
@@ -178,7 +165,6 @@ func TestRoundTrip_Fixture(t *testing.T) {
 	}
 }
 
-// copyContent puts the content sha256 names, read from src's store, into dst's.
 func copyContent(t *testing.T, ctx context.Context, src, dst *rundir.Dir, sha256 string) {
 	t.Helper()
 	rc, err := src.Content().Open(ctx, sha256)
@@ -191,8 +177,6 @@ func copyContent(t *testing.T, ctx context.Context, src, dst *rundir.Dir, sha256
 	}
 }
 
-// tree returns every file under root, by its path relative to root, as text: the index, which is
-// dispatch's, left out, and the run skip.
 func tree(t *testing.T, root, skip string) map[string]string {
 	t.Helper()
 	files := map[string]string{}
@@ -222,7 +206,6 @@ func TestOpen_FixtureRuns(t *testing.T) {
 	if err != nil || !slices.Equal(ids, []string{ended, stopped, unended}) {
 		t.Errorf("Runs = %v, %v; want the three runs in order", ids, err)
 	}
-	// The unended run is the last to begin; the latest run that ended is the one before it.
 	if latest, err := d.Latest(); err != nil || latest != stopped {
 		t.Errorf("Latest = %q, %v; want %q", latest, err, stopped)
 	}
@@ -235,7 +218,6 @@ func TestOpen_FixtureRuns(t *testing.T) {
 	}
 }
 
-// The fixture's contents are at ContentPath, from its root, and its outputs name them.
 func TestOpen_FixtureContent(t *testing.T) {
 	ctx := context.Background()
 	d := open(t, fixture)
@@ -270,7 +252,6 @@ func TestOpen_FixtureContent(t *testing.T) {
 
 func TestContentPath(t *testing.T) {
 	sha := strings.Repeat("ab", 32)
-	// The layout is schema "2"'s, which a reader that isn't Go follows: content/<ab>/<sha256>.
 	if got, want := rundir.ContentPath(sha), filepath.Join("content", "ab", sha); got != want {
 		t.Errorf("ContentPath = %q, want %q", got, want)
 	}
@@ -281,8 +262,6 @@ func TestContentPath(t *testing.T) {
 	}
 }
 
-// ReportDir names a run's report directory under the run's own, on the writer for the run it is
-// writing and on a reader, makes nothing, and refuses an id that isn't a run.
 func TestReportDir(t *testing.T) {
 	d, root := create(t)
 	r := begin(t, d)
@@ -310,7 +289,6 @@ func TestReportDir(t *testing.T) {
 	}
 }
 
-// An unended run's record drops its torn last line, and says last that the run hasn't ended.
 func TestRecord_Unended(t *testing.T) {
 	d := open(t, fixture)
 
@@ -323,7 +301,6 @@ func TestRecord_Unended(t *testing.T) {
 	}
 }
 
-// A record ends on the first line that doesn't decode, naming it.
 func TestRecord_EndsOnUndecodable(t *testing.T) {
 	d, root := create(t)
 	r := begin(t, d)
@@ -345,7 +322,6 @@ func TestRecord_EndsOnUndecodable(t *testing.T) {
 	}
 }
 
-// An ended run's last line with no newline is a line, and is decoded.
 func TestRecord_EndedLastLineWithoutNewline(t *testing.T) {
 	d, root := create(t)
 	r := begin(t, d)
@@ -360,7 +336,6 @@ func TestRecord_EndedLastLineWithoutNewline(t *testing.T) {
 	}
 }
 
-// A caller that stops early is yielded nothing more.
 func TestRecord_StopsWithCaller(t *testing.T) {
 	d := open(t, fixture)
 
@@ -377,8 +352,6 @@ func TestRecord_StopsWithCaller(t *testing.T) {
 	}
 }
 
-// Every method taking an id refuses one that isn't a run of the directory, matching
-// fs.ErrNotExist.
 func TestManifestRecord_RefuseNonRun(t *testing.T) {
 	d, root := create(t)
 	r := begin(t, d)
@@ -406,7 +379,6 @@ func TestManifestRecord_RefuseNonRun(t *testing.T) {
 	}
 }
 
-// Runs lists the runs alone, in the order they began; Latest names the latest that ended.
 func TestRuns_RunsAlone(t *testing.T) {
 	d, root := create(t)
 	if ids, err := d.Runs(); err != nil || len(ids) != 0 {
@@ -445,7 +417,6 @@ func TestRuns_RunsAlone(t *testing.T) {
 	}
 }
 
-// Open fails on a root that is no run directory, matching fs.ErrNotExist, and makes nothing.
 func TestOpen_NoRunDirectory(t *testing.T) {
 	dir := t.TempDir()
 	file := filepath.Join(dir, "file")
@@ -468,8 +439,6 @@ func TestOpen_NoRunDirectory(t *testing.T) {
 	}
 }
 
-// Open and Create refuse a run directory of another schema, or runs/ with no rundir.json, naming
-// both versions, and Create makes nothing there.
 func TestOpenCreate_RefuseOtherSchema(t *testing.T) {
 	for name, setup := range map[string]func(root string){
 		"other schema": func(root string) { writeFile(t, filepath.Join(root, "rundir.json"), `{"schema": "3"}`) },
@@ -495,8 +464,6 @@ func TestOpenCreate_RefuseOtherSchema(t *testing.T) {
 	}
 }
 
-// Create makes the directory, rundir.json, the index, and the content store, and opens the run
-// directory it made again.
 func TestCreate_Makes(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "a", "out")
 	d, err := rundir.Create(root)
@@ -528,8 +495,6 @@ func TestCreate_Makes(t *testing.T) {
 	}
 }
 
-// A Dir from Open writes nothing: its content refuses a put, it has no index, and Begin and
-// Quarantine refuse; with its content directory gone, a content misses and nothing is made.
 func TestOpen_ReadsAlone(t *testing.T) {
 	ctx := context.Background()
 	_, root := create(t)
@@ -564,7 +529,6 @@ func TestOpen_ReadsAlone(t *testing.T) {
 	}
 }
 
-// Begin removes the work directories a killed run left, and nothing else.
 func TestBegin_RemovesWork(t *testing.T) {
 	d, root := create(t)
 	writeFile(t, filepath.Join(root, ".work-123", "part", "a.bin"), "left")
@@ -582,8 +546,6 @@ func TestBegin_RemovesWork(t *testing.T) {
 	}
 }
 
-// Begin names the run with a new version 7 id when the manifest has none, starts it now, in UTC,
-// and writes its manifest with no end; it refuses an id that isn't one, or a run's it holds.
 func TestBegin_Manifest(t *testing.T) {
 	d, _ := create(t)
 	before := time.Now()
@@ -616,8 +578,6 @@ func TestBegin_Manifest(t *testing.T) {
 	}
 }
 
-// A line written is in the record before the run ends: a reader of the running run has it, and
-// is told the run has not ended.
 func TestWrite_WrittenThrough(t *testing.T) {
 	d, root := create(t)
 	r := begin(t, d)
@@ -636,7 +596,6 @@ func TestWrite_WrittenThrough(t *testing.T) {
 	}
 }
 
-// End records the run's end and the error that stopped it, if any.
 func TestEnd(t *testing.T) {
 	d, _ := create(t)
 	for _, stop := range []error{nil, errors.New("store: disk full")} {
@@ -664,7 +623,6 @@ func TestEnd(t *testing.T) {
 	}
 }
 
-// Quarantine keeps a part's file once, named by its SHA-256.
 func TestQuarantine_Once(t *testing.T) {
 	d, root := create(t)
 	sha := strings.Repeat("ef", 32)
@@ -690,8 +648,6 @@ func TestQuarantine_Once(t *testing.T) {
 	}
 }
 
-// Kept finds a part's kept file once Quarantine has kept it, on the writer and on a reader of the
-// same directory, and finds none, making nothing, before.
 func TestKept(t *testing.T) {
 	d, root := create(t)
 	sha := strings.Repeat("ab", 32)

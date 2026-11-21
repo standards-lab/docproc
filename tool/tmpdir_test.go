@@ -15,18 +15,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestRunTmpdir checks the exec runner's TMPDIR: each run's is a new, empty directory of its own,
-// docproc-run-*, under the process's temporary directory, here a TMPDIR the test sets, and
-// HOME stays the run's Dir. The stand-in leaves a file in it, as a gs ended early leaves its
-// band list's, and the directory is gone once Run returns, whether the program exited 0, failed,
-// was cancelled, or passed its bound, nothing left in the Dir nor under the TMPDIR. It sets
-// TMPDIR, so it isn't parallel.
 func TestRunTmpdir(t *testing.T) {
 	link := installStandin(t)
 	dir, reports, host := t.TempDir(), t.TempDir(), t.TempDir()
 	t.Setenv("TMPDIR", host)
 	spec := standinSpec(link, "1.0", "1.0")
-	// The bound's SIGKILL comes with its SIGTERM, so the stubborn stand-in is killed outright.
 	spec.KillAfter = 0
 	tl, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
@@ -55,8 +48,6 @@ func TestRunTmpdir(t *testing.T) {
 			cancel()
 			return <-done
 		}, func(err error) bool { return errors.Is(err, context.Canceled) }},
-		// The Timeout is 2 s, as TestRunTimeout's is, so the stand-in has written its report
-		// before the bound ends it.
 		{"bound", []string{"stubborn", "1m"}, func(t *testing.T, inv tool.Invocation) error {
 			inv.Timeout = 2 * time.Second
 			return tl.Run(t.Context(), inv)
@@ -103,8 +94,6 @@ func TestRunTmpdir(t *testing.T) {
 		}
 	}
 
-	// A TMPDIR the run can't make its own in fails the run, as the run's failure, before the
-	// program starts.
 	t.Setenv("TMPDIR", filepath.Join(host, "missing"))
 	report := filepath.Join(reports, "missing.json")
 	err = tl.Run(t.Context(), tool.Invocation{Args: []string{"tmp", report, "exit", "0"}, Dir: dir})

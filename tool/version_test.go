@@ -15,11 +15,11 @@ func TestVersionCompare(t *testing.T) {
 		want int
 	}{
 		{"1.2.3", "1.2.3", 0},
-		{"9.0", "9.0.0", 0},   // a missing component is zero
-		{"10.08", "10.8", 0},  // numbers, so a leading zero is nothing
-		{"1.2.4", "1.2.3", 1}, // newer in the last component
+		{"9.0", "9.0.0", 0},
+		{"10.08", "10.8", 0},
+		{"1.2.4", "1.2.3", 1},
 		{"2.0", "1.9.9", 1},
-		{"1.10", "1.9", 1}, // numbers, not text
+		{"1.10", "1.9", 1},
 		{"9.0.1", "9", 1},
 		{"1.2.2", "1.2.3", -1},
 		{"1.9", "1.10", -1},

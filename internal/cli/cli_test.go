@@ -13,8 +13,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestOutcome: exit codes 1 to 4 are each their own error, and an ExitError of one matches its
-// code's error and no other; any other code has none, and its ExitError matches none.
 func TestOutcome(t *testing.T) {
 	all := []error{cli.ErrNotWritten, cli.ErrUsage, cli.ErrRefused, cli.ErrFailed}
 	for code := -1; code <= 9; code++ {
@@ -34,8 +32,6 @@ func TestOutcome(t *testing.T) {
 	}
 }
 
-// TestLimitedBuffer: the buffer keeps the first Limit bytes, reports every write whole, and never
-// fails.
 func TestLimitedBuffer(t *testing.T) {
 	b := &cli.LimitedBuffer{Limit: 5}
 	for _, p := range []string{"abc", "defg", "hij"} {
@@ -53,8 +49,6 @@ func TestLimitedBuffer(t *testing.T) {
 	}
 }
 
-// TestSpool: Spool writes the input into dir under spool-* and the extension, and its remove
-// removes it; an empty dir is refused, and a failed copy leaves nothing.
 func TestSpool(t *testing.T) {
 	dir := t.TempDir()
 	path, remove, err := cli.Spool(dir, strings.NewReader("doc"), ".pdf")

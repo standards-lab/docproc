@@ -21,16 +21,12 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// declared is one ZIP entry for zipDeclaring: its name and content, and, when not zero, the
-// expanded and compressed sizes its headers declare in place of the true ones.
 type declared struct {
 	name                 string
 	body                 string
 	expanded, compressed uint64
 }
 
-// zipDeclaring returns a ZIP of entries, each deflated, its headers declaring the sizes its entry
-// sets, so a test builds an archive whose central directory lies without writing what it claims.
 func zipDeclaring(t *testing.T, entries ...declared) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -71,8 +67,6 @@ func zipDeclaring(t *testing.T, entries ...declared) []byte {
 	return buf.Bytes()
 }
 
-// manyEntries returns a ZIP of n entries, each a byte declaring 1 GiB expanded: PI-1's 2,000-entry
-// ZIP, each entry at 1 GiB, none past rule's size alone.
 func manyEntries(t *testing.T, n int) []byte {
 	entries := make([]declared, n)
 	for i := range entries {
@@ -81,10 +75,6 @@ func manyEntries(t *testing.T, n int) []byte {
 	return zipDeclaring(t, entries...)
 }
 
-// TestManyEntries: a ZIP of 2,000 entries each declaring 1 GiB, none a bomb alone, is a bomb by
-// its summed declared sizes against its own; past Entries, it is unreadable before its central
-// directory is read, so it has no other flag; at Entries, it isn't; and 2,000 honest entries are
-// no bomb.
 func TestManyEntries(t *testing.T) {
 	data := manyEntries(t, 2000)
 	path := write(t, "many.zip", data)
@@ -115,8 +105,6 @@ func TestManyEntries(t *testing.T) {
 	}
 }
 
-// TestZIP64Entries: a ZIP whose end record carries ZIP64's count marker is counted by its ZIP64
-// record, so 70,000 entries are past an Entries of 65,535.
 func TestZIP64Entries(t *testing.T) {
 	var buf bytes.Buffer
 	w := zip.NewWriter(&buf)
@@ -134,9 +122,6 @@ func TestZIP64Entries(t *testing.T) {
 	}
 }
 
-// TestDeclaredCompressed: PI-1's one entry at 999:1 declaring 100 GiB, under rule's 1,000:1, is
-// a bomb, since its declared compressed size, about 102 MiB, passes the ZIP's own few hundred
-// bytes, as no ZIP's does: under the zero Options too, which apply no rule. An honest ZIP isn't.
 func TestDeclaredCompressed(t *testing.T) {
 	const expanded = 100 << 30
 	data := zipDeclaring(t, declared{name: "zeros.bin", body: "zeros", expanded: expanded, compressed: expanded/999 + 1})
@@ -157,9 +142,6 @@ func TestDeclaredCompressed(t *testing.T) {
 	}
 }
 
-// TestPDFStreams: a stream's data, from its "stream" line through "endstream", is skipped, its
-// "/" no name, while a name after it is read; a stream, or its end, across the scan's chunks is
-// skipped all the same; and a word that only ends "stream" begins none.
 func TestPDFStreams(t *testing.T) {
 	small := "%PDF-1.7\n1 0 obj\n<< /Length 30 >>stream\r\n\x00/JavaScript /Launch \xff\nendstream\nendobj\n<< /OpenAction 1 0 R >>\n"
 	r := mustInspect(t, write(t, "a.pdf", []byte(small)), "a.pdf", inspect.Options{})
@@ -167,8 +149,6 @@ func TestPDFStreams(t *testing.T) {
 		t.Errorf("small: %v, want pdf-openaction alone", got)
 	}
 
-	// The first stream's keyword lies across the first chunk's end, and its endstream across the
-	// second's; /JS between them is data, and /AA after the second is a name.
 	pdf := bytes.Repeat([]byte(" "), 3<<16)
 	copy(pdf, "%PDF-1.7\n")
 	copy(pdf[1<<16-3:], "stream\n")
@@ -186,9 +166,6 @@ func TestPDFStreams(t *testing.T) {
 	}
 }
 
-// TestXMLCharsets: an SVG declaring US-ASCII or windows-1252, as PI-2 ran, is read, its script
-// flagged; one declaring a charset no decoder knows, or cut short, is unreadable, flagged active,
-// with what was read before; and a whole UTF-8 one isn't.
 func TestXMLCharsets(t *testing.T) {
 	const body = `<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`
 	for name, c := range map[string]struct {
@@ -208,8 +185,6 @@ func TestXMLCharsets(t *testing.T) {
 	}
 }
 
-// docx returns an OOXML package of a content types part and the relationships parts rels names,
-// by name.
 func docx(t *testing.T, rels map[string]string) []byte {
 	t.Helper()
 	entries := []declared{{name: "[Content_Types].xml", body: `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>`}}
@@ -219,18 +194,12 @@ func docx(t *testing.T, rels map[string]string) []byte {
 	return zipDeclaring(t, entries...)
 }
 
-// template is a relationships part of one external relationship, a remote template, padded with
-// pad bytes of white space before it.
 func template(pad int) string {
 	return `<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
 		strings.Repeat(" ", pad) +
 		`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/attachedTemplate" Target="https://example.invalid/t.dotm" TargetMode="External"/></Relationships>`
 }
 
-// TestRelationshipsUnreadable: a relationships part that doesn't decode, or declares a charset no
-// decoder knows, is unreadable, flagged active; the package's parts share one 16 MiB budget, so
-// two parts of 9 MiB pass it where one doesn't, the second unreadable past it; and whole parts
-// within it aren't.
 func TestRelationshipsUnreadable(t *testing.T) {
 	cases := map[string]struct {
 		rels map[string]string
@@ -254,10 +223,6 @@ func TestRelationshipsUnreadable(t *testing.T) {
 	}
 }
 
-// TestNameAndContent: Content's flags are the content's, by its kind and bytes, whatever the
-// name, and Name's the name's, with no I/O; Inspect's are both. An OLE2 compound file holding an
-// EncryptedPackage stream is an encrypted package by its content, named as one or not, and an
-// OOXML name on an OLE2 file is no mismatch.
 func TestNameAndContent(t *testing.T) {
 	exe := filepath.Join("testdata", "invoice.pdf.exe")
 	f, err := os.Open(exe)
@@ -298,10 +263,6 @@ func TestNameAndContent(t *testing.T) {
 	}
 }
 
-// TestRuleNegatives: each archive rule's near miss raises nothing. A ".." inside an element is no
-// ".." element, a relative name and a backslash inside one are neither absolute nor a drive
-// letter, a regular file and a directory are no link or device, a clear entry is no encrypted
-// one, and an entry declaring exactly the rule's size is at it, not past it, alone or summed.
 func TestRuleNegatives(t *testing.T) {
 	names := []string{"docs/..notes.txt", "tmp/evil.txt", `docs\notes.txt`, "ab:c.txt", "notes..txt"}
 	var entries []declared
@@ -347,8 +308,6 @@ func TestRuleNegatives(t *testing.T) {
 	}
 }
 
-// TestFixtureNotes: testdata's README lists every committed fixture, with its size and SHA-256 as
-// they are, and says what each holds, so each fixture's recipe in generate.go is named.
 func TestFixtureNotes(t *testing.T) {
 	readme, err := os.ReadFile(filepath.Join("testdata", "README.md"))
 	if err != nil {

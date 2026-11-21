@@ -113,30 +113,22 @@ func Read(ctx context.Context, run Run) iter.Seq2[Line, error] {
 	}
 }
 
-// reading is one run of Read's in progress.
 type reading struct {
-	name   string
-	cancel context.CancelFunc
-	stderr *stderrReader
-	pr     *io.PipeReader
-	// lines carries stdout's lines from the scanner, closed at stdout's end.
-	lines chan []byte
-	// stopped is closed once the reader takes no more lines.
-	stopped chan struct{}
-	// done is closed once the run has returned, runErr and message then set.
-	done    chan struct{}
-	runErr  error
-	message string
-	// scanned is closed once the scanner has returned.
-	scanned chan struct{}
-	// failed is the read's own error, a line that didn't decode, which ended the run.
-	failed error
-	// ranAlready says the run had returned when the read failed.
+	name       string
+	cancel     context.CancelFunc
+	stderr     *stderrReader
+	pr         *io.PipeReader
+	lines      chan []byte
+	stopped    chan struct{}
+	done       chan struct{}
+	runErr     error
+	message    string
+	scanned    chan struct{}
+	failed     error
 	ranAlready bool
 	stopOnce   sync.Once
 }
 
-// start starts the run and its stdout scanner.
 func start(ctx context.Context, run Run) *reading {
 	runCtx, cancel := context.WithCancel(ctx)
 	pr, pw := io.Pipe()
@@ -157,15 +149,12 @@ func start(ctx context.Context, run Run) *reading {
 		})
 		r.message = r.stderr.close()
 		close(r.done)
-		// stdout's end follows the run's, so the reader finds the run's error set at it.
 		_ = pw.Close()
 	}()
 	go r.scan()
 	return r
 }
 
-// scan sends each stdout line to r.lines, a last line without its line feed included, until
-// stdout ends or the reader stops.
 func (r *reading) scan() {
 	defer close(r.scanned)
 	defer close(r.lines)
@@ -185,8 +174,6 @@ func (r *reading) scan() {
 	}
 }
 
-// fail ends the run for err, the read's own error, keeping the warnings the run writes as it ends
-// for the reader.
 func (r *reading) fail(err error) {
 	select {
 	case <-r.done:
@@ -198,7 +185,6 @@ func (r *reading) fail(err error) {
 	r.end()
 }
 
-// end stops taking lines and ends the run, and waits for it and the scanner.
 func (r *reading) end() {
 	r.stopOnce.Do(func() {
 		close(r.stopped)
@@ -209,17 +195,11 @@ func (r *reading) end() {
 	<-r.scanned
 }
 
-// stop ends a read its caller stopped ranging over, dropping what is left; after finish, it only
-// releases the run's context.
 func (r *reading) stop() {
 	r.stderr.drop()
 	r.end()
 }
 
-// finish waits for the run and returns the read's final error, nil for a run that exited 0 with
-// count lines read: the read's own failure, unless the run had already failed by then; else the
-// run's error, an *ExitError carrying the run's message; else ErrSchema for a run that wrote no
-// line.
 func (r *reading) finish(count int) error {
 	r.end()
 	switch {
@@ -233,14 +213,11 @@ func (r *reading) finish(count int) error {
 	return nil
 }
 
-// head is what Read decodes of every line: its kind, and its schema, which the first carries.
 type head struct {
 	Line   string `json:"line"`
 	Schema string `json:"schema"`
 }
 
-// decodeLine decodes the n-th line of tool's stdout, raw, checking the first against first and
-// Schema.
 func decodeLine(tool, first string, n int, raw []byte) (Line, error) {
 	var h head
 	if err := json.Unmarshal(raw, &h); err != nil {

@@ -10,8 +10,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// assertUsage checks that u holds at least the spin's user CPU time, which only the spinning
-// stand-in spends: neither a shell nor the stand-in's own start comes near it.
 func assertUsage(t *testing.T, u tool.Usage) {
 	t.Helper()
 	if u.UserCPU < spinCPU {
@@ -55,8 +53,6 @@ func TestRunUsageOnCancel(t *testing.T) {
 	assertUsage(t, u)
 }
 
-// TestRunUsageCountsReapedChildren checks that the usage covers a child the program waited for:
-// the stand-in runs the spinning stand-in as a child and reaps it before exiting.
 func TestRunUsageCountsReapedChildren(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -75,9 +71,6 @@ func TestRunNilUsage(t *testing.T) {
 	}
 }
 
-// TestContainerUsageZero checks that the container runner reports no usage, even overwriting what
-// the caller left in it: the stand-in docker CLI reaps the spinning stand-in itself, so a CLI
-// rusage passed through would hold its CPU time.
 func TestContainerUsageZero(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")

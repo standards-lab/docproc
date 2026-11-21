@@ -12,13 +12,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// TestFileRoutes: each kind takes its route, with its reason, whatever its name and stored type;
-// the name's extension, in any case, decides within a ZIP or OLE2 container and for a cabinet;
-// an ODF package, a WordPerfect document, and a ZIP named .xlsb are office's; a .pst and an mbox
-// are nested, but an mbox line in a file named with a text extension is text, and an .ost is
-// unrouted, its reason naming it; content of no signature is a message by the .eml
-// rule first, then text by its extension, then text by a byte order mark, and unrouted otherwise;
-// and an executable is unrouted, its reason naming it one.
 func TestFileRoutes(t *testing.T) {
 	cases := []struct {
 		name, content, filename, mime string
@@ -88,8 +81,6 @@ func TestFileRoutes(t *testing.T) {
 		{"text stored as text/plain without a name", "plain text", "", "text/plain", route.Unrouted, "no routed signature"},
 		{"pdf named .txt", pdfBytes, "a.txt", "text/plain", route.Document, "PDF signature"},
 
-		// The .eml rule comes before text, and a header after a UTF-8 byte order mark is
-		// header-shaped.
 		{"eml with a byte order mark", "\xef\xbb\xbf" + headerShaped, "fwd.eml", "", route.Nested, "a message by its .eml extension, header-shaped"},
 		{"rfc822 named .txt", headerShaped, "fwd.txt", "message/rfc822", route.Nested, "a message by its message/rfc822 type, header-shaped"},
 		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Unrouted, "a message by its message/rfc822 type, but not header-shaped"},
@@ -125,10 +116,6 @@ func TestFileRoutes(t *testing.T) {
 	}
 }
 
-// TestFileContainerExtensions: within a ZIP only the OOXML extensions office reads are office's,
-// within an OLE2 file without an EncryptedPackage stream only the legacy ones and .msg are
-// routed, and outside a container an
-// office or message extension decides nothing.
 func TestFileContainerExtensions(t *testing.T) {
 	dir := t.TempDir()
 	check := func(content, filename string, want route.Route) {
@@ -152,8 +139,6 @@ func TestFileContainerExtensions(t *testing.T) {
 	check(zipBytes, "a.onepkg", route.Archive)
 }
 
-// ole2With returns an OLE2 compound file of size bytes, its header its signature alone, with
-// name, in UTF-16LE, at each of offsets, as a directory entry begins.
 func ole2With(size int, name string, offsets ...int) string {
 	b := make([]byte, size)
 	copy(b, ole2Bytes)
@@ -165,12 +150,6 @@ func ole2With(size int, name string, offsets ...int) string {
 	return string(b)
 }
 
-// TestFileEncryptedPackage: an OLE2 file holding an EncryptedPackage stream's directory entry,
-// at any multiple of 128 bytes past the header, in a 512- or 4096-byte sector, named with an
-// OOXML extension or .xlsb, in any case, is an encrypted OOXML package, office's, its reason
-// naming it, as inspect's fixture is; a legacy name keeps its legacy reason, and another name,
-// an entry's name at another offset or within the header, or another stream's name, leaves it
-// unrouted.
 func TestFileEncryptedPackage(t *testing.T) {
 	const encryptedWhy = "OLE2 signature with an EncryptedPackage stream, %s extension, an encrypted OOXML package"
 	cases := []struct {
@@ -207,8 +186,6 @@ func TestFileEncryptedPackage(t *testing.T) {
 	}
 }
 
-// TestFileErrors: a file that isn't there is an error matching fs.ErrNotExist, and one that is
-// there but can't be read is an error.
 func TestFileErrors(t *testing.T) {
 	dir := t.TempDir()
 	if _, _, err := route.File(filepath.Join(dir, "missing"), "a.pdf", ""); !errors.Is(err, fs.ErrNotExist) {

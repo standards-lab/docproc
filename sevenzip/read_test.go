@@ -16,19 +16,15 @@ import (
 	"github.com/standards-lab/docproc/sevenzip"
 )
 
-// file is a listed file item of content, sized and declaring its CRC-32.
 func file(name, content string) sevenzip.Entry {
 	return sevenzip.Entry{Path: name, Size: uint64(len(content)), Sized: true, CRC: crc32.ChecksumIEEE([]byte(content)), HasCRC: true, Mode: 0o644}
 }
 
-// archive is a stand-in archive: its listing's entries, and the items 7zz writes, a directory
-// writing none.
 type archive struct {
 	entries []sevenzip.Entry
 	items   []standinItem
 }
 
-// add adds a listed item and, unless it is a directory, what 7zz writes of it.
 func (a *archive) add(e sevenzip.Entry, content string) {
 	a.entries = append(a.entries, e)
 	if !e.Folder {
@@ -36,17 +32,12 @@ func (a *archive) add(e sevenzip.Entry, content string) {
 	}
 }
 
-// readResult is one item as a test reads it: its name, its content, and the error its content's
-// last read returned, nil for io.EOF.
 type readResult struct {
 	name    string
 	content string
 	err     error
 }
 
-// readAll reads every item of a through a stand-in 7zz, cut after cut bytes of a whole run when
-// cut isn't zero, reading at most limit bytes of the item named partial, and returns the items as
-// read and the e runs the stand-in logged.
 func readAll(t *testing.T, a archive, cut int, partial string, limit int64) ([]readResult, [][]string) {
 	t.Helper()
 	tl, link := standinLinked(t, standinSettings{Version: "26.05", Items: a.items, Cut: cut})
@@ -75,7 +66,6 @@ func readAll(t *testing.T, a archive, cut int, partial string, limit int64) ([]r
 	return got, runs
 }
 
-// named returns the switches of a run's args that name items, -i! and -x!.
 func named(args []string) []string {
 	var out []string
 	for _, a := range args {
@@ -86,7 +76,6 @@ func named(args []string) []string {
 	return out
 }
 
-// wantRuns fails the test unless runs name items as want does, run by run.
 func wantRuns(t *testing.T, runs [][]string, want ...[]string) {
 	t.Helper()
 	if len(runs) != len(want) {
@@ -99,10 +88,6 @@ func wantRuns(t *testing.T, runs [][]string, want ...[]string) {
 	}
 }
 
-// TestReadWhole: one run reads a directory's, three files', and an empty file's items, split by
-// their sizes in the listing's order, excluding a symbolic link, an encrypted file, and an
-// unsized one, each of which reads alone when its content is read: the link's target, the unsized
-// file's content, and the encrypted file failing with ErrEncrypted.
 func TestReadWhole(t *testing.T) {
 	t.Parallel()
 	var a archive
@@ -137,7 +122,6 @@ func TestReadWhole(t *testing.T) {
 		[]string{"-i!passwd"}, []string{"-i!secret.txt"}, []string{"-i!unsized.txt"})
 }
 
-// wantRead fails the test unless got is want, each error matching want's.
 func wantRead(t *testing.T, got, want []readResult) {
 	t.Helper()
 	if len(got) != len(want) {
@@ -151,7 +135,6 @@ func wantRead(t *testing.T, got, want []readResult) {
 	}
 }
 
-// threeFiles is an archive of three files, 10, 11, and 12 bytes, all held by the whole run.
 func threeFiles() archive {
 	var a archive
 	for _, c := range []struct{ name, content string }{{"a", "aaaaaaaaa\n"}, {"b", "bbbbbbbbbb\n"}, {"c", "ccccccccccc\n"}} {
@@ -160,8 +143,6 @@ func threeFiles() archive {
 	return a
 }
 
-// TestReadMismatch: an item whose content isn't its listed CRC-32 fails with ErrContent, read in
-// the whole run or alone, and stops the whole run, so the items after it read alone, as they are.
 func TestReadMismatch(t *testing.T) {
 	t.Parallel()
 	a := threeFiles()
@@ -171,9 +152,6 @@ func TestReadMismatch(t *testing.T) {
 	wantRuns(t, runs, nil, []string{"-i!c"})
 }
 
-// TestReadCut: a whole run that fails within an item leaves it short, failing with ErrContent and
-// the run's message, and the items after it read alone; one that fails at an item's start leaves
-// that item and the rest to read alone, with no error.
 func TestReadCut(t *testing.T) {
 	t.Parallel()
 	got, runs := readAll(t, threeFiles(), 15, "", 0)
@@ -188,8 +166,6 @@ func TestReadCut(t *testing.T) {
 	wantRuns(t, runs, nil, []string{"-i!b"}, []string{"-i!c"})
 }
 
-// TestReadUnfinished: an item its caller stops reading partway stops the whole run, so the items
-// after it read alone; one it skips, never reading, does the same.
 func TestReadUnfinished(t *testing.T) {
 	t.Parallel()
 	got, runs := readAll(t, threeFiles(), 0, "a", 4)
@@ -201,9 +177,6 @@ func TestReadUnfinished(t *testing.T) {
 	wantRuns(t, runs, nil, []string{"-i!c"})
 }
 
-// TestReadAlone: an item the whole run holds that an exclusion would remove too, by its name or
-// a directory it lies under, reads alone; an excluded name holding a "_", which may be a line
-// break 7zz lists as one, makes no whole run, every item reading alone.
 func TestReadAlone(t *testing.T) {
 	t.Parallel()
 	var a archive
@@ -227,8 +200,6 @@ func TestReadAlone(t *testing.T) {
 	wantRuns(t, runs, []string{"-i!first"}, []string{"-i!line_break"}, []string{"-i!last"})
 }
 
-// TestReadRefused: a request with no path or a kind the package doesn't read is refused with
-// ErrRequest, and nothing runs.
 func TestReadRefused(t *testing.T) {
 	t.Parallel()
 	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05"})})

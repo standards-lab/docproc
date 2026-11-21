@@ -17,8 +17,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinTool links the stand-in as name with settings and builds its Tool through the exec
-// runner, its version checked by cli.VersionPattern.
 func standinTool(t *testing.T, name string, settings standinSettings) *tool.Tool {
 	t.Helper()
 	link := tooltest.Link(t, t.TempDir(), name, settings)
@@ -32,8 +30,6 @@ func standinTool(t *testing.T, name string, settings standinSettings) *tool.Tool
 	return tl
 }
 
-// read ranges over a run of tl whose first line is a "document", returning its lines' kinds,
-// its warnings, and its final error; it fails the test on a warning that follows the error.
 func read(t *testing.T, tl *tool.Tool) (kinds []string, warnings []dispatch.Warning, err error) {
 	t.Helper()
 	for line, lerr := range cli.Read(t.Context(), cli.Run{Tool: tl, Args: []string{"input"}, First: "document"}) {
@@ -51,7 +47,6 @@ func read(t *testing.T, tl *tool.Tool) (kinds []string, warnings []dispatch.Warn
 	return kinds, warnings, err
 }
 
-// TestReadLines: each stdout line is yielded with its kind and its JSON, as written.
 func TestReadLines(t *testing.T) {
 	t.Parallel()
 	stdout := `{"line":"document","schema":"2","format":"xlsx"}` + "\n" +
@@ -75,8 +70,6 @@ func TestReadLines(t *testing.T) {
 	}
 }
 
-// TestReadSchema: a first line of another kind or schema, or none from a run that exited 0, is
-// ErrSchema; a line that isn't a JSON object with a kind is an error, not ErrSchema.
 func TestReadSchema(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -104,9 +97,6 @@ func TestReadSchema(t *testing.T) {
 	}
 }
 
-// TestReadWarnings: each shared case's stderr line is a warning with its where and what, the
-// escape inverted, the tool named; a control character escaped by its code point reads back; a
-// line that fits no warning is one whose what is the line alone; a blank line is none.
 func TestReadWarnings(t *testing.T) {
 	t.Parallel()
 	cases := readCases(t)
@@ -134,8 +124,6 @@ func TestReadWarnings(t *testing.T) {
 	}
 }
 
-// TestReadExitCodes: each shared exit code 1 to 4 is an *ExitError matching its own error and no
-// other's, unwrapping to the run's *tool.ExitError, with no reason no refusal class; 0 is none.
 func TestReadExitCodes(t *testing.T) {
 	t.Parallel()
 	all := []error{cli.ErrNotWritten, cli.ErrUsage, cli.ErrRefused, cli.ErrFailed}
@@ -168,8 +156,6 @@ func TestReadExitCodes(t *testing.T) {
 	}
 }
 
-// TestReadErrors: each shared case's error line gives its reason as the run's message, and the
-// run's message is the last error line, whatever follows it.
 func TestReadErrors(t *testing.T) {
 	t.Parallel()
 	cases := readCases(t)
@@ -192,11 +178,9 @@ func TestReadErrors(t *testing.T) {
 	}
 }
 
-// TestReadWarnsThenFails: a run that warns past 1 MiB and then fails keeps every warning, each
-// yielded before the final error, and its last error line's message.
 func TestReadWarnsThenFails(t *testing.T) {
 	t.Parallel()
-	const count = 12000 // 12,000 lines of about 120 bytes: past 1 MiB
+	const count = 12000
 	tl := standinTool(t, "tool", standinSettings{
 		Stdout:   `{"line":"document","schema":"2"}` + "\n",
 		Warnings: count,
@@ -223,8 +207,6 @@ func TestReadWarnsThenFails(t *testing.T) {
 	}
 }
 
-// TestReadSignal: a death by a signal is an *ExitError matching ErrFailed, its signal named in its
-// message.
 func TestReadSignal(t *testing.T) {
 	t.Parallel()
 	_, _, err := read(t, standinTool(t, "tool", standinSettings{Kill: true}))
@@ -237,9 +219,6 @@ func TestReadSignal(t *testing.T) {
 	}
 }
 
-// TestReadRefusals: the tools' refusal goldens, read in place, are refusals classed by their
-// reasons: onenote's table of contents ReadElsewhere, an encrypted input of either tool
-// Encrypted, and a legacy document Unclassed.
 func TestReadRefusals(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -265,8 +244,6 @@ func TestReadRefusals(t *testing.T) {
 	}
 }
 
-// TestReadStops: a caller that stops ranging ends the run, which would otherwise sleep a minute,
-// and Read waits for it.
 func TestReadStops(t *testing.T) {
 	t.Parallel()
 	tl := standinTool(t, "tool", standinSettings{Stdout: `{"line":"document","schema":"2"}` + "\n", Sleep: true})
@@ -282,7 +259,6 @@ func TestReadStops(t *testing.T) {
 	}
 }
 
-// TestReadContext: a context's end ends the run with the context's error, not an *ExitError.
 func TestReadContext(t *testing.T) {
 	t.Parallel()
 	tl := standinTool(t, "tool", standinSettings{Stdout: `{"line":"document","schema":"2"}` + "\n", Sleep: true})
@@ -302,7 +278,6 @@ func TestReadContext(t *testing.T) {
 	}
 }
 
-// TestReadNilTool: a Run with no Tool panics by name.
 func TestReadNilTool(t *testing.T) {
 	t.Parallel()
 	defer func() {

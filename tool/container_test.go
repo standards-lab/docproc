@@ -20,15 +20,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// testRef is the stand-in image, pinned by digest.
 const testRef = "registry.example:5000/team/standin:1.0@sha256:" +
 	"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-// containerNamePattern matches a run's container name: the runner's prefix and its random suffix.
 var containerNamePattern = regexp.MustCompile(`^tool-[a-z2-7]{26}$`)
 
-// newContainer builds the stand-in tool, version 1.2.3, in image, through the stand-in docker in
-// dir, the directory installDocker returned.
 func newContainer(t *testing.T, dir string, image tool.Image) *tool.Tool {
 	t.Helper()
 	tl, err := tool.NewContainer(t.Context(), dockerLink(dir), image, standinSpec("standin", "1.2.3", "1.0"))
@@ -62,8 +58,6 @@ func TestNewContainer(t *testing.T) {
 	}
 }
 
-// TestNewContainerFindsDockerOnPath: an empty docker path looks docker up on PATH. It sets PATH,
-// so it runs alone; every other test names its stand-in docker by path.
 func TestNewContainerFindsDockerOnPath(t *testing.T) {
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
@@ -86,19 +80,17 @@ func TestNewContainerDockerNotFound(t *testing.T) {
 	}
 }
 
-// TestNewContainerRefusesRef checks that a reference without a digest and its tag is refused
-// before docker runs at all.
 func TestNewContainerRefusesRef(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
 	digest := "@sha256:" + strings.Repeat("ab", 32)
 	for _, ref := range []string{
-		"standin:1.0",                                    // a tag alone
-		"standin" + digest,                               // a digest without a tag
-		"registry.example:5000/standin" + digest,         // a port isn't a tag
-		"standin:1.0@sha256:abcdef",                      // a short digest
-		"standin:1.0@sha256:" + strings.Repeat("AB", 32), // upper-case hex
-		"standin:1.0@sha512:" + strings.Repeat("ab", 64), // another algorithm
+		"standin:1.0",
+		"standin" + digest,
+		"registry.example:5000/standin" + digest,
+		"standin:1.0@sha256:abcdef",
+		"standin:1.0@sha256:" + strings.Repeat("AB", 32),
+		"standin:1.0@sha512:" + strings.Repeat("ab", 64),
 		"",
 	} {
 		t.Run(ref, func(t *testing.T) {
@@ -134,7 +126,7 @@ func TestNewContainerDockerVersion(t *testing.T) {
 	}{
 		{"20.10.0", true},
 		{"29.0.1", true},
-		{"20.10.24+dfsg1", true}, // a distribution's suffix
+		{"20.10.24+dfsg1", true},
 		{"20.9.9", false},
 		{"19.03.15", false},
 	}
@@ -196,7 +188,6 @@ func TestNewContainerVersionInImage(t *testing.T) {
 	})
 }
 
-// TestContainerRunArgs checks each run's arguments, the lockdown whole, with and without stdin.
 func TestContainerRunArgs(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -257,9 +248,6 @@ func TestContainerRunArgs(t *testing.T) {
 	}
 }
 
-// TestContainerRunDir checks that an empty Dir is the process's working directory and a
-// relative one is made absolute, and that a colon, which docker's --volume can't take, is
-// refused. It changes the working directory, so it runs alone.
 func TestContainerRunDir(t *testing.T) {
 	dir := installDocker(t, "29.0.1")
 	addImage(t, dir, testRef)
@@ -313,8 +301,6 @@ func TestContainerRelaxations(t *testing.T) {
 	}
 }
 
-// TestToolImage reports a container tool's image, its relaxations included, and none for an exec
-// tool; the image returned is a copy, so changing it changes no run.
 func TestToolImage(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -349,9 +335,6 @@ func TestContainerExitError(t *testing.T) {
 	}
 }
 
-// TestContainerCancel checks that a cancelled run stops its container by docker stop, with the
-// KillAfter period rounded up to whole seconds, and returns the context's error. The stand-in CLI
-// ignores SIGTERM, so only docker stop ends the container.
 func TestContainerCancel(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
@@ -403,8 +386,6 @@ func TestContainerCancel(t *testing.T) {
 	}
 }
 
-// TestContainerCancelHeldStdin checks that a cancelled run returns though the caller holds its
-// stdin, a pipe, open.
 func TestContainerCancelHeldStdin(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -447,8 +428,6 @@ func TestContainerDeadlineExceeded(t *testing.T) {
 	}
 }
 
-// TestContainerRunContextAlreadyDone checks that a run whose context has ended never starts a
-// container.
 func TestContainerRunContextAlreadyDone(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -464,11 +443,6 @@ func TestContainerRunContextAlreadyDone(t *testing.T) {
 	}
 }
 
-// TestContainerExitAsContextEnds checks that a run whose CLI exits nonzero on its own as ctx ends
-// returns an error matching ctx's, naming the CLI's outcome once. Its context ends at the first
-// look after the tool has written its stderr, which is after the runner's own look before it
-// starts the CLI and before the CLI exits, so the runner sees the CLI's exit and only then ctx's
-// end: no stop is issued, and the order needs no timing.
 func TestContainerExitAsContextEnds(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -487,7 +461,6 @@ func TestContainerExitAsContextEnds(t *testing.T) {
 	}
 }
 
-// TestContainerSuccessAsContextEnds checks that a run that succeeds as ctx ends is a success.
 func TestContainerSuccessAsContextEnds(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")
@@ -504,8 +477,6 @@ func TestContainerSuccessAsContextEnds(t *testing.T) {
 	}
 }
 
-// endOnLook is a context that, once armed, ends at the next call to its Err: the run's next look
-// at it. Until then its Done stays open, so nothing waiting on it sees it end first.
 type endOnLook struct {
 	context.Context
 	cancel context.CancelFunc
@@ -524,7 +495,6 @@ func (c *endOnLook) Err() error {
 	return c.Context.Err()
 }
 
-// armingWriter is a stand-in's stream; it arms ctx at the first write.
 type armingWriter struct{ ctx *endOnLook }
 
 func (w *armingWriter) Write(p []byte) (int, error) {
@@ -532,7 +502,6 @@ func (w *armingWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// flagValue returns the value of the flag joined to it with = in args, empty when absent.
 func flagValue(args []string, flag string) string {
 	for _, arg := range args {
 		if value, ok := strings.CutPrefix(arg, flag+"="); ok {

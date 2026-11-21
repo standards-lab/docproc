@@ -36,8 +36,6 @@ type Listed struct {
 	Encrypted bool
 }
 
-// listed are the kinds [CheckListing] reads, and whether a kind's listing can name an entry: a
-// zstd stream's one entry is its content, checked by its declared size alone.
 var listed = map[route.Kind]bool{route.SevenZip: true, route.MSCF: true, route.Zstd: false}
 
 // CheckListing checks an archive's listing, entries, as a program that reads the archive lists
@@ -78,14 +76,10 @@ func CheckListing(kind route.Kind, size int64, entries []Listed, opts Options) (
 	return Report{Kind: kind, Flags: flags, Verdict: opts.Verdict(flags)}, nil
 }
 
-// listed checks one listed entry: its name, when named, its type, its encryption, and its
-// declared size.
 func (in *inspection) listed(e Listed, named bool) {
 	quoted := fmt.Sprintf("entry %q", e.Name)
 	if named {
 		in.entryName(e.Name)
-		// A link's target is its evidence when the listing names it; a 7z lists none, its
-		// target being the entry's content.
 		linked := quoted
 		if e.Link != "" {
 			linked = fmt.Sprintf("%s to %q", quoted, e.Link)

@@ -11,21 +11,10 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 )
 
-// cleanDirs are the directories of the repository's clean fixtures: the office, document,
-// picture, tool, and email packages' testdata.
 var cleanDirs = []string{"../office/testdata", "../document/testdata", "../picture/testdata", "../tool/testdata", "../email/testdata"}
 
-// cleanSkipped are the files under cleanDirs that aren't clean fixtures: picture's
-// script-bearing.svg, ~/docs' SVG hazard, copied as the conversions' security fixture.
 var cleanSkipped = map[string]bool{"../picture/testdata/script-bearing.svg": true}
 
-// cleanFlags are the clean fixtures that carry what a check reads, and its checks. A linked
-// picture is an external relationship, fetched when a reader renders the document, as an SVG's
-// external href is, so it is active content though the fixture is clean; an external
-// hyperlink, which word-with-attachments.docx holds three of, isn't. Its OLE object is one of
-// the embeddings the checks name, as are document's attachments.pdf's embedded files. document's
-// malformed compacted-syntax.pdf, SafeDocs' parser test, holds a print action, /AA, whose
-// /JavaScript /JS calls app.alert, which no stage runs.
 var cleanFlags = map[string][]inspect.Check{
 	"../office/testdata/ooxml/media.libreoffice.docx":     {inspect.ExternalRelationship},
 	"../office/testdata/ooxml/word-with-attachments.docx": {inspect.OLEObject},
@@ -34,10 +23,6 @@ var cleanFlags = map[string][]inspect.Check{
 	"../document/testdata/malformed/compacted-syntax.pdf": {inspect.PDFAA, inspect.PDFJavaScript, inspect.PDFJS},
 }
 
-// TestCleanFixtures inspects the repository's clean fixtures, every file under cleanDirs but the
-// generator scripts, which are executable by design, and cleanSkipped: each yields no flag, but
-// cleanFlags' files, which yield exactly their checks, and every verdict is proceed. A cleanFlags
-// file the walk doesn't reach, renamed or removed, fails, as does a walk that reaches nothing.
 func TestCleanFixtures(t *testing.T) {
 	n := 0
 	seen := map[string]bool{}

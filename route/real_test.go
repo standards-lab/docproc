@@ -9,8 +9,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// testdataRoutes are the routes of the repository's committed testdata files, by extension; a
-// file of an extension not listed isn't checked.
 var testdataRoutes = map[string]route.Route{
 	".pdf":  route.Document,
 	".docx": route.Office, ".xlsx": route.Office, ".pptx": route.Office,
@@ -21,9 +19,6 @@ var testdataRoutes = map[string]route.Route{
 	".sh": route.Unrouted, ".typ": route.Unrouted,
 }
 
-// TestFileTestdata routes the repository's own testdata, the office, document, picture, and tool
-// packages' fixtures: each file is routed as its extension says it should be, a script by its
-// "#!" line.
 func TestFileTestdata(t *testing.T) {
 	n := 0
 	for _, dir := range []string{"../office/testdata", "../document/testdata", "../picture/testdata", "../tool/testdata"} {

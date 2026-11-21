@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 	"time"
-	_ "time/tzdata" // Europe/London, whatever zone data the host holds
+	_ "time/tzdata"
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/inspect"
@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/docproc/rundir/schema"
 )
 
-// marshal returns v as JSON, failing the test on an error.
 func marshal(t *testing.T, v any) string {
 	t.Helper()
 	b, err := json.Marshal(v)
@@ -24,8 +23,6 @@ func marshal(t *testing.T, v any) string {
 	return string(b)
 }
 
-// roundTrip marshals v, checks the JSON is want, decodes it into a new T, and checks that equals
-// v.
 func roundTrip[T any](t *testing.T, v T, want string) {
 	t.Helper()
 	got := marshal(t, v)
@@ -71,7 +68,6 @@ func TestTimeOf_UTCWhateverZone(t *testing.T) {
 	}
 }
 
-// A clock reading's monotonic part is dropped, so the Time equals its decoded self.
 func TestTimeOf_Now(t *testing.T) {
 	tm := schema.TimeOf(time.Now())
 
@@ -84,7 +80,6 @@ func TestTimeOf_Now(t *testing.T) {
 	}
 }
 
-// A time decoded in another zone, with fewer fraction digits, is the same instant, in UTC.
 func TestTime_UnmarshalConvertsToUTC(t *testing.T) {
 	var tm schema.Time
 	if err := json.Unmarshal([]byte(`"2026-11-07T20:49:05.5+05:45"`), &tm); err != nil {
@@ -131,8 +126,6 @@ func TestFile_Whole(t *testing.T) {
 		`"detected":"application/pdf"}`)
 }
 
-// A filesystem that records no birth time leaves "created" out, and a file whose head couldn't be
-// read "detected"; every other field is present at its zero value.
 func TestFile_OptionalAbsent(t *testing.T) {
 	f := schema.File{Name: "a.txt", Arg: "/a.txt", Path: ".", Mode: "-rw-r--r--", Modified: modified}
 
@@ -145,7 +138,6 @@ var input = dispatch.Part{
 	ContentType: dispatch.ContentType{Kind: route.ZIP, Route: route.Archive},
 }
 
-// An input's own part line carries its file and its span beside dispatch's fields.
 func TestEvent_InputPartLine(t *testing.T) {
 	e := schema.Event{
 		Kind:    schema.PartEvent,
@@ -164,7 +156,6 @@ func TestEvent_InputPartLine(t *testing.T) {
 		`"time":{"start":"2026-11-07T15:04:05.000000000Z","end":"2026-11-07T15:04:06.000000000Z"}}`)
 }
 
-// A quarantined part's line names its kept file; its flags are the part's.
 func TestEvent_QuarantinedLine(t *testing.T) {
 	e := schema.Event{
 		Kind:  schema.PartEvent,
@@ -215,7 +206,6 @@ func TestEvent_WarningLine(t *testing.T) {
 		`"warning":{"tool":"archive","where":"entry b","what":"truncated"},"outcome":"seen","recorded":"prepared"}`)
 }
 
-// An error line has no part, and its text is in "error": dispatch.Event's Err never marshals.
 func TestEvent_ErrorLine(t *testing.T) {
 	e := schema.Event{
 		Kind:  schema.ErrorEvent,
@@ -231,7 +221,7 @@ func TestEvent_ErrorLine(t *testing.T) {
 	if got := marshal(t, e); got != want {
 		t.Errorf("Marshal with Err =\n %s\nwant\n %s", got, want)
 	}
-	e.Err = nil // a decoded line has no Err
+	e.Err = nil
 	roundTrip(t, e, want)
 }
 
@@ -262,8 +252,6 @@ func TestManifest_Ended(t *testing.T) {
 		`"error":"store: disk full"}`)
 }
 
-// A running manifest has no end and no error, and keeps every other field, a zero count among
-// them.
 func TestManifest_Running(t *testing.T) {
 	m := schema.Manifest{
 		Schema: schema.Version, Run: "r", Docproc: schema.Build{Command: "(devel)", Library: "(devel)"},
@@ -274,7 +262,6 @@ func TestManifest_Running(t *testing.T) {
 		`"start":"2026-11-07T15:04:05.000000000Z","workers":1,"inputs":["/a"],"collected":0,"tools":[],"stages":[]}`)
 }
 
-// A tool's Err stays local beside its text in "error".
 func TestManifest_ToolErrNeverMarshals(t *testing.T) {
 	m := schema.Manifest{Tools: []dispatch.Tool{{Program: "gs", Minimum: "10.0", Error: "missing", Err: errors.New("missing")}}}
 

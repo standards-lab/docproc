@@ -19,7 +19,7 @@ import (
 
 func TestCancelTerminates(t *testing.T) {
 	t.Parallel()
-	tl := newStandin(t) // standinKillAfter, 10 s
+	tl := newStandin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	ready := newReadyWriter()
@@ -73,8 +73,6 @@ func TestCancelEndsChild(t *testing.T) {
 	start := time.Now()
 	cancel()
 	assertContextError(t, <-done, context.Canceled)
-	// The child ignores SIGTERM; the group's SIGKILL ends it once its parent exits, well
-	// before the KillAfter period.
 	if elapsed := time.Since(start); elapsed > 5*time.Second {
 		t.Errorf("Run took %v after cancel, want well under the 10 s KillAfter period", elapsed)
 	}
@@ -83,12 +81,10 @@ func TestCancelEndsChild(t *testing.T) {
 
 func TestCancelEndsChildHoldingOutput(t *testing.T) {
 	t.Parallel()
-	tl := newStandin(t) // standinKillAfter, 10 s
+	tl := newStandin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	pidFile := filepath.Join(t.TempDir(), "child.pid")
-	// The child holds the stdout and stderr pipes, so Wait can't finish until it dies; only the
-	// group's SIGKILL at its parent's exit ends it before WaitDelay closes the pipes.
 	done := runAsync(ctx, tl, tool.Invocation{Args: []string{"spawn", pidFile, "held"}, Stdout: newReadyWriter()})
 	pid := readPid(t, pidFile)
 	start := time.Now()
@@ -118,12 +114,6 @@ func TestRunContextAlreadyDone(t *testing.T) {
 	assertContextError(t, err, context.Canceled)
 }
 
-// TestCancelErrorNamesContextOnce checks that a cancelled run's error, through either runner,
-// reads as the program's name, the context's error, and the program's own outcome in parentheses,
-// each once. The container runner's CLI runs under a context of its own, which it ends once the
-// container is stopped, so its error carries a cancel of its own that the run's error doesn't
-// repeat. The stand-in ignores SIGTERM, so the KillAfter period's SIGKILL ends it: the exec
-// runner's program is killed by signal, and the container's CLI exits 137 for it.
 func TestCancelErrorNamesContextOnce(t *testing.T) {
 	t.Parallel()
 	want := map[string]string{
@@ -149,14 +139,12 @@ func TestCancelErrorNamesContextOnce(t *testing.T) {
 	}
 }
 
-// runAsync runs tl in a goroutine, sending Run's error on the channel it returns.
 func runAsync(ctx context.Context, tl *tool.Tool, inv tool.Invocation) <-chan error {
 	done := make(chan error, 1)
 	go func() { done <- tl.Run(ctx, inv) }()
 	return done
 }
 
-// assertContextError checks that err matches want, the context's error, and is no ExitError.
 func assertContextError(t *testing.T, err, want error) {
 	t.Helper()
 	if !errors.Is(err, want) {
@@ -167,8 +155,6 @@ func assertContextError(t *testing.T, err, want error) {
 	}
 }
 
-// readyWriter is a stand-in's stdout; it closes ready at the first write, the stand-in's
-// "ready" once its SIGTERM handling is in place.
 type readyWriter struct {
 	once  sync.Once
 	ready chan struct{}
@@ -181,7 +167,6 @@ func (w *readyWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// wait blocks until the stand-in is ready, failing the test after 10 s.
 func (w *readyWriter) wait(t *testing.T) {
 	t.Helper()
 	select {
@@ -191,8 +176,6 @@ func (w *readyWriter) wait(t *testing.T) {
 	}
 }
 
-// readPid polls for the pid a stubborn stand-in writes to file, a number and a newline,
-// failing the test after 10 s.
 func readPid(t *testing.T, file string) int {
 	t.Helper()
 	deadline := time.Now().Add(10 * time.Second)
@@ -210,8 +193,6 @@ func readPid(t *testing.T, file string) int {
 	return 0
 }
 
-// assertGone polls for the process pid to be gone, or a zombie awaiting its reaper, failing the
-// test after 5 s.
 func assertGone(t *testing.T, pid int) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -225,13 +206,11 @@ func assertGone(t *testing.T, pid int) {
 	t.Errorf("child %d outlived the cancelled run", pid)
 }
 
-// zombie reports whether pid is a zombie: exited, its parent not yet having reaped it.
 func zombie(pid int) bool {
 	stat, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/stat")
 	if err != nil {
 		return false
 	}
-	// The state follows the command name, which is in parentheses and may contain spaces.
 	i := bytes.LastIndexByte(stat, ')')
 	return i >= 0 && i+2 < len(stat) && stat[i+2] == 'Z'
 }

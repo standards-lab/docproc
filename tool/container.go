@@ -27,14 +27,8 @@ type Image struct {
 	CapAdd []string
 }
 
-// imageRef matches a reference pinned by digest that keeps its tag. The repository is greedy, so
-// the tag is what follows its last colon, and a tag can't hold a slash, so a registry's port is
-// never taken for one.
 var imageRef = regexp.MustCompile(`^[a-z0-9][^\s@]*:[\w][\w.-]{0,127}@sha256:[0-9a-f]{64}$`)
 
-// dockerSpec declares the docker CLI for program, "docker" when empty. Its version is the
-// server's, so a daemon the CLI can't reach fails the version command; 20.10 is the first with
-// run's --pull.
 func dockerSpec(program string) Spec {
 	if program == "" {
 		program = "docker"
@@ -48,19 +42,12 @@ func dockerSpec(program string) Spec {
 	}
 }
 
-// pidsLimit is every run's --pids-limit, the processes and threads its container may hold: fixed,
-// and far above what a converter's thread pool takes on a many-core host.
 const pidsLimit = 4096
 
-// containerPrefix begins every run's container name; a random suffix follows it.
 const containerPrefix = "tool-"
 
-// stopMargin bounds docker stop beyond a run's KillAfter period: the daemon's own work in stopping
-// and removing the container.
 const stopMargin = 15 * time.Second
 
-// cliKillAfter is the docker CLI's own KillAfter period in a run: its context ends only once its
-// container is stopped, so it has only to exit.
 const cliKillAfter = 2 * time.Second
 
 // NewContainer builds a Tool that runs spec's program inside image, the container runner. docker
@@ -131,8 +118,6 @@ func NewContainer(ctx context.Context, docker string, image Image, spec Spec) (*
 	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: run, image: &image}, nil
 }
 
-// ensureImage pulls ref through drun, docker's runFunc, unless docker image inspect finds it
-// present. Any failure to inspect counts as absent, and the pull reports what's wrong.
 func ensureImage(ctx context.Context, name, ref string, drun runFunc) error {
 	if drun(ctx, Invocation{Args: []string{"image", "inspect", "--format={{.Id}}", ref}}) == nil {
 		return nil
@@ -146,9 +131,6 @@ func ensureImage(ctx context.Context, name, ref string, drun runFunc) error {
 	return nil
 }
 
-// runArgs returns the arguments of docker run that every run of program in image shares, the
-// lockdown and its relaxations, each valued flag joined to its value with = so no value is ever
-// read as a flag.
 func runArgs(spec Spec, image Image) []string {
 	network := image.Network
 	if network == "" {
@@ -170,27 +152,13 @@ func runArgs(spec Spec, image Image) []string {
 	return append(args, "--pull=never", "--entrypoint="+spec.Program)
 }
 
-// containerRun returns the container runner's runFunc. Each run executes the docker CLI at dpath
-// with base, the run's name, its mount and working directory, --interactive when it has stdin,
-// ref, and then the invocation's arguments; drun runs docker's other commands.
-//
-// Cancellation goes around the exec runner's own: the CLI runs under a context of its own, which
-// ctx's end doesn't reach, since the CLI forwards SIGTERM to its container but can't forward
-// SIGKILL, and a CLI killed by its KillAfter period would leave the container running. When ctx
-// ends, stopContainer runs docker stop on the run's name, and only once the container is stopped
-// does it end the CLI's context. The exec runner's SIGTERM then reaches a CLI with nothing left to
-// forward, and its cliKillAfter period bounds a CLI that doesn't exit on its own. Run waits for the
-// CLI either way, and returns an error matching ctx's.
+// See docs/api.md, "Running the tools".
 func containerRun(name, dpath string, drun runFunc, base []string, ref string, killAfter time.Duration) runFunc {
 	cli := execRun(execConfig{name: name, path: dpath, killAfter: cliKillAfter})
 	return func(ctx context.Context, inv Invocation) error {
-		// The CLI's rusage isn't the container's, whose processes the daemon starts and reaps, so
-		// a run reports no usage, and the CLI's own Invocation asks for none.
 		if inv.Usage != nil {
 			*inv.Usage = Usage{}
 		}
-		// A run whose context has already ended never starts, so no container can start after
-		// the stop meant for it.
 		if err := ctx.Err(); err != nil {
 			return &cancelError{program: name, ctxErr: err}
 		}
@@ -221,9 +189,6 @@ func containerRun(name, dpath string, drun runFunc, base []string, ref string, k
 		err = cli(cliCtx, Invocation{Args: args, Stdin: inv.Stdin, Stdout: inv.Stdout, Stderr: inv.Stderr})
 		close(exited)
 		if <-stopped {
-			// ctx ended the run: its error is the cause, whatever the CLI's exit. The CLI's error
-			// is the exec runner's, an ExitError or, once endCLI has ended the CLI's context, a
-			// cancelError of its own, so only its outcome is named.
 			var outcome error
 			if err != nil {
 				outcome = runOutcome(err)
@@ -231,9 +196,6 @@ func containerRun(name, dpath string, drun runFunc, base []string, ref string, k
 			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: outcome, exit: containerExit(err)}
 		}
 		if err != nil && ctx.Err() != nil {
-			// ctx ended as the CLI exited on its own, and the select saw the exit first: no stop
-			// was needed, but ctx's error is still the cause, as the exec runner's is. A run that
-			// succeeded stays a success.
 			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: runOutcome(err), exit: containerExit(err)}
 		}
 		if exit := containerExit(err); exit != nil {
@@ -243,9 +205,6 @@ func containerRun(name, dpath string, drun runFunc, base []string, ref string, k
 	}
 }
 
-// containerExit returns the container's exit within err, the CLI's error: the CLI's ExitError,
-// its own or within a cancelError, with Signal named from an exit code of 129 to 159, which
-// docker's init gives a program a signal ended; nil when err holds no exit.
 func containerExit(err error) *ExitError {
 	exit, ok := errors.AsType[*ExitError](err)
 	if !ok {
@@ -262,13 +221,6 @@ func containerExit(err error) *ExitError {
 	return &e
 }
 
-// stopContainer stops the container cname once ctx, its run's context, has ended, and returns once
-// exited closes, the CLI having exited. It runs docker stop with killAfter rounded up to whole
-// seconds, SIGTERM and then SIGKILL, under a fresh context bounded by killAfter and stopMargin. A
-// stop can come before the CLI has created its container, and fails then, so it is repeated each
-// second while the CLI runs and the bound allows. Once a stop succeeds, or the bound passes, endCLI
-// ends the CLI's own context; once the CLI has exited, docker rm --force removes whatever
-// container a stop might have missed, so none named for the run remains.
 func stopContainer(ctx context.Context, cname string, drun runFunc, killAfter time.Duration, exited <-chan struct{}, endCLI context.CancelFunc) {
 	secs := strconv.FormatInt(int64((killAfter+time.Second-1)/time.Second), 10)
 	stopCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), killAfter+stopMargin)
@@ -291,9 +243,6 @@ func stopContainer(ctx context.Context, cname string, drun runFunc, killAfter ti
 	_ = drun(rmCtx, Invocation{Args: []string{"rm", "--force", cname}, Stdout: io.Discard, Stderr: io.Discard})
 }
 
-// workDir returns dir as the absolute path a run mounts and works in: the process's working
-// directory when dir is empty. A colon would split docker's --volume, so a path with one is
-// refused.
 func workDir(dir string) (string, error) {
 	if dir == "" {
 		dir = "."
@@ -308,8 +257,6 @@ func workDir(dir string) (string, error) {
 	return abs, nil
 }
 
-// containerName returns a new run's container name: containerPrefix and 26 random base32
-// digits, lowercased, 130 bits.
 func containerName() string {
 	return containerPrefix + strings.ToLower(rand.Text())
 }

@@ -9,27 +9,17 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 )
 
-// pendingMax is how many parsed warnings a run's stderr holds for its reader before the tool's
-// writes to stderr wait for the reader to take them. It bounds no output, only the buffer between
-// the two pipes: the reader takes warnings whenever they arrive, between stdout's lines.
 const pendingMax = 256
 
-// stderrReader is a run's stderr, parsed as it arrives: each line a tool writes is a warning, or
-// an `error:` line whose reason is the run's message, the last one written.
 type stderrReader struct {
-	tool string
-	// notify has a value once a warning is pending, for the reader to take it.
+	tool   string
 	notify chan struct{}
 
-	mu   sync.Mutex
-	cond *sync.Cond
-	// partial is a line written in part, its line feed yet to come.
-	partial []byte
-	pending []dispatch.Warning
-	message string
-	// closed is set once the run has returned; a write after it, a copy os/exec left running, is
-	// dropped. unbounded lets pending grow past pendingMax, once the run is being ended, and
-	// discard drops every warning, once nothing will read them.
+	mu                         sync.Mutex
+	cond                       *sync.Cond
+	partial                    []byte
+	pending                    []dispatch.Warning
+	message                    string
 	closed, unbounded, discard bool
 }
 
@@ -39,8 +29,6 @@ func newStderrReader(tool string) *stderrReader {
 	return s
 }
 
-// Write parses each whole line in p, keeping a line's start until its line feed comes. It never
-// fails, so the tool's stderr is read to its end; it waits while pendingMax warnings are pending.
 func (s *stderrReader) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -62,8 +50,6 @@ func (s *stderrReader) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// line parses one line, s.mu held: a blank line is skipped; an `error:` line sets the message; any
-// other line is a warning.
 func (s *stderrReader) line(line string) {
 	if strings.TrimSpace(line) == "" {
 		return
@@ -86,7 +72,6 @@ func (s *stderrReader) line(line string) {
 	}
 }
 
-// take returns the pending warnings, in order, and lets a waiting write go on.
 func (s *stderrReader) take() []dispatch.Warning {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -96,8 +81,6 @@ func (s *stderrReader) take() []dispatch.Warning {
 	return taken
 }
 
-// close ends the reading once the run has returned: a line still unended is parsed, and later
-// writes are dropped. It returns the run's message.
 func (s *stderrReader) close() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -111,7 +94,6 @@ func (s *stderrReader) close() string {
 	return s.message
 }
 
-// unbound lets warnings pend past pendingMax, so a run being ended never waits on its reader.
 func (s *stderrReader) unbound() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -119,7 +101,6 @@ func (s *stderrReader) unbound() {
 	s.cond.Broadcast()
 }
 
-// drop discards every warning from now on, the reader having stopped.
 func (s *stderrReader) drop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -128,10 +109,6 @@ func (s *stderrReader) drop() {
 	s.cond.Broadcast()
 }
 
-// parseStderr parses one line of tool's stderr, as the envelope writes it: `<tool>: warning:
-// <where>: <what>`, split at its first three ": " and each part unescaped, or `<tool>: error:
-// <reason>`, its reason unescaped, which reports isError. A line that fits neither is a warning
-// whose What is the line alone, as written.
 func parseStderr(tool, line string) (w dispatch.Warning, reason string, isError bool) {
 	w.Tool = tool
 	if rest, ok := strings.CutPrefix(line, tool+": "); ok {
@@ -149,11 +126,6 @@ func parseStderr(tool, line string) (w dispatch.Warning, reason string, isError 
 	return w, "", false
 }
 
-// unescape inverts the envelope's escape of a warning's where and what and a reason: a backslash
-// before a character is that character, so `\\` is a backslash and, in a where, `:\ ` a colon
-// followed by a space; `\n` and `\r` are a line feed and a carriage return; and `\u{…}` is the
-// character of that hex code point. An escape that is none of these, a trailing backslash among
-// them, is kept as written.
 func unescape(s string) string {
 	if !strings.Contains(s, `\`) {
 		return s
@@ -187,9 +159,6 @@ func unescape(s string) string {
 	return b.String()
 }
 
-// codePoint reads `{hex}` at s's start, as the escape `\u{…}` follows its `u` with, and returns
-// its character and the bytes it took; 0 bytes when s doesn't start with one of a valid code
-// point.
 func codePoint(s string) (rune, int) {
 	if !strings.HasPrefix(s, "{") {
 		return 0, 0
