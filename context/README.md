@@ -11,9 +11,10 @@ one pull request.
 
 Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml`,
 v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc,
-and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) states the
-boundaries of Cerebro's stack (system tools, docproc, docinfer, go-ai, Cerebro) as signatures and
-schemas, and what each promotion changes from its spike; [`design.md`](design.md) holds the design
+and spike-ai-pipeline-office, -mail, and -onenote. [`layers.md`](layers.md) states
+docproc's boundaries with the system tools and its callers as signatures and schemas, and what
+each promotion changes from its spike; [`cerebro.md`](cerebro.md) holds Cerebro's planned
+boundary over docproc and docinfer; [`design.md`](design.md) holds the design
 review of all five promoted artifacts: how it changes the goal's tasks, the settled design and
 disposition of every finding, the one home of each shape and vocabulary the artifacts share, and
 each artifact's tags and the task that releases each. [`acceptance.md`](acceptance.md), dated
@@ -51,5 +52,7 @@ module is stated by the repository's [README](../README.md) and each package's d
   `run`, and `report`. The root [README](../README.md#the-command), "The command", states its
   commands, exit statuses, and configuration, `DOCPROC_AUDIO_LIMIT`, the longest audio window,
   among it (`layers.md`, "The nested modules"; `design.md`, "cmd/docproc").
+- **Cerebro** (planned): the capstone's processing service over docproc and docinfer
+  ([`cerebro.md`](cerebro.md)).
 - **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
   linux-arm64 (`design.md`, "Releases").

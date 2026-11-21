@@ -705,7 +705,7 @@ goal's parts are pending edits in the goal record.
   declared, and docinfer's root imported `audio` for it. They move to a small `join` package
   beside `chunk`, `JoinRequest` as `Request`, stating docinfer's own seam-word setting, versioned
   by `docinfer.Version`; docinfer needs nothing of docproc but `dispatch`, and `rundir` for
-  `cmd/docinfer` (`layers.md`, "The pipeline", "Assumptions"). Rejected: `audio` keeping the join
+  `cmd/docinfer` (`layers.md`, "Assumptions"). Rejected: `audio` keeping the join
   for docinfer to import.
 - **SH-3 · The envelope's cases were tested three times.** Accepted → ooxml (writes the table and
   its `tools/` wiring), mail (the shared crate reads it), library (`internal/cli` reads it). The
@@ -754,7 +754,7 @@ goal's parts are pending edits in the goal record.
   carries, and docinfer's metadata text read it from the depth-0 part, built by `job` and by
   `cmd/docinfer` alike. It moves to `rundir/schema`'s `File`, filled by `run` beside `Statx`;
   docinfer builds an input's metadata text with one function over `dispatch.Part`, and
-  `cmd/docinfer` adds its file lines (`layers.md`, "One job, and its cancellation"). Rejected:
+  `cmd/docinfer` adds its file lines (docinfer's `MetadataText`). Rejected:
   keeping it in `dispatch.ContentType`, left empty everywhere but `cmd/docproc`.
 - **SH-9 · `dispatch.Version` didn't say what it covers.** Accepted → library; the docinfer goal
   for its version's doc. `Version` named "the shapes below", while the shapes carry route's
@@ -763,8 +763,8 @@ goal's parts are pending edits in the goal record.
   no golden held a routed or flagged part, and docinfer's "1" carried dispatch's shapes without
   saying so. `Version`'s doc names the shapes, the vocabularies they carry, and the index's
   shapes; `dispatch`'s goldens hold a routed, flagged part and an entry's log; docinfer's "1"
-  states that it includes dispatch's "1", as `rundir`'s "2" does (`layers.md`, "Dispatch",
-  "docinfer's shapes"). Rejected: a version of their own for route's, inspect's, and the index's
+  states that it includes dispatch's "1", as `rundir`'s "2" does (`layers.md`, "Dispatch";
+  docinfer's `Version`). Rejected: a version of their own for route's, inspect's, and the index's
   vocabularies.
 
 ## Releases
