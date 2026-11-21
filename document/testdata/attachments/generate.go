@@ -1,6 +1,6 @@
 //go:build ignore
 
-// generate writes attachments.pdf beside this file, which ../README.md describes. Run it from
+// generate writes attachments.pdf beside this file, which document/testdata/README.md describes. Run it from
 // document/testdata/attachments with `mise exec -- go run generate.go`; the check never runs it,
 // and reads the committed file.
 package main
