@@ -12,9 +12,7 @@ using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>Reads a docx package into the model, its tracked changes accepted: the body, each
-/// section's headers and footers, the notes the text references, the comments, and the
-/// package's properties.</summary>
+// See docs/tool-contract.md, "docproc-ooxml".
 internal static partial class DocxReader
 {
     public static Conversion Read(WordprocessingDocument package)
@@ -46,12 +44,6 @@ internal static partial class DocxReader
         };
     }
 
-    // Each section's headers and footers, in body order: a section is a paragraph's w:sectPr, and
-    // the body's own w:sectPr is the last. A section without a reference of a kind inherits the
-    // previous section's; the first-page kind counts only with a title page, the even-page kind
-    // only when the settings turn even and odd headers on. A header or footer is read for each
-    // section that shows it, so its media are placed in that section. A reference of a type no
-    // header or footer has (Word's are default, first, and even) is skipped with a warning.
     private static List<Section> ReadSections(DocxContext context, W.Body body)
     {
         var evenAndOdd = context.Main.DocumentSettingsPart?.Settings?.GetFirstChild<W.EvenAndOddHeaders>() is { } setting && OnOff(setting.Val);
@@ -101,7 +93,6 @@ internal static partial class DocxReader
 
     private static bool Valid(DocxContext context, EnumValue<W.HeaderFooterValues>? type, string story, int section)
     {
-        // An attribute outside its type's values has text but no value.
         if (type is null || type.HasValue)
         {
             return true;
@@ -142,38 +133,25 @@ internal static partial class DocxReader
         return result.Count > 0 ? result : null;
     }
 
-    // An on/off property's value: present with no value is on.
     private static bool OnOff(OnOffValue? value) => value?.Value ?? true;
 
-    // The blocks of one story part: the body, a header or footer, a note, or a comment. Only the
-    // body counts sections and collects comment anchors.
     private sealed class BodyReader(DocxContext context, OpenXmlPart part, bool isBody)
     {
         /// <summary>The deepest a table may be nested, the outermost table being 1. A table deeper
         /// than this refuses the document as it is reached, before any output.</summary>
         public const int MaxTableDepth = 8;
 
-        // How deep the table being read is nested, 0 outside any.
         private int tableDepth;
 
-        // The story's list counts, as Word numbers its paragraphs: by abstract numbering
-        // definition, each level's last number, and the numbering instances and levels already
-        // counted, whose start overrides have taken effect.
         private readonly Dictionary<int, Dictionary<int, int>> counts = [];
         private readonly HashSet<(int NumId, int Level)> counted = [];
 
-        // The blocks of a container. Tracked changes are read in their accepted state: a paragraph
-        // whose mark was deleted (or moved away) runs on into the next paragraph, which keeps its
-        // own properties, as the mark that survives is the next one's. A table ends that: the text
-        // carried to it stays a paragraph of its own before the table.
         public List<Block> ReadBlocks(OpenXmlElement container)
         {
             var blocks = new BlockList();
             InlineBuilder? carried = null;
             foreach (var element in BlockElements(container))
             {
-                // A comment's range can start or end between paragraphs; its anchor's text is
-                // the paragraphs between, and its mark is where its reference is.
                 if (element is W.CommentRangeStart rangeStart)
                 {
                     if (isBody)
@@ -244,13 +222,9 @@ internal static partial class DocxReader
             var styleId = properties?.ParagraphStyleId?.Val?.Value;
             if (ListLevel(properties, styleId) is var (numId, level) && context.Numbering.Resolve(numId, level, context.Styles) is { } numberingLevel)
             {
-                // A list item is kept even when empty: it is still an item of its list. Its
-                // pictures and charts are blocks of the item, after its paragraph.
                 blocks.AddItem(level, numId, numberingLevel, Number(numId, level, numberingLevel), [new Paragraph(inlines.Build()), .. inlines.Blocks]);
                 return;
             }
-            // Empty paragraphs and headings are spacing, not text. A paragraph's pictures and
-            // charts follow it as blocks of their own, in the order they occur.
             if (!inlines.IsBlank)
             {
                 blocks.Add(HeadingLevel(properties, styleId) is int headingLevel
@@ -263,8 +237,6 @@ internal static partial class DocxReader
             }
         }
 
-        // The level a paragraph's own outline level gives it, or else its style's: an outline level
-        // in the style chain, or a style named "heading N". Outline level 9 is body text.
         private int? HeadingLevel(W.ParagraphProperties? properties, string? styleId)
         {
             if (properties?.OutlineLevel?.Val?.Value is int own)
@@ -289,11 +261,6 @@ internal static partial class DocxReader
             return null;
         }
 
-        // A list paragraph's number, as Word counts it: one more than the last of its level in its
-        // abstract definition, which every instance of the definition shares, or the level's
-        // start when the level has none yet. An instance that overrides the level's start sets
-        // it the first time the instance numbers that level. Numbering a level restarts the
-        // levels below it.
         private int Number(int numId, int level, NumberingLevel numbering)
         {
             if (!counts.TryGetValue(numbering.AbstractId, out var levels))
@@ -313,8 +280,6 @@ internal static partial class DocxReader
             return number;
         }
 
-        // The numbering instance and level of a list paragraph, from its own w:numPr or its
-        // style's, the level within Word's nine. Numbering instance 0 removes numbering.
         private (int NumId, int Level)? ListLevel(W.ParagraphProperties? properties, string? styleId)
         {
             var own = properties?.NumberingProperties;
@@ -335,12 +300,6 @@ internal static partial class DocxReader
             return numId is null or 0 ? null : (numId.Value, Math.Clamp(level ?? 0, 0, 8));
         }
 
-        // A table's rows and cells, through the content controls and custom XML that can wrap
-        // either. A horizontal merge is a cell's w:gridSpan; a vertical merge is a w:vMerge
-        // restart cell and the continue cells below it, which fold into its row span. A row that
-        // starts late (w:gridBefore) gives its first cell the columns it skips; one that ends
-        // early (w:gridAfter) needs nothing, its last columns simply empty. A table nested past
-        // the limit refuses the document.
         private Table ReadTable(W.Table table)
         {
             if (++tableDepth > MaxTableDepth)
@@ -357,8 +316,6 @@ internal static partial class DocxReader
             }
         }
 
-        // Where an element is, for a person to find it: the story and the number, from 1 in
-        // document order, of the first paragraph at or after it.
         private string Location(OpenXmlElement element)
         {
             var root = part.RootElement ?? element;
@@ -408,10 +365,6 @@ internal static partial class DocxReader
             return new Table([.. rows.Select(cells => new TableRow([.. cells.Select(c => c.Build())]))]);
         }
 
-        // A paragraph's text in its accepted state. The runs are walked explicitly: the SDK's
-        // InnerText includes w:delText, and every w:t would include a move's source, so insertions
-        // and a move's destination are read through, deletions and a move's source skipped. A
-        // comment's anchored range ends in a reference to it.
         private void ReadInlines(OpenXmlElement container, InlineBuilder inlines)
         {
             foreach (var child in container.ChildElements)
@@ -426,8 +379,6 @@ internal static partial class DocxReader
                         break;
                     case W.DeletedRun or W.MoveFromRun:
                         break;
-                    // An external hyperlink's text is linked to its target; an internal one's, to a
-                    // bookmark (w:anchor), stays text.
                     case W.Hyperlink hyperlink when MediaStore.Hyperlink(part, hyperlink.Id?.Value) is { } target:
                         inlines.Add(new HyperlinkStart(target));
                         ReadInlines(child, inlines);
@@ -437,8 +388,6 @@ internal static partial class DocxReader
                         or W.BidirectionalOverride or W.BidirectionalEmbedding:
                         ReadInlines(child, inlines);
                         break;
-                    // A smart tag wraps runs as custom XML does, but the SDK has no type for it, so
-                    // its content is unknown elements: it is read as the custom XML it is like.
                     case OpenXmlUnknownElement { LocalName: "smartTag", NamespaceUri: WordprocessingNamespace } smartTag:
                         if (!ShowsPlaceholder(smartTag))
                         {
@@ -458,7 +407,6 @@ internal static partial class DocxReader
                             inlines.Add(new CommentReference(ended));
                         }
                         break;
-                    // An equation, Office Math in the paragraph, is not read.
                     case OpenXmlElement math when math.NamespaceUri == UnreadKinds.MathNamespace:
                         context.Unread.Found(Place, UnreadKinds.Equations);
                         break;
@@ -468,19 +416,9 @@ internal static partial class DocxReader
             }
         }
 
-        // A content control showing its placeholder (Word's "Choose an item.") holds a prompt, not
-        // the document's text, so its runs are left out wherever the control is: around runs,
-        // paragraphs, cells, or rows.
         private static bool ShowsPlaceholder(OpenXmlElement run) =>
             run.Ancestors<W.SdtElement>().Any(sdt => sdt.SdtProperties?.GetFirstChild<W.ShowingPlaceholder>() is { } showing && OnOff(showing.Val));
 
-        // A run's text, references, pictures, and charts. Field codes are instructions, not text;
-        // a field's result is ordinary runs. A ruby's base text is the text; its annotation, a
-        // reading aid above it, is left out. An embedded package or OLE object is written as
-        // stored after the picture Word shows in its place, its preview. A chartEx chart, in an
-        // mc:AlternateContent, is its cached data, or with none its fallback's picture; any
-        // other alternate content is not read. A text box's or SmartArt diagram's text is not
-        // read either, wherever it is.
         private void ReadRun(OpenXmlElement run, InlineBuilder inlines)
         {
             foreach (var child in run.ChildElements)
@@ -515,7 +453,6 @@ internal static partial class DocxReader
                             inlines.Add(new EndnoteReference((int)id));
                         }
                         break;
-                    // A comment with no range is marked where its reference is.
                     case W.CommentReference reference when isBody:
                         if (context.Comments.Point(reference.Id?.Value) is int pointed)
                         {
@@ -557,8 +494,6 @@ internal static partial class DocxReader
             }
         }
 
-        // A DrawingML drawing's pictures and charts, in document order, with the drawing's
-        // description and title. A picture's blip embeds a part or links an external target.
         private void ReadDrawing(W.Drawing drawing, InlineBuilder inlines)
         {
             var properties = drawing.Descendants<DW.DocProperties>().FirstOrDefault();
@@ -586,7 +521,6 @@ internal static partial class DocxReader
             }
         }
 
-        // A VML picture's image, with its title as the alternative text, VML having no other.
         private void ReadVmlPicture(OpenXmlElement picture, InlineBuilder inlines)
         {
             foreach (var image in picture.Descendants<V.ImageData>())
@@ -601,8 +535,6 @@ internal static partial class DocxReader
         private Media? ReadPicture(string relationshipId, string? alt, string? title) =>
             context.Media.Picture(part, relationshipId, alt, title) is { } media ? media with { Section = context.Section } : null;
 
-        // The embedded packages and OLE objects a VML object names, each after its preview: an
-        // o:OLEObject's, or a Word 2010 w:objectEmbed's, relationship, with its program id.
         private void ReadPayloads(OpenXmlElement container, InlineBuilder inlines)
         {
             foreach (var element in container.Descendants())
@@ -620,8 +552,6 @@ internal static partial class DocxReader
             }
         }
 
-        // The unread kinds a drawing, VML picture or object, or alternate content holds: a text
-        // box's text, a SmartArt diagram, or an equation.
         private void FindUnread(OpenXmlElement element)
         {
             if (element.Descendants<W.TextBoxContent>().Any(box => !string.IsNullOrWhiteSpace(box.InnerText)))
@@ -638,12 +568,9 @@ internal static partial class DocxReader
             }
         }
 
-        // Where a warning about what is being read is: its section, by ordinal, or the comments.
         private string Place => context.Section is int section ? $"section {section + 1}" : "comments";
     }
 
-    // The paragraphs and tables of a container in document order, with the comment ranges that
-    // start or end between them, through the content controls and custom XML that can wrap them.
     private static IEnumerable<OpenXmlElement> BlockElements(OpenXmlElement container)
     {
         foreach (var child in container.ChildElements)
@@ -671,7 +598,6 @@ internal static partial class DocxReader
         }
     }
 
-    // A table's rows, through the content controls and custom XML that can wrap them.
     private static IEnumerable<W.TableRow> RowElements(OpenXmlElement container)
     {
         foreach (var child in container.ChildElements)
@@ -690,7 +616,6 @@ internal static partial class DocxReader
         }
     }
 
-    // A row's cells, through the content controls and custom XML that can wrap them.
     private static IEnumerable<W.TableCell> CellElements(OpenXmlElement container)
     {
         foreach (var child in container.ChildElements)
@@ -715,7 +640,6 @@ internal static partial class DocxReader
         paragraph.ParagraphProperties?.ParagraphMarkRunProperties is { } mark
         && (mark.GetFirstChild<W.Deleted>() is not null || mark.GetFirstChild<W.MoveFrom>() is not null);
 
-    /// <summary>A block's inlines as they are read, adjacent text merged into one run.</summary>
     private sealed class InlineBuilder
     {
         private readonly List<Inline> inlines = [];
@@ -773,13 +697,6 @@ internal static partial class DocxReader
         };
     }
 
-    // A container's blocks as they are read. Consecutive list paragraphs make up lists: a deeper
-    // level opens a list inside the last item, and at the same level an item continues the list
-    // unless its level is ordered where the list's isn't (or the reverse), it belongs to another
-    // abstract numbering definition, or it restarts the count, which is a change to a numbering
-    // instance that overrides the level's start. Instances of one abstract definition otherwise
-    // share its count, so they continue one list, as Word numbers them. A list starts at its
-    // first item's number, which for a list a paragraph interrupted continues the count.
     private sealed class BlockList
     {
         private readonly List<Block> blocks = [];
@@ -844,22 +761,14 @@ internal static partial class DocxReader
 
         private sealed record OpenList(int Level, bool Ordered, int AbstractId, int Start)
         {
-            // The numbering instance of the list's last item.
             public int NumId { get; set; }
 
             public List<List<Block>> Items { get; } = [];
         }
     }
 
-    /// <summary>What a list paragraph's numbering level says about its list.</summary>
-    /// <param name="Ordered">Whether the level counts.</param>
-    /// <param name="AbstractId">The abstract numbering definition the level belongs to.</param>
-    /// <param name="Restarts">Whether the numbering instance overrides the level's start.</param>
-    /// <param name="Start">The level's first number: the instance's override, or else the
-    /// level's own start, 0 when it has none, as WordprocessingML defaults it.</param>
     private readonly record struct NumberingLevel(bool Ordered, int AbstractId, bool Restarts, int Start);
 
-    /// <summary>The paragraph styles, by id, with their basedOn chains.</summary>
     private sealed class Styles
     {
         private readonly Dictionary<string, W.Style> byId = [];
@@ -886,11 +795,8 @@ internal static partial class DocxReader
             }
         }
 
-        // A style of any type by id, numbering styles among them.
         public W.Style? Find(string id) => anyType.GetValueOrDefault(id);
 
-        // The style and the styles it is based on, nearest first; a paragraph with no style has
-        // the default paragraph style. A cycle ends the chain.
         public IEnumerable<W.Style> Chain(string? styleId)
         {
             var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -903,7 +809,6 @@ internal static partial class DocxReader
         }
     }
 
-    /// <summary>The numbering part's instances and abstract definitions.</summary>
     private sealed class Numbering
     {
         private readonly Dictionary<int, W.NumberingInstance> instances = [];
@@ -927,9 +832,6 @@ internal static partial class DocxReader
             }
         }
 
-        // The level of a numbering instance, or null when the instance or its definition doesn't
-        // exist, which leaves the paragraph out of any list. A definition with only a numStyleLink
-        // takes its levels from the numbering its style names.
         public NumberingLevel? Resolve(int numId, int level, Styles styles) => Resolve(numId, level, styles, 0, null);
 
         private NumberingLevel? Resolve(int numId, int level, Styles styles, int depth, int? startOverride)
@@ -959,8 +861,6 @@ internal static partial class DocxReader
                 startOverride ?? definitionLevel?.StartNumberingValue?.Val?.Value ?? 0);
         }
 
-        // A level formatted as a bullet or as nothing is unordered, as is a level the definition
-        // lacks; a level without a format is decimal, so ordered.
         private static bool IsOrdered(W.Level? level)
         {
             if (level is null)

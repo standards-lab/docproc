@@ -5,9 +5,6 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>The embedded media a conversion found, pictures, embedded packages, and OLE objects,
-/// by file name (<see cref="NameOf"/>), so each distinct content is one file however many parts
-/// or blocks hold it. The bytes are kept as stored, never converted.</summary>
 internal sealed class MediaStore
 {
     private readonly Dictionary<string, byte[]> files = new(StringComparer.Ordinal);
@@ -35,10 +32,7 @@ internal sealed class MediaStore
         return parts[part.Uri] = (name, part.ContentType);
     }
 
-    /// <summary>A payload's media name, by the envelope (docs/tool-contract.md, "Common envelope"):
-    /// the lowercase hex SHA-256 of its bytes, then <c>.</c> and the stored name's extension, as
-    /// stored, when that is 1 to 8 ASCII letters and digits. Its cases are
-    /// tools/envelope/cases.json's.</summary>
+    // See docs/tool-contract.md, "Common envelope".
     internal static string NameOf(ReadOnlySpan<byte> bytes, string storedName)
     {
         var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));

@@ -26,13 +26,8 @@ public sealed record ItemSource(
     [JsonPropertyName("cc")]
     public IReadOnlyList<Party> Cc { get; init; } = [];
 
-    /// <summary>MAPI's recipient types, PidTagRecipientType.</summary>
     const int MapiTo = 1, MapiCc = 2;
 
-    /// <summary>
-    /// A missing or null field fails the read, naming the field, rather than writing an item
-    /// without it.
-    /// </summary>
     static readonly JsonSerializerOptions Options = new()
     {
         RespectRequiredConstructorParameters = true,
@@ -91,7 +86,6 @@ public sealed record ItemSource(
         return message;
     }
 
-    /// <summary>An ISO 8601 UTC time, "2026-03-10T14:02:11Z".</summary>
     static DateTime Utc(string time) =>
         DateTime.ParseExact(time, "yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture,
             DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal);

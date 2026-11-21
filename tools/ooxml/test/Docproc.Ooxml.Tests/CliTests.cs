@@ -10,8 +10,6 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
-// The CLI's process contract, on the NativeAOT binary the check publishes into .state/aot/ before
-// it runs the tests: arguments, stdout, stderr, exit code, and the media directory.
 public sealed class CliTests : IDisposable
 {
     private static readonly string Binary = Path.Combine(Fixtures.Root, ".state", "aot", "docproc-ooxml");
@@ -20,8 +18,6 @@ public sealed class CliTests : IDisposable
 
     public void Dispose() => scratch.Delete(recursive: true);
 
-    // The version alone on the first line, which tools/pack.sh compares with a tag's, and the
-    // schema on the second, so a reader's spec refuses a tool of another schema at startup.
     [Fact]
     public void VersionIsTheAssemblysVersionThenTheSchema()
     {
@@ -34,11 +30,6 @@ public sealed class CliTests : IDisposable
 
     public static TheoryData<string, string> FixturesWithGoldens => Fixtures.WithGoldens;
 
-    // Each fixture's stdout and stderr, byte for byte, are its goldens, which `mise run golden`
-    // recorded from an earlier run of the published binary; the comparison is a second run, so it
-    // shows a run's bytes are the same every time as well as what they are. Its exit code is its
-    // .exit golden's, one of the envelope's, or 0 when it has none: every fixture but the refused
-    // ones converts.
     [Theory]
     [MemberData(nameof(FixturesWithGoldens))]
     public void AFixturesOutputIsItsGoldens(string name, string variant)
@@ -55,8 +46,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(File.ReadAllBytes(Fixtures.GoldenPath(name, variant, "stderr")), result.Stderr);
     }
 
-    // The goldens are each fixture's two, and a refused fixture's .exit, and nothing else, so none
-    // outlives its fixture.
     [Fact]
     public void EveryGoldenIsAFixtures()
     {
@@ -71,8 +60,6 @@ public sealed class CliTests : IDisposable
             Directory.GetFiles(Fixtures.GoldenRoot, "*", SearchOption.AllDirectories).Order(StringComparer.Ordinal));
     }
 
-    // The encrypted fixture's reason begins `encrypted`, the envelope's one word for an encrypted
-    // input, found by the compound file's own directory; its golden pins the whole line.
     [Fact]
     public void AnEncryptedPackageIsRefusedAsEncrypted()
     {
@@ -84,8 +71,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(OfficeReader.Encrypted, reason);
     }
 
-    // A legacy binary document is an OLE compound file too, with no EncryptedPackage stream: its
-    // reason never holds the word an encrypted input's begins with.
     [Fact]
     public void ALegacyBinaryDocumentIsRefusedWithoutTheWordEncrypted()
     {
@@ -95,7 +80,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(OfficeReader.Legacy, reason);
     }
 
-    // The same holds whatever the file's name: the content decides.
     [Fact]
     public void AnEncryptedPackageIsFoundByItsContentNotItsName()
     {
@@ -105,10 +89,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(OfficeReader.Encrypted, AssertRefused(path));
     }
 
-    // Each distinct picture once, named by its bytes, however many parts and blocks hold it: the
-    // media fixture's python-docx variant stores the red square in two parts and shows it three
-    // times, and links one picture, which is never written. The directory and its missing parent
-    // are created.
     [Fact]
     public void MediaAreWrittenOnceEachNamedByTheirContent()
     {
@@ -128,11 +108,9 @@ public sealed class CliTests : IDisposable
                 "df026100fd6fe38e22923c5152a33ea6f6879e38073fb47f022ed9d90dec65a8.png",
             ],
             files);
-        AssertEachStoredPartIsWritten(path, "word/media/", 5, media); // The red square's copy is a fifth part, written as the same file.
+        AssertEachStoredPartIsWritten(path, "word/media/", 5, media);
     }
 
-    // The drawings fixture's openpyxl variant stores the red square twice, as two parts of one
-    // sheet's drawing, and the blue square on a second sheet: two files.
     [Fact]
     public void SheetPicturesAreWrittenOnceEachNamedByTheirContent()
     {
@@ -153,8 +131,6 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "xl/media/", 3, media);
     }
 
-    // The slide-objects fixture shows the red square on two slides, one part, and the blue
-    // square on one: two files, each the bytes of its part.
     [Fact]
     public void SlidePicturesAreWrittenOnceEachNamedByTheirContent()
     {
@@ -175,8 +151,6 @@ public sealed class CliTests : IDisposable
         AssertEachStoredPartIsWritten(path, "ppt/media/", 2, media);
     }
 
-    // A sheet's embedded package and OLE object are written as stored, each after its preview,
-    // and named in the media list with the second sheet line's ordinal.
     [Fact]
     public void SheetPayloadsAreWrittenAsStored()
     {
@@ -195,8 +169,6 @@ public sealed class CliTests : IDisposable
         Assert.All(listed, m => Assert.Equal(2, (int?)m!["sheet"]));
     }
 
-    // A slide's embedded package and OLE object are written as stored; the chart beside them
-    // embeds its source workbook, which is never media (docs/design-review.md, OX-5).
     [Fact]
     public void SlidePayloadsAreWrittenAndAChartsWorkbookIsNot()
     {
@@ -219,11 +191,6 @@ public sealed class CliTests : IDisposable
         Assert.DoesNotContain(".xlsx", result.Stdout, StringComparison.Ordinal);
     }
 
-    // The properties by the reading rule (docs/tool-contract.md, "docproc-ooxml"): core values strings
-    // as stored, an extended value all digits a number, a custom value its variant's type, a file
-    // time its stored text, and one that isn't its type's the string it is stored as; keys in
-    // stored order, a repeated key's first value kept with a warning, and an empty value or a
-    // vector left out.
     [Fact]
     public void PropertiesAreReadByTheReadingRule()
     {
@@ -267,8 +234,6 @@ public sealed class CliTests : IDisposable
             result.Stderr);
     }
 
-    // A properties part that can't be parsed is a warning, never a refusal: the document and the
-    // other parts' properties convert.
     [Theory]
     [InlineData("core")]
     [InlineData("app")]
@@ -311,8 +276,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(before, Directory.GetFileSystemEntries(Path.GetDirectoryName(Fixtures.DocumentPath("media", "python-docx"))!));
     }
 
-    // The media directory is created on every conversion it is given for, so it existing says the
-    // conversion succeeded, even when the document has no media.
     [Fact]
     public void TheMediaDirectoryIsCreatedEvenWithoutMedia()
     {
@@ -328,7 +291,7 @@ public sealed class CliTests : IDisposable
     [Fact]
     public void MediaThatCannotBeWrittenLeaveStdoutEmptyAndExitOne()
     {
-        var media = Write("media", [1, 2, 3]); // A file where the directory would be.
+        var media = Write("media", [1, 2, 3]);
 
         var result = Run(Fixtures.DocumentPath("media", "python-docx"), "--media", media);
 
@@ -348,7 +311,6 @@ public sealed class CliTests : IDisposable
         Assert.Empty(result.Stderr);
     }
 
-    // An option's value may follow `=`, and `--` ends the options, so an input may begin with `-`.
     [Fact]
     public void OptionValuesFollowEqualsAndDoubleDashEndsTheOptions()
     {
@@ -364,7 +326,6 @@ public sealed class CliTests : IDisposable
         Assert.True(Directory.Exists(media));
     }
 
-    // --format is gone: one run writes the one contract.
     [Theory]
     [InlineData]
     [InlineData("--format", "json", "in.docx")]
@@ -389,8 +350,6 @@ public sealed class CliTests : IDisposable
         AssertOneLine(result.Stderr);
     }
 
-    // A usage error's reason names what was wrong; an argument it echoes is escaped, so the error
-    // stays one line.
     [Theory]
     [InlineData(new[] { "--bogus", "in.docx" }, "docproc-ooxml: error: unrecognized option '--bogus'\n")]
     [InlineData(new[] { "--bo\ngus" }, "docproc-ooxml: error: unrecognized option '--bo\\ngus'\n")]
@@ -405,8 +364,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(stderr, result.Stderr);
     }
 
-    // A missing path, a directory, and a file without read permission are each refused by a reason
-    // that says which and then names the path as given, never leading with it.
     [Fact]
     public void AMissingFileIsRefusedByItsPath()
     {
@@ -423,8 +380,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal($"{OfficeReader.IsADirectory}: {directory}", RefusalReason(directory));
     }
 
-    // A file that can't be opened is refused by its path; one under a directory that can't be
-    // searched, as one without read permission. As root both can be read, so the test is skipped.
     [Fact]
     [UnsupportedOSPlatform("windows")]
     public void AnUnreadableFileIsRefusedByItsPath()
@@ -445,17 +400,14 @@ public sealed class CliTests : IDisposable
         }
         finally
         {
-            // The scratch directory is removed after the test, through this one.
             File.SetUnixFileMode(closed, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
     }
 
-    // A device is no regular file, though it can be opened and read.
     [Fact]
     public void ADeviceIsNotAFile() =>
         Assert.Equal(OfficeReader.NotAFile, AssertRefused("/dev/null"));
 
-    // A symbolic link is followed to what it names, and one that names nothing is missing.
     [Fact]
     public void ALinkIsReadAsWhatItNames()
     {
@@ -478,16 +430,12 @@ public sealed class CliTests : IDisposable
     public void AZipThatIsNoOfficePackageIsRefused() =>
         Assert.Equal(OfficeReader.NotAPackage, AssertRefused(Zip("archive.docx", ("readme.txt", "hello"))));
 
-    // The main part's exact content type decides the format: an xlsb's binary workbook is no
-    // xlsx, though its content type names Excel.
     [Fact]
     public void AnXlsbIsNoPackageOfTheThree() =>
         Assert.Equal(
             OfficeReader.NotAPackage,
             AssertRefused(Package("book.xlsb", "xl/workbook.bin", "application/vnd.ms-excel.sheet.binary.macroEnabled.main", "binary")));
 
-    // A macro-enabled workbook and a template are packages of the three, each by its own exact
-    // content type.
     [Theory]
     [InlineData("book.xlsm", "xl/workbook.xml", "application/vnd.ms-excel.sheet.macroEnabled.main+xml", "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheets/></workbook>", "{\"line\":\"document\",\"schema\":\"2\",\"format\":\"xlsx\"}\n")]
     [InlineData("letter.dotx", "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml", "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\"><w:body><w:p><w:r><w:t>kept</w:t></w:r></w:p></w:body></w:document>", "{\"line\":\"document\",\"schema\":\"2\",\"format\":\"docx\",\"markdown\":\"kept\\n\"}\n")]
@@ -500,7 +448,6 @@ public sealed class CliTests : IDisposable
         Assert.Empty(result.Stderr);
     }
 
-    // A compound file whose directory can't be read is refused as malformed, never as encrypted.
     [Fact]
     public void AMalformedCompoundFileIsRefusedWithoutTheWordEncrypted()
     {
@@ -523,9 +470,6 @@ public sealed class CliTests : IDisposable
             AssertRefused(Package("broken.docx", "word/document.xml", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml", "<w:document")),
             StringComparison.Ordinal);
 
-    // The sections fixture's third section reads its default header, which holds a picture,
-    // before its first-page header, broken here: the picture was read, and still nothing is
-    // written, as media are written only once the whole conversion has succeeded.
     [Fact]
     public void APackageMalformedAfterItsMediaIsRefusedAndWritesNoMedia()
     {
@@ -548,8 +492,6 @@ public sealed class CliTests : IDisposable
             AssertRefused(Package("broken.xlsx", "xl/workbook.xml", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml", "<workbook")),
             StringComparison.Ordinal);
 
-    // The drawings fixture's first sheet holds both red squares; its second sheet's part, read
-    // after them, is broken here, and still no media are written.
     [Fact]
     public void AnXlsxMalformedAfterItsMediaIsRefusedAndWritesNoMedia()
     {
@@ -572,8 +514,6 @@ public sealed class CliTests : IDisposable
             AssertRefused(Package("broken.pptx", "ppt/presentation.xml", "application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml", "<p:presentation")),
             StringComparison.Ordinal);
 
-    // A single invalid reference is skipped with a warning and the rest converts, as in poi's test
-    // file for its bug 60293: a header reference of type "odd", which no header kind is.
     [Fact]
     public void AHeaderReferenceOfAnInvalidTypeIsSkippedWithAWarning()
     {
@@ -594,8 +534,6 @@ public sealed class CliTests : IDisposable
             result.Stderr);
     }
 
-    // As in poi's test file for its bug 60825: a sheet whose relationship id is empty, so it
-    // names no part, is skipped with a warning, and the sheet beside it converts.
     [Fact]
     public void ASheetThatNamesNoPartIsSkippedWithAWarning()
     {
@@ -638,8 +576,6 @@ public sealed class CliTests : IDisposable
             result.Stderr);
     }
 
-    // Tables nested past eight deep are refused as they are reached, before any output, with
-    // where: the ninth table's first paragraph, the body's second, after the one before them.
     [Fact]
     public void TablesNestedPastTheLimitAreRefused() =>
         Assert.Equal(
@@ -651,8 +587,6 @@ public sealed class CliTests : IDisposable
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml",
                     Document("<w:p><w:r><w:t>before</w:t></w:r></w:p>" + NestedTables(9, "") + "<w:sectPr/>"))));
 
-    // Eight tables deep converts, and so does the deepest model that allows: a list nested Word's
-    // nine levels in the innermost cell.
     [Fact]
     public void TablesNestedToTheLimitConvertWithTheDeepestList()
     {
@@ -687,8 +621,6 @@ public sealed class CliTests : IDisposable
         Assert.Contains("item 8", result.Stdout, StringComparison.Ordinal);
     }
 
-    // An exception docproc-ooxml doesn't expect, here from a stdout that fails other than by I/O,
-    // is exit code 4, written as an error line, and never leaves Run, so the process never aborts.
     [Fact]
     public void AnUnexpectedErrorFailsWithItsOwnExitCode()
     {
@@ -702,7 +634,6 @@ public sealed class CliTests : IDisposable
             Encoding.UTF8.GetString(stderr.ToArray()));
     }
 
-    // An I/O error on stdout is exit code 1, stdout not written.
     [Fact]
     public void AnIOErrorOnStdoutIsNotWritten()
     {
@@ -714,7 +645,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal("docproc-ooxml: error: stdout not written: Input/output error\n", Encoding.UTF8.GetString(stderr.ToArray()));
     }
 
-    // stderr that can't be written loses the line, never the exit code.
     [Fact]
     public void AnUnwritableStderrKeepsTheExitCode() =>
         Assert.Equal(Cli.UsageError, Cli.Run(["--bogus"], new MemoryStream(), new FailingStream(new IOException("Broken pipe"))));
@@ -726,7 +656,6 @@ public sealed class CliTests : IDisposable
         public override void Write(byte[] buffer, int offset, int count) => throw error;
     }
 
-    // A full device on stdout is exit code 1, where the spike exited 4.
     [Fact]
     public void AFullStdoutIsNotWritten()
     {
@@ -736,8 +665,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal("docproc-ooxml: error: stdout not written: No space left on device\n", result.Stderr);
     }
 
-    // A closed stdout is exit code 1, where the spike aborted with 134; with stderr closed too,
-    // nothing can be told, and the exit code still is.
     [Theory]
     [InlineData("exec \"$0\" \"$1\" >&-", "docproc-ooxml: error: stdout not written: Bad file descriptor\n")]
     [InlineData("exec \"$0\" \"$1\" >&- 2>&-", "")]
@@ -749,9 +676,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(stderr, result.Stderr);
     }
 
-    // A reader that closes its end is a broken pipe: exit code 1, where the spike exited 0 over
-    // truncated output. The lines pass the pipe's buffer, so the write fails whenever the reader
-    // closes, before the tool writes or while it waits for room.
     [Fact]
     public void ABrokenPipeIsNotWritten()
     {
@@ -790,11 +714,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal("docproc-ooxml: error: stdout not written: Broken pipe\n", stderr);
     }
 
-    // A sheet's rows are read forward twice, never held whole (docs/design-review.md, OX-2). Its
-    // output is 50,000 rows in 33 MB of lines, run with the managed heap capped at 16 MiB, less
-    // than the output and far less than the sheet's DOM, which the spike held: it peaked at
-    // 513 MiB on this sheet, and failed under this cap with exit code 4. Each rows line is within 256 KiB, and
-    // together they hold every row in order. It takes about two seconds.
     [Fact]
     public void ALargeSheetIsStreamedInBoundedMemory()
     {
@@ -822,20 +741,12 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Enumerable.Range(1, rows), numbers);
     }
 
-    // A failure in a sheet's last row is found by the validate pass, so the refusal still comes
-    // before any output, though the rows before it fill many rows lines.
     [Fact]
     public void ASheetFailingInItsLastRowIsRefusedBeforeAnyOutput() =>
         Assert.Equal(
             "a malformed package: cell A5001's boolean 2 is not 0 or 1",
             AssertRefused(LargeSheet("late.xlsx", 5000, "<row r=\"5001\"><c r=\"A5001\" t=\"b\"><v>2</v></c></row>")));
 
-    // The validate pass meets a sheet's merges after its cells, so it keeps the failing cells
-    // until it knows which a merge covers, as runs of positions, never one by one (docs/design-review.md,
-    // OX-2). 199,999 cells that fail, each covered by A1:J20000, whose anchor A1 holds a number,
-    // are passed over with the managed heap capped at 16 MiB, and the sheet is refused, before any
-    // output, with the failure of A20001, the one failing cell no merge covers, after them all.
-    // Kept one by one with their failures, as they were, the cells exhausted the heap.
     [Fact]
     public void ManyCoveredFailingCellsAreKeptInBoundedMemory()
     {
@@ -868,9 +779,6 @@ public sealed class CliTests : IDisposable
         Assert.Empty(result.Stdout);
     }
 
-    // A sheet is refused with the failure a reading of the whole part meets first: a shared
-    // formula's attributes before any cell's failure, then the cells' failures and a row's
-    // number in document order, a cell a merge covers passed over. D1:D3 covers D2 and D3.
     [Theory]
     [InlineData(
         "<row r=\"1\"><c r=\"A1\" t=\"b\"><v>2</v></c></row><row r=\"2\"><c r=\"A2\"><f t=\"nonsense\">B1</f></c></row>",
@@ -892,11 +800,6 @@ public sealed class CliTests : IDisposable
             reason,
             AssertRefused(OneSheet("first.xlsx", $"<sheetData>{rows}</sheetData><mergeCells count=\"1\"><mergeCell ref=\"D1:D3\"/></mergeCells>")));
 
-    // A forward reading meets a sheet's merges after its cells, and can meet a shared formula's
-    // anchor after a cell that names it; the columns, on the sheet line before the rows, are still
-    // those of the kept cells. B1 is covered by A1:B1, so its value is left out and its column
-    // too, and B2's boolean, which isn't one, is covered by A2:B2, so it is never read; C1 names
-    // the anchor A3 comes later.
     [Fact]
     public void TheColumnsAreThoseOfTheKeptCellsWhereverTheMergesAndAnchorsAre()
     {
@@ -922,7 +825,6 @@ public sealed class CliTests : IDisposable
             result.Stdout);
     }
 
-    // A one-sheet workbook, its sheet "Data" the given worksheet content.
     private string OneSheet(string name, string worksheet) =>
         Zip(
             name,
@@ -946,8 +848,6 @@ public sealed class CliTests : IDisposable
             ("xl/worksheets/sheet1.xml",
                 $"<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">{worksheet}</worksheet>"));
 
-    // A one-sheet workbook of the given number of rows, each ten numbers in A to J, then the
-    // given rows' XML.
     private string LargeSheet(string name, int rows, string after)
     {
         var sheet = new StringBuilder("<sheetData>");
@@ -963,9 +863,6 @@ public sealed class CliTests : IDisposable
         return OneSheet(name, sheet.Append(after).Append("</sheetData>").ToString());
     }
 
-    // stdout and stderr are UTF-8 bytes whatever the locale says: the ruby fixture's Japanese
-    // text, and an error line echoing a non-ASCII option, under locales whose charset is ASCII or
-    // Latin-1, where the spike wrote `??`.
     [Theory]
     [InlineData("LANG", "C")]
     [InlineData("LC_ALL", "POSIX")]
@@ -985,8 +882,6 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Encoding.UTF8.GetBytes("docproc-ooxml: error: unrecognized option '--東京'\n"), usage.Stderr);
     }
 
-    // Tables nested the given number deep, each one cell, the innermost holding the given
-    // paragraphs; each cell's own paragraph comes after the table it holds.
     private static string NestedTables(int depth, string innermost) =>
         depth == 0 ? innermost : $"<w:tbl><w:tr><w:tc>{NestedTables(depth - 1, innermost)}<w:p><w:r><w:t>depth {depth}</w:t></w:r></w:p></w:tc></w:tr></w:tbl>";
 
@@ -994,8 +889,6 @@ public sealed class CliTests : IDisposable
         "<w:document xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" " +
         $"xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><w:body>{body}</w:body></w:document>";
 
-    // A relationship to a part the package lacks, as poi's picture.xlsx has (its connections
-    // part), fails the SDK when it first loads the package's parts.
     [Fact]
     public void ARelationshipToAMissingPartIsRefusedAsMalformed() =>
         Assert.Contains(
@@ -1017,8 +910,6 @@ public sealed class CliTests : IDisposable
                     "</Relationships>"))),
             StringComparison.Ordinal);
 
-    // The package stores the given number of parts under the media prefix, and each one's bytes
-    // are in the media directory under its content's name.
     private static void AssertEachStoredPartIsWritten(string path, string prefix, int parts, string media)
     {
         using var package = ZipFile.OpenRead(path);
@@ -1034,8 +925,6 @@ public sealed class CliTests : IDisposable
         }
     }
 
-    // The path is refused as AssertRefused says, by a reason that may name it: returns the
-    // reason.
     private string RefusalReason(string path, string? linkTo = null)
     {
         if (linkTo is not null)
@@ -1053,10 +942,6 @@ public sealed class CliTests : IDisposable
         return result.Stderr["docproc-ooxml: error: ".Length..^1];
     }
 
-    // The path is refused, exit code 3, before any output: stdout empty and no media directory.
-    // stderr is one error line, whose reason, other than for a path missing, a directory, or
-    // without read permission, never holds the path, given or in full, or the file's name;
-    // returns the reason. With linkTo, the path is first made a link to it.
     private string AssertRefused(string path, string? linkTo = null)
     {
         var reason = RefusalReason(path, linkTo);
@@ -1104,7 +989,6 @@ public sealed class CliTests : IDisposable
         return path;
     }
 
-    // A package of one main part, with the content types and relationship that name it.
     private string Package(string name, string part, string contentType, string content) =>
         Zip(
             name,
@@ -1118,8 +1002,6 @@ public sealed class CliTests : IDisposable
                 "</Relationships>"),
             (part, content));
 
-    // A docx package of one paragraph, "kept", with the given core, extended, and custom
-    // properties parts, each related from the package as Office relates them.
     private string PropertiesPackage(string name, string core, string app, string custom) =>
         Zip(
             name,
@@ -1142,13 +1024,11 @@ public sealed class CliTests : IDisposable
             ("docProps/app.xml", app),
             ("docProps/custom.xml", custom));
 
-    // The properties' maps, in the order the document line holds them.
     private static readonly string[] PropertyMaps = ["core", "app", "custom"];
 
     private static string CustomProperty(int pid, string name, string variant) =>
         $"<property fmtid=\"{{D5CDD505-2E9C-101B-9397-08002B2CF9AE}}\" pid=\"{pid}\" name=\"{name}\">{variant}</property>";
 
-    // A fixture variant's stdout golden, as text.
     private static string Golden(string name, string variant) =>
         File.ReadAllText(Fixtures.GoldenPath(name, variant, "jsonl"));
 
@@ -1166,8 +1046,6 @@ public sealed class CliTests : IDisposable
 
     private static BytesResult RunBytes(params string[] args) => RunBytesIn(Environment.CurrentDirectory, null, args);
 
-    // The binary run by sh with the script given, its $0 the binary and $1 the argument, so the
-    // script can redirect or close the binary's descriptors.
     private static Result Shell(string script, string argument)
     {
         var start = new ProcessStartInfo("/bin/sh") { RedirectStandardOutput = true, RedirectStandardError = true };
@@ -1182,8 +1060,6 @@ public sealed class CliTests : IDisposable
         return new Result(process.ExitCode, stdout.Result, stderr);
     }
 
-    // The binary's exit code and its stdout's and stderr's bytes, as written, with the
-    // environment's variables given set, the rest inherited.
     private static BytesResult RunBytesIn(string directory, Dictionary<string, string>? environment, params string[] args)
     {
         Assert.True(File.Exists(Binary), $"{Binary} is missing: `mise run check` publishes it before the tests run");

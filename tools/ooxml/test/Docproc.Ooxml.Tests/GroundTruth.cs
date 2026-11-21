@@ -4,24 +4,8 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Tests;
 
-/// <summary>A model in the ground truth's shape, element by element, so the two compare
-/// directly: headings, paragraphs, list items with their nesting level and whether each starts its
-/// list (and the first number of an ordered list that doesn't start at 1, on its first item),
-/// tables with each cell's elements, in this same shape, whatever blocks it holds (and the grid
-/// columns a row that starts late skips before it), pictures, and charts. A paragraph's or list
-/// item's references are its marks: each
-/// one's offset in the text, its kind, and its note's or comment's place, from 1, in the
-/// document's list of them, so ids, which writers renumber, never enter the comparison. The
-/// document's sections, notes, and comments are compared in the same shape. A sheet is its name,
-/// whether it is hidden, and its elements, its table's rows each its number and its cells, each
-/// cell its reference, its value's type and value, its formula or shared formula's anchor, its
-/// spans when merged, and its external hyperlink's target. A picture is a <c>media</c> element;
-/// an embedded package or OLE object is an <c>embedded</c> or <c>ole</c> one, with its program
-/// id. A slide is its number, whether it is hidden, its elements, and its
-/// notes' elements when it has notes.</summary>
 internal static class GroundTruth
 {
-    /// <summary>The ground truth's parts beside the body's elements.</summary>
     public static readonly string[] Parts = ["sections", "footnotes", "endnotes", "comments"];
 
     public static List<JsonObject> Elements(Document document)
@@ -31,7 +15,6 @@ internal static class GroundTruth
         return elements;
     }
 
-    /// <summary>The truth of one of the document's other parts, null when the document has none.</summary>
     public static JsonNode? Part(Document document, string name) => name switch
     {
         "sections" => document.Sections is { } sections
@@ -196,7 +179,6 @@ internal static class GroundTruth
             json["type"] = value.Type.ToString().ToLowerInvariant();
             json["value"] = value.Type switch
             {
-                // Parsed from their shortest text, as the truth's numbers are, so 14 and 14.0 compare equal.
                 CellValueType.Number => JsonNode.Parse(value.Number.ToString("R", CultureInfo.InvariantCulture)),
                 CellValueType.Boolean => value.Boolean,
                 _ => value.Text,
@@ -280,7 +262,6 @@ internal static class GroundTruth
         {
             ["name"] = s.Name,
             ["categories"] = new JsonArray([.. s.Categories.Select(c => (JsonNode?)c)]),
-            // Parsed from their shortest text, as the truth's numbers are, so 14 and 14.0 compare equal.
             ["values"] = new JsonArray([.. s.Values.Select(v => v is double d ? JsonNode.Parse(d.ToString("R", CultureInfo.InvariantCulture)) : null)]),
         })]);
         return json;
@@ -315,7 +296,6 @@ internal static class GroundTruth
         return element;
     }
 
-    // A note's or comment's place in its list, from 1, or 0 when the list lacks it.
     private static int Place<T>(IReadOnlyList<T>? list, Func<T, bool> match)
     {
         for (var i = 0; i < (list?.Count ?? 0); i++)

@@ -103,17 +103,197 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   chart's embedded source workbook is never media. The Markdown links a payload as
   `[<prog_id, or the part's file name>](<file>)` after its preview picture. `part` is the
   package part, `target` a linked picture's URL; the placement is the docx section's index from
-  0, the ordinal from 1 of the xlsx sheet's `sheet` line, or the pptx slide's index from 0.
+  0, the ordinal from 1 of the xlsx sheet's `sheet` line, or the pptx slide's index from 0. A
+  docx's media run in the order of its Markdown's chunks: each section's headers, the body, each
+  section's footers, the footnotes, the endnotes, and the comments with their replies, nested
+  blocks in place; a medium shown more than once is listed each time, with its own placement.
 - `properties` is read from the three parts as XML. A core value is a string as stored, dates
   included; an extended value is a number when it is all digits, else a string; a custom value
   takes its variant's type, a file time as its stored ISO 8601 text. Keys keep their stored
   order, and a repeated key keeps its first value with a warning. A part that can't be parsed is
-  a warning, never a refusal. The thumbnail is not media.
+  a warning, never a refusal. The thumbnail is not media. The SDK's typed properties are never
+  used, as they parse core dates and hide the stored text. A value is an element's text: an
+  element with none, as an unset core property is written, or holding elements, as the extended
+  heading pairs and titles of parts do, has no value and is left out, as is a custom property
+  with no name or whose variant is a vector, an array, or empty. A custom variant's integer and
+  real types are numbers and its boolean true or false, unless the text is no such value; any
+  other type, file times and currency among them, is a string. An all-digits number drops its
+  leading zeros, which a JSON number can't have.
 - A sheet's `rows` lines keep its typed cells, office's `TableCell` less its docx-only fields.
   Each holds the sheet's next rows, in order, with their Markdown, as many as keep the line
   within 256 KiB, and at least one, so a line is bounded by the larger of 256 KiB and one row,
   never by the sheet; a `sheet` line holds one row, its header, and is bounded the same way.
-- Field names move to snake_case, as mail's and onenote's are.
+- Field names move to snake_case, as mail's and onenote's are. Non-ASCII text is written as
+  itself, never as a `\u` escape: the lines are data, never embedded in HTML.
+- **Refusals.** The format is the main part's exact content type, the part the package's
+  `officeDocument` relationship names, in Transitional's or Strict's namespace; any other, such
+  as an xlsb's binary workbook, is none of the three, whatever the file's name. An OLE compound
+  file is an encrypted package when its root storage holds an `EncryptedPackage` stream
+  ([MS-OFFCRYPTO] 2.3.4.4), names compared without regard to case as [MS-CFB] compares them, and
+  a legacy binary document otherwise. Only the compound file's directory is read, each step
+  bounded by the file's length, so a cycle or a reference past its end is malformed, never a
+  loop. The SDK loads a package's parts the first time any is asked for, failing then on a
+  relationship to a part the package lacks, so they are loaded once on opening and that failure
+  refuses the package as malformed. A reason is escaped as a `<what>` is, so one holding a line
+  break, an echoed argument or an exception's message, stays one line.
+
+The model the lines are written from is one tree for the three formats, its blocks in document
+order, every block but a media block the document's text, complete without inference. Each
+format is read as below; a warning's `<where>` is a docx `section n` or `comments`, an xlsx
+`sheet n` (its `sheet` line's ordinal, or for a sheet with no line its ordinal in the workbook),
+or a pptx `slide n`, and the unread kinds (text boxes, equations, SmartArt, a pptx's comments,
+an xlsx's notes) are warned of once each, where the document first holds one
+([`design-review.md`](design-review.md), OX-11).
+
+- **docx: the text.** Tracked changes are read accepted: insertions and a move's destination are
+  read, deletions and a move's source skipped, so the runs are walked rather than read through
+  the SDK's `InnerText`, which holds `w:delText`. A paragraph whose mark was deleted or moved runs
+  on into the next, which keeps its own properties; a table ends that, the carried text a
+  paragraph of its own before it. Paragraphs, tables, rows, and cells are read through the
+  content controls, custom XML, and smart tags that wrap them (the SDK has no smart-tag type, so
+  one is read as the custom XML it is like). A content control showing its placeholder holds a
+  prompt (Word's "Choose an item."), so its runs are left out wherever it is. Field codes are
+  instructions, not text; a field's result is ordinary runs. A ruby's base text is read and its
+  annotation left out. An external hyperlink's text links to its target; an internal one's, to a
+  bookmark, stays text. Empty paragraphs and headings are spacing and left out; an empty list
+  item is kept. A paragraph's pictures and charts follow it as blocks in the order they occur,
+  inside a list item after its paragraph.
+- **docx: headings and lists.** A heading's level is the paragraph's own outline level or else its
+  style chain's (each style's `basedOn`, nearest first, a cycle ending it; a paragraph with no
+  style has the default paragraph style): an outline level, or a style named `heading N`; outline
+  level 9 is body text. A list paragraph's numbering instance and level come from its own
+  `w:numPr` or its style's, within Word's nine levels; instance 0 removes numbering, and an
+  instance or definition that doesn't exist leaves the paragraph out of any list. A definition
+  with only a `numStyleLink` takes its levels from the numbering its style names. A level
+  formatted as a bullet or as nothing, or missing, is unordered; one with no format is decimal.
+  A paragraph is numbered as Word counts: one more than the last number of its level in its
+  abstract definition, which every instance of the definition shares, or else the level's start
+  (0 when unset); an instance that overrides the level's start sets it the first time it numbers
+  that level, and numbering a level restarts the levels below. Consecutive list paragraphs make
+  up lists: a deeper level opens a list inside the last item, and at the same level an item
+  continues the list unless its orderedness differs, it belongs to another abstract definition,
+  or it moves to an instance that overrides the level's start. A list starts at its first item's
+  number, so one a paragraph interrupted continues the count.
+- **docx: tables.** A horizontal merge is a cell's `w:gridSpan`; a vertical merge is a `w:vMerge`
+  restart cell and the continue cells below it, folded into its row span, so a covered position
+  has no cell. A row that starts late (`w:gridBefore`) gives its first cell the columns it skips;
+  one that ends early needs nothing. A table nested more than eight deep refuses the document,
+  as it is reached, naming the story and the number from 1 of the first paragraph at or after it.
+- **docx: drawings and objects.** A DrawingML drawing's pictures and charts are read in document
+  order with the drawing's description and title, a picture's blip embedding a part or linking a
+  target. A VML picture's title is its alternative text, VML having no other. A VML object's
+  payload is its `o:OLEObject`'s, or a Word 2010 `w:objectEmbed`'s, relationship. A chartEx chart, in an
+  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never
+  both; any other alternate content is not read. A text box's text, a SmartArt diagram, and an
+  equation are not read, wherever they are.
+- **docx: sections, notes, and comments.** A section is a paragraph's `w:sectPr`, the body's own
+  the last. Each section's headers and footers are those its pages show: its own, or the previous
+  section's where it has none of a kind; a first-page one counts only with a title page and an
+  even-page one only when the settings turn even and odd headers on, and one with no blocks is
+  left out. Each is read for every section that shows it, so its media are placed in that
+  section. A reference of a type no header or footer has (Word's are default, first, and even) is
+  skipped with a warning. A footnote or endnote is read when the text first references it, a
+  note a note references after it; Word's separator and continuation notes are not the text's.
+  A comment whose `commentsExtended` entry, its last paragraph's, names a parent is a reply in
+  its root's thread, and a thread is resolved when its root's entry is done; without
+  `commentsExtended` each comment is a thread of its own, unresolved. A thread's anchor is the
+  accepted text of its range, paragraphs joined by a newline; it is marked where the range ends,
+  or where its reference is when the range ends between paragraphs or there is none.
+- **xlsx: sheets.** A sheet whose reference names no part (an empty or unknown relationship id) is
+  skipped with a warning and the others read. A worksheet holds its cells, then its drawing, then
+  its objects; a chartsheet its drawing alone; a dialog or macro sheet nothing read. Each
+  worksheet part is read in two forward passes, one row held at a time
+  ([`design-review.md`](design-review.md), OX-2): the first finds whatever refuses the workbook
+  and collects what the `sheet` line needs before the rows, which a forward reading meets after
+  the cells (the merges, the external hyperlinks, and a shared formula's anchor, which can follow
+  a cell that names it); the second gives the rows as they are written. Only the worksheet's own
+  children count: a row inside alternate content is passed over. A sheet is refused with the
+  failure a reading of the whole part meets first: its XML, then a shared formula's attributes,
+  then the first failing row number or cell, in order, that no merge covers.
+- **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's
+  reference is optional, and one without follows the cell before it. A table holds the cells
+  with a value or a formula. A merged range's anchor, its top-left cell, carries its spans, and
+  the cells it covers are left out; a range whose anchor holds nothing leaves nothing. Excel
+  refuses overlapping ranges; where a file holds them, a cell is looked for only in the covering
+  range that starts nearest its left. A shared formula's text is on its anchor, the first cell
+  whose formula holds it, and a cell holding only a shared index is kept when the index has an
+  anchor. A cell's external hyperlink is the first of the sheet's whose range holds it; one to a
+  place in the workbook stays text.
+- **xlsx: values.** A cell's value is a shared or inline string, a formula's string, a boolean, an
+  error, an ISO date, or a number, a date when its style's number format shows a date or a time.
+  An empty value is none, as openpyxl writes a formula it has not computed, but a formula's
+  string can be empty. A shared string's index may carry white space around it, as Excel Online
+  writes `<v>2 </v>` and Excel reads it. Rich text is flattened, its phonetic runs (`rPh`) left
+  out, and `_xHHHH_` escapes (ECMA-376 Part 1, 22.9.2.19, `ST_Xstring`) are decoded left to right
+  to their UTF-16 code units, `_x005F_` the escaped underscore, whose own underscore never starts
+  another. The built-in formats 14 to 17 are dates, 18 to 21 and 45 to 47 times, and 22 both;
+  the other built-in ones, the locale-dependent among them, leave the number raw. A custom
+  format's date and time parts are its tokens outside quoted text, escaped and skipped
+  characters, and brackets, an `m` being minutes after an hour or before a second and months
+  otherwise; a format with an elapsed-time bracket (`[h]`, `[m]`, `[s]`) is a duration, which can
+  pass a day, so its value stays a number. In the 1900 date system serial 1 is 1 January 1900
+  and serial 60 is 29 February 1900, a day that never was, kept from Lotus 1-2-3; in the 1904
+  system serial 0 is 1 January 1904. Times are rounded to the millisecond.
+- **xlsx: drawings and objects.** A drawing's pictures and charts are read in the order it anchors
+  them, through groups, each picture with its own drawing properties' alternative text and
+  title; a chartEx chart is read as in a docx, and any other alternate content is read through.
+  A shape's text, a text box's, and a SmartArt diagram are not read. A worksheet's OLE object is
+  its preview picture (its `objectPr`'s), then its payload: Excel writes the object twice in
+  alternate content, the preview only in the choice's copy, both naming one relationship.
+- **pptx.** Slides are read in presentation order, hidden ones included and marked, each slide's
+  shapes in its shape tree's order, back to front, never re-sorted by position, a group in place.
+  A title placeholder's text is the slide's heading, its paragraphs its lines; other shapes'
+  paragraphs are paragraphs and lists. A placeholder holds only the slide's own text, so an
+  empty one is left out and its layout's prompt never read. A placeholder with no type is a
+  content placeholder. A slide's placeholder takes after its layout's, and that one after its
+  master's, of the same index, or else the first of its type, a centered title matching a title;
+  a layout placeholder's kind on the master is title, date, footer, slide number, or header, or
+  else body. A paragraph's bullet is its own or else the first its list styles give for its
+  level, nearest first: the shape's own; for a placeholder its layout's and master's
+  placeholders' and the master's title, body, or other text style by its type; for any other
+  shape the master's other text style; and last the presentation's default. A character, picture, or auto-number bullet
+  makes a list item, an auto-number ordered from its `startAt` (1 by default); none, or `buNone`,
+  makes a paragraph. Empty paragraphs are left out. Lists group as a docx's do by level and
+  orderedness, and a paragraph ends every list. A run's own `a:hlinkClick` links its text; a link
+  to a slide or an action stays text. Content in `mc:AlternateContent` is not read but for a
+  chartEx chart's, read as in a docx; an OLE object's frame is its preview picture, then its
+  payload, PowerPoint writing the object twice with the preview only in the fallback's copy. A
+  notes page's text is its body placeholders' paragraphs, never the slide image, number, header,
+  footer, or date, their bullets from their own list style and the notes master's. A slide's
+  comments, legacy or modern, are not read.
+- **Charts.** A chart is its part's cached data, never its rendering or its embedded workbook. A
+  DrawingML chart, Transitional or ISO 29500 Strict (its namespaces renamed to Transitional's),
+  takes its type from its first plot's kind; a chartEx chart, which Word and PowerPoint refer to
+  by a `cx:chart` the SDK doesn't type, takes its first series' layout, and with no point cached
+  anywhere is not a chart. A title is its own rich text or a cell's cache; with neither it is the
+  application's to make up, so it has none. A series' categories are its `cat` or, for scatter
+  and bubble, its `xVal`, and a multi-level cache gives its innermost level. A chartEx series'
+  categories are its data's first text dimension or else its x values, and its values the first
+  numeric dimension that isn't x values (a sunburst's or treemap's sizes, a region map's colors);
+  a hierarchy labels each point with its innermost level that names it. Points are placed by
+  index up to the declared count, a point the cache lacks null, and a count beyond any point is
+  capped, so a malformed count can't exhaust memory.
+- **The Markdown.** Footnotes and endnotes share one label count in the order the rendering
+  reaches their references (`[^1]`, `[^2]`), so their ids never collide; comments have their own
+  (`[^c1]`). A note no reference reached is labeled after the rest. A definition's first
+  paragraph is on its label's line, the rest indented four spaces after a blank line. Each
+  comment is its author, its thread's state, its anchor, its text, and its replies. A list that
+  follows another of its kind switches markers (`-` to `*`, `.` to `)`), since Markdown would
+  join them; an item's other blocks are indented to its marker's width, a nested list tight. A
+  line break in a paragraph is a hard break, a backslash at the line's end; each line is trimmed,
+  since leading spaces make an indented code block, each text run escaped on its own, and a line
+  left empty dropped. A hyperlink's text keeps to one line, and one with no text is nothing. A
+  docx table is a GFM table, its first row the header, a merged cell's text in its top-left
+  position and the positions it covers or a late row skips empty, a cell's lines and blocks
+  joined by `<br>`; a chart in a cell renders after the table, its title left in the cell. A
+  sheet is a heading of its name, marked when hidden, then a table headed by the column letters
+  its cells use, each row under its number, columns and rows with no cells left out; a cell shows
+  its value (a number in its shortest round-trip form, a boolean as `TRUE` or `FALSE`), or else
+  its formula as a code span, or a shared formula's anchor, a code span's fence longer than any
+  backtick run in it and its pipes escaped. A chart is its title, then a table with a column per
+  series and a row per category, the first series' categories naming the rows. A slide is a
+  heading of its number, marked when hidden, its own headings a level below, then its notes after
+  a bold "Notes" label, which no escaped slide text can make.
 
 ## docproc-mail
 

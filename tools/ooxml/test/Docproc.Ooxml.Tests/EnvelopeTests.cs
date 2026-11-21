@@ -6,8 +6,6 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
-/// <summary>The envelope's shared cases, tools/envelope/cases.json, read in place: every system
-/// tool's tests and docproc's read the same file, so no case is restated here.</summary>
 internal sealed record EnvelopeCases(
     IReadOnlyList<(int Code, string Meaning)> ExitCodes,
     IReadOnlyList<(string Where, string What, string Line)> Warnings,
@@ -17,11 +15,8 @@ internal sealed record EnvelopeCases(
     IReadOnlyList<(string Target, string Markdown)> Destinations,
     IReadOnlyList<(string Title, string Markdown)> Titles)
 {
-    /// <summary>The table's path, beside the tool's directory under tools/.</summary>
     public static string Path { get; } = System.IO.Path.GetFullPath(System.IO.Path.Combine(Fixtures.Root, "..", "envelope", "cases.json"));
 
-    /// <summary>The name a case's stderr line gives its tool, which each tool reads as its
-    /// own.</summary>
     public const string Tool = "tool";
 
     public static EnvelopeCases Load()
@@ -39,7 +34,6 @@ internal sealed record EnvelopeCases(
             [.. Rows("titles").Select(r => (Text(r, "title"), Text(r, "markdown")))]);
     }
 
-    /// <summary>A case's line as the given tool writes it.</summary>
     public static string As(string tool, string line)
     {
         Assert.StartsWith(Tool + ": ", line, StringComparison.Ordinal);
@@ -47,10 +41,6 @@ internal sealed record EnvelopeCases(
     }
 }
 
-// docproc-ooxml against every case of the envelope's table: its exit codes, its stderr writer, its
-// media names, its literal-text escape, its destination writer, and its title writer. The tests
-// have no CommonMark reader, so a destination's and a title's read-back are the shared crate's
-// tests, over the same cases.
 public sealed class EnvelopeTests
 {
     private static readonly EnvelopeCases Cases = EnvelopeCases.Load();
@@ -71,8 +61,6 @@ public sealed class EnvelopeTests
         }
     }
 
-    // The table holds together as the contract reads a line: split at its first three ": " and
-    // unescaped, each case's line gives back its where and what, so the writer's lines do too.
     [Fact]
     public void AWarningsLineSplitsBackToItsWhereAndWhat()
     {
@@ -95,14 +83,10 @@ public sealed class EnvelopeTests
         }
     }
 
-    // The contract states no escape for a reason; docproc-ooxml's takes what's, so a reason with
-    // a line break still makes one line. The table holds no such case, as no other tool is bound
-    // by it.
     [Fact]
     public void AReasonsLineBreakIsEscaped() =>
         Assert.Equal("docproc-ooxml: error: a\\nb\\rc\\\\d: e\n", Stderr.ErrorLine("a\nb\rc\\d: e"));
 
-    // The stderr writer writes UTF-8 bytes, whatever the locale.
     [Fact]
     public void TheStderrWriterWritesUtf8()
     {
@@ -153,7 +137,6 @@ public sealed class EnvelopeTests
         }
     }
 
-    // The inverse of the envelope's escape, as docproc applies it.
     private static string Unescape(string text)
     {
         var plain = new StringBuilder(text.Length);

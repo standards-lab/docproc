@@ -3,17 +3,8 @@ using System.Text;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>An OLE compound file whose structure breaks [MS-CFB], and how.</summary>
 internal sealed class MalformedCompoundFileException(string message) : Exception(message);
 
-/// <summary>A minimal reader of an OLE compound file's directory, by [MS-CFB]: the header, the
-/// FAT sectors the DIFAT names, the directory's sector chain, and the names of the root storage's
-/// children. It is the whole of what docproc-ooxml reads of a compound file, enough to tell an
-/// encrypted OOXML package, whose root holds an <c>EncryptedPackage</c> stream ([MS-OFFCRYPTO]
-/// 2.3.4.4), from a legacy binary document. It reads no stream's content and no mini stream.
-/// Every step is bounded by the file's length: each sector is read at most once along the
-/// directory's chain and each directory entry at most once in the tree, so a cycle or a reference
-/// past the end is malformed, never a loop.</summary>
 internal static class CompoundFile
 {
     /// <summary>The eight bytes every compound file begins with.</summary>
@@ -64,7 +55,6 @@ internal static class CompoundFile
             {
                 throw new MalformedCompoundFileException("a byte order other than little-endian");
             }
-            // Version 3 has 512-byte sectors, version 4 4096-byte ones; nothing else is defined.
             var shift = (U16(header, 26), U16(header, 30)) switch
             {
                 (3, 9) => 9,
@@ -72,8 +62,6 @@ internal static class CompoundFile
                 var (major, given) => throw new MalformedCompoundFileException($"version {major} with sector shift {given}"),
             };
             sectorSize = 1 << shift;
-            // Sector n begins at (n + 1) * sectorSize, the header filling sector -1; a last sector
-            // the file cuts short is read as if padded with zeros.
             sectorCount = (stream.Length + sectorSize - 1) / sectorSize - 1;
             fatSectors = U32(header, 44);
             if (fatSectors > sectorCount)
@@ -105,8 +93,6 @@ internal static class CompoundFile
             {
                 throw new MalformedCompoundFileException("a first directory entry that isn't the root storage");
             }
-            // The root's children are a red-black tree through each entry's left and right
-            // siblings, walked in order; an entry reached twice is a cycle.
             var names = new List<string>();
             var seen = new HashSet<uint> { 0 };
             var pending = new Stack<(uint Id, bool Visit)>();
@@ -138,7 +124,6 @@ internal static class CompoundFile
             return names;
         }
 
-        // The directory's sectors, in order, through the FAT.
         private List<uint> DirectoryChain()
         {
             var chain = new List<uint>();
@@ -162,7 +147,6 @@ internal static class CompoundFile
             return chain;
         }
 
-        // The FAT's entry for a sector: the next sector of its chain.
         private uint Fat(uint sector)
         {
             var perSector = (uint)(sectorSize / 4);
@@ -171,8 +155,6 @@ internal static class CompoundFile
             return U32(buffer, 0);
         }
 
-        // The sector holding the given FAT sector: the header's DIFAT names the first 109, and a
-        // chain of DIFAT sectors the rest, each ending in the next one's number.
         private uint FatSector(uint index)
         {
             if (index >= fatSectors)
@@ -223,8 +205,6 @@ internal static class CompoundFile
             stream.ReadAtLeast(buffer, buffer.Length, throwOnEndOfStream: false);
         }
 
-        // An entry's name: its length in bytes counts the terminating null, at most 32 UTF-16
-        // code units in all.
         private static string Name(byte[] entry, uint id)
         {
             var length = U16(entry, 64);

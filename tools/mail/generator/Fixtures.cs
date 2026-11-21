@@ -13,7 +13,10 @@ namespace Docproc.Mail.Generator;
 /// The committed set: every store of layout.json as a .pst under pst/, every .eml source its msg
 /// list names as a .msg under msg/, and manifest.json. Each output is built twice, to learn
 /// whether it is byte-stable, and the run reports how each source and output differs from the
-/// manifest it replaces.
+/// manifest it replaces. Every item source is read, and so validated, before the first output is
+/// written. A store's messages each come from their .eml through PstBuilder.Eml, the source's
+/// first Received header giving the delivery time, so it differs from the submit time, the Date
+/// header; its items follow, each written from its item source.
 /// </summary>
 public static class Fixtures
 {
@@ -46,7 +49,6 @@ public static class Fixtures
                 return 1;
             }
         }
-        // Every item source is read, and so validated, before the first output is written.
         var items = layout.Stores.SelectMany(s => s.Folders).SelectMany(f => f.Items).Distinct()
             .ToDictionary(name => name, name => ItemSource.Read(Path.Combine(dir, "items", name)));
 
@@ -71,7 +73,6 @@ public static class Fixtures
         return 0;
     }
 
-    /// <summary>The sources in one directory under the generated one, in ordinal order of name; none if it is missing.</summary>
     static IEnumerable<SourceEntry> Sources(string dir, string subdir, string pattern)
     {
         var path = Path.Combine(dir, subdir);
@@ -85,16 +86,11 @@ public static class Fixtures
             .Select(name => new SourceEntry($"{subdir}/{name}", Manifest.Sha256(Path.Combine(path, name))));
     }
 
-    /// <summary>
-    /// Builds one output at its place under the generated directory, then once more beside it to
-    /// compare, and records it.
-    /// </summary>
     static OutputEntry Build(string dir, string file, Action<string> build, IReadOnlyList<string> sources)
     {
         var path = Path.Combine(dir, file);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var again = path + ".again";
-        // MsgKit refuses to overwrite a file.
         File.Delete(path);
         build(path);
         try
@@ -109,13 +105,6 @@ public static class Fixtures
         }
     }
 
-    /// <summary>
-    /// One store through PST Builder's in-memory tree, the folders in layout order. Each folder's
-    /// messages come first, each mapped from its .eml by PstBuilder.Eml: a source's first Received
-    /// header gives the delivery time, so it differs from the submit time, which is the Date
-    /// header. Then its items, each written field by field from its item source (Items.cs), read
-    /// by name from items.
-    /// </summary>
     static void BuildStore(StoreLayout store, string dir, IReadOnlyDictionary<string, ItemSource> items, string path)
     {
         Pst.Write(path, top =>
@@ -146,7 +135,6 @@ public static class Fixtures
         return folder;
     }
 
-    /// <summary>The date of a source's first (most recent) Received header, if it has one.</summary>
     static DateTime? Received(byte[] eml)
     {
         using var stream = new MemoryStream(eml);
@@ -163,7 +151,6 @@ public static class Fixtures
         return date.UtcDateTime;
     }
 
-    /// <summary>The packages whose versions the manifest records: the generator's, and what they read with.</summary>
     static readonly string[] Packages = ["PstBuilder", "PstBuilder.Eml", "MsgKit", "MimeKit", "OpenMcdf"];
 
     internal static Dictionary<string, string> Tools()
@@ -173,8 +160,6 @@ public static class Fixtures
             ["dotnet-sdk"] = Sdk(),
             ["dotnet-runtime"] = Environment.Version.ToString(),
         };
-        // The versions restored, from the lock file embedded at build: an assembly's own version
-        // needn't be its package's (MimeKit 4.18.2's assembly says 4.18.1.0).
         using var stream = typeof(Fixtures).Assembly.GetManifestResourceStream("packages.lock.json")
             ?? throw new InvalidOperationException("packages.lock.json isn't embedded");
         var packages = JsonDocument.Parse(stream).RootElement.GetProperty("dependencies").GetProperty("net11.0");
@@ -185,7 +170,6 @@ public static class Fixtures
         return tools;
     }
 
-    /// <summary>The SDK global.json pins, as `dotnet --version` reports it.</summary>
     static string Sdk()
     {
         using var process = Process.Start(new ProcessStartInfo("dotnet", "--version")
@@ -197,7 +181,6 @@ public static class Fixtures
         return version;
     }
 
-    /// <summary>One line for each tool, source and output that differs from the previous manifest.</summary>
     static void Report(Manifest? previous, Manifest current)
     {
         if (previous is null)

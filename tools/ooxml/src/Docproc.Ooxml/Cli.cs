@@ -5,9 +5,6 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml;
 
-/// <summary>The CLI: one document in, its lines on stdout. Its exit codes are the envelope's
-/// (docs/tool-contract.md, "Common envelope"; tools/envelope/cases.json), and stdout and stderr take
-/// bytes, never text, so the locale can't change them.</summary>
 internal static class Cli
 {
     /// <summary>The document was read and its lines written to stdout, skipped items
@@ -30,7 +27,6 @@ internal static class Cli
     /// stderr.</summary>
     public const int Failed = 4;
 
-    /// <summary>The CLI's version, from its assembly.</summary>
     internal static string Version =>
         typeof(Cli).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
@@ -88,7 +84,6 @@ internal static class Cli
         }
     }
 
-    // stdout's one write: an I/O error, a broken pipe included, is exit code 1.
     private static int Write(Stream stdout, string text, Stderr errors)
     {
         try
@@ -113,9 +108,6 @@ internal static class Cli
 
     private sealed record Arguments(Command Command, string? Input, string? Media);
 
-    // The command line is parsed by hand: one input, --media taking a value, given as the next
-    // argument or after `=`, at most once, and --version and --help, each alone. `--` ends the
-    // options, so an input may begin with `-`; `-` alone is an input.
     private static bool Parse(string[] args, out Arguments parsed, out string error)
     {
         parsed = new Arguments(Command.Convert, null, null);
@@ -189,12 +181,6 @@ internal static class Cli
         return true;
     }
 
-    // Every refusal is found before anything is written (OfficeReader.Open), so a refusal leaves
-    // stdout empty and the media directory untouched. What the conversion skipped goes to stderr
-    // as warnings. Media are written next, the directory created if missing, each distinct
-    // content once (a file of the same name holds the same bytes, so it is rewritten); stdout
-    // comes last, so it is written only when they all were. Its lines are written as they are
-    // made, an xlsx sheet's as its rows are read.
     private static int Convert(string path, string? mediaDirectory, Stream stdout, Stderr errors)
     {
         PendingConversion conversion;
@@ -229,7 +215,6 @@ internal static class Cli
                     return NotWritten;
                 }
             }
-            // Not disposed: that would close stdout, and flush it again after a failed write.
             var output = new BufferedStream(new StdoutStream(stdout), 64 * 1024);
             try
             {
@@ -245,11 +230,8 @@ internal static class Cli
         return Converted;
     }
 
-    // An I/O error writing stdout, told apart from one reading the document while its lines are
-    // written.
     private sealed class StdoutException(IOException error) : Exception(error.Message, error);
 
-    // stdout, its I/O errors raised as StdoutException.
     private sealed class StdoutStream(Stream stdout) : Stream
     {
         public override bool CanRead => false;

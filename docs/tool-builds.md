@@ -69,7 +69,10 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT packages
   of both, and a publish for either restores nothing the lock doesn't pin. libc's `write` and
   `statx` (`Native.cs`) bind directly into the binary, which links libc anyway, rather than
-  through a library lookup at run time. The model, the reader, the renderer, and the line writer
+  through a library lookup at run time; in process, as the tests run it, .NET resolves libc
+  itself. stdout and stderr are the raw descriptors written through `write`, with no encoding
+  and no buffer, so the locale can't change a byte and every error, a broken pipe among them,
+  is reported; .NET's console streams report none. The model, the reader, the renderer, and the line writer
   are internal: the binary's process contract is its interface. The tests reach them in process.
   The Open XML SDK is the CLI's only package; the command line is parsed by hand.
 - **Notices.** The notices give every NuGet package the binary links and the .NET runtime
@@ -224,7 +227,11 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
 - The generator (`generator/Generator.csproj`) turns the hand-written `.eml` and item sources into
   `.pst` and `.msg` fixtures; the check never builds it. Its lock file pins the transitive packages
   too, so a rerun restores the same graph, and the manifest's package versions are read from the
-  lock file the build restored. It uses MimeKit directly, to read a source's Received date.
+  lock file the build restored, since an assembly's own version needn't be its package's
+  (MimeKit 4.18.2's assembly says 4.18.1.0). It uses MimeKit directly, to read a source's Received
+  date. It registers .NET's code pages, which only MimeKit registers for itself: without them
+  MsgKit fails on a windows-1251 or GB2312 source. MsgKit refuses to overwrite a file, so each
+  output is deleted before it is built.
 - Its dependencies: docproc-envelope, with its Markdown-to-plain reader (`markdown`); codepage and
   encoding_rs, code pages to text (`src/codepage.rs`): codepage maps a Windows code page to its
   encoding_rs encoding, which decodes it, and a charset an HTML body's `<meta>` names, a WHATWG
