@@ -80,8 +80,6 @@ slices 10/10 committed (+ fixture generators) · standards ✓ · spec ✓ · ed
 - coordinator · docs/messaging.md:50 and roadmap/capstone.data-intelligence.toml:94 →
   context/cerebro.md, "State and subjects".
 - coordinator · roadmap/v1.ai.inference.toml: summary :9 and :26; drop context entry :19.
-- coordinator · roadmap/v1.ai.processing.toml:40, :54, :111: `context/layers.md` → the docs/ page that
-  now holds each cited section (docs/layers.md, docs/tool-contract.md, or docs/api.md).
 - coordinator · roadmap/v1.ai.processing.toml:170 and :192: `final` writes to docs/acceptance.md.
 - go-ai · context/README.md:10 and docs/design.md:19: cite layers.md "go-ai's surface" at docproc
   commit f3633c3.
