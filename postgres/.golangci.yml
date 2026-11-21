@@ -1,4 +1,4 @@
-# golangci-lint v2 configuration for the postgres module, run by `mise run check` from this directory.
+# golangci-lint v2 configuration for the postgres module, run by `mise run check` from here.
 # See docs/development.md
 # See architecture/principles/comments.md
 version: "2"

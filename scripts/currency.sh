@@ -39,7 +39,7 @@ outdated_requirements() {
 
 outdated_tool_modules() {
 	local out err
-	err=$(mktemp)
+	err=$(mktemp) || return
 	if ! out=$(go list -f '{{.Module.Path}}' tool 2>"$err"); then
 		cat "$err" >&2
 		rm -f "$err"
