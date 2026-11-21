@@ -24,21 +24,14 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// oneSection is the head of a OneNote section, by which route routes a part to the onenote
-// stage.
 const oneSection = "\xe4\x52\x5c\x7b\x8c\xd8\xa7\x4d\xae\xb1\x53\x78\xd0\x29\x96\xd3\x00\x00\x00\x00\x00\x00\x00\x00"
 
-// testMemory is the memory bound the classification's stand-in runs under, tooltest's room for a
-// stand-in, a test binary that may be race-built, to start.
 const testMemory = tooltest.Memory
 
-// onenoteOnly is every route but route.OneNote, for a Build that wires the onenote stage alone.
 func onenoteOnly() []route.Route {
 	return slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.OneNote })
 }
 
-// standinSet returns Build's Set under opts over a lookup that finds docproc-onenote as the
-// stand-in, set to s, and no other program, with the stand-in's link.
 func standinSet(t *testing.T, s onenoteSettings, opts stages.Options) (stages.Set, string) {
 	t.Helper()
 	link := tooltest.Link(t, t.TempDir(), "docproc-onenote", s)
@@ -60,8 +53,6 @@ func standinSet(t *testing.T, s onenoteSettings, opts stages.Options) (stages.Se
 	return set, link
 }
 
-// dispatchSet dispatches a OneNote section through set's stages, with set's inspection, over a
-// new index, and returns the section's own event and whether the index records its entry.
 func dispatchSet(t *testing.T, set stages.Set) (dispatched, bool) {
 	t.Helper()
 	index := dispatch.NewMemoryIndex(0)
@@ -80,14 +71,6 @@ func dispatchSet(t *testing.T, set stages.Set) (dispatched, bool) {
 	return ev, recorded
 }
 
-// TestClassification dispatches a OneNote section through Build's Set over the stand-in
-// docproc-onenote, under an 8 GiB memory bound and an idle bound, once for each line of
-// the package doc's table: a tool's own exit, 3 and 4, its own fatal signal, its reason naming the
-// signal and the bound, its own time bound, and output that doesn't parse are the content's,
-// failed and recorded; exit 1 and 2, and a SIGKILL or SIGTERM docproc didn't send, are the run's,
-// failed and never recorded; and a refusal internal/cli classes is encrypted or read elsewhere.
-// The idle bound, 5 s, runs from the run's start, the stand-in's start included, so it is far
-// past any start on a loaded machine; only the case that holds its run reaches it.
 func TestClassification(t *testing.T) {
 	t.Parallel()
 	const notebook = `{"line":"notebook","schema":"2","input":"section","name":"S"}` + "\n"
@@ -131,8 +114,6 @@ func TestClassification(t *testing.T) {
 	}
 }
 
-// TestClassificationNoBound: a death by the tool's own signal with no memory bound names the
-// signal alone, and a stage built under no bound passes no prlimit.
 func TestClassificationNoBound(t *testing.T) {
 	t.Parallel()
 	set, link := standinSet(t, onenoteSettings{Signal: "ABRT"}, stages.Options{Exclude: onenoteOnly()})
@@ -145,12 +126,6 @@ func TestClassificationNoBound(t *testing.T) {
 	}
 }
 
-// TestClassify: the facts classify reads apart from a run, case by case: the context's end and a
-// failed start are the run's; a timed-out run is the content's whatever its exit; 7-Zip's command
-// line error is the run's and its out of memory the content's, soffice's 77, a fatal error at its
-// start, is the run's and its 1 the content's, while any other tool's every nonzero exit is the
-// content's; JSON that doesn't parse and a format package's content errors
-// are the content's; and a signal names the bound in the largest unit that holds it whole.
 func TestClassify(t *testing.T) {
 	t.Parallel()
 	ended, cancel := context.WithCancel(t.Context())
@@ -199,9 +174,6 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-// TestBuildBounds: Build hands each tool its run bound by the tool's kind, a stream tool, such as
-// docproc-onenote, Idle: a Timeout leaves its long-held run alone, while Idle ends it; and Memory
-// reaches the tool, the stand-in run under a RLIMIT_AS of the bound.
 func TestBuildBounds(t *testing.T) {
 	t.Parallel()
 	hold := onenoteSettings{HoldMS: 1500, Stdout: `{"line":"notebook","schema":"2","input":"section","name":"S"}` + "\n"}

@@ -18,7 +18,6 @@ func Commands() []*cli.Command {
 	return []*cli.Command{command()}
 }
 
-// exitStatus is the report command's help footer: what each exit code means.
 const exitStatus = `Exit status:
   0  the report was rendered, a run that never ended among them, its pages marked not ended
   1  nothing was rendered: a run directory that doesn't exist or isn't one, a --run that isn't
@@ -26,7 +25,6 @@ const exitStatus = `Exit status:
   2  a usage error, such as no run directory or more than one
 `
 
-// command returns the report command: docproc report <run-dir> [--run <id>].
 func command() *cli.Command {
 	var id string
 	cmd := &cli.Command{

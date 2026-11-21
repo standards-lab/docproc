@@ -16,7 +16,6 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 )
 
-// checks returns the checks of r's flags, in r's order.
 func checks(r inspect.Report) []inspect.Check {
 	out := make([]inspect.Check, 0, len(r.Flags))
 	for _, f := range r.Flags {
@@ -25,7 +24,6 @@ func checks(r inspect.Report) []inspect.Check {
 	return out
 }
 
-// mustInspect inspects the file at path, named name, under opts, failing the test on an error.
 func mustInspect(t *testing.T, path, name string, opts inspect.Options) inspect.Report {
 	t.Helper()
 	r, err := inspect.Inspect(t.Context(), path, name, opts)
@@ -35,7 +33,6 @@ func mustInspect(t *testing.T, path, name string, opts inspect.Options) inspect.
 	return r
 }
 
-// evidence returns the evidence of r's flag of check c, "" when it has none.
 func evidence(r inspect.Report, c inspect.Check) string {
 	for _, f := range r.Flags {
 		if f.Check == c {
@@ -45,30 +42,22 @@ func evidence(r inspect.Report, c inspect.Check) string {
 	return ""
 }
 
-// rule is the bomb rule the synthesized fixtures are read under: 1,000:1 and 1 GiB.
 var rule = inspect.Options{BombRatio: 1000, BombSize: 1 << 30}
 
-// The classes' actions under the zero Options.
 const (
 	activeVerdict = inspect.Proceed
 	unsafeVerdict = inspect.Quarantine
 )
 
-// synthesized are the committed hazard fixtures generate.go writes: each file's checks, sorted,
-// a substring of each check's evidence, and its verdict under rule.
 var synthesized = []struct {
 	file     string
 	evidence map[inspect.Check]string
 	verdict  inspect.Verdict
 }{
-	// A traversing or absolute name and a link are active: the entry is an unread child, and the
-	// archive proceeds.
 	{"traversal.zip", map[inspect.Check]string{inspect.ArchiveTraversal: `"docs/../../evil.txt"`}, activeVerdict},
 	{"absolute.zip", map[inspect.Check]string{inspect.ArchiveAbsolutePath: `"/tmp/evil.txt", and 1 more`}, activeVerdict},
 	{"symlink.zip", map[inspect.Check]string{inspect.ArchiveSymlink: `"passwd"`}, activeVerdict},
-	// Past the rule by its entry's declared sizes, and by its sum against the whole ZIP's.
 	{"declared-bomb.zip", map[inspect.Check]string{inspect.ArchiveBomb: `4294967296 bytes from 11, 390451572:1, and 1 more`}, unsafeVerdict},
-	// 8 MiB is under 1 GiB, so the ratio alone doesn't make it a bomb.
 	{"bomb.zip", nil, inspect.Proceed},
 	{"encrypted.zip", map[inspect.Check]string{inspect.ArchiveEncrypted: `"secret.txt"`}, activeVerdict},
 	{"macro.docm", map[inspect.Check]string{
@@ -77,8 +66,6 @@ var synthesized = []struct {
 		inspect.OLEObject:            `"word/embeddings/oleObject1.bin"`,
 		inspect.VBAProject:           `"word/vbaProject.bin"`,
 	}, inspect.Proceed},
-	// The remote template's relationship, read in its declared ISO-8859-1 and in UTF-16 by its
-	// byte order mark.
 	{"macro-latin1.docm", map[inspect.Check]string{
 		inspect.ActiveX:              `"word/activeX/activeX1.xml"`,
 		inspect.ExternalRelationship: `attachedTemplate https://example.invalid/modèle.dotm`,
@@ -91,7 +78,6 @@ var synthesized = []struct {
 		inspect.OLEObject:            `"word/embeddings/oleObject1.bin"`,
 		inspect.VBAProject:           `"word/vbaProject.bin"`,
 	}, inspect.Proceed},
-	// Its one external relationship is a hyperlink, which isn't active content.
 	{"hyperlink.docx", nil, inspect.Proceed},
 	{"javascript.pdf", map[inspect.Check]string{
 		inspect.PDFAA:         "/AA at offset 66",
@@ -105,8 +91,6 @@ var synthesized = []struct {
 		inspect.SVGForeignObject: "<foreignObject> at line 8",
 		inspect.SVGScript:        "<script> at line 3",
 	}, inspect.Proceed},
-	// script.svg in its declared ISO-8859-1, a comment line longer, and in UTF-16 by its byte
-	// order mark.
 	{"script-latin1.svg", map[inspect.Check]string{
 		inspect.SVGEventHandler:  "onload on <svg>",
 		inspect.SVGExternalHref:  `xlink:href="https://example.invalid/tracker.png" on <image> at line 8`,
@@ -128,10 +112,6 @@ var synthesized = []struct {
 	{"polyglot.jpg", map[inspect.Check]string{inspect.Polyglot: "ZIP end-of-central-directory record at offset 168 in a jpeg"}, inspect.Proceed},
 	{"polyglot.png", map[inspect.Check]string{inspect.Polyglot: "PDF header at offset 33 after a png signature"}, inspect.Proceed},
 	{"encrypted.xlsx", map[inspect.Check]string{inspect.OOXMLEncrypted: "EncryptedPackage"}, inspect.Proceed},
-	// The tars, by their headers, as the ZIPs are by their central directories. A directory is
-	// no hazard, and a gzip stream, which declares its expanded size only modulo 4 GiB, is
-	// checked as a gzip no further: the tar it holds is inspected once the stage decompresses
-	// it.
 	{"clean.tar", nil, inspect.Proceed},
 	{"clean.tar.gz", nil, inspect.Proceed},
 	{"unnamed.tgz", nil, inspect.Proceed},
@@ -145,8 +125,6 @@ var synthesized = []struct {
 	{"sparse-bomb.tar", map[inspect.Check]string{inspect.ArchiveBomb: `entry "zeros.bin": 4294967296 bytes declared in a 2048-byte tar`}, unsafeVerdict},
 }
 
-// TestSynthesized inspects each synthesized hazard fixture under rule: each yields exactly its
-// checks, each check's evidence naming where it is, and its verdict.
 func TestSynthesized(t *testing.T) {
 	for _, tc := range synthesized {
 		t.Run(tc.file, func(t *testing.T) {
@@ -167,10 +145,6 @@ func TestSynthesized(t *testing.T) {
 	}
 }
 
-// TestBombThresholds: bomb.zip, 8 MiB at about 1,030:1, is a bomb once the size is lowered under
-// it, and not once the ratio is raised over it, since an entry must be past both; the zero
-// Options apply no rule, so neither it nor declared-bomb.zip, whose declared compressed size is
-// honest, is one.
 func TestBombThresholds(t *testing.T) {
 	path := filepath.Join("testdata", "bomb.zip")
 	r := mustInspect(t, path, "bomb.zip", inspect.Options{BombRatio: 1000, BombSize: 1 << 20})
@@ -190,14 +164,10 @@ func TestBombThresholds(t *testing.T) {
 	}
 }
 
-// has reports whether r holds a flag of check c.
 func has(r inspect.Report, c inspect.Check) bool {
 	return slices.ContainsFunc(r.Flags, func(f inspect.Flag) bool { return f.Check == c })
 }
 
-// TestPolicy: a policy overrides a check's default action either way, quarantining an active
-// finding and letting an unsafe one proceed, and leaves the checks it doesn't name to their
-// class.
 func TestPolicy(t *testing.T) {
 	docm := filepath.Join("testdata", "macro.docm")
 	r := mustInspect(t, docm, "macro.docm", inspect.Options{Policy: map[inspect.Check]inspect.Verdict{inspect.VBAProject: inspect.Quarantine}})
@@ -222,10 +192,6 @@ func TestPolicy(t *testing.T) {
 	}
 }
 
-// TestOptionsRefused: a policy naming no check or an action other than proceed or quarantine,
-// a ratio that is negative, infinite, or not a number, one bomb bound without the other, and
-// negative entries are refused with ErrOptions, by Validate and before a file is read; the zero
-// Options and a whole rule are valid.
 func TestOptionsRefused(t *testing.T) {
 	for name, opts := range map[string]inspect.Options{
 		"unknown check":      {Policy: map[inspect.Check]inspect.Verdict{"no-such-check": inspect.Proceed}},
@@ -255,8 +221,6 @@ func TestOptionsRefused(t *testing.T) {
 	}
 }
 
-// TestBombRule: the rule is past when content passes both its size and its ratio, against at
-// least one byte, and the zero rule is passed by nothing.
 func TestBombRule(t *testing.T) {
 	b := rule.Bomb()
 	if b != (inspect.BombRule{Ratio: 1000, Size: 1 << 30}) {
@@ -267,11 +231,11 @@ func TestBombRule(t *testing.T) {
 		want              bool
 	}{
 		{1<<30 + 1, 1 << 10, true},
-		{1 << 30, 1, false},         // at the size, not past it
-		{1<<30 + 1, 2 << 20, false}, // about 512:1
-		{2 << 30, 2 << 20, true},    // 1,024:1
-		{2 << 30, 3 << 20, false},   // about 683:1
-		{1<<30 + 1, 0, true},        // against no bytes, one
+		{1 << 30, 1, false},
+		{1<<30 + 1, 2 << 20, false},
+		{2 << 30, 2 << 20, true},
+		{2 << 30, 3 << 20, false},
+		{1<<30 + 1, 0, true},
 	} {
 		if got := b.Past(c.expanded, c.against); got != c.want {
 			t.Errorf("Past(%d, %d) = %v, want %v", c.expanded, c.against, got, c.want)
@@ -282,7 +246,6 @@ func TestBombRule(t *testing.T) {
 	}
 }
 
-// write writes data to a file named name in a directory of its own and returns its path.
 func write(t *testing.T, name string, data []byte) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -292,9 +255,6 @@ func write(t *testing.T, name string, data []byte) string {
 	return path
 }
 
-// TestPDFNames: a hex-escaped name is read decoded, the whole file is scanned, past its head,
-// and a name split across the stream's chunks is read whole; a longer name that begins with
-// one, such as /JSX, isn't it.
 func TestPDFNames(t *testing.T) {
 	r := mustInspect(t, write(t, "a.pdf", []byte("%PDF-1.7\n<< /S /J#61vaScript /JSX 1 >>\n")), "a.pdf", inspect.Options{})
 	if got := checks(r); !slices.Equal(got, []inspect.Check{inspect.PDFJavaScript}) {
@@ -303,8 +263,6 @@ func TestPDFNames(t *testing.T) {
 	if e := evidence(r, inspect.PDFJavaScript); e != "/J#61vaScript at offset 15" {
 		t.Errorf("evidence %q", e)
 	}
-	// /Launch's "/" is the stream's last byte of its first 64 KiB chunk, /OpenAction lies across
-	// the boundary of its second, and /Encrypt comes at the end of a file of 1 MiB.
 	pdf := bytes.Repeat([]byte(" "), 1<<20)
 	copy(pdf, "%PDF-1.7\n")
 	copy(pdf[1<<16-1:], "/Launch ")
@@ -323,23 +281,17 @@ func TestPDFNames(t *testing.T) {
 	}
 }
 
-// TestPolyglotAcrossChunks: a ZIP's end-of-central-directory record that a chunk boundary splits
-// is found, in content past the head.
 func TestPolyglotAcrossChunks(t *testing.T) {
 	jpg, err := os.ReadFile(filepath.Join("testdata", "polyglot.jpg"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// polyglot.jpg's ZIP begins after its 22-byte JPEG; padding puts its record, at 168, across
-	// the first chunk's end.
 	pad := bytes.Repeat([]byte{0}, 1<<16-168-2)
 	data := append(append(append([]byte{}, jpg[:22]...), pad...), jpg[22:]...)
 	r := mustInspect(t, write(t, "p.jpg", data), "p.jpg", inspect.Options{})
 	if !has(r, inspect.Polyglot) {
 		t.Errorf("%+v, want a polyglot flag", r)
 	}
-	// A JPEG that merely holds the record's four bytes, its fields making no central directory,
-	// isn't one.
 	data = append(append([]byte{}, jpg[:22]...), "PK\x05\x06"...)
 	data = append(data, make([]byte, 64)...)
 	if r := mustInspect(t, write(t, "q.jpg", data), "q.jpg", inspect.Options{}); has(r, inspect.Polyglot) {
@@ -347,8 +299,6 @@ func TestPolyglotAcrossChunks(t *testing.T) {
 	}
 }
 
-// TestNames: executable extensions in any case and with trailing dots and spaces, a double
-// extension only after a plausible extension, and names that are neither.
 func TestNames(t *testing.T) {
 	for name, want := range map[string][]inspect.Check{
 		"run.js":             {inspect.ExecutableExtension},
@@ -368,7 +318,6 @@ func TestNames(t *testing.T) {
 	}
 }
 
-// TestExecutableContent: route's executable kinds are flagged whatever the name.
 func TestExecutableContent(t *testing.T) {
 	for kind, head := range map[string][]byte{
 		"elf":     []byte("\x7fELF\x02\x01\x01\x00"),
@@ -381,14 +330,11 @@ func TestExecutableContent(t *testing.T) {
 	}
 }
 
-// TestUnreadableTar: a tar cut short inside an entry's content is quarantined, its headers
-// unreadable past the cut, whatever the entries before it; a whole one isn't.
 func TestUnreadableTar(t *testing.T) {
 	whole, err := os.ReadFile(filepath.Join("testdata", "clean.tar"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	// clean.tar's second entry, docs/notes.txt, has its header at 512 and its content at 1024.
 	r := mustInspect(t, write(t, "cut.tar", whole[:1030]), "cut.tar", inspect.Options{})
 	if !has(r, inspect.TarUnreadable) || r.Verdict != inspect.Quarantine {
 		t.Errorf("%+v, want tar-unreadable, quarantined", r)
@@ -398,10 +344,8 @@ func TestUnreadableTar(t *testing.T) {
 	}
 }
 
-// TestTarEntries: a tar of more entries than Entries is unreadable at the header past them, and
-// one of as many isn't.
 func TestTarEntries(t *testing.T) {
-	path := filepath.Join("testdata", "clean.tar") // three entries
+	path := filepath.Join("testdata", "clean.tar")
 	r := mustInspect(t, path, "clean.tar", inspect.Options{Entries: 2})
 	if !has(r, inspect.TarUnreadable) || r.Verdict != inspect.Quarantine || evidence(r, inspect.TarUnreadable) != "entries listed past 2" {
 		t.Errorf("past 2 entries: %+v, want tar-unreadable, quarantined", r)
@@ -411,9 +355,6 @@ func TestTarEntries(t *testing.T) {
 	}
 }
 
-// TestTarBombThresholds: sparse-bomb.tar's entry declares 4 GiB in 2 KiB, a bomb under rule; it
-// is none once the size is raised over it, nor once the ratio is raised over its 2,097,152:1,
-// since an entry must be past both.
 func TestTarBombThresholds(t *testing.T) {
 	path := filepath.Join("testdata", "sparse-bomb.tar")
 	if r := mustInspect(t, path, "sparse-bomb.tar", inspect.Options{BombRatio: 1000, BombSize: 8 << 30}); has(r, inspect.ArchiveBomb) {
@@ -424,7 +365,6 @@ func TestTarBombThresholds(t *testing.T) {
 	}
 }
 
-// TestUnreadableZIP: content with a ZIP signature and no central directory is quarantined.
 func TestUnreadableZIP(t *testing.T) {
 	r := mustInspect(t, write(t, "a.zip", []byte("PK\x03\x04 and nothing after")), "a.zip", inspect.Options{})
 	if !has(r, inspect.ZIPUnreadable) || r.Verdict != inspect.Quarantine {
@@ -432,7 +372,6 @@ func TestUnreadableZIP(t *testing.T) {
 	}
 }
 
-// TestDeterministic: the same bytes and name give the same report on every run, by value.
 func TestDeterministic(t *testing.T) {
 	for _, tc := range synthesized {
 		path := filepath.Join("testdata", tc.file)
@@ -444,7 +383,6 @@ func TestDeterministic(t *testing.T) {
 	}
 }
 
-// TestCancelled: a context already ended ends a scan with its error.
 func TestCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
@@ -454,10 +392,6 @@ func TestCancelled(t *testing.T) {
 	}
 }
 
-// TestClasses: each class's flag comes to its verdict under the zero Options, proceed for an
-// active one and quarantine for an unsafe one; and of the synthesized fixtures' flags only a
-// bomb is unsafe, a link, a device, and a traversing or absolute name among the active ones.
-// TestUnreadableZIP and TestUnreadableTar show an unreadable directory unsafe.
 func TestClasses(t *testing.T) {
 	var opts inspect.Options
 	for _, c := range inspect.Checks() {
@@ -477,9 +411,6 @@ func TestClasses(t *testing.T) {
 	}
 }
 
-// TestRuleNames: the archive checks are seven, each named by its rule, and no check names a
-// format's archive rule: what was zip-traversal, tar-symlink, 7z-bomb, and the rest is one rule's
-// check, and only a directory's unreadability keeps its format's name.
 func TestRuleNames(t *testing.T) {
 	var archive []inspect.Check
 	for _, c := range inspect.Checks() {
@@ -505,7 +436,6 @@ func TestRuleNames(t *testing.T) {
 	}
 }
 
-// TestFlagJSON: a flag is JSON by its tags, check, class, and evidence.
 func TestFlagJSON(t *testing.T) {
 	b, err := json.Marshal(inspect.Flag{Check: inspect.ArchiveBomb, Class: inspect.Unsafe, Evidence: `entry "a"`})
 	if err != nil {

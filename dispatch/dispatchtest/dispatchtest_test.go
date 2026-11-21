@@ -8,10 +8,6 @@ import (
 	"github.com/standards-lab/docproc/dispatch/dispatchtest"
 )
 
-// TestIndex runs the index suite against the module's two indexes, the memory index with claims
-// that never expire and with a lease, so the lease's cases run too. The lease is 1 s: every case
-// holds a claim across its steps unrenewed, and the lease's case renews at a third of it, so a
-// shorter one lets a pause on a loaded machine end a claim the case still holds.
 func TestIndex(t *testing.T) {
 	t.Run("MemoryIndex", func(t *testing.T) {
 		dispatchtest.Index(t, func(*testing.T) dispatch.Index { return dispatch.NewMemoryIndex(0) })
@@ -30,8 +26,6 @@ func TestIndex(t *testing.T) {
 	})
 }
 
-// TestContent runs the content suite against the module's two content stores, the file store
-// with no renew age and with one that outlasts the test.
 func TestContent(t *testing.T) {
 	t.Run("MemoryContent", func(t *testing.T) {
 		dispatchtest.Content(t, func(*testing.T) dispatch.Content { return dispatch.NewMemoryContent() })

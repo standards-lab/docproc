@@ -19,32 +19,10 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// dockerSettings are the stand-in docker's settings: its daemon's version, empty for a daemon the
-// CLI can't reach.
 type dockerSettings struct {
 	Server string `json:"server"`
 }
 
-// dockerStandin is the stand-in docker CLI, its link's run log recording every command line it is
-// given. Its state directory is its link's: images, the references present, one a line; and
-// NAME.pid, the pid of the running container NAME. It answers:
-//
-//	version --format=F            the daemon's version, or exits 1 when it can't reach one
-//	image inspect --format=F REF  exits 0 when REF is present, 1 when it isn't
-//	pull REF                      makes REF present
-//	run FLAGS... REF ARGS...      runs the stand-in tool on ARGS as the container, in a process
-//	                              group of its own as a daemon's container would be, in
-//	                              --workdir, with the CLI's stdin only with --interactive,
-//	                              through the standin link beside it; exits
-//	                              125 when REF isn't present and 127 when --entrypoint isn't
-//	                              standin, else with the container's exit, 128 and the signal
-//	                              when one ended it
-//	stop --time=N NAME            SIGTERMs the container NAME, then SIGKILLs it after N seconds;
-//	                              exits 1 when no container NAME runs
-//	rm --force NAME               does nothing
-//
-// The CLI catches SIGTERM and does nothing with it: a runner that relied on the CLI's forwarding
-// would never stop its container.
 func dockerStandin(r tooltest.Run) int {
 	var settings dockerSettings
 	if err := r.Settings(&settings); err != nil {
@@ -90,7 +68,6 @@ func dockerStandin(r tooltest.Run) int {
 	return 2
 }
 
-// dockerRun is the stand-in's docker run, its arguments after run.
 func dockerRun(dir string, args []string) int {
 	var name, entrypoint, workdir string
 	var interactive bool
@@ -153,7 +130,6 @@ func dockerRun(dir string, args []string) int {
 	return 0
 }
 
-// dockerStop is the stand-in's docker stop, its arguments after stop.
 func dockerStop(dir string, args []string) int {
 	var wait time.Duration
 	for _, arg := range args {
@@ -177,7 +153,6 @@ func dockerStop(dir string, args []string) int {
 	return 0
 }
 
-// awaitGone polls for pid to be gone, or a zombie, for at most d, reporting whether it is.
 func awaitGone(pid int, d time.Duration) bool {
 	deadline := time.Now().Add(d)
 	for {
@@ -191,7 +166,6 @@ func awaitGone(pid int, d time.Duration) bool {
 	}
 }
 
-// appendLine appends line and a newline to file, in one write.
 func appendLine(file, line string) error {
 	f, err := os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
 	if err != nil {
@@ -204,7 +178,6 @@ func appendLine(file, line string) error {
 	return f.Close()
 }
 
-// imagePresent reports whether ref is among the state directory's images.
 func imagePresent(dir, ref string) bool {
 	f, err := os.Open(filepath.Join(dir, "images"))
 	if err != nil {
@@ -219,8 +192,6 @@ func imagePresent(dir, ref string) bool {
 	return false
 }
 
-// writeFileAtomic writes content to file, whole, through a rename, so a reader never sees part of
-// it.
 func writeFileAtomic(file, content string) error {
 	tmp := file + ".tmp"
 	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
@@ -229,9 +200,6 @@ func writeFileAtomic(file, content string) error {
 	return os.Rename(tmp, file)
 }
 
-// installDocker installs the stand-ins, gives the stand-in docker a daemon at version server,
-// empty for one it can't reach, and returns their directory, the stand-in docker's state
-// directory.
 func installDocker(t *testing.T, server string) string {
 	t.Helper()
 	dir := filepath.Dir(installStandin(t))
@@ -239,10 +207,8 @@ func installDocker(t *testing.T, server string) string {
 	return dir
 }
 
-// dockerLink returns the stand-in docker's path in dir, the directory installDocker returned.
 func dockerLink(dir string) string { return filepath.Join(dir, "docker") }
 
-// addImage makes ref present to the stand-in docker whose state is in dir.
 func addImage(t *testing.T, dir, ref string) {
 	t.Helper()
 	if err := appendLine(filepath.Join(dir, "images"), ref); err != nil {
@@ -250,8 +216,6 @@ func addImage(t *testing.T, dir, ref string) {
 	}
 }
 
-// dockerCalls returns the stand-in docker's command lines, as its run log holds them, whose
-// command is command.
 func dockerCalls(t *testing.T, dir, command string) [][]string {
 	t.Helper()
 	var calls [][]string
@@ -263,7 +227,6 @@ func dockerCalls(t *testing.T, dir, command string) [][]string {
 	return calls
 }
 
-// runningContainers returns the names of the stand-in docker's containers still running.
 func runningContainers(t *testing.T, dir string) []string {
 	t.Helper()
 	pids, err := filepath.Glob(filepath.Join(dir, "*.pid"))

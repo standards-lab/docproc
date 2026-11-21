@@ -24,14 +24,11 @@ func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{"echo": echo})
 }
 
-// echoSettings are the echo stand-in's settings.
 type echoSettings struct {
 	Prefix string `json:"prefix"`
 	Code   int    `json:"code"`
 }
 
-// echo writes its settings' prefix and its arguments, space-separated, to stdout, and exits with
-// its settings' code.
 func echo(r tooltest.Run) int {
 	var s echoSettings
 	if err := r.Settings(&s); err != nil {
@@ -42,9 +39,6 @@ func echo(r tooltest.Run) int {
 	return s.Code
 }
 
-// TestLink: a link runs the stand-in as its program with its own settings, logs each run, and
-// two links in one test, with settings of their own, run apart from each other and from the
-// links of other tests running in parallel.
 func TestLink(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -68,7 +62,6 @@ func TestLink(t *testing.T) {
 	}
 }
 
-// TestSet: a run after Set reads the new settings.
 func TestSet(t *testing.T) {
 	t.Parallel()
 	link := tooltest.Link(t, t.TempDir(), "echo", echoSettings{Prefix: "old"})
@@ -78,7 +71,6 @@ func TestSet(t *testing.T) {
 	}
 }
 
-// TestRunsConcurrent: runs of one link started at once each land whole in its log.
 func TestRunsConcurrent(t *testing.T) {
 	t.Parallel()
 	link := tooltest.Link(t, t.TempDir(), "echo", nil)
@@ -102,7 +94,6 @@ func TestRunsConcurrent(t *testing.T) {
 	}
 }
 
-// TestUnknownProgram: a link whose name is no program of the package's exits 2, naming it.
 func TestUnknownProgram(t *testing.T) {
 	t.Parallel()
 	link := tooltest.Link(t, t.TempDir(), "nothing", nil)
@@ -113,7 +104,6 @@ func TestUnknownProgram(t *testing.T) {
 	}
 }
 
-// TestZone: the tests run in a local zone that isn't UTC.
 func TestZone(t *testing.T) {
 	t.Parallel()
 	if time.Local != tooltest.Zone {
@@ -124,8 +114,6 @@ func TestZone(t *testing.T) {
 	}
 }
 
-// fakeTB records a test helper's Skip and Fatal; each ends the goroutine it is called in, as
-// testing's do.
 type fakeTB struct {
 	testing.TB
 	skipped, failed string
@@ -143,8 +131,6 @@ func (f *fakeTB) Fatal(args ...any) {
 	runtime.Goexit()
 }
 
-// tools runs Tools for rel in a goroutine of its own over a fakeTB, and returns its path and the
-// fakeTB.
 func tools(t *testing.T, rel string) (string, *fakeTB) {
 	f := &fakeTB{TB: t}
 	var path string
@@ -157,8 +143,6 @@ func tools(t *testing.T, rel string) (string, *fakeTB) {
 	return path, f
 }
 
-// TestTools: in the repository, the tools tree is beside the base module, and Tools returns the
-// envelope's shared cases, which parse.
 func TestTools(t *testing.T) {
 	path, f := tools(t, "envelope/cases.json")
 	if f.skipped != "" || f.failed != "" {
@@ -173,8 +157,6 @@ func TestTools(t *testing.T) {
 	}
 }
 
-// TestToolsMissingFile: with the tools tree present, a path it doesn't hold fails the test,
-// naming the path.
 func TestToolsMissingFile(t *testing.T) {
 	_, f := tools(t, "envelope/no-such-cases.json")
 	if f.skipped != "" || !strings.Contains(f.failed, "envelope/no-such-cases.json") {
@@ -182,8 +164,6 @@ func TestToolsMissingFile(t *testing.T) {
 	}
 }
 
-// TestToolsSkip: in a module with no tools module beside it, as the base module's zip unpacks,
-// Tools skips the test, naming the tree it looked for and the path it didn't read.
 func TestToolsSkip(t *testing.T) {
 	root := t.TempDir()
 	pkg := filepath.Join(root, "internal", "cli")
@@ -193,8 +173,6 @@ func TestToolsSkip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module github.com/standards-lab/docproc\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// A tools directory without its go.mod is no tools module, as a zip holding stray files
-	// under tools/ would have.
 	if err := os.Mkdir(filepath.Join(root, "tools"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -210,10 +188,6 @@ func equalLogged(a, b tooltest.Logged) bool {
 	return a.Program == b.Program && slices.Equal(a.Args, b.Args)
 }
 
-// TestPNG: the stand-in's PNG reads as a whole PNG to a reader that walks its chunks: PNG's
-// signature, then chunks, each its length, its type and data, and a CRC that checks, the last
-// IEND with nothing after it, and a tEXt chunk among them whose text is the one named; and two
-// texts give two PNGs.
 func TestPNG(t *testing.T) {
 	b := tooltest.PNG("page 1")
 	rest, ok := bytes.CutPrefix(b, []byte("\x89PNG\r\n\x1a\n"))

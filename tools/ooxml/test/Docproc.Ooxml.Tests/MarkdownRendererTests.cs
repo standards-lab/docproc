@@ -3,14 +3,8 @@ using Docproc.Ooxml.Rendering;
 
 namespace Docproc.Ooxml.Tests;
 
-// The Markdown renderer's seam, independent of the reader: hand-built models against Markdown
-// written by hand from GFM's rules, never a snapshot of docproc-ooxml's own output.
 public sealed class MarkdownRendererTests
 {
-    // A paragraph's text is escaped by the envelope's literal-text rule, whose cases are
-    // tools/envelope/cases.json's (EnvelopeTests): its characters anywhere, and at the start of
-    // each line the paragraph makes, after its whitespace is trimmed and a line break, which
-    // becomes a hard break, starts a line.
     [Fact]
     public void TextMarkdownWouldMisreadIsEscaped()
     {
@@ -88,8 +82,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A list that resumes a count after a paragraph starts at the number it resumes at; a list
-    // with no start counts from 1, and an unordered one has no numbers.
     [Fact]
     public void AnOrderedListCountsFromItsStart()
     {
@@ -114,8 +106,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A row that starts late leaves the columns it skips empty, its first cell in the column after
-    // them, under a merged cell from above too.
     [Fact]
     public void ARowThatStartsLateLeavesTheColumnsItSkipsEmpty()
     {
@@ -137,8 +127,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A footnote and an endnote share id 1 in the document; their labels count both kinds in
-    // reference order, so they never collide, and a second reference reuses its note's label.
     [Fact]
     public void NotesAreFootnotesNumberedInReferenceOrder()
     {
@@ -249,10 +237,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A picture's own title is written by the envelope's title rule, its lines joined by spaces
-    // and, in a table cell as anywhere, its pipes escaped: a backslash, a quote, and an & that
-    // could begin a reference are escaped, and other markup is left as it is, which a title reads
-    // as itself.
     [Fact]
     public void APicturesOwnTitleIsWrittenByTheTitleRule()
     {
@@ -271,8 +255,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A picture's image text is its alternative text, or else its title; a title that differs
-    // from the image text is the image's title, its quotes escaped.
     [Fact]
     public void MediaAreImageLinksToTheirFilesOrTargets()
     {
@@ -321,8 +303,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // The header row is the column letters the cells use, in the sheet's order (Z before AA), the
-    // first column each row's number; columns and rows with no cells are left out.
     [Fact]
     public void ASheetTableIsItsUsedColumnsAndRowsByLetterAndNumber()
     {
@@ -348,9 +328,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // Numbers in their shortest round-trip form, booleans as TRUE and FALSE, errors and dates as
-    // they are; a formula shows its cached value, or with none its text as code, and a shared
-    // formula's cell with none names its anchor.
     [Fact]
     public void ASheetCellShowsItsValueOrElseItsFormula()
     {
@@ -390,7 +367,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A merged cell's value is in its anchor's position; the positions it covers are empty.
     [Fact]
     public void AMergedSheetCellIsInItsAnchorsPosition()
     {
@@ -416,8 +392,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // Each slide under a heading of its number, a hidden one marked; its title a level below,
-    // then its content, then its notes after a bold label, which a slide's own text can't make.
     [Fact]
     public void ASlideIsItsNumberAsAHeadingThenItsContentThenItsNotes()
     {
@@ -455,8 +429,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A slide's heading is the outermost, so the slide's own headings sit below it, to the
-    // deepest Markdown has; a heading outside a slide keeps its level.
     [Fact]
     public void ASlidesHeadingsSitALevelBelowItsOwn()
     {
@@ -478,8 +450,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // An embedded package or OLE object links to its file, its text its program id or else its
-    // part's file name, after its preview picture.
     [Fact]
     public void APayloadIsALinkAfterItsPreview()
     {
@@ -500,9 +470,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // An external hyperlink's text is linked to its target, escaped as any text is; its line
-    // breaks are spaces, and one with no text is nothing. A destination holding a space is in
-    // angle brackets, and a pipe in one is escaped.
     [Fact]
     public void AnExternalHyperlinkIsALink()
     {
@@ -527,9 +494,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A paragraph renders as segments: each text run escaped on its own, a private-use character
-    // kept as it is, each label appended where its reference is, and only text that begins a line
-    // escaped as a line's start.
     [Fact]
     public void ReferencesAreLabelsBetweenTextSegments()
     {
@@ -557,8 +521,6 @@ public sealed class MarkdownRendererTests
             MarkdownRenderer.Render(document));
     }
 
-    // A chart in a docx table cell, which a GFM cell can't hold, renders after the table, its
-    // title left in the cell, through nested tables.
     [Fact]
     public void AChartInATableCellFollowsTheTable()
     {
@@ -598,7 +560,6 @@ public sealed class MarkdownRendererTests
             markdown);
     }
 
-    // A sheet cell with an external hyperlink links what it shows.
     [Fact]
     public void ASheetCellWithAHyperlinkLinksItsValue()
     {

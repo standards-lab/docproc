@@ -31,17 +31,10 @@ use crate::model::{self, SCHEMA};
 use crate::section::{self, hex, place, typed};
 use crate::warn;
 
-/// The directory OneNote keeps a notebook's deleted sections and pages in, beside its .onetoc2.
 const RECYCLE_BIN: &str = "OneNote_RecycleBin";
 
-/// The start of the notebook warning onenote_parser gives a section it couldn't read: "failed
-/// to import section <path>: <reason>", the path its .onetoc2's directory joined with the
-/// entry's name.
 const FAILED_SECTION: &str = "failed to import section ";
 
-/// The warning, at `/`, of a notebook read that reads no section or section group: its table of
-/// contents lists none, or none it lists could be read, the parser dropping a missing one
-/// without a word, as when a .onetoc2 is read away from its sections.
 const NO_ENTRY: &str = "no section or section group is read";
 
 /// Reads the notebook whose table of contents is the .onetoc2 at `toc`, named for the directory
@@ -58,7 +51,6 @@ pub fn read(toc: &Path, media: &mut Media, out: &mut Lines<impl Write>) -> Resul
     let read = Read {
         input: "notebook",
         name: dir_name(dir),
-        // The parser joins the entries' names to its path's parent, as given.
         toc_dir: typed(toc_dir).to_string_lossy().into_owned(),
         recycle_bin: dir.join(RECYCLE_BIN).exists(),
         sections: Sections::Directory(dir.to_path_buf()),
@@ -74,8 +66,6 @@ pub fn read_package(
 ) -> Result<(), Fault> {
     let notebook = guarded(|| Parser::new().parse_package(typed(path)))
         .map_err(|failure| Fault::Refused(failure.reason))?;
-    // The parser read the cabinet, so a second reading of its entries fails only if the file
-    // changed in between.
     let names = File::open(path)
         .and_then(cab::Cabinet::new)
         .map(|cabinet| {
@@ -88,8 +78,6 @@ pub fn read_package(
         .map_err(|err| Fault::Refused(format!("its cabinet can't be listed: {err}")))?;
     let entries: Vec<Vec<&str>> = names.iter().map(|name| components(name)).collect();
     let toc_dir = package_toc_dir(&entries).unwrap_or_default();
-    // Each cabinet entry beside the .onetoc2, by the name the parser gives its section, with the
-    // name the cabinet stores it under.
     let beside = names
         .iter()
         .zip(&entries)
@@ -113,25 +101,16 @@ pub fn read_package(
     read.write(&notebook, media, out)
 }
 
-/// What a notebook's lines need beyond what the parser read.
 struct Read {
-    /// The notebook line's input kind: "notebook" or "package".
     input: &'static str,
     name: String,
-    /// The directory of the .onetoc2, as the parser names the sections beside it.
     toc_dir: String,
-    /// Whether a recycle bin is beside the .onetoc2.
     recycle_bin: bool,
-    /// Where the sections beside the .onetoc2 are, for the encryption scan of one that failed.
     sections: Sections,
 }
 
-/// Where a notebook's sections are read from.
 enum Sections {
-    /// The directory of the .onetoc2.
     Directory(PathBuf),
-    /// The .onepkg at `path`, whose entries beside the .onetoc2 `beside` names: each by its
-    /// section's name, then its stored name.
     Package {
         path: PathBuf,
         beside: Vec<(String, String)>,
@@ -139,8 +118,6 @@ enum Sections {
 }
 
 impl Sections {
-    /// Whether the section `name` beside the .onetoc2 holds 2.5.19's encryption key. One that
-    /// can't be found or read again is taken not to.
     fn encrypted(&self, name: &str) -> bool {
         let scanned = match self {
             Sections::Directory(dir) => File::open(dir.join(name)).and_then(encryption::holds_key),
@@ -164,7 +141,6 @@ impl Read {
         media: &mut Media,
         out: &mut Lines<impl Write>,
     ) -> Result<(), Fault> {
-        // The notebook is read, so its media directory is created before its first line.
         media.create()?;
         out.write(&model::Notebook {
             line: "notebook",
@@ -185,7 +161,6 @@ impl Read {
         for warning in notebook.report().warnings() {
             match failed_section(warning.message(), &self.toc_dir) {
                 Some((name, reason)) => {
-                    // Scanned only now, after its parse failed.
                     let encrypted = self.sections.encrypted(name);
                     let reason = if encrypted {
                         encryption::REASON
@@ -215,8 +190,6 @@ impl Read {
     }
 }
 
-/// Writes `entries` depth-first, in the table of contents' order, under the group `parent` at
-/// the names `above`.
 fn entries(
     entries: &[SectionEntry],
     parent: Option<&str>,
@@ -245,9 +218,6 @@ fn entries(
     Ok(())
 }
 
-/// The section name and reason of the parser's warning for a section it couldn't read, which
-/// names the section by its path: `toc_dir`, then the entry's name. That name is sanitised, so
-/// it holds no separator and no colon, and the first ": " after it starts the reason.
 fn failed_section<'a>(message: &'a str, toc_dir: &str) -> Option<(&'a str, &'a str)> {
     let mut entry = message
         .strip_prefix(FAILED_SECTION)?
@@ -260,7 +230,6 @@ fn failed_section<'a>(message: &'a str, toc_dir: &str) -> Option<(&'a str, &'a s
         .filter(|(name, _)| !name.is_empty() && !name.contains('/'))
 }
 
-/// A directory's name; for "." or "..", the name of the directory it is.
 fn dir_name(dir: &Path) -> String {
     let named = match dir.file_name() {
         Some(name) => Some(name.to_owned()),
@@ -272,8 +241,6 @@ fn dir_name(dir: &Path) -> String {
     named.unwrap_or_default().to_string_lossy().into_owned()
 }
 
-/// A cabinet entry's name as path components, as onenote_parser normalises it: either
-/// separator, "." dropped, and ".." taking back the component before it.
 fn components(name: &str) -> Vec<&str> {
     let mut parts = Vec::new();
     for part in name.split(['/', '\\']) {
@@ -288,8 +255,6 @@ fn components(name: &str) -> Vec<&str> {
     parts
 }
 
-/// The directory of the .onetoc2 onenote_parser reads a package through: the first of the
-/// shallowest, as the parser picks it.
 fn package_toc_dir<'a>(entries: &[Vec<&'a str>]) -> Option<Vec<&'a str>> {
     let mut toc: Option<&Vec<&str>> = None;
     for entry in entries {
@@ -304,7 +269,6 @@ fn package_toc_dir<'a>(entries: &[Vec<&'a str>]) -> Option<Vec<&'a str>> {
     toc.map(|toc| toc[..toc.len() - 1].to_vec())
 }
 
-/// Whether a package's entries hold a file in a recycle bin beside its .onetoc2.
 fn holds_recycle_bin(entries: &[Vec<&str>], toc_dir: &[&str]) -> bool {
     entries.iter().any(|entry| {
         entry.len() > toc_dir.len() + 1
@@ -324,7 +288,6 @@ mod tests {
             failed_section(message, "/n/b: k"),
             Some(("Encryption.one", "Unexpected end of file"))
         );
-        // A package's .onetoc2 at the cabinet's root names its sections bare.
         assert_eq!(
             failed_section("failed to import section A.one: a: b", ""),
             Some(("A.one", "a: b"))
@@ -364,7 +327,6 @@ mod tests {
         assert!(!holds_recycle_bin(&beside, &["nb"]));
         let deeper = entries(&["Group/OneNote_RecycleBin/OneNote_DeletedPages.one"]);
         assert!(!holds_recycle_bin(&deeper, &[]));
-        // A section file by the name, not a directory, isn't a recycle bin.
         assert!(!holds_recycle_bin(&entries(&["OneNote_RecycleBin"]), &[]));
     }
 }

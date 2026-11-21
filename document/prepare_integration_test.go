@@ -19,7 +19,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// pngSize returns the width and height of the PNG file at path.
 func pngSize(t *testing.T, path string) (int, int) {
 	t.Helper()
 	f, err := os.Open(path)
@@ -34,9 +33,6 @@ func pngSize(t *testing.T, path string) (int, int) {
 	return cfg.Width, cfg.Height
 }
 
-// TestImagesHost checks the released preparation on the host's gs: Images prepares every page of
-// scanned.pdf, in page order, as a PNG file of letter size at 150 dpi, and of clean.pdf with its
-// text layer, and records each run's wall time.
 func TestImagesHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})
@@ -70,9 +66,6 @@ func TestImagesHost(t *testing.T) {
 	}
 }
 
-// TestImagesMaxPixelsHost checks MaxPixels on the host's gs: one pixel short of a letter page's
-// 1275x1650 at 150 dpi, clean.pdf's pages render at 149 dpi, 1267x1639, within the bound, as the
-// page sizes the count run read predict; and at exactly that many pixels, at 150 dpi.
 func TestImagesMaxPixelsHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})
@@ -94,14 +87,6 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 	}
 }
 
-// TestImagesSharedHost checks shared processes on the host's gs give every page byte for byte
-// what a process of its own gives, Render's PNG and Text's text, at PagesPerProcess 1, 2, 4,
-// which divides neither PDF's page count, and 32, past both, at concurrency 1 and 3: over
-// clean.pdf, six pages with a text layer, degraded.pdf, nine scanned pages, scanned.pdf, the
-// malformed fixture, which gs renders with a message, and the forms and attachments fixtures,
-// every fixture PDF; over clean.pdf with a MaxPixels that lowers its letter pages to 149 dpi in
-// processes of their own; and over portfolio.pdf, whose pages are their own processes', the
-// cover's pages, as TestGhostscriptPortfolioHost checks them.
 func TestImagesSharedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})
@@ -153,9 +138,6 @@ func TestImagesSharedHost(t *testing.T) {
 	}
 }
 
-// annotsNullPDF returns a PDF of pages pages, each a blue square, whose pages' /Annots is null,
-// which gs 10.08.0 renders with "**** Error: Page drawing error occurred.", as it does the
-// malformed fixture's page, whose /Annots is null too.
 func annotsNullPDF(pages int) []byte {
 	content := "0 0 1 rg 10 10 50 50 re f"
 	objs := []string{"<</Type/Catalog/Pages 2 0 R>>"}
@@ -184,9 +166,6 @@ func annotsNullPDF(pages int) []byte {
 	return b.Bytes()
 }
 
-// TestImagesSharedMessageHost checks a shared process on the host's gs over pages it renders with
-// "**** Error: Page drawing error occurred.": the message goes to stderr, so the process's stdout
-// splits into its pages, each byte for byte Render's, none failing.
 func TestImagesSharedMessageHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	pdf := filepath.Join(t.TempDir(), "annots-null.pdf")
@@ -214,13 +193,6 @@ func TestImagesSharedMessageHost(t *testing.T) {
 	}
 }
 
-// TestImagesPageListHost checks a shared process's page list on the host's gs at PagesPerProcess
-// 2000, past every page of a 1200-page PDF the test writes, each page its number: at concurrency
-// 1 its pages are one range, and at concurrency 2 each lane's 600, none consecutive, run past the
-// 2047 bytes gs takes in an argument, so they are split. gs runs through a shim that logs its
-// arguments: every render is a shared process that gs ran to its end, none of its pages rerun in
-// a process of its own, every argument within the limit, and the pages sampled, among them the
-// ends of the processes at concurrency 2, are byte for byte Render's.
 func TestImagesPageListHost(t *testing.T) {
 	host, err := exec.LookPath("gs")
 	if err != nil {
@@ -300,7 +272,6 @@ func TestImagesPageListHost(t *testing.T) {
 				}
 			}
 		}
-		// The renders of a page's own are the test's, Render's of the pages sampled, alone.
 		if !slices.Equal(own, sampled) {
 			t.Errorf("concurrency %d: pages rendered in a process of their own %v, want the sampled %v", concurrency, own, sampled)
 		}
@@ -311,10 +282,6 @@ func TestImagesPageListHost(t *testing.T) {
 	}
 }
 
-// TestImagesUnopenedHost checks a PDF the host's gs can't open fails as the released count and
-// sizes runs failed it: gs prints its message and a count of 0, and the survey prints nothing
-// more, so its error is Count's, which runs the released count, word for word, and with a
-// MaxPixels the same output named as the sizes'.
 func TestImagesUnopenedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	p := document.NewPreparer(document.Config{Renderer: g})

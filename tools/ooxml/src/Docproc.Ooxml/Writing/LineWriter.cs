@@ -6,14 +6,7 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Writing;
 
-/// <summary>docproc-ooxml's output contract, schema "2" (docs/tool-contract.md, "docproc-ooxml"): JSON
-/// Lines, one compact object per line, each line's fields spelled out in order, in snake_case, a
-/// field with no value left out. The lines come in the order they are written: the
-/// <c>document</c> line first, then for each xlsx sheet its <c>sheet</c> line and its
-/// <c>rows</c> lines.</summary>
-/// <remarks>Each line is written to the output whole as it is finished, so a caller that reads a
-/// sheet forward writes its lines as it goes, and a sheet's rows never wait in memory past the
-/// bound of one <c>rows</c> line.</remarks>
+// See docs/tool-contract.md, "docproc-ooxml".
 internal sealed class LineWriter(Stream output)
 {
     /// <summary>The schema version this build writes, on the <c>document</c> line and on
@@ -25,18 +18,12 @@ internal sealed class LineWriter(Stream output)
     /// alone needs more: a line holds as many of the sheet's next rows as fit, and at least one.</summary>
     public const int RowsLineBound = 256 * 1024;
 
-    // Non-ASCII text is written as itself rather than as \u escapes: the lines are data for
-    // docproc, never embedded in HTML, so the relaxed encoder's one risk doesn't apply.
     private static readonly JsonWriterOptions Options = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
-    // What every rows line costs before its rows and their Markdown: its fields' names and
-    // punctuation, and its newline.
     private static readonly int RowsLineOverhead = """{"line":"rows","markdown":"","rows":[]}"""u8.Length + 1;
 
     private readonly ArrayBufferWriter<byte> buffer = new();
 
-    // The rows of the sheet's next rows line: each row's JSON and its Markdown, and the line's
-    // size so far.
     private readonly List<byte[]> rows = [];
     private readonly StringBuilder rowsMarkdown = new();
     private long rowsSize = RowsLineOverhead;
@@ -107,7 +94,6 @@ internal sealed class LineWriter(Stream output)
     public void WriteRow(TableRow row, string markdown)
     {
         var bytes = RowJson(row);
-        // A row adds its JSON, its Markdown as escaped, and a comma after the line's first row.
         var size = bytes.Length + JsonEncodedText.Encode(markdown, Options.Encoder).EncodedUtf8Bytes.Length + (rows.Count > 0 ? 1 : 0);
         if (rows.Count > 0 && rowsSize + size > RowsLineBound)
         {
@@ -141,8 +127,6 @@ internal sealed class LineWriter(Stream output)
         rowsSize = RowsLineOverhead;
     }
 
-    // A rows line, its newline included: its Markdown, and its rows, left out when there are none,
-    // as on a sheet's closing line.
     private static byte[] RowsLine(string markdown, List<byte[]> rows)
     {
         var line = new ArrayBufferWriter<byte>();
@@ -166,7 +150,6 @@ internal sealed class LineWriter(Stream output)
         return line.WrittenSpan.ToArray();
     }
 
-    // A row and its cells: the model's TableCell less its docx-only fields.
     private static byte[] RowJson(TableRow row)
     {
         var bytes = new ArrayBufferWriter<byte>();
@@ -214,7 +197,6 @@ internal sealed class LineWriter(Stream output)
         return bytes.WrittenSpan.ToArray();
     }
 
-    // A map of properties, in stored order, each value as its JSON type; left out when empty.
     private static void WriteProperties(Utf8JsonWriter json, string name, IReadOnlyList<Property>? properties)
     {
         if (properties is not { Count: > 0 })
@@ -241,10 +223,6 @@ internal sealed class LineWriter(Stream output)
         json.WriteEndObject();
     }
 
-    // A medium: its kind, its file or a linked picture's target, its content type, part, and
-    // program id, and its placement, the one of section, sheet, or slide its format has: the docx
-    // section's index, the ordinal of the xlsx sheet's sheet line, or the pptx slide's index
-    // (docs/tool-contract.md, "docproc-ooxml").
     private static void WriteMedium(Utf8JsonWriter json, Media medium)
     {
         json.WriteStartObject();

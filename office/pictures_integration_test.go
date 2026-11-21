@@ -18,28 +18,12 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// pictureFixtures are the globs, under testdata, of every fixture that may hold pictures: the
-// OOXML fixtures, the TIFF fixture, and the legacy fixtures, generated and real.
 var pictureFixtures = []string{
 	"ooxml/*.docx", "ooxml/*.xlsx", "ooxml/*.pptx", "pictures/*.docx",
 	"legacy/generated/*.doc", "legacy/generated/*.xls", "legacy/generated/*.ppt",
 	"legacy/real/*.doc", "legacy/real/*.xls", "legacy/real/*.ppt",
 }
 
-// TestPictures converts every fixture through the real docproc-ooxml, soffice in the default
-// image, and the host's magick, and asserts that each EMF, WMF, and TIFF picture is converted to a
-// PNG beside it, named by its stem, that image/png decodes, and that the records' Markdown links
-// the PNG in its place; an EMF or WMF, rendered at the default scale, is trimmed to its
-// picture, smaller than the A4 page it was rendered on. Each fixture is converted twice, the
-// second run in a later second than the first wrote anything, and each converted picture's PNG is
-// the same bytes both times: the final PNG is magick's, an EMF's or WMF's too, since magick trims
-// soffice's, and magick writes no time into it. Between them the fixtures hold all three kinds.
-//
-// It logs a line per picture: its fixture, kind, stored size, and its PNG's dimensions, an EMF's
-// or WMF's as trimmed, and size, with its document's whole conversion's wall time, the faster of
-// two runs, and the pictures that shared it, since a document's EMF and WMF convert in one soffice
-// run and are trimmed one magick run each. The office Converter always converts its pictures, so
-// no run of docproc-ooxml alone times them apart.
 func TestPictures(t *testing.T) {
 	full := fullConverter(t)
 
@@ -97,17 +81,12 @@ func TestPictures(t *testing.T) {
 	}
 }
 
-// fullConverter builds a Converter over the real office the mise pins, soffice in the default
-// image through the container runner, and the host's magick, and logs soffice's and magick's
-// versions.
 func fullConverter(t *testing.T) *office.Converter {
 	t.Helper()
 	c, _ := fullConverters(t)
 	return c
 }
 
-// fullConverters builds fullConverter's Converter and a picture Converter over the same soffice
-// and magick.
 func fullConverters(t *testing.T) (*office.Converter, *picture.Converter) {
 	t.Helper()
 	o, err := tool.NewExec(t.Context(), office.OfficeSpec())
@@ -134,10 +113,6 @@ func fullConverters(t *testing.T) (*office.Converter, *picture.Converter) {
 	return c, pc
 }
 
-// convertTimed converts the fixture at path, in a working directory of its own, twice, and
-// returns both conversions and the faster run's wall time. The second run starts in a later second
-// than the first ended in, outside the time measured, so a PNG with the time of its writing in it
-// would differ between the two.
 func convertTimed(t *testing.T, c *office.Converter, path string) (converted, converted, time.Duration) {
 	t.Helper()
 	var results []converted
@@ -158,8 +133,6 @@ func convertTimed(t *testing.T, c *office.Converter, path string) (converted, co
 	return results[0], results[1], fastest
 }
 
-// samePNG fails the test unless m's PNG and the PNG the same picture was handed on as in again,
-// the fixture's second conversion, hold the same bytes.
 func samePNG(t *testing.T, m office.Medium, again converted) {
 	t.Helper()
 	i := slices.IndexFunc(again.doc.Media, func(a office.Medium) bool { return a.File == m.File })
@@ -180,9 +153,6 @@ func samePNG(t *testing.T, m office.Medium, again converted) {
 	}
 }
 
-// logPicture fails the test unless m's PNG decodes with image/png and, for an EMF or WMF, is
-// smaller than the page at the default scale in both dimensions, and logs the picture's line:
-// fixture, the start of its name, kind, stored size, its PNG's dimensions and size, and timing.
 func logPicture(t *testing.T, fixture string, m office.Medium, timing string) {
 	t.Helper()
 	stored, err := os.Stat(filepath.Join(filepath.Dir(m.Path), m.File))

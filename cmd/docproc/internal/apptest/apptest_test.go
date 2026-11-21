@@ -40,7 +40,6 @@ func TestRecorder_LogIsACopy(t *testing.T) {
 	}
 }
 
-// Run under -race, concurrent Records prove the Recorder's lock.
 func TestRecorder_ConcurrentRecords(t *testing.T) {
 	var r apptest.Recorder
 	var wg sync.WaitGroup

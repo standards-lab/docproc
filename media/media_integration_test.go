@@ -17,8 +17,6 @@ import (
 	"github.com/standards-lab/docproc/media"
 )
 
-// scenesTruth is the part of speech-scenes.truth.json the tests read: the frames the default
-// policy takes, the video's size and its segments' patterns, and the audio's transcript.
 type scenesTruth struct {
 	Video struct {
 		Width    int `json:"width"`
@@ -38,7 +36,6 @@ type scenesTruth struct {
 	} `json:"audio"`
 }
 
-// readTruth reads the fixture's truth.
 func readTruth(t *testing.T) scenesTruth {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "audio", "testdata", "speech-scenes.truth.json"))
@@ -52,8 +49,6 @@ func readTruth(t *testing.T) scenesTruth {
 	return truth
 }
 
-// fixture copies the audio-and-video fixture into a directory of the test's own, since the run
-// writes its frames beside its source, and returns its path.
 func fixture(t *testing.T) string {
 	t.Helper()
 	b, err := os.ReadFile(filepath.Join("..", "audio", "testdata", "speech-scenes.mkv"))
@@ -67,10 +62,6 @@ func fixture(t *testing.T) string {
 	return path
 }
 
-// TestScenes reads the audio-and-video fixture unpaced through both runners and checks its frames
-// against the truth, reasons and times exactly, at the source's 320x180; its windows against
-// audio's Splitter, its stream cutter's, byte for byte, spans and seams included; and that the
-// runners write the same windows and frames.
 func TestScenes(t *testing.T) {
 	path := fixture(t)
 	truth := readTruth(t)
@@ -99,7 +90,6 @@ func TestScenes(t *testing.T) {
 				}
 				checkPNG(t, f)
 			}
-			// audio's Splitter, on the same runner.
 			sp, err := audio.NewSplitter(audio.Config{FFmpeg: cfg.FFmpeg, FFprobe: cfg.FFprobe})
 			if err != nil {
 				t.Fatal(err)
@@ -136,8 +126,6 @@ func TestScenes(t *testing.T) {
 	}
 }
 
-// TestScenesMaxSide reads the fixture through the exec runner with a largest side of 160, and
-// checks that its frames are scaled to 160x90, at the truth's times.
 func TestScenesMaxSide(t *testing.T) {
 	path := fixture(t)
 	truth := readTruth(t)
@@ -155,10 +143,6 @@ func TestScenesMaxSide(t *testing.T) {
 	}
 }
 
-// TestCancel reads the fixture through both runners and ends the context once the first event is
-// yielded: the stream yields the context's error once and ends, well before the 50 s source
-// would, and the media directory holds the one event's file. The time is taken from the cancel,
-// so a container's slow start on a loaded machine doesn't count against it.
 func TestCancel(t *testing.T) {
 	path := fixture(t)
 	for name, runner := range runners {
@@ -195,7 +179,6 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-// checkPNG checks that f's file is a PNG of its width and height, named by its SHA-256.
 func checkPNG(t *testing.T, f *media.Frame) {
 	t.Helper()
 	b, err := os.ReadFile(f.Path)

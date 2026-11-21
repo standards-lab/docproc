@@ -14,15 +14,12 @@ import (
 	"github.com/standards-lab/sqlate"
 )
 
-// aged returns fixtureKey under the stage name name, so a test holds several keys apart by name.
 func aged(name string) dispatch.Key {
 	k := fixtureKey
 	k.Stage.Name = name
 	return k
 }
 
-// recordAged records name's key in idx with a log of n items, then sets its created_at to ago
-// before the database's clock.
 func recordAged(t *testing.T, db *sqlate.DB, idx *postgres.Index, name string, n int, ago string) {
 	t.Helper()
 	ctx := t.Context()
@@ -42,13 +39,11 @@ func recordAged(t *testing.T, db *sqlate.DB, idx *postgres.Index, name string, n
 	age(t, db, name, ago)
 }
 
-// age sets name's row's created_at to ago before the database's clock.
 func age(t *testing.T, db *sqlate.DB, name, ago string) {
 	t.Helper()
 	exec(t, db, `UPDATE docproc_entry SET created_at = now() - $1::interval WHERE stage_name = $2`, ago, name)
 }
 
-// names returns the stage names of the entries left, in name order.
 func names(t *testing.T, db *sqlate.DB) []string {
 	t.Helper()
 	r, err := db.QueryContext(t.Context(), `SELECT stage_name FROM docproc_entry ORDER BY stage_name`)
@@ -70,13 +65,11 @@ func names(t *testing.T, db *sqlate.DB) []string {
 	return out
 }
 
-// logOf counts the log rows of name's key, under any token.
 func logOf(t *testing.T, db *sqlate.DB, name string) int {
 	t.Helper()
 	return scalar[int](t, db, `SELECT count(*) FROM docproc_item WHERE stage_name = $1`, name)
 }
 
-// sweep runs one pass and checks what it reports and the entries it leaves.
 func sweep(t *testing.T, db *sqlate.DB, r *postgres.Retention, budget int, wantMore bool, wantLeft ...string) {
 	t.Helper()
 	more, err := r.Pass(t.Context(), budget)
@@ -91,10 +84,6 @@ func sweep(t *testing.T, db *sqlate.DB, r *postgres.Retention, budget int, wantM
 	}
 }
 
-// A pass drops the entries created more than the age ago, oldest first, at most a budget at a
-// time, with their logs: recorded entries, and a claim whose lease ran out. It keeps an entry
-// within the age, a claim under a live lease, and a claim that never expires, though both claims
-// are older than every other entry.
 func TestLive_RetentionDropsAgedEntriesOldestFirst(t *testing.T) {
 	db := migrated(t)
 	ctx := t.Context()
@@ -102,7 +91,6 @@ func TestLive_RetentionDropsAgedEntriesOldestFirst(t *testing.T) {
 	recordAged(t, db, idx, "old", 2, "5 hours")
 	recordAged(t, db, idx, "older", 0, "3 hours")
 	recordAged(t, db, idx, "young", 1, "10 minutes")
-	// lapsed is claimed with a flushed log, its lease run out an hour ago.
 	lapsed := aged("lapsed")
 	token, _, ok, err := idx.Claim(ctx, lapsed)
 	if err != nil || !ok {
@@ -113,7 +101,6 @@ func TestLive_RetentionDropsAgedEntriesOldestFirst(t *testing.T) {
 	}
 	exec(t, db, `UPDATE docproc_entry SET expires_at = now() - interval '1 hour' WHERE stage_name = 'lapsed'`)
 	age(t, db, "lapsed", "4 hours")
-	// live holds an hour's lease; never's claim never expires.
 	long := indexLeased(t, db, 1, time.Hour)
 	for _, name := range []string{"live", "never"} {
 		if _, _, ok, err := long.Claim(ctx, aged(name)); err != nil || !ok {
@@ -128,7 +115,6 @@ func TestLive_RetentionDropsAgedEntriesOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// old then lapsed are the oldest eligible; a full budget reports more.
 	sweep(t, db, r, 2, true, "live", "never", "older", "young")
 	for _, name := range []string{"old", "lapsed"} {
 		if n := logOf(t, db, name); n != 0 {
@@ -138,13 +124,10 @@ func TestLive_RetentionDropsAgedEntriesOldestFirst(t *testing.T) {
 	if n := logOf(t, db, "young"); n != 1 {
 		t.Errorf("young's log holds %d items, want 1", n)
 	}
-	// older is the last eligible; dropping fewer than the budget reports none.
 	sweep(t, db, r, 2, false, "live", "never", "young")
 	sweep(t, db, r, 2, false, "live", "never", "young")
 }
 
-// A pass that drops exactly its budget reports more, though no eligible entry remains: the next
-// pass drops none and reports none.
 func TestLive_RetentionFullBudgetReportsMore(t *testing.T) {
 	db := migrated(t)
 	idx := index(t, db, 1)
@@ -158,8 +141,6 @@ func TestLive_RetentionFullBudgetReportsMore(t *testing.T) {
 	sweep(t, db, r, 2, false)
 }
 
-// A pass notifies each key it drops on docproc_index with the key's payload, as Drop does, so a
-// waiter on a swept key wakes.
 func TestLive_RetentionNotifies(t *testing.T) {
 	a, _, dsn := hosts(t)
 	ctx := t.Context()
@@ -178,7 +159,6 @@ func TestLive_RetentionNotifies(t *testing.T) {
 	}
 	wctx, cancel := context.WithTimeout(ctx, prompt)
 	defer cancel()
-	// Record notified too; its notification is read first.
 	if _, err := conn.WaitForNotification(wctx); err != nil {
 		t.Fatalf("record: %v", err)
 	}

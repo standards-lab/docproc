@@ -16,18 +16,12 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinGhostscript links the stand-in gs at version, builds the Tool from spec through the
-// exec runner, and returns it with the stand-in.
 func standinGhostscript(t *testing.T, version string, spec tool.Spec) (*tool.Tool, *standin) {
 	t.Helper()
 	st := newStandin(t, "gs", version)
 	return st.mustTool(spec), st
 }
 
-// standinRenderer builds the released renderer over the stand-in gs at 10.08.0, and returns it
-// with the stand-in and a PDF path, relative to the working directory, in a directory of its own
-// whose name holds parentheses and a backslash, which a PostScript string escapes. The stand-in
-// reads no PDF, so the file is empty.
 func standinRenderer(t *testing.T) (*document.Ghostscript, *standin, string) {
 	t.Helper()
 	tl, st := standinGhostscript(t, "10.08.0", document.GhostscriptSpec())
@@ -47,22 +41,15 @@ func standinRenderer(t *testing.T) (*document.Ghostscript, *standin, string) {
 	return g, st, pdf
 }
 
-// psEscaped returns path as a PostScript string's contents, its backslashes and parentheses
-// escaped.
 func psEscaped(path string) string {
 	return strings.NewReplacer(`\`, `\\`, "(", `\(`, ")", `\)`).Replace(path)
 }
 
-// ownPageArgs returns the arguments that end a page's own gs run over the PDF at abs: permission
-// to read it, and the PostScript that opens it and runs its pages through the non-portfolio half
-// of gs's runpdf, so a portfolio's page is its own.
 func ownPageArgs(abs string) []string {
 	return []string{"--permit-file-read=" + abs, "-c",
 		"(" + psEscaped(abs) + ") (r) file runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend"}
 }
 
-// TestGhostscriptRenderArgs checks gs's arguments for a page at a DPI, and that the run reads the
-// PDF by its absolute path, escaped in PostScript, from the PDF's directory.
 func TestGhostscriptRenderArgs(t *testing.T) {
 	for _, tc := range []struct{ page, dpi int }{{1, 150}, {7, 300}, {1 << 20, 72}} {
 		g, st, pdf := standinRenderer(t)
@@ -90,7 +77,6 @@ func TestGhostscriptRenderArgs(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderOneRunPerPage checks that each page is one gs run.
 func TestGhostscriptRenderOneRunPerPage(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	for page := 1; page <= 3; page++ {
@@ -103,7 +89,6 @@ func TestGhostscriptRenderOneRunPerPage(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderRefuses checks that CheckRender's refusals come before gs runs.
 func TestGhostscriptRenderRefuses(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	for _, tc := range []struct {
@@ -128,9 +113,6 @@ func TestGhostscriptRenderRefuses(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderMessage checks that gs's own message for a page it renders nonetheless,
-// such as "**** Error: Page drawing error occurred.", goes to stderr, so the page's PNG is
-// stdout's alone and Render writes it whole.
 func TestGhostscriptRenderMessage(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	st.set(func(s *settings) { s.Message = "   **** Error: Page drawing error occurred.\n" })
@@ -143,9 +125,6 @@ func TestGhostscriptRenderMessage(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderNotPNG checks that a gs that exits zero with no PNG on stdout, as gs does
-// for a page past the last, its message on stderr, is an error carrying that message, and that w
-// gets none of stdout.
 func TestGhostscriptRenderNotPNG(t *testing.T) {
 	msg := "\n   Requested FirstPage is greater than the number of pages in the file: 6\n"
 	for _, stdout := range []string{"", "\x89PN", "not a PNG"} {
@@ -162,7 +141,6 @@ func TestGhostscriptRenderNotPNG(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderFails checks that a gs that exits nonzero is the Tool's *tool.ExitError.
 func TestGhostscriptRenderFails(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	st.set(func(s *settings) { s.Fail = "Error: /undefined in --runpdf--" })
@@ -176,8 +154,6 @@ func TestGhostscriptRenderFails(t *testing.T) {
 	}
 }
 
-// TestGhostscriptCount checks Count's arguments, its working directory, and its parsing of gs's
-// output, the PDF's path escaped as a PostScript string.
 func TestGhostscriptCount(t *testing.T) {
 	for _, tc := range []struct {
 		stdout string
@@ -212,7 +188,6 @@ func TestGhostscriptCount(t *testing.T) {
 	}
 }
 
-// TestGhostscriptCountFails checks that a gs that exits nonzero counting is a *tool.ExitError.
 func TestGhostscriptCountFails(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	st.set(func(s *settings) { s.Fail = "Error: /invalidfileaccess" })
@@ -225,8 +200,6 @@ func TestGhostscriptCountFails(t *testing.T) {
 
 func TestNewGhostscriptVersion(t *testing.T) {
 	t.Parallel()
-	// A Spec with a lower minimum lets the stand-in's old version through the runner; the
-	// renderer's own check still refuses it.
 	lenient := document.GhostscriptSpec()
 	lenient.Minimum = "9"
 	for _, tc := range []struct {
@@ -262,15 +235,11 @@ func TestNewGhostscriptVersion(t *testing.T) {
 	}
 }
 
-// TestNewGhostscriptNil: a Config with no Ghostscript is the caller's mistake, and panics naming
-// the field.
 func TestNewGhostscriptNil(t *testing.T) {
 	t.Parallel()
 	wantPanic(t, "document: Config.Ghostscript is nil", func() { _, _ = document.NewGhostscript(document.Config{}) })
 }
 
-// TestGhostscriptSpecRefusesOld checks that GhostscriptSpec's own minimum refuses a gs before
-// 10.0 at construction, through the runner.
 func TestGhostscriptSpecRefusesOld(t *testing.T) {
 	t.Parallel()
 	_, err := newStandin(t, "gs", "9.56.1").tool(document.GhostscriptSpec())
@@ -279,8 +248,6 @@ func TestGhostscriptSpecRefusesOld(t *testing.T) {
 	}
 }
 
-// TestGhostscriptText checks Text's one gs run: its arguments, its working directory, and gs's
-// stdout passed through as the page's text, a blank one included.
 func TestGhostscriptText(t *testing.T) {
 	for _, tc := range []struct {
 		page   int
@@ -313,7 +280,6 @@ func TestGhostscriptText(t *testing.T) {
 	}
 }
 
-// TestGhostscriptTextRefuses checks that a page below 1 is refused before gs runs.
 func TestGhostscriptTextRefuses(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	for _, page := range []int{0, -1} {
@@ -326,9 +292,6 @@ func TestGhostscriptTextRefuses(t *testing.T) {
 	}
 }
 
-// TestGhostscriptTextPastLast checks that gs's message for a page past the last, which it prints
-// to stderr and exits zero, is an error carrying it and wrapping ErrRequest, and that other
-// stderr beside a page's text is no error.
 func TestGhostscriptTextPastLast(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	st.set(func(s *settings) { s.Stdout = new([]byte("")) })
@@ -346,8 +309,6 @@ func TestGhostscriptTextPastLast(t *testing.T) {
 	}
 }
 
-// TestGhostscriptTextFails checks that a gs that exits nonzero is the Tool's *tool.ExitError,
-// carrying gs's stderr though Text takes it.
 func TestGhostscriptTextFails(t *testing.T) {
 	g, st, pdf := standinRenderer(t)
 	st.set(func(s *settings) { s.Fail = "Error: /undefined in --runpdf--" })

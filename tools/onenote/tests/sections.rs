@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 
 use common::{assert_line_rules, error, files_under, fixture, run};
 
-/// The page fields this version writes; a field the expectation leaves out must be absent.
 const PAGE_FIELDS: [&str; 6] = [
     "id",
     "level",
@@ -29,7 +28,6 @@ fn expectations() -> Vec<Value> {
         .clone()
 }
 
-/// The expectations cover every committed .one file of the public sets.
 #[test]
 fn every_public_section_has_an_expectation() {
     let mut listed: Vec<String> = expectations()
@@ -49,8 +47,6 @@ fn every_public_section_has_an_expectation() {
     assert_eq!(listed, sections);
 }
 
-/// Each section reads as its expectation says: its exit code, and either its refusal's reason,
-/// or a notebook line, its section line, and a page line per expected page, in order.
 #[test]
 fn every_public_section_reads_as_expected() {
     for expected in expectations() {
@@ -101,8 +97,6 @@ fn every_public_section_reads_as_expected() {
     }
 }
 
-/// Every line of every section's read keeps the line rules, and each read's output is
-/// byte-identical from one run to the next.
 #[test]
 fn every_read_keeps_the_line_rules_and_repeats_byte_for_byte() {
     for expected in expectations() {

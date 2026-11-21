@@ -84,7 +84,6 @@ pub fn missing(source: &Text, target: &Text) -> Vec<String> {
     let units = sentences(&source.text);
     let mut out = Vec::new();
     let kept = myers::kept(&keys(&from), &keys(&to), EDITS_MAX);
-    // Past the bound, a sentence is missing when its tokens are no target sentence's.
     let known: HashSet<Vec<u32>> = match kept {
         Some(_) => HashSet::new(),
         None => split(&to, &sentences(&target.text))
@@ -103,8 +102,6 @@ pub fn missing(source: &Text, target: &Text) -> Vec<String> {
     out
 }
 
-/// The tokens each sentence holds, as ranges of `tokens`: a token is its sentence's where it
-/// starts.
 fn split<'a>(
     tokens: &'a [(usize, u32)],
     sentences: &'a [Range<usize>],
@@ -119,14 +116,12 @@ fn split<'a>(
     })
 }
 
-/// `text` normalized to NFC.
 fn nfc(text: &str) -> String {
     ComposingNormalizerBorrowed::new_nfc()
         .normalize(text)
         .into_owned()
 }
 
-/// The UAX #29 sentences of `text`, as ranges; a line break ends one (SB4).
 fn sentences(text: &str) -> Vec<Range<usize>> {
     let mut out = Vec::new();
     let mut start = 0;
@@ -139,19 +134,16 @@ fn sentences(text: &str) -> Vec<Range<usize>> {
     out
 }
 
-/// A token's comparison key: a word as it stands, or a URL normalized.
 #[derive(Hash, PartialEq, Eq)]
 enum Key {
     Word(String),
     Url(String),
 }
 
-/// Each distinct key's number, so that the alignment compares numbers.
 #[derive(Default)]
 struct Ids(HashMap<Key, u32>);
 
 impl Ids {
-    /// `text`'s tokens in order, each where it starts and its key's number.
     fn tokens(&mut self, text: &Text) -> Vec<(usize, u32)> {
         let mut keys = Vec::new();
         let mut at = 0;
@@ -174,7 +166,6 @@ impl Ids {
     }
 }
 
-/// The tokens of `text[range]`, a stretch no destination is in: its URLs, and the words between.
 fn unforced(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
     let piece = &text[range.clone()];
     let mut at = 0;
@@ -186,7 +177,6 @@ fn unforced(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
     words(text, range.start + at..range.end, out);
 }
 
-/// The word tokens of `text[range]`: its UAX #29 word segments holding a letter or a digit.
 fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
     let piece = &text[range.clone()];
     let categories = CodePointMapData::<GeneralCategory>::new();
@@ -214,9 +204,6 @@ fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
 mod tests {
     use super::*;
 
-    /// The Unicode version is part of schema "2": every ICU4X data crate the rule reads carries
-    /// the one this crate states, and so does std's, which the tools' own `char` methods read, so
-    /// a bump of the crates or of the toolchain that moves it fails here, a reviewed change.
     #[test]
     fn the_unicode_version_is_the_stated_one() {
         assert_eq!(icu_normalizer_data::unicode_tag!(), UNICODE_VERSION);
@@ -241,8 +228,6 @@ mod tests {
             .collect()
     }
 
-    /// Words are UAX #29's segments with a letter or a digit; marks stay in their word. The
-    /// segmenter is the dictionary-free one, so a run of ideographs is one word.
     #[test]
     fn words_are_segments_holding_a_letter_or_a_digit() {
         assert_eq!(
@@ -253,7 +238,6 @@ mod tests {
         assert!(words_of("... -- !? \u{99} \u{2122}").is_empty());
     }
 
-    /// Sentences end at UAX #29 boundaries and at every line break.
     #[test]
     fn sentences_end_at_boundaries_and_line_breaks() {
         let text = "One. Two? three\nfour\r\nfive";
@@ -261,9 +245,6 @@ mod tests {
         assert_eq!(got, ["One. ", "Two? ", "three\n", "four\r\n", "five"]);
     }
 
-    /// Only the sentences holding an unaligned token are missing, in order; punctuation,
-    /// symbols, case of the surroundings, and NFC differences are no difference, but a word's
-    /// case is.
     #[test]
     fn a_sentence_with_an_unaligned_token_is_missing() {
         let source = "Hello there. It is taped into the log book.\nCafe\u{301} — open!\nbye";
@@ -274,13 +255,10 @@ mod tests {
         );
         assert!(missing_plain("", "x").is_empty());
         assert_eq!(missing_plain("a b. C", ""), ["a b.", "C"]);
-        // A lowercase word after a full stop continues the sentence (UAX #29, SB8).
         assert_eq!(missing_plain("a b. c", ""), ["a b. c"]);
         assert!(missing_plain("-- !!\n\u{99}", "").is_empty());
     }
 
-    /// A URL in angle brackets, split across lines, is the one URL token a GFM autolink or a
-    /// differently written form of it is.
     #[test]
     fn urls_compare_normalized() {
         assert!(
@@ -297,7 +275,6 @@ mod tests {
         );
     }
 
-    /// Past the edit bound, a sentence is missing when no target sentence has its tokens.
     #[test]
     fn past_the_bound_sentences_compare_by_membership() {
         let source: String = (0..EDITS_MAX)

@@ -10,7 +10,9 @@
 // arguments, and its Run bounds a run by processtest.Failsafe, which a run over every fixture can
 // outlast. The harness builds the binary as Main does, starts it with its arguments, and bounds
 // each run by [Bound], which such a run fits, so a test can kill docproc partway through a run it
-// started.
+// started. Every run takes the stages tier's bomb rule and entry bound over docproc's starting
+// values, so a bomb fixture is held to 64 MiB rather than expanded to the starting 1 GiB in the run
+// directory's working directory.
 //
 //   - [Main] is the suite's TestMain: it clears the DOCPROC_ environment and builds the command
 //     once per run, with the race detector so the program runs under it too.

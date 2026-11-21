@@ -1,10 +1,7 @@
 //go:build ignore
 
-// generate writes the sevenzip package's generated fixtures into generated/, beside this file: the
-// zstd streams and cabinets written by hand, every byte fixed, and the 7z archives written by
-// 7zz, which mise pins, from files whose content, mode, and order are fixed and with no times
-// stored, so a rerun writes the same bytes for every fixture but the two encrypted 7z archives,
-// whose salt and IV 7zz draws at random. Run it from sevenzip/testdata with
+// generate writes the sevenzip package's generated fixtures, which README.md describes, into
+// generated/, beside this file. Run it from sevenzip/testdata with
 // `mise exec -- go run generate.go`; the check never runs it, and reads the committed files.
 package main
 
@@ -18,15 +15,11 @@ import (
 	"path/filepath"
 )
 
-// out is the directory the fixtures are written into.
-const out = "generated"
+const outDir = "generated"
 
-// password is the encrypted 7z archives' password, which no test gives.
 const password = "infected"
 
-// docproc-onenote's committed copy of onenote.rs's section group, two of whose files the cabinet
-// packages as a .onepkg would.
-const sectionGroup = "../../tools/onenote/tests/fixtures/onenote-rs/New Section Group"
+const onenoteSectionGroup = "../../tools/onenote/tests/fixtures/onenote-rs/New Section Group"
 
 func main() {
 	if err := run(); err != nil {
@@ -36,33 +29,27 @@ func main() {
 }
 
 func run() error {
-	if err := os.MkdirAll(out, 0o755); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		return err
 	}
 	cleanTar, err := os.ReadFile("../../inspect/testdata/clean.tar")
 	if err != nil {
 		return err
 	}
-	section, err := os.ReadFile(filepath.Join(sectionGroup, "New Section 1.one"))
+	section, err := os.ReadFile(filepath.Join(onenoteSectionGroup, "New Section 1.one"))
 	if err != nil {
 		return err
 	}
-	toc, err := os.ReadFile(filepath.Join(sectionGroup, "Open Notebook.onetoc2"))
+	toc, err := os.ReadFile(filepath.Join(onenoteSectionGroup, "Open Notebook.onetoc2"))
 	if err != nil {
 		return err
 	}
 	zeros := make([]byte, 8<<20)
 	files := map[string][]byte{
-		// clean.tar.zst is inspect's clean.tar as a zstd stream of raw blocks, declaring no size.
-		"clean.tar.zst": zstdOf(cleanTar, -1),
-		// bomb.zst is 8 MiB of zeros in RLE blocks, about 32,000:1, declaring no size: past the
-		// ratio, under the default size, so a test lowers the size to see the rule fire.
-		"bomb.zst": zstdOf(zeros, -1),
-		// declared-bomb.zst's frame header declares 4 GiB; its content is 1 KiB of zeros.
+		"clean.tar.zst":     zstdOf(cleanTar, -1),
+		"bomb.zst":          zstdOf(zeros, -1),
 		"declared-bomb.zst": zstdOf(make([]byte, 1024), 4<<30),
-		// notebook.cab packages a OneNote section and its notebook as a .onepkg does, an MSZIP
-		// cabinet, named .cab.
-		"notebook.cab": cabOf(cabFile{"Open Notebook.onetoc2", toc}, cabFile{"New Section 1.one", section}),
+		"notebook.cab":      cabOf(cabFile{"Open Notebook.onetoc2", toc}, cabFile{"New Section 1.one", section}),
 		"traversal.cab": cabOf(
 			cabFile{"notes.txt", []byte("a cabinet's ordinary entry\n")},
 			cabFile{`docs\..\..\evil.txt`, []byte("written outside the extraction directory\n")},
@@ -71,11 +58,7 @@ func run() error {
 			cabFile{`\tmp\evil.txt`, []byte("an absolute path\n")},
 			cabFile{`C:\evil.txt`, []byte("a drive letter\n")},
 		),
-		// bomb.cab holds 8 MiB of zeros, about 570:1: under the default ratio and size, so a test
-		// lowers both to see the rule fire.
 		"bomb.cab": cabOf(cabFile{"zeros.bin", zeros}),
-		// linebreak.cab holds a name with a line break, which 7zz lists as "_", between two
-		// ordinary entries, and a name ending in a carriage return, which it lists as stored.
 		"linebreak.cab": cabOf(
 			cabFile{"before.txt", []byte("the entry before\n")},
 			cabFile{"line\nbreak.txt", []byte("a name with a line break\n")},
@@ -84,26 +67,27 @@ func run() error {
 		),
 	}
 	for name, b := range files {
-		if err := os.WriteFile(filepath.Join(out, name), b, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(outDir, name), b, 0o644); err != nil {
 			return err
 		}
 	}
 	return sevenZips(zeros)
 }
 
-// zstdOf returns content as one zstd frame: RLE blocks for runs of one byte, raw blocks for the
-// rest, each at most 128 KiB, with no checksum, and the content size declare in its header,
-// when declare isn't negative.
 func zstdOf(content []byte, declare int64) []byte {
-	const blockMax = 128 << 10
+	const (
+		blockMax                = 128 << 10
+		descriptorContentSize8  = 0xc0
+		descriptorNoContentSize = 0x00
+		window128KiB            = 0x38
+		rleBlock                = 1 << 1
+	)
 	b := []byte{0x28, 0xb5, 0x2f, 0xfd}
-	// The frame header descriptor: no single segment, so a window descriptor follows, 128 KiB
-	// (exponent 7); an 8-byte content size, flag 3, when one is declared.
 	if declare >= 0 {
-		b = append(b, 0xc0, 0x38)
+		b = append(b, descriptorContentSize8, window128KiB)
 		b = binary.LittleEndian.AppendUint64(b, uint64(declare))
 	} else {
-		b = append(b, 0x00, 0x38)
+		b = append(b, descriptorNoContentSize, window128KiB)
 	}
 	for start := 0; start < len(content); start += blockMax {
 		block := content[start:min(start+blockMax, len(content))]
@@ -112,7 +96,7 @@ func zstdOf(content []byte, declare int64) []byte {
 			last = 1
 		}
 		if bytes.Count(block, block[:1]) == len(block) {
-			header := last | 1<<1 | uint32(len(block))<<3
+			header := last | rleBlock | uint32(len(block))<<3
 			b = append(b, byte(header), byte(header>>8), byte(header>>16), block[0])
 			continue
 		}
@@ -123,15 +107,11 @@ func zstdOf(content []byte, declare int64) []byte {
 	return b
 }
 
-// cabFile is one file of a cabinet: its stored name, Windows separators and all, and content.
 type cabFile struct {
 	name string
 	body []byte
 }
 
-// cabOf returns a cabinet of files, in one MSZIP folder: each 32 KiB of the folder's
-// concatenated content is a data block, "CK" and a whole deflate stream, with no checksum. Every
-// file is dated 2026-11-05 00:00 and marked archive.
 func cabOf(files ...cabFile) []byte {
 	const (
 		headerLen = 36
@@ -139,15 +119,24 @@ func cabOf(files ...cabFile) []byte {
 		blockMax  = 32 << 10
 		dosDate   = (2026-1980)<<9 | 11<<5 | 5
 		attrArch  = 0x20
+
+		firstFolder   = 0
+		midnight      = 0
+		noChecksum    = 0
+		versionMinor  = 3
+		versionMajor  = 1
+		noFlags       = 0
+		setID         = 0x5a7a
+		compressMSZIP = 1
 	)
 	var folder []byte
 	var entries []byte
 	for _, f := range files {
 		entries = binary.LittleEndian.AppendUint32(entries, uint32(len(f.body)))
 		entries = binary.LittleEndian.AppendUint32(entries, uint32(len(folder)))
-		entries = binary.LittleEndian.AppendUint16(entries, 0) // folder 0
+		entries = binary.LittleEndian.AppendUint16(entries, firstFolder)
 		entries = binary.LittleEndian.AppendUint16(entries, dosDate)
-		entries = binary.LittleEndian.AppendUint16(entries, 0) // 00:00
+		entries = binary.LittleEndian.AppendUint16(entries, midnight)
 		entries = binary.LittleEndian.AppendUint16(entries, attrArch)
 		entries = append(entries, f.name...)
 		entries = append(entries, 0)
@@ -165,7 +154,7 @@ func cabOf(files ...cabFile) []byte {
 		}
 		fw.Write(chunk)
 		fw.Close()
-		data = binary.LittleEndian.AppendUint32(data, 0) // no checksum
+		data = binary.LittleEndian.AppendUint32(data, noChecksum)
 		data = binary.LittleEndian.AppendUint16(data, uint16(packed.Len()))
 		data = binary.LittleEndian.AppendUint16(data, uint16(len(chunk)))
 		data = append(data, packed.Bytes()...)
@@ -181,27 +170,26 @@ func cabOf(files ...cabFile) []byte {
 	b = binary.LittleEndian.AppendUint32(b, 0)
 	b = binary.LittleEndian.AppendUint32(b, uint32(filesAt))
 	b = binary.LittleEndian.AppendUint32(b, 0)
-	b = append(b, 3, 1) // version 1.3
+	b = append(b, versionMinor, versionMajor)
 	b = binary.LittleEndian.AppendUint16(b, 1)
 	b = binary.LittleEndian.AppendUint16(b, uint16(len(files)))
-	b = binary.LittleEndian.AppendUint16(b, 0) // no flags
-	b = binary.LittleEndian.AppendUint16(b, 0x5a7a)
+	b = binary.LittleEndian.AppendUint16(b, noFlags)
+	b = binary.LittleEndian.AppendUint16(b, setID)
 	b = binary.LittleEndian.AppendUint16(b, 0)
 	b = binary.LittleEndian.AppendUint32(b, uint32(dataAt))
 	b = binary.LittleEndian.AppendUint16(b, uint16(blocks))
-	b = binary.LittleEndian.AppendUint16(b, 1) // MSZIP
+	b = binary.LittleEndian.AppendUint16(b, compressMSZIP)
 	b = append(b, entries...)
 	return append(b, data...)
 }
 
-// sevenZips writes the 7z fixtures through 7zz, from files in a temporary directory.
 func sevenZips(zeros []byte) error {
 	src, err := os.MkdirTemp("", "sevenzip-fixtures-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(src)
-	outAbs, err := filepath.Abs(out)
+	outAbs, err := filepath.Abs(outDir)
 	if err != nil {
 		return err
 	}
@@ -236,7 +224,6 @@ func sevenZips(zeros []byte) error {
 	if err := os.Symlink("/etc/passwd", filepath.Join(src, "passwd")); err != nil {
 		return err
 	}
-	// The multi-block and mixed-method archives' files: each its own text, of its own length.
 	for i := range 12 {
 		if err := write(fmt.Sprintf("blocks/f%02d.txt", i+1), lines(fmt.Sprintf("multi-block file %02d", i+1), 40+i*7)); err != nil {
 			return err
@@ -253,8 +240,7 @@ func sevenZips(zeros []byte) error {
 	if err := mkfifo(filepath.Join(src, "pipe")); err != nil {
 		return err
 	}
-	// Every archive is single-threaded, with no times stored, so it is the same bytes on a rerun.
-	add := []string{"a", "-mtm-", "-mtc-", "-mta-", "-mmt=1", "-bd"}
+	addReproducibly := []string{"a", "-mtm-", "-mtc-", "-mta-", "-mmt=1", "-bd"}
 	sz := func(args ...string) error {
 		cmd := exec.Command("7zz", args...)
 		cmd.Dir = src
@@ -270,37 +256,24 @@ func sevenZips(zeros []byte) error {
 		return path
 	}
 	steps := [][]string{
-		// clean.7z: a directory, docs, and a text and a 3x1 PNG's signature under it.
-		append(append([]string{}, add...), archive("clean.7z"), "docs"),
-		// traversal.7z: an ordinary entry, and evil.txt renamed to a name with ".." elements.
-		append(append([]string{}, add...), archive("traversal.7z"), "notes.txt", "evil.txt"),
+		append(append([]string{}, addReproducibly...), archive("clean.7z"), "docs"),
+		append(append([]string{}, addReproducibly...), archive("traversal.7z"), "notes.txt", "evil.txt"),
 		{"rn", filepath.Join(outAbs, "traversal.7z"), "evil.txt", "docs/../../evil.txt"},
-		// absolute.7z: an absolute path and a drive letter, each a file renamed.
-		append(append([]string{}, add...), archive("absolute.7z"), "absolute.txt", "drive.txt"),
+		append(append([]string{}, addReproducibly...), archive("absolute.7z"), "absolute.txt", "drive.txt"),
 		{"rn", filepath.Join(outAbs, "absolute.7z"), "absolute.txt", "/tmp/evil.txt"},
 		{"rn", filepath.Join(outAbs, "absolute.7z"), "drive.txt", `C:\evil.txt`},
-		// symlink.7z: an ordinary entry and passwd, a symbolic link to /etc/passwd, stored as a
-		// link (-snl).
-		append(append([]string{}, add...), "-snl", archive("symlink.7z"), "notes.txt", "passwd"),
-		// device.7z: an ordinary entry and pipe, a FIFO, stored as one (-snl); a character or
-		// block device needs root to make, so none is stored.
-		append(append([]string{}, add...), "-snl", archive("device.7z"), "notes.txt", "pipe"),
-		// bomb.7z: 8 MiB of zeros, about 6,000:1 against the archive.
-		append(append([]string{}, add...), archive("bomb.7z"), "zeros.bin"),
-		// encrypted.7z: an ordinary entry, then secret.txt added encrypted, its headers clear.
-		append(append([]string{}, add...), archive("encrypted.7z"), "notes.txt"),
-		append(append([]string{}, add...), "-p"+password, filepath.Join(outAbs, "encrypted.7z"), "secret.txt"),
-		// encrypted-headers.7z: secret.txt with its headers encrypted too, so nothing lists.
-		append(append([]string{}, add...), "-p"+password, "-mhe=on", archive("encrypted-headers.7z"), "secret.txt"),
-		// multiblock.7z: twelve files, three to a solid block (-ms=3f), so four LZMA2 blocks.
-		append(append([]string{}, add...), "-ms=3f", archive("multiblock.7z"), "blocks"),
-		// mixed.7z: a block of each method, each added to the archive in turn, with an empty file
-		// and a symbolic link beside the first.
-		append(append([]string{}, add...), "-snl", "-m0=LZMA2", archive("mixed.7z"), "lzma2", "empty.txt", "passwd"),
-		append(append([]string{}, add...), "-m0=PPMd", filepath.Join(outAbs, "mixed.7z"), "ppmd"),
-		append(append([]string{}, add...), "-m0=BZip2", filepath.Join(outAbs, "mixed.7z"), "bzip2"),
-		append(append([]string{}, add...), "-m0=Deflate", filepath.Join(outAbs, "mixed.7z"), "deflate"),
-		append(append([]string{}, add...), "-m0=Copy", filepath.Join(outAbs, "mixed.7z"), "copy"),
+		append(append([]string{}, addReproducibly...), "-snl", archive("symlink.7z"), "notes.txt", "passwd"),
+		append(append([]string{}, addReproducibly...), "-snl", archive("device.7z"), "notes.txt", "pipe"),
+		append(append([]string{}, addReproducibly...), archive("bomb.7z"), "zeros.bin"),
+		append(append([]string{}, addReproducibly...), archive("encrypted.7z"), "notes.txt"),
+		append(append([]string{}, addReproducibly...), "-p"+password, filepath.Join(outAbs, "encrypted.7z"), "secret.txt"),
+		append(append([]string{}, addReproducibly...), "-p"+password, "-mhe=on", archive("encrypted-headers.7z"), "secret.txt"),
+		append(append([]string{}, addReproducibly...), "-ms=3f", archive("multiblock.7z"), "blocks"),
+		append(append([]string{}, addReproducibly...), "-snl", "-m0=LZMA2", archive("mixed.7z"), "lzma2", "empty.txt", "passwd"),
+		append(append([]string{}, addReproducibly...), "-m0=PPMd", filepath.Join(outAbs, "mixed.7z"), "ppmd"),
+		append(append([]string{}, addReproducibly...), "-m0=BZip2", filepath.Join(outAbs, "mixed.7z"), "bzip2"),
+		append(append([]string{}, addReproducibly...), "-m0=Deflate", filepath.Join(outAbs, "mixed.7z"), "deflate"),
+		append(append([]string{}, addReproducibly...), "-m0=Copy", filepath.Join(outAbs, "mixed.7z"), "copy"),
 	}
 	for _, args := range steps {
 		if err := sz(args...); err != nil {
@@ -310,7 +283,6 @@ func sevenZips(zeros []byte) error {
 	return nil
 }
 
-// lines returns n numbered lines of a file's text, each naming the file.
 func lines(file string, n int) []byte {
 	var b bytes.Buffer
 	for i := range n {
@@ -319,7 +291,6 @@ func lines(file string, n int) []byte {
 	return b.Bytes()
 }
 
-// mkfifo makes a FIFO at path, through mkfifo(1), so the generator needs no syscall package.
 func mkfifo(path string) error {
 	if b, err := exec.Command("mkfifo", "-m", "0644", path).CombinedOutput(); err != nil {
 		return fmt.Errorf("mkfifo: %w: %s", err, b)

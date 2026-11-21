@@ -26,37 +26,6 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// standin is the stand-in tool, run through link. Its first argument picks what it does:
-//
-//	print TEXT        writes TEXT and a newline to stdout
-//	exit CODE [TEXT]  writes TEXT to stderr, then exits with CODE
-//	stderr N CODE     writes N bytes of stderr, letters a to z repeating, then exits with CODE
-//	echo ARGS...      writes its arguments, working directory, and stdin to stdout as JSON
-//	sleep D           exits 0 on SIGTERM, writing ready to stdout once it handles it; else
-//	                  sleeps D and exits 1
-//	stubborn D [FILE] ignores SIGTERM, then writes ready to stdout and its pid to FILE, then
-//	                  sleeps D and exits 1
-//	spawn FILE [held] starts a stubborn child, which writes its pid to FILE, then acts as
-//	                  sleep 1m; the child has no streams, or with held, holds stdout and stderr
-//	spin CMD...       spins until it has spent spinCPU of user CPU time, then does CMD as the
-//	                  stand-in would
-//	reap CMD...       runs the stand-in on CMD as a child, waits for it, and exits with its code
-//	orphan FILE [held]
-//	                  starts a stubborn child, which writes its pid to FILE, waits for the
-//	                  pid, then exits 0; the child has no streams, or with held, holds stdout
-//	                  and stderr
-//	die SIGNAL        sends itself SIGNAL, TERM or KILL, by name
-//	alloc N           maps N bytes of anonymous memory, untouched, then writes allocated; exits
-//	                  3, naming mmap's error, when the mapping is refused
-//	as-print N TEXT   writes TEXT to stdout when its RLIMIT_AS is N bytes; else exits 1, naming
-//	                  the limit it has
-//	env               writes its environment to stdout as a JSON array, sorted
-//	oom N             writes its oom_score_adj to stdout once it is N, or after 5 s, whatever
-//	                  it is then
-//	tick N D          writes a line N times, D apart, then exits 0
-//	tmp FILE CMD...   writes its TMPDIR, HOME, and the names in its TMPDIR to FILE as JSON, then
-//	                  leaves a file in its TMPDIR, gs_ and six characters, as a gs ended early
-//	                  leaves its band list's, then does CMD as the stand-in would
 func standin(link string, args []string) int {
 	if len(args) == 0 {
 		fmt.Fprintln(os.Stderr, "standin: no command")
@@ -190,15 +159,10 @@ func standin(link string, args []string) int {
 	return 2
 }
 
-// spinCPU is the user CPU time the spin command spends; a usage test's program has spent at
-// least this much.
 const spinCPU = 50 * time.Millisecond
 
-// spinSink keeps the spin's arithmetic from being optimized away.
 var spinSink uint64
 
-// spin busies the CPU until the process's own user CPU time, as its rusage counts it, reaches
-// spinCPU. It measures CPU time rather than wall time, so a loaded machine can't cut it short.
 func spin() error {
 	var ru syscall.Rusage
 	for {
@@ -214,7 +178,6 @@ func spin() error {
 	}
 }
 
-// sleep waits for SIGTERM and exits 0 on it, or exits 1 after d.
 func sleep(d string) int {
 	term := make(chan os.Signal, 1)
 	signal.Notify(term, syscall.SIGTERM)
@@ -227,9 +190,6 @@ func sleep(d string) int {
 	}
 }
 
-// spawn starts a stubborn stand-in as a child, through link, in the stand-in's process group,
-// which writes its pid to file once it ignores SIGTERM; then it sleeps as sleep does. The child
-// holds none of the stand-in's streams, or, when held, its stdout and stderr.
 func spawn(link, file string, held bool) int {
 	child := exec.Command(link, "stubborn", "1m", file)
 	if held {
@@ -242,10 +202,6 @@ func spawn(link, file string, held bool) int {
 	return sleep("1m")
 }
 
-// orphan starts a stubborn stand-in as a child, through link, in the stand-in's process group,
-// which writes its pid to file once it ignores SIGTERM; it waits for that pid, then exits 0,
-// leaving the child running. The child holds none of the stand-in's streams, or, when held, its
-// stdout and stderr.
 func orphan(link, file string, held bool) int {
 	child := exec.Command(link, "stubborn", "1m", file)
 	if held {
@@ -264,16 +220,12 @@ func orphan(link, file string, held bool) int {
 	return 2
 }
 
-// tmpdir is what the stand-in's tmp command writes: its TMPDIR, its HOME, and the names in its
-// TMPDIR before it leaves its own file there.
 type tmpdir struct {
 	TMPDIR  string   `json:"tmpdir"`
 	HOME    string   `json:"home"`
 	Entries []string `json:"entries"`
 }
 
-// tmp writes the stand-in's tmpdir to file, whole, through a rename, then leaves a file of its
-// own in its TMPDIR.
 func tmp(file string) error {
 	dir := os.Getenv("TMPDIR")
 	entries, err := os.ReadDir(dir)
@@ -301,8 +253,6 @@ func tmp(file string) error {
 	return f.Close()
 }
 
-// writePid writes the process's pid and a newline to file, whole, through a rename, so a reader
-// never sees part of it.
 func writePid(file string) error {
 	tmp := file + ".tmp"
 	if err := os.WriteFile(tmp, []byte(strconv.Itoa(os.Getpid())+"\n"), 0o600); err != nil {
@@ -311,14 +261,12 @@ func writePid(file string) error {
 	return os.Rename(tmp, file)
 }
 
-// echo is what the stand-in's echo command writes.
 type echo struct {
 	Args  []string `json:"args"`
 	Dir   string   `json:"dir"`
 	Stdin string   `json:"stdin"`
 }
 
-// letters returns n bytes, a to z repeating.
 func letters(n int) []byte {
 	b := make([]byte, n)
 	for i := range b {
@@ -345,9 +293,6 @@ func atoi(s string) int {
 	return n
 }
 
-// installStandin links the stand-in tool as standin and the stand-in docker CLI as docker, in a
-// directory of their own, its daemon one docker can't reach, and returns standin's path. The
-// directory is the stand-in docker's state directory too.
 func installStandin(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()

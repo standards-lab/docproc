@@ -136,9 +136,7 @@ type Config struct {
 // Dispatcher dispatches inputs to their stages. It is safe for concurrent use, each Dispatch
 // independent but for the index and the content store they share.
 type Dispatcher struct {
-	cfg Config
-	// identities are the wired stages' identities by name, which an entry's Stages are checked
-	// against.
+	cfg        Config
 	identities map[string]Identity
 }
 
@@ -146,6 +144,7 @@ type Dispatcher struct {
 // naming the field. It refuses, matching [ErrRequest], a Config with no working directory, a
 // stage that is nil, two stages sharing a name with different identities, a negative cap or
 // release bound, or Puts under 1; and inspection options inspect refuses, validating them once.
+// It keeps its own copy of Stages, so a later change to the caller's map changes nothing.
 func New(cfg Config) (*Dispatcher, error) {
 	if cfg.Index == nil {
 		panic("dispatch: Config.Index is nil")
@@ -186,7 +185,6 @@ func New(cfg Config) (*Dispatcher, error) {
 	if err := cfg.Inspect.Validate(); err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
-	// A copy, so the caller's later change to its map changes nothing.
 	cfg.Stages = maps.Clone(cfg.Stages)
 	return &Dispatcher{cfg: cfg, identities: identities}, nil
 }
@@ -256,30 +254,19 @@ func (d *Dispatcher) Dispatch(ctx context.Context, in Input) iter.Seq2[Event, er
 	}
 }
 
-// run is one dispatch's state.
 type run struct {
-	d     *Dispatcher
-	ctx   context.Context
-	yield func(Event, error) bool
-	// renew renews the claims in flight.
-	renew *renewer
-	// ancestors are the SHA-256s of the parts being prepared or replayed, the input first.
+	d         *Dispatcher
+	ctx       context.Context
+	yield     func(Event, error) bool
+	renew     *renewer
 	ancestors []string
-	// parts and bytes are what the dispatch has admitted, for its caps.
-	parts int
-	bytes int64
-	// stopped is set once the caller's loop stopped or a fatal error was yielded.
-	stopped bool
-	// after is the input's After, which its part alone carries.
-	after uint64
-	// released is the content whose found part's Release the dispatch called, by its SHA-256:
-	// what a later part of the same content, found without a file, is dispatched as.
-	released map[string]released
+	parts     int
+	bytes     int64
+	stopped   bool
+	after     uint64
+	released  map[string]released
 }
 
-// released is what a released content's part was: its size, what routing read of it, its
-// outcome, [NoProcessor] for content whose route has no stage, and, for that content, its flags,
-// which no entry holds.
 type released struct {
 	size        int64
 	contentType ContentType
@@ -287,20 +274,12 @@ type released struct {
 	flags       []inspect.Flag
 }
 
-// hashed is what the dispatcher took of a file as it read it whole: its SHA-256, lowercase hex,
-// its size, and its first route.HeadLen bytes.
 type hashed struct {
 	sum  string
 	size int64
 	head []byte
 }
 
-// result is what a part came to, for its parent: the child its parent's log records, whether its
-// whole subtree is complete, so its parent may be recorded, the distinct stages its subtree ran,
-// for its parent's entry, whether it is settled, the index holding its content's entry under its
-// stage, or its route having no stage, so a later part of the same content needs no file, and
-// whether its replay missed: a part replayed from the index met a child whose entry the index no
-// longer holds, which the nearest part with a file resolves by preparing itself again.
 type result struct {
 	child    Child
 	complete bool
@@ -309,8 +288,6 @@ type result struct {
 	miss     bool
 }
 
-// open returns the input's part as a found part, and, for a Reader spooled into the working
-// directory, what the spool took of it, its SHA-256 checked.
 func (r *run) open(in Input) (Found, *hashed, error) {
 	if (in.Path == "") == (in.Reader == nil) {
 		return Found{}, nil, fmt.Errorf("dispatch: an input sets one of Path and Reader: %w", ErrRequest)
@@ -347,8 +324,6 @@ func (r *run) open(in Input) (Found, *hashed, error) {
 	return f, &hashed{sum: sum, size: n, head: head.b}, nil
 }
 
-// fatal yields err alone and stops the dispatch; once a renewal was refused, the refusal, which
-// ended the dispatch's context, stands for err.
 func (r *run) fatal(err error) result {
 	if !r.stopped {
 		r.stopped = true
@@ -360,7 +335,6 @@ func (r *run) fatal(err error) result {
 	return result{}
 }
 
-// send yields ev, guarded, reporting whether the caller's loop goes on.
 func (r *run) send(ev Event) bool {
 	if !r.yield(guardEvent(ev), nil) {
 		r.stopped = true
@@ -368,9 +342,6 @@ func (r *run) send(ev Event) bool {
 	return !r.stopped
 }
 
-// emit yields ev, a part's own event, guarded, then removes the part's file and, given dir, the
-// part's working directory, and returns the part's result: complete, and settled when the index
-// holds the content's entry, or its route has no stage, and it isn't quarantined.
 func (r *run) emit(ev Event, dir string, complete, settled bool) result {
 	ev = guardEvent(ev)
 	if !r.yield(ev, nil) {
@@ -385,7 +356,6 @@ func (r *run) emit(ev Event, dir string, complete, settled bool) result {
 	return res
 }
 
-// remove removes p's file, but for the input's, and dir.
 func (r *run) remove(p Part, dir string) error {
 	if p.Depth > 0 && p.Path != "" {
 		if err := os.Remove(p.Path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -401,9 +371,6 @@ func (r *run) remove(p Part, dir string) error {
 	return nil
 }
 
-// part dispatches one part, f, found in the part whose ID is parent, at depth, h what was taken
-// of its file already, if anything, then, when it is settled and f's SHA-256 is its content's,
-// calls f's Release, as [Found] says.
 func (r *run) part(f Found, h *hashed, parent string, depth int) result {
 	p := Part{
 		ID: "/", Path: f.Path, Name: f.Name, ContentType: ContentType{Stored: f.MIME},
@@ -419,8 +386,6 @@ func (r *run) part(f Found, h *hashed, parent string, depth int) result {
 	}
 	res := r.dispatchPart(&p, f.SHA256, h)
 	if res.miss && !r.stopped {
-		// A part with no file whose replay missed, found by a part being prepared: nothing has
-		// its content to prepare it again.
 		err := fmt.Errorf("dispatch: %s has no file, and the index no longer holds its subtree", p.Name)
 		return r.emit(Event{Part: p, Outcome: Failed, Reason: err.Error(), Err: err}, "", false, false)
 	}
@@ -433,13 +398,6 @@ func (r *run) part(f Found, h *hashed, parent string, depth int) result {
 	return res
 }
 
-// unread dispatches p, an unread child a stage found as f: its event, with f's outcome, reason,
-// and flags, recorded as its parent's child.
-//
-// A limited child, which its stage stopped writing at the bytes cap, as [Remaining] says, has the
-// bytes cap's reason, whatever the stage gave, and leaves its parent's subtree incomplete, as a
-// found part past a cap does, so its parent isn't recorded and a dispatch under a larger cap
-// prepares it again. With no bytes cap set, nothing could have stopped it, and it fails.
 func (r *run) unread(p Part, f Found) result {
 	refuse := func(err error) result {
 		return r.emit(Event{Part: p, Outcome: Failed, Reason: err.Error(), Err: err}, "", false, false)
@@ -460,9 +418,6 @@ func (r *run) unread(p Part, f Found) result {
 	return r.emit(Event{Part: p, Outcome: f.Outcome, Reason: f.Reason}, "", complete, false)
 }
 
-// childID returns the ID of the part found where in the part whose ID is parent: parent's
-// followed by where as one more path segment, "%" and "/" percent-encoded, after a "/" unless
-// parent's ends in one.
 func childID(parent, where string) string {
 	segment := strings.NewReplacer("%", "%25", "/", "%2F").Replace(where)
 	if strings.HasSuffix(parent, "/") {
@@ -471,8 +426,6 @@ func childID(parent, where string) string {
 	return parent + "/" + segment
 }
 
-// dispatchPart dispatches p, as part says; sum is the SHA-256 its stage claimed, which a part
-// with a file is checked against and a part with no file is dispatched by.
 func (r *run) dispatchPart(p *Part, sum string, h *hashed) result {
 	if err := r.ctx.Err(); err != nil {
 		return r.fatal(err)
@@ -482,8 +435,6 @@ func (r *run) dispatchPart(p *Part, sum string, h *hashed) result {
 	}
 
 	if p.Path == "" {
-		// A part found without a file: content whose earlier part's Release this dispatch called,
-		// dispatched as that part was routed.
 		c, ok := r.released[sum]
 		if !ok {
 			return failed(fmt.Errorf("dispatch: %s has no file, and its content is none this dispatch released", p.Name))
@@ -525,7 +476,6 @@ func (r *run) dispatchPart(p *Part, sum string, h *hashed) result {
 	}
 	r.parts++
 	r.bytes += p.Size
-	// The name's flags, at every occurrence; the content's join them once read or looked up.
 	p.Flags = inspect.Name(p.Name, p.ContentType.Kind)
 
 	stage := r.d.cfg.Stages[p.ContentType.Route]
@@ -538,7 +488,6 @@ func (r *run) dispatchPart(p *Part, sum string, h *hashed) result {
 	return r.staged(*p, stage, failed)
 }
 
-// limit returns the cap p is past, in a few words, or "" when it is under every cap.
 func (r *run) limit(p Part) string {
 	l := r.d.cfg.Limits
 	switch {
@@ -552,12 +501,8 @@ func (r *run) limit(p Part) string {
 	return ""
 }
 
-// pastBytes returns the reason of a part past the bytes cap, limit: a found part's that would
-// take the bytes admitted past it, and an unread child's whose stage stopped writing it there.
 func pastBytes(limit int64) string { return fmt.Sprintf("past the bytes cap, %d", limit) }
 
-// remainingKey is the key of the bytes a dispatch may still admit on a context passed to
-// Stage.Prepare.
 type remainingKey struct{}
 
 // Remaining returns the bytes the dispatch that called a stage's Prepare with ctx may still
@@ -578,13 +523,12 @@ func Remaining(ctx context.Context) (int64, bool) {
 	return n, ok
 }
 
-// inspectContent returns the flags of p's content, as inspect.Content finds them in its file.
 func (r *run) inspectContent(p Part) ([]inspect.Flag, error) {
 	f, err := os.Open(p.Path)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: inspect %s: %w", p.Name, err)
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	rep, err := inspect.Content(r.ctx, f, p.Size, p.ContentType.Kind, r.d.cfg.Inspect)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: inspect %s: %w", p.Name, err)
@@ -592,12 +536,10 @@ func (r *run) inspectContent(p Part) ([]inspect.Flag, error) {
 	return rep.Flags, nil
 }
 
-// quarantines reports whether flags come to quarantine under the dispatcher's options.
 func (r *run) quarantines(flags []inspect.Flag) bool {
 	return r.d.cfg.Inspect.Verdict(flags) == inspect.Quarantine
 }
 
-// quarantined returns the event of p, whose flags' verdict quarantines it.
 func quarantined(p Part) Event {
 	var unsafe []string
 	for _, f := range p.Flags {
@@ -612,7 +554,6 @@ func quarantined(p Part) Event {
 	return Event{Part: p, Outcome: Quarantined, Reason: why}
 }
 
-// mergeFlags returns a's and b's flags as one list, sorted by check.
 func mergeFlags(a, b []inspect.Flag) []inspect.Flag {
 	if len(a)+len(b) == 0 {
 		return nil
@@ -620,17 +561,11 @@ func mergeFlags(a, b []inspect.Flag) []inspect.Flag {
 	return sortFlags(slices.Concat(a, b))
 }
 
-// sortFlags sorts flags by check, keeping their order within one, and returns them.
 func sortFlags(flags []inspect.Flag) []inspect.Flag {
 	slices.SortStableFunc(flags, func(a, b inspect.Flag) int { return strings.Compare(string(a.Check), string(b.Check)) })
 	return flags
 }
 
-// unstaged dispatches p, whose route has no stage: its content is inspected, and it is
-// quarantined or no processor yet. Nothing is recorded, so a stage registered later prepares it,
-// in a later dispatch. A no processor part is settled once the caller's loop body returns for its
-// event: a later part of the same content in this dispatch is no processor again, with no file,
-// and the flags this one had.
 func (r *run) unstaged(p Part, failed func(error) result) result {
 	content, err := r.inspectContent(p)
 	if err != nil {
@@ -646,15 +581,10 @@ func (r *run) unstaged(p Part, failed func(error) result) result {
 	return r.emit(noStage(p), "", true, true)
 }
 
-// noStage returns the event of p, a part whose route has no stage, as no processor yet.
 func noStage(p Part) Event {
 	return Event{Part: p, Outcome: NoProcessor, Reason: fmt.Sprintf("no stage for route %s", p.ContentType.Route)}
 }
 
-// releasedPart dispatches p, a part with no file of content this dispatch released, to stage:
-// it is seen, the index holding the content's entry under stage since the release; or, the
-// content's route having no stage, it is no processor yet again, with the flags its released
-// part had.
 func (r *run) releasedPart(p Part, stage Stage, failed func(error) result) result {
 	if stage == nil {
 		c := r.released[p.SHA256]
@@ -676,8 +606,6 @@ func (r *run) releasedPart(p Part, stage Stage, failed func(error) result) resul
 	return r.seen(p, id, key, e)
 }
 
-// fresh reports whether e is the current stages' entry: each of its Stages the identity of the
-// wired stage of that name.
 func (r *run) fresh(e Entry) bool {
 	for _, id := range e.Stages {
 		if r.d.identities[id.Name] != id {
@@ -687,9 +615,6 @@ func (r *run) fresh(e Entry) bool {
 	return true
 }
 
-// staged dispatches p to stage: it is seen when the index holds its fresh entry, waits on another
-// dispatch's claim, or claims it and prepares it. An entry no longer fresh is dropped, then
-// claimed; a replay that misses drops the entry and prepares p again, once.
 func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 	idx := r.d.cfg.Index
 	id := stage.Identity()
@@ -724,9 +649,6 @@ func (r *run) staged(p Part, stage Stage, failed func(error) result) result {
 			if missed {
 				return failed(fmt.Errorf("dispatch: %s: its replay missed again once it was prepared", p.Name))
 			}
-			// The replay met a child the index no longer holds: p has a file, so it is prepared
-			// again, its stage finding its children again, the live ones replayed. What the
-			// replay admitted is admitted again.
 			missed = true
 			r.parts, r.bytes = parts, bytes
 		}

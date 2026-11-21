@@ -236,8 +236,6 @@ func (*Rows) record()          {}
 func (*Warning) record()       {}
 func (*UnknownRecord) record() {}
 
-// decodeLine decodes one of docproc-ooxml's lines, of kind kind, into its Record. The raw JSON is
-// the reader's to keep, as cli.Read yields it, so an UnknownRecord holds it as it is.
 func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 	var rec Record
 	switch kind {

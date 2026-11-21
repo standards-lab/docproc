@@ -102,7 +102,6 @@ func (s *Stage) Prepare(_ context.Context, p dispatch.Part, dir string) iter.Seq
 			Meta: map[string]string{dispatch.MetaCount: count},
 		}
 		if from == 0 {
-			// The leading flags, before the first output.
 			for ; from < len(lines) && strings.HasPrefix(lines[from], "flag "); from++ {
 				if !s.directive(lines[from], from+1, dir, yield) {
 					return
@@ -120,7 +119,6 @@ func (s *Stage) Prepare(_ context.Context, p dispatch.Part, dir string) iter.Seq
 	}
 }
 
-// directive yields what line, the part's line n, directs, reporting whether the stage goes on.
 func (s *Stage) directive(line string, n int, dir string, yield func(dispatch.Item, error) bool) bool {
 	verb, arg, _ := strings.Cut(line, " ")
 	where := "line " + strconv.Itoa(n)
@@ -179,7 +177,6 @@ func (s *Stage) directive(line string, n int, dir string, yield func(dispatch.It
 	return true
 }
 
-// sha returns content's SHA-256, lowercase hex.
 func sha(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])

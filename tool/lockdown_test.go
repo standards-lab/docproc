@@ -19,9 +19,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestRunSignal checks that a program that kills itself is reported, through either runner, with
-// its signal's name: from the wait status through the exec runner, and from the container's exit
-// code, 128 and the signal's number, through the container runner.
 func TestRunSignal(t *testing.T) {
 	t.Parallel()
 	tests := map[string]struct {
@@ -53,8 +50,6 @@ func TestRunSignal(t *testing.T) {
 	}
 }
 
-// TestRunExitHasNoSignal checks that an exit, through either runner, names no signal, the
-// container's exit codes up to 128 included.
 func TestRunExitHasNoSignal(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
@@ -69,14 +64,8 @@ func TestRunExitHasNoSignal(t *testing.T) {
 	}
 }
 
-// memoryLimit is the bound the memory tests set: tooltest's room for the stand-in, a race-built
-// test binary, to start, and far below what the refused allocation asks.
 const memoryLimit = tooltest.Memory
 
-// TestMemoryLimit checks that a bounded Spec's every run, the version command's included, runs
-// under RLIMIT_AS set to the bound, and that an allocation past it is refused while one within it
-// isn't. The version command prints the version only when its own limit is the bound, so NewExec
-// succeeding shows the version command ran under it.
 func TestMemoryLimit(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "", "1.0")
@@ -107,8 +96,6 @@ func TestMemoryLimit(t *testing.T) {
 	}
 }
 
-// TestMemoryLimitNeedsPrlimit checks that NewExec refuses a bounded Spec when prlimit isn't on
-// PATH, and takes the same Spec unbounded. It sets PATH, so it runs alone.
 func TestMemoryLimitNeedsPrlimit(t *testing.T) {
 	link := installStandin(t)
 	t.Setenv("PATH", t.TempDir())
@@ -123,8 +110,6 @@ func TestMemoryLimitNeedsPrlimit(t *testing.T) {
 	}
 }
 
-// TestMemoryLimitBelowZero checks that a negative bound is refused as the spec's defect, before
-// anything runs.
 func TestMemoryLimitBelowZero(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec("missing-tool", "1.0", "1.0")
@@ -134,11 +119,6 @@ func TestMemoryLimitBelowZero(t *testing.T) {
 	}
 }
 
-// TestRunFixedEnvironment checks the exec runner's environment, whole: PATH, LANG=C.UTF-8, HOME
-// the run's Dir when it has one, TMPDIR a directory of the run's own, docproc-run-*, under the
-// process's temporary directory, with or without a Dir, then the Spec's Env, whose LANG replaces
-// the fixed one. Nothing of the test binary's own environment reaches the program.
-// TestRunTmpdir checks the run's TMPDIR itself.
 func TestRunFixedEnvironment(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "1.0", "1.0")
@@ -165,7 +145,6 @@ func TestRunFixedEnvironment(t *testing.T) {
 	}
 }
 
-// TestRunFixedEnvironmentLang checks the fixed LANG when the Spec's Env doesn't replace it.
 func TestRunFixedEnvironmentLang(t *testing.T) {
 	t.Parallel()
 	got := runEnv(t, newStandin(t), "")
@@ -174,9 +153,6 @@ func TestRunFixedEnvironmentLang(t *testing.T) {
 	}
 }
 
-// runEnv runs the stand-in's env command through tl in dir and returns the environment it wrote,
-// sorted, its TMPDIR's value cut, as TMPDIR=, once it is checked to be docproc-run-* under the
-// process's temporary directory: the name is the run's own.
 func runEnv(t *testing.T, tl *tool.Tool, dir string) []string {
 	t.Helper()
 	var out bytes.Buffer
@@ -198,11 +174,6 @@ func runEnv(t *testing.T, tl *tool.Tool, dir string) []string {
 	return got
 }
 
-// TestRunOOMScoreAdj checks that the exec runner's program takes an oom_score_adj of 1000. The
-// runner writes it once the program has started, and the program inherits the test's own, which a
-// session's manager may have raised from 0, so the stand-in waits for 1000 rather than for a
-// change, and a runner that never writes it leaves the inherited value. A test already at 1000
-// can't tell the two apart, so it skips.
 func TestRunOOMScoreAdj(t *testing.T) {
 	t.Parallel()
 	own, err := os.ReadFile("/proc/self/oom_score_adj")
@@ -222,8 +193,6 @@ func TestRunOOMScoreAdj(t *testing.T) {
 	}
 }
 
-// TestRunKillsChildLeftRunning checks that a program that exits 0 leaving a child running, one
-// that ignores SIGTERM and holds none of its streams, succeeds, and that the child is killed.
 func TestRunKillsChildLeftRunning(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -234,9 +203,6 @@ func TestRunKillsChildLeftRunning(t *testing.T) {
 	assertGone(t, readPid(t, pidFile))
 }
 
-// TestRunChildHoldingStdout checks that a program that exits 0 leaving a child that holds its
-// stdout and stderr returns once it exits, well before the KillAfter period would close the
-// pipes, since the child is killed with the rest of the group.
 func TestRunChildHoldingStdout(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -256,11 +222,6 @@ func TestRunChildHoldingStdout(t *testing.T) {
 	assertGone(t, readPid(t, pidFile))
 }
 
-// TestRunTimeout checks that a run past its own Timeout is ended as a cancelled one is, and
-// reported through either runner as an ExitError with TimedOut set, carrying the program's
-// outcome: a stubborn program's SIGKILL once the KillAfter period passes. The Timeout runs from
-// the start, before the stand-in, a race-built test binary, ignores SIGTERM, so it is 2 s, past
-// any start on a loaded machine; a shorter one could end it by SIGTERM first.
 func TestRunTimeout(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
@@ -283,9 +244,6 @@ func TestRunTimeout(t *testing.T) {
 	}
 }
 
-// TestRunTimeoutExitZero checks that a program that exits 0 on the SIGTERM its Timeout sends is
-// still reported as timed out, with its exit code. The Timeout is 2 s, as TestRunTimeout's is, so
-// the SIGTERM never comes before the stand-in handles it.
 func TestRunTimeoutExitZero(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -296,8 +254,6 @@ func TestRunTimeoutExitZero(t *testing.T) {
 	}
 }
 
-// TestRunIdle checks that a run that writes nothing for its Idle is ended and reported as timed
-// out, its stderr tail kept, while one that writes more often than its Idle runs to its end.
 func TestRunIdle(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -316,9 +272,6 @@ func TestRunIdle(t *testing.T) {
 	}
 }
 
-// TestSpecBounds checks that a Spec's Timeout and Idle bound every run whose Invocation sets
-// neither, and that an Invocation's own bound takes their place; that the Tool's Timeout reads the
-// Spec's; and that a negative one is refused as the spec's defect.
 func TestSpecBounds(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "1.0", "1.0")
@@ -355,8 +308,6 @@ func TestSpecBounds(t *testing.T) {
 	}
 }
 
-// TestVersionLine checks that a Tool keeps the whole line its version was found on, trimmed, so
-// two builds of one version differ.
 func TestVersionLine(t *testing.T) {
 	t.Parallel()
 	spec := standinSpec(installStandin(t), "1.0", "1.0")
@@ -370,8 +321,6 @@ func TestVersionLine(t *testing.T) {
 	}
 }
 
-// TestRunTimeoutContextFirst checks that a run its context ends before its own Timeout passes is
-// the context's, not timed out.
 func TestRunTimeoutContextFirst(t *testing.T) {
 	t.Parallel()
 	tl := newStandin(t)
@@ -381,8 +330,6 @@ func TestRunTimeoutContextFirst(t *testing.T) {
 	assertContextError(t, err, context.DeadlineExceeded)
 }
 
-// TestCancelNoGrace checks that a zero KillAfter sends SIGKILL with the SIGTERM, so a program that
-// ignores SIGTERM ends at once.
 func TestCancelNoGrace(t *testing.T) {
 	t.Parallel()
 	for label, build := range runnerCases {
@@ -406,7 +353,6 @@ func TestCancelNoGrace(t *testing.T) {
 	}
 }
 
-// TestAtLeast checks the one version check after construction, against the caller's minimum.
 func TestAtLeast(t *testing.T) {
 	t.Parallel()
 	tl, err := tool.NewExec(t.Context(), standinSpec(installStandin(t), "1.2.3", "1.0"))
@@ -428,8 +374,6 @@ func TestAtLeast(t *testing.T) {
 	}
 }
 
-// TestContainerMemoryLimit checks that a bounded Spec's every container run, the version
-// command's included, passes the bound as --memory with the rest of the lockdown.
 func TestContainerMemoryLimit(t *testing.T) {
 	t.Parallel()
 	dir := installDocker(t, "29.0.1")

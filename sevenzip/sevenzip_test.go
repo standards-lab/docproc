@@ -22,30 +22,19 @@ func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{"7zz": sevenZip})
 }
 
-// standinSettings are the stand-in 7zz's settings: the version its banner names, the listing its
-// l command prints, and the items its e command writes.
 type standinSettings struct {
-	Version string `json:"version"`
-	Listing string `json:"listing"`
-	// Items are the archive's items, in its order, as e writes them.
-	Items []standinItem `json:"items"`
-	// Cut, when not zero, ends an e run that names no item after that many bytes, failing with a
-	// data error, as a damaged block does.
-	Cut int `json:"cut"`
+	Version string        `json:"version"`
+	Listing string        `json:"listing"`
+	Items   []standinItem `json:"items"`
+	Cut     int           `json:"cut"`
 }
 
-// standinItem is one item of the stand-in's archive: its name, its content, and whether it is
-// encrypted, which e writes nothing of, failing as a wrong password does.
 type standinItem struct {
 	Name      string `json:"name"`
 	Content   string `json:"content"`
 	Encrypted bool   `json:"encrypted"`
 }
 
-// sevenZip is the stand-in 7zz. Its l command prints its settings' listing. Its e command writes
-// the content of the items an -i! switch names, or, with none, of every item no -x! switch
-// removes, in order, matching each name whole; an encrypted item fails it once the rest are
-// written. Anything else prints the banner of its settings' version.
 func sevenZip(r tooltest.Run) int {
 	var s standinSettings
 	if err := r.Settings(&s); err != nil {
@@ -63,7 +52,6 @@ func sevenZip(r tooltest.Run) int {
 	return 0
 }
 
-// extract is the stand-in's e command, over args.
 func (s standinSettings) extract(args []string) int {
 	include, exclude := map[string]bool{}, map[string]bool{}
 	for _, a := range args {
@@ -103,8 +91,6 @@ func (s standinSettings) extract(args []string) int {
 	return 0
 }
 
-// excluded reports whether an -x! switch of exclude's names removes the item named name, as 7zz's
-// does: one names it, or a directory it lies under.
 func excluded(name string, exclude map[string]bool) bool {
 	for p := name; ; {
 		if exclude[p] {
@@ -118,15 +104,12 @@ func excluded(name string, exclude map[string]bool) bool {
 	}
 }
 
-// standin builds a 7zz Tool over the test binary, linked as 7zz with settings, printing its
-// version's banner, its Spec's minimum lowered so the Tool is built whatever version it prints.
 func standin(t *testing.T, settings standinSettings) *tool.Tool {
 	t.Helper()
 	tl, _ := standinLinked(t, settings)
 	return tl
 }
 
-// standinLinked is standin, returning the link too, whose runs tooltest.Runs gives.
 func standinLinked(t *testing.T, settings standinSettings) (*tool.Tool, string) {
 	t.Helper()
 	spec := sevenzip.SevenZipSpec()
@@ -139,7 +122,6 @@ func standinLinked(t *testing.T, settings standinSettings) (*tool.Tool, string) 
 	return tl, link
 }
 
-// TestNewReaderNil: a Config with no 7zz is the caller's mistake, and panics naming the field.
 func TestNewReaderNil(t *testing.T) {
 	t.Parallel()
 	defer func() {
@@ -150,8 +132,6 @@ func TestNewReaderNil(t *testing.T) {
 	_, _ = sevenzip.NewReader(sevenzip.Config{})
 }
 
-// TestNewReaderMinimum: a 7zz older than 24.07, whatever its Spec's minimum, is refused with a
-// *tool.VersionError wrapping tool.ErrTooOld; 24.07 is accepted.
 func TestNewReaderMinimum(t *testing.T) {
 	t.Parallel()
 	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.06"})})
@@ -163,8 +143,6 @@ func TestNewReaderMinimum(t *testing.T) {
 	}
 }
 
-// TestExtractWriteFails: a writer that fails stops the stand-in's 1 MiB write, and Extract returns
-// the writer's error, not 7zz's exit at the broken pipe.
 func TestExtractWriteFails(t *testing.T) {
 	t.Parallel()
 	tl := standin(t, standinSettings{Version: "26.05", Items: []standinItem{{Name: "big", Content: strings.Repeat("x", 1<<20)}}})
@@ -183,15 +161,12 @@ func TestExtractWriteFails(t *testing.T) {
 
 var errWriterFull = errors.New("writer full")
 
-// failingWriter is a writer whose every write fails with errWriterFull.
 type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errWriterFull }
 
-// fixture returns the path of one of the package's fixtures, under testdata.
 func fixture(name string) string { return filepath.Join("testdata", name) }
 
-// TestFixtureSums holds every committed fixture to the SHA-256 the testdata README gives it.
 func TestFixtureSums(t *testing.T) {
 	readme, err := os.ReadFile(fixture("README.md"))
 	if err != nil {

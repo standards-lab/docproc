@@ -11,7 +11,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// zipOf returns a ZIP of the named entries, each holding its own name, in order.
 func zipOf(t *testing.T, names ...string) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -31,13 +30,6 @@ func zipOf(t *testing.T, names ...string) string {
 	return buf.String()
 }
 
-// TestAtContent: a ZIP holding [Content_Types].xml is an OOXML package, office's, whatever its
-// name and wherever the entry is in its central directory, its reason naming the entry, and one
-// that holds it only in a deeper folder, or holds none, is an archive by its name; a PDF header
-// after white space or a byte order mark is a PDF; content whose head is text, named with a text
-// extension, is text before a short signature, but not before a binary head; and a header of
-// From and Date, or From and Received, makes content of no signature and no text extension a
-// message, while From or Date alone, a text extension, or a first line that is no field don't.
 func TestAtContent(t *testing.T) {
 	const ooxml = "ZIP signature with a [Content_Types].xml entry, an OOXML package"
 	many := make([]string, 0, 2001)
@@ -87,7 +79,6 @@ func TestAtContent(t *testing.T) {
 			if got != c.want || why != c.why {
 				t.Errorf("route %q (%s), want %q (%s)", got, why, c.want, c.why)
 			}
-			// At over the same bytes, given a head, routes them alike.
 			r := strings.NewReader(c.content)
 			head := []byte(c.content[:min(len(c.content), route.HeadLen)])
 			if got2, why2, err := route.At(r, int64(len(c.content)), head, c.filename, ""); err != nil || got2 != got || why2 != why {
@@ -97,10 +88,6 @@ func TestAtContent(t *testing.T) {
 	}
 }
 
-// TestAtXPS: a ZIP holding FixedDocumentSequence.fdseq, whole or as its first piece, is an XPS
-// package, unrouted whatever its name, a whole one even though it holds [Content_Types].xml too;
-// OOXML packages are still office's, by the entry or their name, and a plain ZIP still an
-// archive. The pieced package is laid out as LargeData.one's embedded "testing - large.docx" is.
 func TestAtXPS(t *testing.T) {
 	const (
 		ooxml   = "ZIP signature with a [Content_Types].xml entry, an OOXML package"
@@ -143,8 +130,6 @@ func TestAtXPS(t *testing.T) {
 	}
 }
 
-// TestExt: an extension is lowercased, with trailing dots and spaces trimmed, of a name or a path
-// by either separator.
 func TestExt(t *testing.T) {
 	for name, want := range map[string]string{
 		"Report.PDF":         ".pdf",

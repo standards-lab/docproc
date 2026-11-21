@@ -19,30 +19,16 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// storeCaller is a caller dispatching a mail store as the package doc's "Resuming a store" says:
-// it gathers each message's outputs, those named "message ...", and commits them, its cursor
-// advanced to the message's id, once the message's last output has come, the one whose event
-// carries the cursor in After; each message record of the read's own is committed decoded, for a
-// Threader to be fed. It saves a checkpoint at every message: the fixtures' few messages make
-// every message a crash point the test can resume from.
 type storeCaller struct {
-	// committed are the committed message outputs, as "kind name", and messages the committed
-	// message records of the read's own, decoded.
-	committed []string
-	messages  []*email.Message
-	// pending are the outputs of the message whose last output hasn't come, and pendingMessage
-	// its record, decoded.
+	committed      []string
+	messages       []*email.Message
 	pending        []string
 	pendingMessage *email.Message
-	// cursor is the last committed message's id.
-	cursor uint64
-	// prepared are the SHA-256s of the parts below the input whose stage prepared them.
-	prepared []string
-	// events are the parts' own events.
-	events []dispatch.Event
+	cursor         uint64
+	prepared       []string
+	events         []dispatch.Event
 }
 
-// take takes ev, as the caller's loop body would.
 func (c *storeCaller) take(t *testing.T, ev dispatch.Event) {
 	t.Helper()
 	if ev.Warning != nil {
@@ -75,8 +61,6 @@ func (c *storeCaller) take(t *testing.T, ev dispatch.Event) {
 	c.cursor = ev.After
 }
 
-// threads returns the threads of messages, a Threader fed each, as a consumer threads the
-// message records it persisted.
 func threads(messages ...[]*email.Message) []*email.Thread {
 	var tr email.Threader
 	for _, ms := range messages {
@@ -87,8 +71,6 @@ func threads(messages ...[]*email.Message) []*email.Thread {
 	return tr.Threads()
 }
 
-// crashing is an index that, once crashed is set, releases nothing, as a process that died
-// would leave its claims and pending outputs behind.
 type crashing struct {
 	dispatch.Index
 	crashed atomic.Bool
@@ -101,15 +83,6 @@ func (c *crashing) Release(ctx context.Context, key dispatch.Key, token string) 
 	return c.Index.Release(ctx, key, token)
 }
 
-// TestStoreCrashResume dispatches mailbox.pst and nine.mboxrd whole over a file index, then, on a
-// fresh one, again until a crash just after message K's last output: at the end of the next
-// message's first attachment where there is one, so that attachment is recorded, else at once.
-// The crash either stops the loop, the dispatcher releasing its claims, or leaves the claims'
-// temporary logs behind, a dead process's, which the resumed dispatch's index removes as it
-// opens. The dispatch resumed with After set to the cursor, K's id, commits the rest: the
-// committed message outputs of the two equal the whole dispatch's, in order, none twice; every
-// part prepared before the crash is seen; the threads of the message records committed by the
-// two are the whole read's; and no temporary log is left.
 func TestStoreCrashResume(t *testing.T) {
 	stages := dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: stages.NewVisionStage()}
 	for _, rel := range []string{"generated/pst/mailbox.pst", "mime/nine.mboxrd"} {
@@ -139,12 +112,10 @@ func TestStoreCrashResume(t *testing.T) {
 							t.Fatal(err)
 						}
 						if past && ev.Output != nil && ev.Part.Depth == 0 && strings.HasPrefix(ev.Output.Name, "message") {
-							// The next message's own output, with no attachment before it.
 							break
 						}
 						crashed.take(t, ev)
 						if past && ev.Output == nil {
-							// The next message's first attachment, recorded.
 							break
 						}
 						past = crashed.cursor == k
@@ -208,9 +179,6 @@ func TestStoreCrashResume(t *testing.T) {
 	}
 }
 
-// crashPoint returns the id of the message the crash comes after: the one before the first
-// message, past the first, whose first attachment is found as a part a stage prepares, so the
-// crash comes at that attachment's end, and true; else the middle message, and false.
 func crashPoint(t *testing.T, whole *storeCaller) (uint64, bool) {
 	t.Helper()
 	var ids []uint64
@@ -239,7 +207,6 @@ func crashPoint(t *testing.T, whole *storeCaller) (uint64, bool) {
 	return ids[len(ids)/2], false
 }
 
-// fileIndex returns a file index in dir.
 func fileIndex(t *testing.T, dir string) *dispatch.FileIndex {
 	t.Helper()
 	idx, err := dispatch.NewFileIndex(dir)

@@ -42,7 +42,6 @@ func Commands(cfg *graph.Node[Config]) []*cli.Command {
 	return []*cli.Command{command(cfg)}
 }
 
-// exitStatus is the run command's help footer: what each exit code means.
 const exitStatus = `Exit status:
   0  the run ended: every input was dispatched, though some of its parts failed or an input
      stopped with an error before its own event; the summary's last line counts both, a
@@ -57,7 +56,6 @@ const exitStatus = `Exit status:
   2  a usage error, such as an unknown route to --exclude or --workers under 1
 `
 
-// command returns the run command: docproc run <path>... --out <dir>.
 func command(cfg *graph.Node[Config]) *cli.Command {
 	var (
 		out      string
@@ -92,8 +90,6 @@ func command(cfg *graph.Node[Config]) *cli.Command {
 			return nil
 		},
 		Run: func(ctx context.Context, inv *cli.Invocation) error {
-			// The inputs are collected before any tool is probed, so an argument that yields
-			// none fails the run at once.
 			inputs, err := collect(inv.Args)
 			if err != nil {
 				return err

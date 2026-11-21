@@ -19,19 +19,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// The picture stage's hermetic tests run its Converter over a stand-in magick, internal/tooltest's
-// link named magick, acting on its arguments as ImageMagick would, as the picture package's own
-// tests do.
-
-// pictureSettings are the stand-in magick's settings: the format listing its -list format prints,
-// and how many pages its pages run writes.
 type pictureSettings struct {
 	Formats string `json:"formats"`
 	Pages   int    `json:"pages"`
 }
 
-// pictureListing is a format listing whose HEIC, WebP, and AVIF readers magick has, in the form
-// ImageMagick 7.1.2-34 prints it.
 const pictureListing = `   Format  Module    Mode  Description
 -------------------------------------------------------------------------------
      AVIF  HEIC      rw+   AV1 Image File Format (1.23.6)
@@ -39,7 +31,6 @@ const pictureListing = `   Format  Module    Mode  Description
      WEBP* WEBP      rw+   WebP Image Format (libwebp 1.6.0 [0210])
 `
 
-// The pictures the picture stage's tests dispatch, by their signatures.
 const (
 	pictureTIFF = "II*\x00\x08\x00\x00\x00" + "a stand-in TIFF"
 	pictureHEIC = "\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic"
@@ -47,11 +38,6 @@ const (
 	pictureAVIF = "\x00\x00\x00\x18ftypavif\x00\x00\x00\x00mif1avif"
 )
 
-// pictureStandin is the stand-in magick. With -version alone it prints its version, 7.1.2-34, and
-// with -list format null: its settings' listing. Otherwise its last argument names its output,
-// "png:path": a pages run, one with +adjoin, writes its settings' count of PNGs, each to the
-// path with %d put for its index from 0, holding PNG's signature and "page N"; any other run
-// writes one, holding PNG's signature and its first argument, the input it read.
 func pictureStandin(r tooltest.Run) int {
 	var settings pictureSettings
 	if err := r.Settings(&settings); err != nil {
@@ -87,8 +73,6 @@ func pictureStandin(r tooltest.Run) int {
 	return 0
 }
 
-// sofficeStandin is the stand-in soffice, which the picture stage's tests never convert through:
-// with --version alone it prints its version, 26.8.1.1, and any other run fails.
 func sofficeStandin(r tooltest.Run) int {
 	if len(r.Args) == 1 && r.Args[0] == "--version" {
 		fmt.Println("LibreOffice 26.8.1.1 680(Build:1)")
@@ -98,9 +82,6 @@ func sofficeStandin(r tooltest.Run) int {
 	return 2
 }
 
-// standinPictureStage builds a picture stage over the stand-in magick and soffice, through the
-// exec runner, with listing as magick's format listing and pages as the pages its pages run
-// writes.
 func standinPictureStage(t *testing.T, listing string, pages int) *stages.PictureStage {
 	t.Helper()
 	spec := picture.MagickSpec()
@@ -123,8 +104,6 @@ func standinPictureStage(t *testing.T, listing string, pages int) *stages.Pictur
 	return s
 }
 
-// TestPictureStageTIFFPages: a TIFF of three pages is prepared as three image outputs, in page
-// order, each a PNG named "page N", its Meta naming the kind, its page, and the page count.
 func TestPictureStageTIFFPages(t *testing.T) {
 	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 3)}, dispatch.NewMemoryIndex(0))
@@ -155,8 +134,6 @@ func TestPictureStageTIFFPages(t *testing.T) {
 	}
 }
 
-// TestPictureStageRasters: a HEIC, a WebP, and an AVIF are each prepared as one image output, a
-// PNG named "picture", its Meta naming the kind, its first image read through its kind's coder.
 func TestPictureStageRasters(t *testing.T) {
 	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, pictureListing, 0)}, dispatch.NewMemoryIndex(0))
@@ -189,8 +166,6 @@ func TestPictureStageRasters(t *testing.T) {
 	}
 }
 
-// TestPictureNoReader: a HEIC, a WebP, and an AVIF whose readers magick's listing doesn't mark
-// have no processor yet, each reason naming the missing reader.
 func TestPictureNoReader(t *testing.T) {
 	t.Parallel()
 	d := newDispatcher(t, dispatch.Stages{route.VisionConverted: standinPictureStage(t, "", 0)}, dispatch.NewMemoryIndex(0))

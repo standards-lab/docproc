@@ -93,7 +93,6 @@ pub fn write(
     Ok(())
 }
 
-/// A page's line, its media stored first. `place` names its section in warnings.
 fn page_line(
     page: &Page,
     section: &str,
@@ -118,12 +117,8 @@ fn page_line(
     })
 }
 
-/// The parser's time for a creation time it couldn't read: the Unix epoch, which it gives with
-/// a warning of its own.
 const UNREAD_TIME: time::UtcDateTime = time::UtcDateTime::UNIX_EPOCH;
 
-/// A page's creation time; none when it is the parser's fallback for one it couldn't read, which
-/// the page's `place` is warned of.
 fn creation_time(time: time::UtcDateTime, place: &str) -> Option<String> {
     if time == UNREAD_TIME {
         warn(place, "its creation time can't be read; it is left out");
@@ -139,9 +134,6 @@ pub fn place(path: &[String]) -> String {
     path.iter().map(|name| format!("/{name}")).collect()
 }
 
-/// The reason a section at `path` that failed to parse with `reason` is refused or skipped with:
-/// the encrypted section's, when the file holds 2.5.19's key, else the parser's own. A file the
-/// scan can't read keeps the parser's reason.
 fn failed(path: &Path, reason: String) -> String {
     match File::open(path).and_then(encryption::holds_key) {
         Ok(true) => encryption::REASON.to_owned(),
@@ -149,8 +141,6 @@ fn failed(path: &Path, reason: String) -> String {
     }
 }
 
-/// Whether the parser refused a section because its store is a table of contents, by its error's
-/// reason. Its error kind isn't public, so this reads ErrorKind::NotASectionFile's message.
 fn is_toc(reason: &str) -> bool {
     reason.starts_with("Not a section file: ")
 }
@@ -165,8 +155,6 @@ pub fn typed(path: &Path) -> TypedPath<'_> {
     TypedPath::new(path.as_os_str().as_bytes(), PathType::Unix)
 }
 
-/// A page GUID as the parser gives it, "{5EAF76B1-8DDE-...}", in FileIdentity's form:
-/// lowercase and hyphenated, without braces.
 fn guid(stored: &str) -> String {
     stored
         .trim_start_matches('{')
@@ -206,8 +194,6 @@ mod tests {
         );
     }
 
-    /// A section named with `": "` and a message holding a line break make one warning line, the
-    /// name's colon escaped so the line splits at its first three `": "` as docproc splits it.
     #[test]
     fn a_warning_at_a_place_is_one_line_that_splits_at_its_where() {
         let path = ["Group".to_owned(), "Notes: 2024".to_owned()];
@@ -225,8 +211,6 @@ mod tests {
         assert_eq!(parts[3], "the first line\\nthe second");
     }
 
-    /// The parser's 1970 fallback is no creation time; any other time is one, the epoch's
-    /// next second among them.
     #[test]
     fn the_parsers_fallback_is_no_creation_time() {
         assert_eq!(

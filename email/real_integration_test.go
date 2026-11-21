@@ -22,22 +22,10 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// These tests run the real docproc-mail, built from tools/mail in this checkout and found on PATH,
-// which the unit tier doesn't provide, so they run in the integration tier.
-
-// fixtures is docproc-mail's committed inputs, read in place under tools/.
 const fixtures = "mail/tests/fixtures"
 
-// inputExtensions are the extensions of docproc-mail's committed inputs, as its golden test
-// names them; mbox.rlug's splits, mbox.rlug-0 to -4, are .eml inputs of their own without
-// goldens.
 var inputExtensions = []string{".pst", ".msg", ".eml", ".mboxrd", ".rlug"}
 
-// TestRealGoldens runs the real docproc-mail over every committed input that has a golden, with a
-// media directory, and holds its records to the golden as TestReplayGoldens does: one record per
-// line, each written back as its line, the senders' added SMTP addresses their headers', and the
-// golden's warnings. Each attachment's file is in the media directory, its content's SHA-256 its
-// name's and its size the record's.
 func TestRealGoldens(t *testing.T) {
 	r := realReader(t)
 	root := tooltest.Tools(t, goldens)
@@ -85,9 +73,6 @@ func TestRealGoldens(t *testing.T) {
 	}
 }
 
-// checkWritten checks that each of m's attachments and media with a file, a nested message's
-// included, was written at its Path, its content's SHA-256 its SHA256 and an attachment's size the
-// record's.
 func checkWritten(t *testing.T, m *email.Message) {
 	t.Helper()
 	check := func(file, path, sum string, size *int64) {
@@ -117,10 +102,6 @@ func checkWritten(t *testing.T, m *email.Message) {
 	}
 }
 
-// TestRealBuilt runs the real docproc-mail over the built .msg with a media directory. Its one
-// message holds builtSources' attachments, in order, each by value and written as its source, byte
-// for byte; the forwarded .msg, whose source docproc-mail's fixtures no longer hold byte for byte,
-// as an OLE2 compound file, a file and not an embedded message.
 func TestRealBuilt(t *testing.T) {
 	r := realReader(t)
 	media := t.TempDir()
@@ -160,13 +141,10 @@ func TestRealBuilt(t *testing.T) {
 	}
 }
 
-// builtSource is one of the built .msg's attachments: its filename and its source, a file, or a
-// member of a ZIP, under the repository; none for the forwarded .msg.
 type builtSource struct {
 	filename, path, member string
 }
 
-// builtSources are the built .msg's attachments, in order, as email/testdata/README.md gives them.
 var builtSources = []builtSource{
 	{"minutes.docx", "../office/testdata/ooxml/tables.libreoffice.docx", ""},
 	{"budget.xls", "../office/testdata/legacy/generated/formulas.libreoffice.xls", ""},
@@ -175,7 +153,6 @@ var builtSources = []builtSource{
 	{"forwarded.msg", "", ""},
 }
 
-// content returns s's source's bytes.
 func (s builtSource) content(t *testing.T) []byte {
 	t.Helper()
 	if s.member == "" {
@@ -188,7 +165,6 @@ func (s builtSource) content(t *testing.T) []byte {
 	return zipMember(t, s.path, s.member)
 }
 
-// zipMember returns the bytes of member in the ZIP at path.
 func zipMember(t *testing.T, path, member string) []byte {
 	t.Helper()
 	zr, err := zip.OpenReader(path)
@@ -208,10 +184,6 @@ func zipMember(t *testing.T, path, member string) []byte {
 	return b
 }
 
-// TestRealMboxOrdinals: an mbox message's id is its ordinal in the file, so an empty entry, a
-// separator line with the next straight after it, skips a number, and a message docproc-mail can't
-// read, one whose header block has no From or Date, is a skipped record of kind message whose id
-// is its ordinal, with a warning naming it.
 func TestRealMboxOrdinals(t *testing.T) {
 	r := realReader(t)
 	input := filepath.Join(t.TempDir(), "ordinals.mbox")
@@ -242,12 +214,8 @@ func TestRealMboxOrdinals(t *testing.T) {
 	}
 }
 
-// TestRealRefused: the real docproc-mail refuses an .ost, and a file that is no mail, neither a
-// .pst, a .msg, an .eml, nor an mbox, with exit code 3, and the error carries its reason, which
-// isn't classed, without the input's path.
 func TestRealRefused(t *testing.T) {
 	r := realReader(t)
-	// An .ost's header: a PST's, its client magic SO, padded to the header's size.
 	ost := append([]byte("!BDN\x00\x00\x00\x00SO\x24\x00"), make([]byte, 552)...)
 	cases := []struct {
 		name    string
@@ -278,7 +246,6 @@ func TestRealRefused(t *testing.T) {
 	}
 }
 
-// realReader builds a Reader over the real docproc-mail on PATH, through the exec runner.
 func realReader(t *testing.T) *email.Reader {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), email.MailSpec())
@@ -292,15 +259,11 @@ func realReader(t *testing.T) *email.Reader {
 	return r
 }
 
-// mailFixture returns the path of rel, a path under docproc-mail's tests/fixtures, read in place.
 func mailFixture(t *testing.T, rel string) string {
 	t.Helper()
 	return tooltest.Tools(t, fixtures+"/"+rel)
 }
 
-// describe gives rec's kind, its ids, and its skips in a few words: a store's format; a message's
-// id, if any, and each attachment's method, an embedded message's subject after it; a skipped
-// record's kind, its message, and its id; a warning's where and what.
 func describe(rec email.Record) string {
 	switch rec := rec.(type) {
 	case *email.Store:

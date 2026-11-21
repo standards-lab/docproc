@@ -10,8 +10,6 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// TestMain runs the package's tests in a local zone that isn't UTC, its stand-in acting as the
-// envelope's tool under three names: the cases' "tool", and the two tools whose goldens it reads.
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
 		"tool":            standin,
@@ -20,26 +18,16 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// standinSettings are the stand-in tool's settings, which its link names.
 type standinSettings struct {
-	// Stdout is what a run writes to stdout.
-	Stdout string `json:"stdout"`
-	// Stderr is what a run writes to stderr, after its stdout and its Warnings.
-	Stderr string `json:"stderr"`
-	// StderrFile, when set, is a file whose content a run writes to stderr after Stderr.
+	Stdout     string `json:"stdout"`
+	Stderr     string `json:"stderr"`
 	StderrFile string `json:"stderr_file"`
-	// Warnings is how many warning lines a run writes to stderr, numbered, before Stderr.
-	Warnings int `json:"warnings"`
-	// Exit is a run's exit code.
-	Exit int `json:"exit"`
-	// Kill makes a run kill itself with SIGKILL once it has written its output.
-	Kill bool `json:"kill"`
-	// Sleep makes a run sleep a minute after writing its stdout, for a test to stop reading.
-	Sleep bool `json:"sleep"`
+	Warnings   int    `json:"warnings"`
+	Exit       int    `json:"exit"`
+	Kill       bool   `json:"kill"`
+	Sleep      bool   `json:"sleep"`
 }
 
-// standin is the stand-in tool. With --version alone it prints a schema "2" version, as the
-// tools do; otherwise it writes its settings' output and exits as they say. It reads no input.
 func standin(r tooltest.Run) int {
 	var s standinSettings
 	if err := r.Settings(&s); err != nil {

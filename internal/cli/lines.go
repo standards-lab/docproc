@@ -50,7 +50,6 @@ func (w *LineWriter) Last() string { return w.last }
 // Err returns the first error Line returned, nil when there was none.
 func (w *LineWriter) Err() error { return w.err }
 
-// emit passes the partial line to Line and empties it.
 func (w *LineWriter) emit() {
 	s := string(bytes.TrimSpace(w.partial))
 	w.partial = w.partial[:0]

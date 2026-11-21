@@ -32,13 +32,11 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/apptest"
 )
 
-// The inputs' contents, written by the tests into a fresh directory.
 const (
 	helloText = "Hello from docproc.\n"
 	notesText = "Notes kept in an archive.\n"
 )
 
-// zipOf returns a ZIP holding each of files, name then content, in order.
 func zipOf(t *testing.T, files ...string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
@@ -58,12 +56,8 @@ func zipOf(t *testing.T, files ...string) []byte {
 	return buf.Bytes()
 }
 
-// brokenZip is a ZIP whose central directory can't be read: inspection finds it unsafe, so its
-// part is quarantined before any stage runs.
 const brokenZip = "PK\x03\x04 a local header and no central directory"
 
-// write writes each of files, a path under dir then its content, making its directories, each
-// file mode 0644, and returns dir.
 func write(t *testing.T, dir string, files ...string) string {
 	t.Helper()
 	for i := 0; i < len(files); i += 2 {
@@ -78,15 +72,11 @@ func write(t *testing.T, dir string, files ...string) string {
 	return dir
 }
 
-// sha returns s's SHA-256, lowercase hex.
 func sha(s string) string {
 	sum := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(sum[:])
 }
 
-// sevenZip writes a stand-in for 7-Zip's 7zz, which prints 7zz's version line whatever its
-// arguments, and returns a lookup that finds it and no other tool. The archive stage it wires
-// reads a ZIP through archive/zip, so the stand-in is never asked to extract.
 func sevenZip(t *testing.T) stages.Lookup {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "7zz")
@@ -102,7 +92,6 @@ func sevenZip(t *testing.T) stages.Lookup {
 	}
 }
 
-// probes wraps lookup, recording each program it is asked for.
 func probes(lookup stages.Lookup) (stages.Lookup, *apptest.Recorder) {
 	r := &apptest.Recorder{}
 	return func(program string) (string, error) {
@@ -111,15 +100,11 @@ func probes(lookup stages.Lookup) (stages.Lookup, *apptest.Recorder) {
 	}, r
 }
 
-// result is one run of the App: its exit code and its streams.
 type result struct {
 	code           int
 	stdout, stderr string
 }
 
-// runCmd runs docproc run over args under ctx, with every bound at its starting value but the
-// tools' memory bound, which would need prlimit, after setup has replaced what the test
-// replaces.
 func runCmd(t *testing.T, ctx context.Context, setup func(*app.App), args ...string) result {
 	t.Helper()
 	clearBounds(t)
@@ -131,8 +116,6 @@ func runCmd(t *testing.T, ctx context.Context, setup func(*app.App), args ...str
 	return result{code, stdout.String(), stderr.String()}
 }
 
-// runOK runs docproc run as runCmd does, finding tools through lookup, and fails the test unless
-// it exits 0.
 func runOK(t *testing.T, lookup stages.Lookup, args ...string) result {
 	t.Helper()
 	r := runCmd(t, context.Background(), func(a *app.App) { apptest.Tools(a, lookup) }, args...)
@@ -142,14 +125,11 @@ func runOK(t *testing.T, lookup stages.Lookup, args ...string) result {
 	return r
 }
 
-// readRun is one run read back through rundir: its manifest and its record's lines.
 type readRun struct {
 	manifest schema.Manifest
 	lines    []schema.Event
 }
 
-// readRuns reads every run of the run directory out through rundir's reader, in the order they
-// began, failing the test on any error, a record's included.
 func readRuns(t *testing.T, out string) []readRun {
 	t.Helper()
 	dir, err := rundir.Open(out)
@@ -178,7 +158,6 @@ func readRuns(t *testing.T, out string) []readRun {
 	return runs
 }
 
-// onlyRun reads the run directory out's one run.
 func onlyRun(t *testing.T, out string) readRun {
 	t.Helper()
 	runs := readRuns(t, out)
@@ -188,7 +167,6 @@ func onlyRun(t *testing.T, out string) readRun {
 	return runs[0]
 }
 
-// inputLines returns the input's own part line of each input, in the record's order.
 func (r readRun) inputLines() []schema.Event {
 	var lines []schema.Event
 	for _, e := range r.lines {
@@ -199,8 +177,6 @@ func (r readRun) inputLines() []schema.Event {
 	return lines
 }
 
-// line returns the first line of kind for the part named name, failing the test when there is
-// none.
 func (r readRun) line(t *testing.T, kind, name string) schema.Event {
 	t.Helper()
 	for _, e := range r.lines {
@@ -212,13 +188,11 @@ func (r readRun) line(t *testing.T, kind, name string) schema.Event {
 	return schema.Event{}
 }
 
-// lastLine returns s's last non-empty line.
 func lastLine(s string) string {
 	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
 	return lines[len(lines)-1]
 }
 
-// wantLine fails the test unless one of out's lines matches the regular expression re whole.
 func wantLine(t *testing.T, out, re string) {
 	t.Helper()
 	if !regexp.MustCompile(`(?m)^` + re + `$`).MatchString(out) {
@@ -226,8 +200,6 @@ func wantLine(t *testing.T, out, re string) {
 	}
 }
 
-// A file argument is one input and a directory yields each regular file under it in lexical
-// order; a file reached twice is one input, from the argument that reached it first.
 func TestRun_CollectsInputs(t *testing.T) {
 	root := t.TempDir()
 	in := write(t, filepath.Join(root, "in"), "b.txt", "b\n", "a/c.txt", "c\n", "a/b.txt", "ab\n")
@@ -261,8 +233,6 @@ func TestRun_CollectsInputs(t *testing.T) {
 	}
 }
 
-// Every path is recorded absolute and cleaned, however it was given, and a file argument's path
-// under itself is ".".
 func TestRun_PathsAbsolute(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "in/hello.txt", helloText)
@@ -283,15 +253,12 @@ func TestRun_PathsAbsolute(t *testing.T) {
 		t.Errorf("input %q, file arg %q, path %q; want %s, %s, hello.txt", lines[0].Input, f.Arg, f.Path, filepath.Join(in, "hello.txt"), in)
 	}
 
-	// The same file named alone is its own argument.
 	runOK(t, apptest.NoTools, "in/hello.txt", "--out", "out2")
 	if f := onlyRun(t, filepath.Join(root, "out2")).inputLines()[0].File; f.Arg != filepath.Join(in, "hello.txt") || f.Path != "." {
 		t.Errorf("file arg %q, path %q; want %s, .", f.Arg, f.Path, filepath.Join(in, "hello.txt"))
 	}
 }
 
-// A named argument that is a symbolic link is followed, to a file or a directory, and a link
-// under a directory is not, and is no input.
 func TestRun_FollowsNamedLinks(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, "target.txt", helloText, "real/f.txt", "f\n", "in/a.txt", "a\n")
@@ -319,7 +286,6 @@ func TestRun_FollowsNamedLinks(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("inputs = %q, want %q", got, want)
 	}
-	// A linked file's line describes the file it leads to, under the link's name.
 	if f := lines[0].File; f.Name != "link.txt" || f.Size != int64(len(helloText)) || !strings.HasPrefix(f.Mode, "-") {
 		t.Errorf("link.txt's file = %+v, want the target's regular file of %d bytes", f, len(helloText))
 	}
@@ -328,8 +294,6 @@ func TestRun_FollowsNamedLinks(t *testing.T) {
 	}
 }
 
-// An argument that is neither a file nor a directory, one that doesn't exist, and arguments that
-// yield no input fail the run, exit 1, before any tool is probed or the run directory is made.
 func TestRun_RefusesInputsBeforeProbing(t *testing.T) {
 	root := t.TempDir()
 	empty := filepath.Join(root, "empty")
@@ -376,8 +340,6 @@ func TestRun_RefusesInputsBeforeProbing(t *testing.T) {
 	}
 }
 
-// A usage error exits 2 before anything is built: an unknown route to --exclude, --workers under
-// 1, no --out, or no path.
 func TestRunCommand_UsageErrors(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -416,7 +378,6 @@ func TestRunCommand_UsageErrors(t *testing.T) {
 	}
 }
 
-// The run's help states what each exit status means, failed parts and error inputs exiting 0.
 func TestRun_HelpStatesExitStatus(t *testing.T) {
 	a, stdout, _, _ := newApp(t)
 	if code := a.Run(context.Background(), []string{"run", "--help"}); code != process.ExitUsage {
@@ -429,7 +390,6 @@ func TestRun_HelpStatesExitStatus(t *testing.T) {
 	}
 }
 
-// --workers defaults to the host's CPUs and has no ceiling.
 func TestRun_Workers(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n", "b.txt", "b\n")
 	for _, tc := range []struct {
@@ -454,8 +414,6 @@ func TestRun_Workers(t *testing.T) {
 	}
 }
 
-// --exclude repeats, each route's stage left out: its row is excluded, and its parts have no
-// processor yet.
 func TestRun_Exclude(t *testing.T) {
 	in := write(t, t.TempDir(), "hello.txt", helloText)
 	out := filepath.Join(t.TempDir(), "out")
@@ -475,8 +433,6 @@ func TestRun_Exclude(t *testing.T) {
 	wantLine(t, r.stdout, `text\s+-\s+excluded\s+`)
 }
 
-// The run prints the stage table, and its manifest names its tools, its stage table, its docproc
-// build, and how many inputs it collected, and ends without an error.
 func TestRun_StageTableAndManifest(t *testing.T) {
 	in := write(t, t.TempDir(), "hello.txt", helloText, "notes.zip", string(zipOf(t, "notes.txt", notesText)))
 	out := filepath.Join(t.TempDir(), "out")
@@ -495,8 +451,6 @@ func TestRun_StageTableAndManifest(t *testing.T) {
 	}
 
 	m := onlyRun(t, out).manifest
-	// The stages as the run built them: under the starting bounds, the memory bound as the test
-	// set it.
 	opts := startingBounds().Stages
 	opts.Memory = 0
 	want, err := stages.Build(context.Background(), sevenZip(t), opts)
@@ -528,9 +482,6 @@ func TestRun_StageTableAndManifest(t *testing.T) {
 	}
 }
 
-// One record line per event, in dispatch's order: each output's content is in the run
-// directory's content store, a found part's line follows its output's, and the input's own line,
-// its last, carries its file, with its detected type, and its time.
 func TestRun_Record(t *testing.T) {
 	in := write(t, t.TempDir(), "hello.txt", helloText, "notes.zip", string(zipOf(t, "notes.txt", notesText)))
 	out := filepath.Join(t.TempDir(), "out")
@@ -579,7 +530,6 @@ func TestRun_Record(t *testing.T) {
 	if zipped := run.line(t, schema.PartEvent, "notes.zip"); zipped.File.Detected != "application/zip" || zipped.Children != 1 {
 		t.Errorf("notes.zip's line = %+v, want detected application/zip, one child", zipped)
 	}
-	// A found part's lines carry no file and no time: they are the input's.
 	for _, e := range run.lines {
 		if (e.Kind != schema.PartEvent || e.Part.Depth > 0) && (e.File != nil || e.Time != nil) {
 			t.Errorf("line %+v carries a file or a time, want neither", e)
@@ -597,16 +547,12 @@ func TestRun_Record(t *testing.T) {
 	}
 }
 
-// A re-run over the same run directory prepares nothing: its every line is seen, the dispatcher
-// replaying a seen part's log, its children's lines and outputs included, none copied from the
-// first run's record.
 func TestRun_ReRunReplaysSeenParts(t *testing.T) {
 	in := write(t, t.TempDir(), "hello.txt", helloText, "notes.zip", string(zipOf(t, "notes.txt", notesText)))
 	out := filepath.Join(t.TempDir(), "out")
 	lookup := sevenZip(t)
 
 	runOK(t, lookup, in, "--out", out, "--workers", "1")
-	// With the first run's record gone, the second's lines can only be the dispatcher's.
 	first := readRuns(t, out)[0]
 	if err := os.RemoveAll(filepath.Join(out, "runs", first.manifest.Run)); err != nil {
 		t.Fatal(err)
@@ -639,9 +585,6 @@ func TestRun_ReRunReplaysSeenParts(t *testing.T) {
 	}
 }
 
-// A quarantined part's file is kept in the run directory, and its line names the kept file
-// whenever it exists: in the run that kept it, and in a later one, the input's and a replayed
-// child's alike.
 func TestRun_QuarantineKept(t *testing.T) {
 	in := write(t, t.TempDir(), "broken.zip", brokenZip, "outer.zip", string(zipOf(t, "inner.zip", brokenZip)))
 	out := filepath.Join(t.TempDir(), "out")
@@ -669,8 +612,6 @@ func TestRun_QuarantineKept(t *testing.T) {
 		t.Errorf("kept file = %q, %v; want the quarantined part's content", b, err)
 	}
 
-	// Once the kept file is gone, a replayed child, which has no file, names none, and an input,
-	// which has, is kept again, its line naming it, as is every line after it of the same content.
 	if err := os.RemoveAll(filepath.Join(out, "quarantine")); err != nil {
 		t.Fatal(err)
 	}
@@ -690,8 +631,6 @@ func TestRun_QuarantineKept(t *testing.T) {
 	}
 }
 
-// An unread child its stage quarantines, as an archive's entry with an unsafe name, has no file
-// and no SHA-256, so nothing is kept of it: its line names no kept file, and the run goes on.
 func TestRun_QuarantinedUnreadChild(t *testing.T) {
 	in := write(t, t.TempDir(), "traversal.zip", string(zipOf(t, "../evil.txt", "evil\n", "notes.txt", notesText)))
 	out := filepath.Join(t.TempDir(), "out")
@@ -711,8 +650,6 @@ func TestRun_QuarantinedUnreadChild(t *testing.T) {
 	}
 }
 
-// An input that can't be read is an error line, its file and its time on it and no part, and the
-// run goes on and exits 0, the summary's last line counting it.
 func TestRun_ErrorInputExits0(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root reads a file of mode 0000, so no input fails")
@@ -756,7 +693,6 @@ func TestRun_ErrorInputExits0(t *testing.T) {
 	}
 }
 
-// stage is a stand-in stage: prepare is its Prepare's body.
 type stage struct {
 	id      dispatch.Identity
 	prepare func(ctx context.Context, p dispatch.Part) error
@@ -772,8 +708,6 @@ func (s stage) Prepare(ctx context.Context, p dispatch.Part, _ string) iter.Seq2
 	}
 }
 
-// textStage makes a's runs build docproc's stages over no tool, the text route's stage replaced
-// by a stand-in that runs prepare.
 func textStage(a *app.App, prepare func(ctx context.Context, p dispatch.Part) error) {
 	apptest.Stages(a, func(ctx context.Context, opts stages.Options) (stages.Set, error) {
 		set, err := stages.Build(ctx, apptest.NoTools, opts)
@@ -785,8 +719,6 @@ func textStage(a *app.App, prepare func(ctx context.Context, p dispatch.Part) er
 	})
 }
 
-// A part that fails is its line's outcome, its error on the terminal, and the run goes on and
-// exits 0, the summary's last line counting it.
 func TestRun_FailedPartExits0(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n", "b.txt", "b\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -819,9 +751,6 @@ func TestRun_FailedPartExits0(t *testing.T) {
 	}
 }
 
-// A failed part a second run replays from the index is seen, its recorded outcome failed, and
-// the summary's last line still counts it; the run exits 0. The stand-in refuses the content,
-// the one failure the index records.
 func TestRun_ReplayedFailedPartCounts(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -849,8 +778,6 @@ func TestRun_ReplayedFailedPartCounts(t *testing.T) {
 	}
 }
 
-// A failure of the content store stops the run: it ends with the error, which the manifest
-// names, and exits 1, its record still readable.
 func TestRun_StoreFailureExits1(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root writes a directory of mode 0555, so the store doesn't fail")
@@ -885,8 +812,6 @@ func TestRun_StoreFailureExits1(t *testing.T) {
 	}
 }
 
-// A canceled run stops: its manifest ends with the cancellation, it exits 1, and its record
-// stays readable, every line written before the cancellation in it.
 func TestRun_CanceledRun(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n", "b.txt", "b\n", "c.txt", "c\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -929,10 +854,6 @@ func TestRun_CanceledRun(t *testing.T) {
 	}
 }
 
-// requiredLibrary is the docproc version a test binary of this module links: the one go.mod
-// requires when the build resolves it as a consumer does, with the workspace off, as the check
-// runs it, and (devel) when the committed go.work, or a temporary replace in go.mod, puts this
-// checkout's base module in its place.
 func requiredLibrary(t *testing.T) string {
 	t.Helper()
 	if os.Getenv("GOWORK") != "off" {

@@ -9,8 +9,6 @@ import (
 	"github.com/standards-lab/docproc/document"
 )
 
-// TestCheckRender checks CheckRender's refusals. It runs no tool and has no count, so a page of
-// any size past 1 passes.
 func TestCheckRender(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -37,8 +35,6 @@ func TestCheckRender(t *testing.T) {
 	}
 }
 
-// TestHasText checks the rule for a page having a text layer: its text not empty once whitespace
-// is trimmed.
 func TestHasText(t *testing.T) {
 	t.Parallel()
 	for text, want := range map[string]bool{

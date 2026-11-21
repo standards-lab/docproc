@@ -110,20 +110,18 @@ func Content(t *testing.T, newContent func(t *testing.T) dispatch.Content) {
 	})
 }
 
-// hash returns b's SHA-256 as lowercase hex.
 func hash(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
 
-// open reads the content sum names from c whole.
 func open(t *testing.T, c dispatch.Content, sum string) []byte {
 	t.Helper()
 	rc, err := c.Open(context.Background(), sum)
 	if err != nil {
 		t.Fatalf("open %s: %v", sum, err)
 	}
-	defer func() { _ = rc.Close() }() // read only: a close error loses nothing
+	defer func() { _ = rc.Close() }()
 	b, err := io.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("read %s: %v", sum, err)
@@ -131,7 +129,6 @@ func open(t *testing.T, c dispatch.Content, sum string) []byte {
 	return b
 }
 
-// failing is a reader whose every read fails.
 type failing struct{}
 
 func (failing) Read([]byte) (int, error) { return 0, errors.New("dispatchtest: the reader fails") }

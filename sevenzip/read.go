@@ -100,16 +100,11 @@ func (r *Reader) Read(ctx context.Context, req ReadRequest) iter.Seq2[Item, erro
 	}
 }
 
-// heldWhole reports whether the whole run holds e: a file, sized, declaring its CRC-32 or empty,
-// and not encrypted.
 func heldWhole(e Entry) bool {
 	return !e.Folder && !e.Encrypted && e.Sized && (e.HasCRC || e.Size == 0) &&
 		e.HardLink == "" && !e.IsSymlink() && !e.IsDevice()
 }
 
-// wholePlan returns which of entries the whole run holds, by index, and the listed names it
-// excludes, as Read's doc states; nil when no whole run is made, there being nothing for it to
-// hold or an exclusion it can't make with certainty.
 func wholePlan(entries []Entry) ([]bool, []string) {
 	inRun := make([]bool, len(entries))
 	excluded := map[string]bool{}
@@ -140,8 +135,6 @@ func wholePlan(entries []Entry) ([]bool, []string) {
 	return inRun, exclude
 }
 
-// shadowed reports whether an exclusion of excluded's names removes the item named name too: one
-// names it, or a directory it lies under.
 func shadowed(name string, excluded map[string]bool) bool {
 	for p := name; ; {
 		if excluded[p] {
@@ -155,23 +148,16 @@ func shadowed(name string, excluded map[string]bool) bool {
 	}
 }
 
-// wholeRun is the one 7zz run that writes the content of every item it holds, read through a
-// pipe.
 type wholeRun struct {
 	pr     *io.PipeReader
 	cancel context.CancelFunc
 	done   chan struct{}
-	// err is the run's outcome, set before done is closed.
-	err error
-	// ended is set once the run is no longer read: stopped, or its output ended.
-	ended bool
+	err    error
+	ended  bool
 }
 
-// errStopped is what a stopped whole run's writes fail with.
 var errStopped = errors.New("the whole run was stopped")
 
-// startWhole starts the whole run over the archive at path, read as format, excluding exclude's
-// names.
 func (r *Reader) startWhole(ctx context.Context, path, format string, exclude []string) *wholeRun {
 	runCtx, cancel := context.WithCancel(ctx)
 	pr, pw := io.Pipe()
@@ -185,12 +171,11 @@ func (r *Reader) startWhole(ctx context.Context, path, format string, exclude []
 		defer close(w.done)
 		stderr := &cli.LimitedBuffer{Limit: stderrLimit}
 		w.err = r.run(runCtx, args, pw, stderr)
-		pw.CloseWithError(w.err) // nil: the reader's io.EOF
+		pw.CloseWithError(w.err)
 	}()
 	return w
 }
 
-// stop ends the run, if it is still read, and waits for it to exit.
 func (w *wholeRun) stop() {
 	w.ended = true
 	w.pr.CloseWithError(errStopped)
@@ -198,27 +183,21 @@ func (w *wholeRun) stop() {
 	<-w.done
 }
 
-// outcome returns the run's error once it has exited, for a message naming why its output ended.
 func (w *wholeRun) outcome() error {
 	w.stop()
 	return w.err
 }
 
-// content is one item's Content: read from the whole run, when it holds the item and is still
-// read, or from the item's one-item run, started when it is first needed.
 type content struct {
-	r   *Reader
-	ctx context.Context
-	e   Entry
-	req ExtractRequest
-	// whole is the run that holds the item, nil when it reads alone.
-	whole *wholeRun
-	n     uint64
-	crc   hash.Hash32
-	// single is the item's one-item run, once started.
+	r      *Reader
+	ctx    context.Context
+	e      Entry
+	req    ExtractRequest
+	whole  *wholeRun
+	n      uint64
+	crc    hash.Hash32
 	single *singleRun
-	// err is what every Read returns once the content has ended.
-	err error
+	err    error
 }
 
 func (c *content) Read(p []byte) (int, error) {
@@ -229,7 +208,6 @@ func (c *content) Read(p []byte) (int, error) {
 		c.err = io.EOF
 		return 0, c.err
 	case c.whole != nil && c.whole.ended && c.n == 0:
-		// The run ended before the item began: it reads alone.
 		c.whole = nil
 	}
 	if c.whole != nil {
@@ -238,8 +216,6 @@ func (c *content) Read(p []byte) (int, error) {
 	return c.readSingle(p)
 }
 
-// readWhole reads the item's next bytes from the whole run, at most its listed size, and checks
-// its CRC-32 once they are all read.
 func (c *content) readWhole(p []byte) (int, error) {
 	left := c.e.Size - c.n
 	if left == 0 {
@@ -258,8 +234,6 @@ func (c *content) readWhole(p []byte) (int, error) {
 	if err == nil {
 		return n, nil
 	}
-	// The run's output ended: an item it ended before reads alone, and one it ended within is
-	// short.
 	runErr := c.whole.outcome()
 	if c.n == 0 {
 		c.whole = nil
@@ -272,8 +246,6 @@ func (c *content) readWhole(p []byte) (int, error) {
 	return n, c.err
 }
 
-// verify returns io.EOF when the bytes read are the item's listed size and CRC-32, and an error
-// matching ErrContent when they aren't.
 func (c *content) verify() error {
 	switch {
 	case c.e.Sized && c.n != c.e.Size:
@@ -284,8 +256,6 @@ func (c *content) verify() error {
 	return io.EOF
 }
 
-// readSingle reads the item's next bytes from its one-item run, starting it on the first read,
-// and checks its size and CRC-32 once the run has written them all.
 func (c *content) readSingle(p []byte) (int, error) {
 	if c.single == nil {
 		c.single = c.r.startSingle(c.ctx, c.req)
@@ -304,9 +274,6 @@ func (c *content) readSingle(p []byte) (int, error) {
 	return n, nil
 }
 
-// finish ends the item once the caller has moved past it: a whole run whose item wasn't read to
-// its listed size, or doesn't match its listing, is stopped, an item the run holds being sized;
-// a one-item run is stopped and waited for.
 func (c *content) finish() {
 	if c.whole != nil && !c.whole.ended && c.err == nil && c.verify() != io.EOF {
 		c.whole.stop()
@@ -316,26 +283,23 @@ func (c *content) finish() {
 	}
 }
 
-// singleRun is one item's one-item run, read through a pipe.
 type singleRun struct {
 	pr     *io.PipeReader
 	cancel context.CancelFunc
 	done   chan struct{}
 }
 
-// startSingle starts Extract of req, writing into a pipe whose reader the item's content reads.
 func (r *Reader) startSingle(ctx context.Context, req ExtractRequest) *singleRun {
 	runCtx, cancel := context.WithCancel(ctx)
 	pr, pw := io.Pipe()
 	s := &singleRun{pr: pr, cancel: cancel, done: make(chan struct{})}
 	go func() {
 		defer close(s.done)
-		pw.CloseWithError(r.Extract(runCtx, req, pw)) // nil: the reader's io.EOF
+		pw.CloseWithError(r.Extract(runCtx, req, pw))
 	}()
 	return s
 }
 
-// stop ends the run, if the item wasn't read to its end, and waits for it to exit.
 func (s *singleRun) stop() {
 	s.pr.CloseWithError(errStopped)
 	s.cancel()

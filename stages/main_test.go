@@ -10,10 +10,6 @@ import (
 	"github.com/standards-lab/docproc/onenote"
 )
 
-// TestMain runs the tests, or, through a stand-in's link, the stand-in: ffmpeg and ffprobe for the
-// audio and video stages, magick and soffice for the picture stage, docproc-onenote for the
-// onenote stage and the classification, docproc-ooxml for the office stage, and gs for the
-// document stage.
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
 		"gs":              gsStandin,
@@ -26,8 +22,6 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// wantPanic fails the test unless build panics with want, a constructor's naming of the nil field
-// that is the caller's mistake.
 func wantPanic(t *testing.T, want string, build func()) {
 	t.Helper()
 	defer func() {

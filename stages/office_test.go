@@ -22,8 +22,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinOfficeStage returns an office stage over the stand-in docproc-ooxml, set to s, and the
-// stand-in magick and soffice, which its documents' pictures, none of a kind converted, never run.
 func standinOfficeStage(t *testing.T, s onenoteSettings) *stages.OfficeStage {
 	t.Helper()
 	spec := office.OfficeSpec()
@@ -40,16 +38,8 @@ func standinOfficeStage(t *testing.T, s onenoteSettings) *stages.OfficeStage {
 	return stages.NewOfficeStage(stages.OfficeConfig{Converter: c, Version: stages.Versions(of)})
 }
 
-// TestOfficeStageSheets: an xlsx is its document line's Markdown, named "document", then two
-// outputs for each sheet, both named "sheet/<n>", each with the sheet's name in its Meta: a
-// Markdown output, its sheet line's Markdown and its rows lines', and a record of the ooxml media
-// type, its rows lines as JSON Lines, each without its Markdown, each a file of the part's
-// directory. Each medium the document names is found at "document, media <n>": a stored medium
-// with its SHA-256 claimed and its stored type, a linked picture an unread child, no processor
-// yet, named by its target. A warning is a dispatch.Warning naming docproc-ooxml.
 func TestOfficeStageSheets(t *testing.T) {
 	t.Parallel()
-	// The stand-in's media pass through its JSON settings, so they are text.
 	const stored = "a stored picture's bytes"
 	sum := sha256.Sum256([]byte(stored))
 	png := hex.EncodeToString(sum[:]) + ".png"
@@ -136,8 +126,6 @@ func TestOfficeStageSheets(t *testing.T) {
 	}
 }
 
-// TestOfficeStageIdentity: the office stage hashes its resolved request, its metafile scale's
-// default filled, and the schema; its tools' version lines are its Version.
 func TestOfficeStageIdentity(t *testing.T) {
 	t.Parallel()
 	base := standinOfficeStage(t, onenoteSettings{})

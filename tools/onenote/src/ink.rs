@@ -5,7 +5,9 @@
 //! a reference for the colour, transparency and pen-tip mappings; no code is taken from it.
 //!
 //! The SVG is a function of the strokes alone, its numbers rounded to two decimals in a fixed
-//! form, so the same ink always gives the same bytes, and so the same file name.
+//! form, so the same ink always gives the same bytes, and so the same file name. A stroke of one
+//! point is a dot, a line of no length its pen's cap shows, and a stroke with no colour is black,
+//! the pen's default.
 
 use std::fmt::Write as _;
 
@@ -205,8 +207,6 @@ pub fn svg(strokes: &[Stroke]) -> Option<Vec<u8>> {
     Some(svg.into_bytes())
 }
 
-/// One stroke's path. A stroke of one point is drawn as a dot, a line of no length, which its
-/// pen's cap shows.
 fn path(svg: &mut String, stroke: &Stroke) {
     let mut d = String::new();
     for (index, &(x, y)) in stroke.points.iter().enumerate() {
@@ -239,15 +239,12 @@ fn path(svg: &mut String, stroke: &Stroke) {
     svg.push_str("/>\n");
 }
 
-/// A COLORREF as "#rrggbb"; none is black, the pen's default.
 fn color(color: Option<u32>) -> String {
     let value = color.unwrap_or(0);
     let [r, g, b, _] = value.to_le_bytes();
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
-/// A number as the SVG writes it: rounded to two decimals, with no exponent, no trailing
-/// zeros, and no negative zero.
 fn number(value: f32) -> String {
     let rounded = (f64::from(value) * 100.0).round() / 100.0 + 0.0;
     format!("{rounded}")
@@ -285,7 +282,6 @@ mod tests {
 
     #[test]
     fn colours_are_colorrefs_and_none_is_black() {
-        // 0x00BBGGRR: red is the low byte.
         assert_eq!(color(Some(0x0000_00ff)), "#ff0000");
         assert_eq!(color(Some(0x00c0_8040)), "#4080c0");
         assert_eq!(color(None), "#000000");
@@ -326,7 +322,6 @@ mod tests {
             ),
             "{svg}"
         );
-        // An opaque stroke has no opacity attribute.
         let mut opaque = stroke(&[(0.0, 0.0)]);
         opaque.transparency = Some(0);
         assert!(!text(&[opaque]).contains("opacity"));
@@ -336,7 +331,6 @@ mod tests {
     fn strokes_without_points_draw_nothing() {
         assert!(svg(&[]).is_none());
         assert!(svg(&[stroke(&[])]).is_none());
-        // An empty stroke beside a drawn one gives no path.
         assert_eq!(
             text(&[stroke(&[]), stroke(&[(1.0, 1.0)])])
                 .matches("<path")
@@ -345,9 +339,6 @@ mod tests {
         );
     }
 
-    /// Two inks side by side with a space between, then a line break and a third ink: the
-    /// second starts where the first ends, plus the space, and the third line starts below the
-    /// first at the left.
     #[test]
     fn a_paragraphs_ink_flows_left_to_right_then_down() {
         let flowed = flow(vec![
@@ -358,7 +349,6 @@ mod tests {
             Piece::Ink(vec![stroke(&[(7.0, 3.0), (17.0, 53.0)])]),
         ]);
         let points: Vec<&[(f32, f32)]> = flowed.iter().map(|s| s.points.as_slice()).collect();
-        // The first line spans y 1000 to 1200; it moves to the top, 200 high.
         assert_eq!(
             points,
             [

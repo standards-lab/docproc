@@ -26,8 +26,6 @@ type Limits struct {
 	Disk int64
 }
 
-// args returns l as magick's -limit options, in a fixed order, a zero field leaving its option
-// out, or an error wrapping ErrRequest naming a negative field.
 func (l Limits) args() ([]string, error) {
 	var args []string
 	for _, f := range []struct {

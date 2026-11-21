@@ -97,7 +97,8 @@ the tools part to the system tools under `tools/`.
   them, is versioned with its tags, and a change to it is a CHANGELOG entry.
 - `architecture/principles/comments.md`: each Rust crate denies clippy's
   `allow_attributes_without_reason`, so no clippy lint is allowed without a reason naming why it is
-  safe; in C#, nothing is suppressed to quiet a NativeAOT or trim warning without a comment naming
-  why it is safe, which the reviewer judges.
+  safe, and `undocumented_unsafe_blocks`, so no `unsafe` block is written without a `// SAFETY:`
+  comment naming why it is sound; in C#, nothing is suppressed to quiet a NativeAOT or trim
+  warning without a comment naming why it is safe, which the reviewer judges.
 - A gap in a dependency is filled in our own code, owned and tested; an upstream repository is
   never engaged unless something is legitimately broken, and then only to report it.

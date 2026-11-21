@@ -35,20 +35,13 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// builtMSG is email's built .msg, attaching a docx, a legacy xls, a TIFF, an EMF, and a .msg.
 var builtMSG = filepath.Join("..", "email", "testdata", "built", "msg", "office-attachments.msg")
 
-// allStages returns every stage Build wires over this machine's tools, found on PATH: gs, qpdf,
-// pdfdetach, magick, ffmpeg, ffprobe, and 7zz, LibreOffice through the container runner in its
-// pinned image, and docproc-ooxml, docproc-mail, and docproc-onenote built from this checkout, the
-// document stage reading each page's text layer. It fails the test unless every route is wired.
 func allStages(t *testing.T) dispatch.Stages {
 	t.Helper()
 	return builtSet(t, stages.Options{Document: document.ImagesRequest{Text: true}, Concurrency: 2}).Stages
 }
 
-// builtSet returns Build's Set over this machine's tools under opts, failing the test unless
-// every route not excluded is wired.
 func builtSet(t *testing.T, opts stages.Options) stages.Set {
 	t.Helper()
 	set, err := stages.Build(t.Context(), exec.LookPath, opts)
@@ -63,9 +56,6 @@ func builtSet(t *testing.T, opts stages.Options) stages.Set {
 	return set
 }
 
-// pdfStage returns the document stage over prep, whose renderer runs gs, as a composition root
-// wires it: reading each page's text layer, and with this machine's qpdf and pdfdetach, its
-// embedded files held to opts's bomb thresholds.
 func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect.Options) *stages.DocumentStage {
 	t.Helper()
 	qt, dt := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec())
@@ -84,7 +74,6 @@ func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect
 	return s
 }
 
-// wantPNG fails the test unless the image output o is a PNG file.
 func wantPNG(t *testing.T, o dispatch.Output) {
 	t.Helper()
 	b, err := os.ReadFile(o.Path)
@@ -93,8 +82,6 @@ func wantPNG(t *testing.T, o dispatch.Output) {
 	}
 }
 
-// TestDocumentStageReal: the clean PDF's six pages, through gs, are each its text layer and a
-// PNG, in page order, the text the page's own.
 func TestDocumentStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, documentFixture(t, "clean.pdf"), func(ev *dispatch.Event) {
@@ -119,9 +106,6 @@ func TestDocumentStageReal(t *testing.T) {
 	}
 }
 
-// TestOfficeStageReal: a document's EMF, with LibreOffice and magick, is found as its PNG and
-// prepared by the vision stage, as its PNGs are, each medium an occurrence of its own, a repeated
-// picture seen, and its linked picture an unread child, no processor yet.
 func TestOfficeStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
@@ -141,8 +125,6 @@ func TestOfficeStageReal(t *testing.T) {
 	}
 }
 
-// TestOfficeStageRTFReal: an RTF, through LibreOffice in its pinned image to docx and then
-// office, is one Markdown document converted from "rtf", holding the RTF's heading and table.
 func TestOfficeStageRTFReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join("..", "office", "testdata", "rtf", "memo.rtf"), nil)
@@ -161,8 +143,6 @@ func TestOfficeStageRTFReal(t *testing.T) {
 	}
 }
 
-// TestPictureStageReal: an SVG, a HEIC, a WebP, and an AVIF each convert to one PNG, and a TIFF
-// of three pages to three, in page order, each naming its page and the count.
 func TestPictureStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	for name, kind := range map[string]route.Kind{
@@ -193,10 +173,6 @@ func TestPictureStageReal(t *testing.T) {
 	}
 }
 
-// TestEmailStageReal: a .msg's attachments each reach their route's stage, recursively: the
-// docx office's, its pictures vision's; the legacy xls office's through LibreOffice; the TIFF and
-// the EMF the picture stage's; and the forwarded .msg email's again. A PDF attachment reaches the
-// document stage.
 func TestEmailStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, builtMSG, func(ev *dispatch.Event) {
@@ -218,7 +194,6 @@ func TestEmailStageReal(t *testing.T) {
 			}
 			delete(top, ev.Part.Name)
 		}
-		// Post-order: a part's parent's event comes after it.
 		if ev.Part.Depth > 0 && !slices.ContainsFunc(events[i+1:], func(p dispatched) bool { return p.Part.ID == ev.Part.Parent }) {
 			t.Errorf("event %d, %s@%d, comes after its parent's", i, ev.Part.Name, ev.Part.Depth)
 		}
@@ -240,7 +215,6 @@ func TestEmailStageReal(t *testing.T) {
 	}
 }
 
-// TestOneNoteStageReal: a page's ink, an SVG, reaches the picture stage and becomes a PNG.
 func TestOneNoteStageReal(t *testing.T) {
 	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(onenoteFixtures(t), "handwriting_recognition.one"), func(ev *dispatch.Event) {
@@ -259,10 +233,6 @@ func TestOneNoteStageReal(t *testing.T) {
 	}
 }
 
-// TestBuiltIdentities: each stage Build wires over this machine's tools names itself, and its
-// Version is its tools' whole version lines in the stage table's order, as the Set's tools list
-// them; a request field that changes what a stage prepares changes its identity's Config, and a
-// run bound changes none.
 func TestBuiltIdentities(t *testing.T) {
 	set := builtSet(t, stages.Options{})
 	lines := map[string]string{}
@@ -301,8 +271,6 @@ func TestBuiltIdentities(t *testing.T) {
 	}
 }
 
-// TestOfficeNoProcessor: a WordPerfect document, an ODF package, and an Excel binary workbook
-// have no processor yet; each reason names the kind.
 func TestOfficeNoProcessor(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Office: testOfficeStage(t)}, dispatch.NewMemoryIndex(0))
 	for name, c := range map[string]struct{ content, reason string }{
@@ -317,12 +285,6 @@ func TestOfficeNoProcessor(t *testing.T) {
 	}
 }
 
-// TestOfficeEncrypted dispatches docproc-ooxml's encrypted fixture, read in place, an OLE2
-// compound file holding an EncryptedPackage stream, named .xlsx and .xlsb, through the pinned
-// docproc-ooxml: each is routed office as an encrypted OOXML package, inspect flags it, and
-// docproc-ooxml's refusal, its reason beginning "encrypted", ends the stage with ErrEncrypted, so
-// it is encrypted. inspect's own encrypted.xlsx, a minimal compound file, is one docproc-ooxml
-// refuses as malformed.
 func TestOfficeEncrypted(t *testing.T) {
 	stage := testOfficeStage(t)
 	content, err := os.ReadFile(tooltest.Tools(t, "ooxml/fixtures/generated/refused/encrypted.libreoffice.docx"))
@@ -330,7 +292,6 @@ func TestOfficeEncrypted(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, name := range []string{"encrypted.xlsx", "encrypted.xlsb"} {
-		// An index of its own, so the same bytes aren't seen.
 		d := newDispatcher(t, dispatch.Stages{route.Office: stage}, dispatch.NewMemoryIndex(0))
 		events := dispatchAll(t, d, input(t, name, string(content)), nil)
 		wantSteps(t, events, []step{{name, 0, dispatch.Encrypted}})
@@ -344,12 +305,6 @@ func TestOfficeEncrypted(t *testing.T) {
 	}
 }
 
-// TestOfficeStage runs the pinned office, with the host's soffice and magick, over a document
-// holding PNGs and an EMF: its Markdown is the document's output, and each medium the document
-// names is a part of its own, found at "document, media <n>", the PNGs prepared by the vision
-// stage, a picture named again seen, the EMF, which office converted, found as its PNG and
-// prepared by the vision stage too, and the linked picture an unread child. Every part's event
-// comes before the document's.
 func TestOfficeStage(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{
 		route.Office: testOfficeStage(t), route.Vision: stages.NewVisionStage(), route.VisionConverted: testPictureStage(t),
@@ -391,12 +346,6 @@ func TestOfficeStage(t *testing.T) {
 	}
 }
 
-// TestEmailStage dispatches a .msg whose picture a .pst holds too, then the .pst, sharing one
-// index. The .msg's message is a record and Markdown, its picture a part prepared by the vision
-// stage; the .pst's store, folders, and messages are records, a message's Meta naming its folder's
-// path, and its picture, the same content, is seen; its text and CSV attachments, which no stage
-// takes, are no processor yet. Every part is found where its message says, and its event comes
-// before the message's record, which comes right before its Markdown.
 func TestEmailStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: stages.NewVisionStage()}, index)
@@ -419,8 +368,6 @@ func TestEmailStage(t *testing.T) {
 	recordThenMarkdown(t, msg, "message")
 	outputNamed(t, msg, dispatch.RecordOutput, "store")
 
-	// order is every event's label, in the order the loop takes them: an output's kind and name,
-	// a part's own event's Where.
 	var order []string
 	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), func(ev *dispatch.Event) {
 		switch {
@@ -430,8 +377,6 @@ func TestEmailStage(t *testing.T) {
 			order = append(order, ev.Part.Where)
 		}
 	})
-	// A message's attachments come before its record, its record right before its Markdown,
-	// which the record's Meta says follows, and the next message after both.
 	for _, id := range []string{"2097220", "2097252", "2097380"} {
 		at := slices.Index(order, "message "+id+", attachment 1")
 		rec := slices.Index(order, "record message "+id)
@@ -467,12 +412,6 @@ func TestEmailStage(t *testing.T) {
 	}
 }
 
-// TestEmailResume: an input's After reaches the email stage, which reads the .pst from the
-// message after it: the resumed store's event holds the whole read's store and folder records and
-// the records of the messages after it, and finds the attachments of those messages alone. The
-// resumed store's own entry isn't recorded, while the parts found in it are; a whole dispatch of
-// it on the same index then prepares it, and a resumed one after that sees it. A .msg given an
-// After fails, mail refusing --after with a single message.
 func TestEmailResume(t *testing.T) {
 	stage := testEmailStage(t)
 	stages := dispatch.Stages{route.Nested: stage, route.Vision: stages.NewVisionStage()}
@@ -490,8 +429,6 @@ func TestEmailResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// want are the whole read's outputs less the messages up to k's, and wantWheres the whole
-	// read's parts found in the messages after k's.
 	var want []string
 	past := false
 	for _, o := range wholeStore.Outputs {
@@ -558,7 +495,6 @@ func TestEmailResume(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// mail's usage text, which follows its error line, comes as warnings.
 		if ev.Warning != nil {
 			continue
 		}
@@ -568,9 +504,6 @@ func TestEmailResume(t *testing.T) {
 	}
 }
 
-// TestEmailEmbedded: an embedded message whose content is no file is prepared inline, its record
-// and Markdown named by its place and naming the message it is embedded in, while a file beside
-// it, a PDF here, which no stage takes in this test, is found.
 func TestEmailEmbedded(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(mailFixtures(t), "msg", "tika", "testMSG_att_msg.msg"), nil)
@@ -597,12 +530,6 @@ func TestEmailEmbedded(t *testing.T) {
 	}
 }
 
-// TestEmailConversations dispatches mail's conversations.pst, whose Conversation History folder
-// holds three conversations, a missed one, and a note. Each conversation-class item is a
-// conversation record, "conversation <id>", the email package's Conversation, right before its
-// transcript's Markdown of the same name, of dispatch.MediaMailConversation; the Meta of both
-// names its id, folder, topic, and whether it was missed. The note is a message record and
-// Markdown, of dispatch.MediaMail, as before. Each item's Markdown is its hand truth's, in truth.json, found by its subject.
 func TestEmailConversations(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
 	generated := filepath.Join(mailFixtures(t), "generated")
@@ -674,10 +601,6 @@ func TestEmailConversations(t *testing.T) {
 	}
 }
 
-// TestOneNoteStage dispatches a section with an image and ink, then a section holding the same
-// image, sharing one index. Each page is a record, then its Markdown, beside the section and
-// notebook records; the image, found on its page, is prepared by the vision stage, then seen; the
-// ink, an SVG, is prepared by the picture stage over the host's magick.
 func TestOneNoteStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{
@@ -724,26 +647,20 @@ func TestOneNoteStage(t *testing.T) {
 	}
 }
 
-// onenoteFixtures returns onenote.rs's sections among docproc-onenote's committed inputs, read in
-// place under tools/.
 func onenoteFixtures(t *testing.T) string {
 	t.Helper()
 	return tooltest.Tools(t, "onenote/tests/fixtures/onenote-rs")
 }
 
-// mailFixtures returns docproc-mail's committed inputs, read in place under tools/.
 func mailFixtures(t *testing.T) string {
 	t.Helper()
 	return tooltest.Tools(t, "mail/tests/fixtures")
 }
 
-// The format packages' fixtures the adapters' tests dispatch.
 var (
 	officeFixtures = filepath.Join("..", "office", "testdata", "ooxml")
 )
 
-// pinned builds the tool spec declares, found on PATH through the exec runner: docproc-ooxml,
-// docproc-mail, and docproc-onenote among them, built from tools/ in this checkout.
 func pinned(t *testing.T, spec tool.Spec) *tool.Tool {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), spec)
@@ -753,8 +670,6 @@ func pinned(t *testing.T, spec tool.Spec) *tool.Tool {
 	return tl
 }
 
-// hostPictures returns the picture package's Converter over the pinned magick and the host's
-// soffice, both through the exec runner, with the two Tools.
 func hostPictures(t *testing.T) (*picture.Converter, *tool.Tool, *tool.Tool) {
 	t.Helper()
 	lo, mg := pinned(t, picture.LibreOfficeSpec()), pinned(t, picture.MagickSpec())
@@ -765,7 +680,6 @@ func hostPictures(t *testing.T) (*picture.Converter, *tool.Tool, *tool.Tool) {
 	return c, lo, mg
 }
 
-// officeStage returns an office stage over the pinned office and hostPictures.
 func testOfficeStage(t *testing.T) *stages.OfficeStage {
 	t.Helper()
 	tl := pinned(t, office.OfficeSpec())
@@ -778,7 +692,6 @@ func testOfficeStage(t *testing.T) *stages.OfficeStage {
 	return s
 }
 
-// pictureStage returns a picture stage over hostPictures.
 func testPictureStage(t *testing.T) *stages.PictureStage {
 	t.Helper()
 	pc, lo, mg := hostPictures(t)
@@ -786,7 +699,6 @@ func testPictureStage(t *testing.T) *stages.PictureStage {
 	return s
 }
 
-// emailStage returns an email stage over the pinned mail.
 func testEmailStage(t *testing.T) *stages.EmailStage {
 	t.Helper()
 	tl := pinned(t, email.MailSpec())
@@ -798,7 +710,6 @@ func testEmailStage(t *testing.T) *stages.EmailStage {
 	return s
 }
 
-// onenoteStage returns a onenote stage over docproc-onenote on PATH.
 func testOnenoteStage(t *testing.T) *stages.OneNoteStage {
 	t.Helper()
 	tl := pinned(t, onenote.OneNoteSpec())
@@ -810,8 +721,6 @@ func testOnenoteStage(t *testing.T) *stages.OneNoteStage {
 	return s
 }
 
-// recordThenMarkdown fails the test unless ev's record named name comes right before its
-// Markdown of the same name, the order the email and onenote stages yield a message or a page in.
 func recordThenMarkdown(t *testing.T, ev dispatched, name string) {
 	t.Helper()
 	i := slices.IndexFunc(ev.Outputs, func(o dispatch.Output) bool { return o.Name == name })
@@ -821,8 +730,6 @@ func recordThenMarkdown(t *testing.T, ev dispatched, name string) {
 	}
 }
 
-// zipOf returns a ZIP of entries, each name and content in order, stored uncompressed with its
-// sizes in its local header, as an ODF package's mimetype is.
 func zipOf(t *testing.T, entries ...string) string {
 	t.Helper()
 	var b bytes.Buffer

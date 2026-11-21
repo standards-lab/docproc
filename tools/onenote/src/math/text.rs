@@ -17,18 +17,17 @@
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Changed from one2html: the ranges are a list, not a phf map, since none overlaps; the Unicode
-// blocks are their ranges, not unicode-blocks'; the sans bold italic Greek range ends at
-// U+1D7C9, where one2html's U+17C9 left it empty; an unknown character is an identifier without
-// a log warning; the classification can't fail; and the general categories are
-// docproc-envelope's, over ICU4X.
 
 //! Math text's characters by kind, which decides how the renderer writes each run of them.
+//!
+//! Changed from one2html: the ranges are a list, not a phf map, since none overlaps; the Unicode
+//! blocks are their ranges, not unicode-blocks'; the sans bold italic Greek range ends at
+//! U+1D7C9, where one2html's U+17C9 left it empty; an unknown character is an identifier without
+//! a log warning; the classification can't fail; and the general categories are
+//! docproc-envelope's, over ICU4X.
 
 use docproc_envelope::category;
 
-/// The Mathematical Alphanumeric Symbols' styled ranges, and the operator and arrow blocks.
 const RANGES: [(char, char, TextType); 20] = [
     ('\u{1d400}', '\u{1d433}', TextType::Bold),
     ('\u{1d434}', '\u{1d467}', TextType::Identifier),
@@ -111,11 +110,8 @@ impl TextType {
             return kind;
         }
         match c as u32 {
-            // Greek and Coptic, Letterlike Symbols, Mathematical Alphanumeric Symbols.
             0x370..=0x3ff | 0x2100..=0x214f | 0x1d400..=0x1d7ff => TextType::Identifier,
-            // Latin-1 Supplement.
             0x80..=0xff => TextType::Normal,
-            // General Punctuation.
             0x2000..=0x206f => TextType::Operator,
             _ => TextType::Identifier,
         }

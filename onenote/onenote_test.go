@@ -23,10 +23,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestNewReader: a stand-in at the minimum, or a build past it, is accepted; an older one fails at
-// construction, whether the Tool's Spec or NewReader refuses it, and one whose --version names
-// another schema fails as the Tool is built; one the container runner built is refused with
-// ErrRequest; a nil Tool panics, naming the field.
 func TestNewReader(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"0.1.0", "0.1.0+8ea6b2d", "0.2.0"} {
@@ -94,20 +90,17 @@ func TestNewReader(t *testing.T) {
 	})
 }
 
-// mediaName returns the media name of content stored with ext, an extension with its dot or "".
 func mediaName(content, ext string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:]) + ext
 }
 
-// The media names fullLines gives its page's image, recording, and ink.
 var (
 	mediaJPG = mediaName("a jpg", ".jpg")
 	mediaMP3 = mediaName("an mp3", ".mp3")
 	mediaSVG = mediaName("an svg", ".svg")
 )
 
-// fullLines are a notebook's lines with every field of schema "2" set, an unknown kind among them.
 var fullLines = `{"line":"notebook","schema":"2","input":"notebook","name":"Work","id":"f1da443f-a65f-4513-b200-78d8a9910b8d","color":"#9bbbd2"}
 {"line":"section_group","id":"11111111-2222-3333-4444-555555555555","path":["Group"]}
 {"line":"section","id":"0575dd0a-5612-d746-b82b-983f7a80b282","parent":"11111111-2222-3333-4444-555555555555","path":["Group","Notes"],"color":"#8aa8e4"}
@@ -117,10 +110,6 @@ var fullLines = `{"line":"notebook","schema":"2","input":"notebook","name":"Work
 {"line":"outline","when":"later"}
 `
 
-// TestRead: the stand-in's lines are yielded in its order, each decoded into its typed record,
-// every field of schema "2" set; a line of an unknown kind is kept with its JSON. docproc-onenote
-// runs once, on the input made absolute, with no media directory, and the files the lines name
-// have their SHA-256 and no Path; a medium with no file has neither.
 func TestRead(t *testing.T) {
 	r, on := standinReader(t)
 	on.stdout(fullLines)
@@ -181,10 +170,6 @@ func TestRead(t *testing.T) {
 	}
 }
 
-// TestReadMedia: a Request's media directory, made absolute, reaches docproc-onenote as --media
-// before the input, and each medium's Path is its file there, the file docproc-onenote wrote; a
-// medium with no file has no Path. A file name the media name rule can't have made ends the read
-// with an error.
 func TestReadMedia(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -228,8 +213,6 @@ func TestReadMedia(t *testing.T) {
 	}
 }
 
-// TestReadFileOnly: a Request's FileOnly reaches docproc-onenote as --file-only, after the media
-// directory and before the input; without it none is passed.
 func TestReadFileOnly(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -250,9 +233,6 @@ func TestReadFileOnly(t *testing.T) {
 	}
 }
 
-// TestReadWarnings: a read whose stderr holds warnings, with a section skipped, succeeds; each
-// warning line is one Warning record, docproc-onenote's name its Tool, in order, its where
-// unescaped.
 func TestReadWarnings(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -285,10 +265,6 @@ func TestReadWarnings(t *testing.T) {
 	}
 }
 
-// TestReadExit: exit codes 1 to 4 are a *cli.ExitError matching the code's error and no other,
-// carrying docproc-onenote's reason and unwrapping to the Tool's *tool.ExitError; a warning before
-// the error is still yielded. A refusal whose reason begins "encrypted" is classed Encrypted, the
-// table of contents' fixed reason ReadElsewhere, and any other Unclassed.
 func TestReadExit(t *testing.T) {
 	t.Parallel()
 	const encrypted = "encrypted section (a password-protected section, holding an [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first"
@@ -341,8 +317,6 @@ func TestReadExit(t *testing.T) {
 	}
 }
 
-// TestReadSchema: a notebook line of another schema, or of none, or a first line that isn't a
-// notebook line, ends the read with ErrSchema, and nothing is yielded.
 func TestReadSchema(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
@@ -367,8 +341,6 @@ func TestReadSchema(t *testing.T) {
 	}
 }
 
-// TestReadMalformed: output that isn't docproc-onenote's lines is an error, whatever was yielded
-// before it.
 func TestReadMalformed(t *testing.T) {
 	t.Parallel()
 	notebook := `{"line":"notebook","schema":"2"}` + "\n"
@@ -394,9 +366,6 @@ func TestReadMalformed(t *testing.T) {
 	}
 }
 
-// TestReadCancel: records are yielded while docproc-onenote runs, and a read whose context is
-// cancelled while it runs stops it and ends with an error matching context.Canceled, never an
-// ExitError, well before docproc-onenote would have exited.
 func TestReadCancel(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -427,10 +396,6 @@ func TestReadCancel(t *testing.T) {
 	}
 }
 
-// TestReadDeadline: a read whose deadline passes while docproc-onenote runs ends with an error
-// matching context.DeadlineExceeded, its records before the deadline yielded. The deadline is
-// 10 s, far past the stand-in's start, a race-built test binary's, and far short of its 60 s
-// sleep, so a slow start on a loaded machine never cuts its records short.
 func TestReadDeadline(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -446,8 +411,6 @@ func TestReadDeadline(t *testing.T) {
 	}
 }
 
-// TestReadStop: a loop that stops early stops docproc-onenote, without waiting for it to exit, and
-// nothing more is yielded.
 func TestReadStop(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)
@@ -469,10 +432,6 @@ func TestReadStop(t *testing.T) {
 	}
 }
 
-// TestReadRefused: Read refuses an invalid request with an error matching ErrRequest before
-// anything runs: an empty Input, and, from a working directory that has been removed, a relative
-// Input or Media, which can't be made absolute. A cancelled context runs nothing either. An
-// absolute Input with no Media is still read from there.
 func TestReadRefused(t *testing.T) {
 	r, on := standinReader(t)
 	cwd := t.TempDir()
@@ -507,7 +466,6 @@ func TestReadRefused(t *testing.T) {
 	}
 }
 
-// TestReadUTC: a time docproc-onenote writes with an offset is decoded as the same instant in UTC.
 func TestReadUTC(t *testing.T) {
 	t.Parallel()
 	r, on := standinReader(t)

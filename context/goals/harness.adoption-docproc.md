@@ -7,18 +7,16 @@
 ## Tasks
 
 1. [x] docproc
-2. [ ] docproc-comments
+2. [x] docproc-comments
 
 ## Decisions
-
-- docproc: C# suppression reasons stay reviewer judgement; .NET has no stock rule. (P5)
 
 ## Pending edits
 
 - coordinator · context/system-tools.md:63 → docs/tool-contract.md, "Versioning".
-- coordinator · context/ai-strategy.md:61, :93 and docs/ai-strategy.md:222, :225 → layers.md at
+- coordinator · context/ai-strategy.md:61, :94 and docs/ai-strategy.md:222, :225 → layers.md at
   docproc commit f3633c3; docs/ai-strategy.md:129 → docs/changes.md, "The nested modules".
-- coordinator · context/ai-strategy.md:108 and docs/ai-strategy.md:422 → docs/acceptance.md.
+- coordinator · context/ai-strategy.md:109 and docs/ai-strategy.md:422 → docs/acceptance.md.
 - coordinator · context/data-intelligence.md:27, :99 → docs/changes.md; :85, :96 and
   docs/data-intelligence.md:46 → layers.md at docproc commit f3633c3; docs/data-intelligence.md:5
   → context/cerebro.md.

@@ -49,9 +49,6 @@ func CheckMetafileScale(scale int) (int, error) {
 	return s, nil
 }
 
-// checkDensity returns the density a request's Density asks for, DefaultDensity when it is zero,
-// or an error wrapping ErrRequest when it is negative. Magick's Limits, not a maximum of the
-// package's, bound the pixels a high density makes.
 func checkDensity(density int) (int, error) {
 	if density < 0 {
 		return 0, fmt.Errorf("picture: density %d is negative: %w", density, ErrRequest)
@@ -79,11 +76,8 @@ type Config struct {
 type Converter struct {
 	magick      *tool.Tool
 	libreoffice *tool.Tool
-	// limits are Config.Limits as magick's -limit options, which begin every magick run.
-	limits []string
-	// readers are the kinds of HEIC, WebP, and AVIF that magick's format listing marked readable
-	// when the Converter was built.
-	readers map[route.Kind]bool
+	limits      []string
+	readers     map[route.Kind]bool
 }
 
 // NewConverter builds a Converter over cfg's Tools. A nil Magick or LibreOffice is the caller's
@@ -145,8 +139,6 @@ type Request struct {
 	Density int `json:"density"`
 }
 
-// kinds are the picture kinds the package converts, with each one's extension, which a copy is
-// stored under, and its name with its article, for an error.
 var kinds = map[route.Kind]struct{ ext, name string }{
 	route.TIFF: {".tiff", "a TIFF"},
 	route.EMF:  {".emf", "an EMF"},
@@ -157,15 +149,11 @@ var kinds = map[route.Kind]struct{ ext, name string }{
 	route.AVIF: {".avif", "an AVIF"},
 }
 
-// metafile reports whether kind is rendered through LibreOffice: an EMF or a WMF.
 func metafile(kind route.Kind) bool { return kind == route.EMF || kind == route.WMF }
 
-// stemPattern matches an output stem: ASCII letters, digits, '.', '-', and '_', beginning with a
-// letter or digit, so magick reads no part of a name made from it as a format prefix, a frame
-// suffix, or a pattern.
+// See docs/api.md, "Running the tools".
 var stemPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 
-// checkStem returns an error wrapping ErrRequest unless stem matches stemPattern.
 func checkStem(stem string) error {
 	if !stemPattern.MatchString(stem) {
 		return fmt.Errorf("picture: output stem %q isn't a plain name: %w", stem, ErrRequest)
@@ -226,8 +214,6 @@ func (c *Converter) ConvertPages(ctx context.Context, req Request) ([]string, er
 	return c.tiffPages(ctx, dir, req)
 }
 
-// workingDir returns dir, a request's working directory, as an absolute path, refusing an empty
-// one.
 func workingDir(dir string) (string, error) {
 	if dir == "" {
 		return "", fmt.Errorf("picture: no working directory: %w", ErrRequest)
@@ -351,23 +337,16 @@ func (c *Converter) ConvertBatch(ctx context.Context, b Batch) error {
 	return nil
 }
 
-// pngStem returns the stem of png, a Picture's PNG: its name less its extension.
 func pngStem(png string) string {
 	base := filepath.Base(png)
 	return strings.TrimSuffix(base, filepath.Ext(base))
 }
 
-// staged is one picture of a batch copied into its own directory: the copy, the name the copy
-// goes by in an error, and the PNG written beside it before it is moved to the Picture's PNG.
 type staged struct {
 	Picture
 	copied, name, png string
 }
 
-// convertBatch converts pictures as ConvertBatch says, each in a directory of its own in work, a
-// directory in dir, the working directory: a metafile's holds its trimmed PNG alone, the others'
-// their copy too. SVGs are rendered at density and metafiles at scale. It moves each PNG to its
-// Picture's PNG, appending each moved PNG to written.
 func (c *Converter) convertBatch(ctx context.Context, dir, work string, scale, density int, pictures []Picture, written *[]string) error {
 	var metafiles []staged
 	for i, p := range pictures {
@@ -403,9 +382,6 @@ func (c *Converter) convertBatch(ctx context.Context, dir, work string, scale, d
 	return c.metafilesToPNG(ctx, dir, scale, metafiles, written)
 }
 
-// ownDir makes the directory of its own in work of p, the batch's picture at index i, and returns
-// p staged there without a copy: the name a copy would go by, its PNG's stem and its kind's
-// extension, and the PNG its converter writes there.
 func ownDir(work string, i int, p Picture) (staged, error) {
 	own := filepath.Join(work, strconv.Itoa(i))
 	if err := os.Mkdir(own, 0o700); err != nil {
@@ -416,8 +392,6 @@ func ownDir(work string, i int, p Picture) (staged, error) {
 	return staged{Picture: p, copied: filepath.Join(own, name), name: name, png: filepath.Join(own, stem+".png")}, nil
 }
 
-// stage copies p, the batch's picture at index i, into a directory of its own in work, under its
-// PNG's stem and its kind's extension.
 func stage(work string, i int, p Picture) (staged, error) {
 	s, err := ownDir(work, i, p)
 	if err != nil {
@@ -429,8 +403,6 @@ func stage(work string, i int, p Picture) (staged, error) {
 	return s, nil
 }
 
-// place moves s's PNG, written beside its copy, to its Picture's PNG, and appends that to
-// written.
 func place(s staged, written *[]string) error {
 	if err := os.Rename(s.png, s.PNG); err != nil {
 		return fmt.Errorf("picture: %s: %w", s.name, err)
@@ -439,33 +411,21 @@ func place(s staged, written *[]string) error {
 	return nil
 }
 
-// reproducible is the define every magick run that writes a converted PNG gives before its
-// output: it leaves out the date:create, date:modify, and date:timestamp text chunks and the
-// tIME chunk, which magick otherwise writes with the time of the run, so the same picture
-// converted twice gives the same PNG, byte for byte.
+// See docs/api.md, "Running the tools".
 var reproducible = []string{"-define", "png:exclude-chunks=date,time"}
 
-// tiffArgs are magick's arguments for s, a TIFF: its first image alone, the one an Office
-// application displays, read as TIFF whatever its content, so a multi-image TIFF gives one PNG.
 func tiffArgs(s staged) []string {
 	return slices.Concat([]string{"tiff:" + s.copied + "[0]"}, reproducible, []string{"png:" + s.png})
 }
 
-// svgArgs are magick's arguments for s, an SVG: rendered at density through the rsvg coder,
-// librsvg, named so that magick never falls back to its own MSVG renderer or a delegate, then
-// flattened onto white, its alpha removed, so a transparent SVG is dark on white as a page is.
 func svgArgs(s staged, density int) []string {
 	return slices.Concat(
 		[]string{"-density", strconv.Itoa(density), "-background", "white", "rsvg:" + s.copied, "-alpha", "remove", "-alpha", "off"},
 		reproducible, []string{"png:" + s.png})
 }
 
-// magickOutputLimit is the most of magick's output a conversion keeps, for its error.
 const magickOutputLimit = 64 << 10
 
-// runMagick runs magick once with the Converter's limits and then args, in dir, to write the PNG
-// png for the picture whose copy is named name, and checks that it wrote one. An error names the
-// picture and carries magick's own message, its first line.
 func (c *Converter) runMagick(ctx context.Context, dir, name string, args []string, png string) error {
 	out := &cli.LimitedBuffer{Limit: magickOutputLimit}
 	err := c.magick.Run(ctx, tool.Invocation{
@@ -487,12 +447,8 @@ func (c *Converter) runMagick(ctx context.Context, dir, name string, args []stri
 	return nil
 }
 
-// errNotWritten is the cause of a converter's error when it wrote no output where it should
-// have.
 var errNotWritten = errors.New("no PNG written")
 
-// checkPNG reports whether path is a regular file that begins with PNG's signature, as
-// route.Identify tells it: an error wrapping errNotWritten when nothing is there.
 func checkPNG(path string) error {
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -516,7 +472,6 @@ func checkPNG(path string) error {
 	return nil
 }
 
-// firstLine returns the first line of out that isn't blank, trimmed.
 func firstLine(out string) string {
 	for line := range strings.Lines(out) {
 		if line = strings.TrimSpace(line); line != "" {

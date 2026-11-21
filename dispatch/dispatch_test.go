@@ -20,16 +20,11 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// sum returns content's lowercase hex SHA-256.
 func sum(content string) string {
 	s := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(s[:])
 }
 
-// TestDepthFirst: every part a stage finds is dispatched, with every part in it, before the
-// stage's next; a part's event follows its descendants', the input's last. Each part names its
-// ID, size, SHA-256, kind, route and reason, parent's ID, depth, and where it was found, and its
-// event its stage's identity, its outputs, and its children, which its entry's log records.
 func TestDepthFirst(t *testing.T) {
 	world := map[string]string{
 		"b.txt": "file d.txt",
@@ -77,12 +72,6 @@ func TestDepthFirst(t *testing.T) {
 	}
 }
 
-// TestOutcomes: one input reaches every outcome but limited: a route with no stage and a stage
-// with no processor yet are no processor yet; a stage's ErrEncrypted is encrypted; a stage's
-// failure is failed, content flagged encrypted among it, since a flag decides no outcome; a ZIP
-// whose central directory can't be read is quarantined, no stage run and its file removed once its
-// event is done; content equal to an ancestor's is a cycle; and content seen earlier in the input
-// is seen, carrying its first event's outputs and flags.
 func TestOutcomes(t *testing.T) {
 	top := "file x.bin\nfile n.txt\nfile e.txt\nfile f.txt\nfile broken.zip\ncopy encrypted.zip\nfile loop.txt\ncopy javascript.pdf\nfile s1.txt\nfile s2.txt"
 	world := map[string]string{
@@ -161,9 +150,6 @@ func TestOutcomes(t *testing.T) {
 	}
 }
 
-// TestXPSNoProcessor: an XPS package named .docx, whole or pieced as an interleaved package
-// stores it, routes unrouted and is no processor yet, the office stage never running on it,
-// while an OOXML package named the same goes to office.
 func TestXPSNoProcessor(t *testing.T) {
 	office := &leaf{name: "office"}
 	d, err := dispatch.New(dispatch.Config{
@@ -208,8 +194,6 @@ func TestXPSNoProcessor(t *testing.T) {
 	}
 }
 
-// TestRetry: a part with a failed descendant is not recorded, so a second dispatch over the same
-// index prepares it again, and the failure again, while its complete parts are seen.
 func TestRetry(t *testing.T) {
 	world := map[string]string{"ok.txt": "leaf", "f.txt": "fail"}
 	f := newFixture(t, world, nil, dispatch.Limits{})
@@ -226,8 +210,6 @@ func TestRetry(t *testing.T) {
 	}
 }
 
-// TestLimits: no cap applies by default; each cap the caller sets limits the parts past it,
-// neither inspected nor prepared, and their siblings go on.
 func TestLimits(t *testing.T) {
 	world := map[string]string{
 		"b.txt":   "file d.txt",
@@ -281,10 +263,6 @@ func TestLimits(t *testing.T) {
 	})
 }
 
-// TestRemaining: a Prepare's context says what the dispatch may still admit, the bytes cap less
-// the sizes it had admitted as Prepare started, the part being prepared among them and every part
-// its earlier siblings' subtrees came to; with no bytes cap, or on a context no Prepare was
-// given, it says nothing.
 func TestRemaining(t *testing.T) {
 	world := map[string]string{
 		"b.txt": "remaining\nfile d.txt",
@@ -320,10 +298,6 @@ func TestRemaining(t *testing.T) {
 	}
 }
 
-// TestLimitedUnread: an unread child its stage stopped at the bytes cap is limited, with no size
-// or SHA-256, the dispatcher's reason for the bytes cap in place of the stage's, and its siblings
-// go on; its parent isn't recorded, so a dispatch under a larger cap prepares it again. With no
-// bytes cap set, a limited unread child fails.
 func TestLimitedUnread(t *testing.T) {
 	world := map[string]string{"c.txt": "leaf c"}
 	top := "limited big.bin\nfile c.txt"
@@ -354,9 +328,6 @@ func TestLimitedUnread(t *testing.T) {
 	}
 }
 
-// TestSeenAcrossInputs: two inputs sharing an index prepare their shared content once; the
-// second's seen events, the shared part's replayed child's among them, carry the outputs'
-// SHA-256s, not their removed paths, and the flags the entry recorded.
 func TestSeenAcrossInputs(t *testing.T) {
 	world := map[string]string{"shared.txt": "file inner.txt", "inner.txt": "leaf"}
 	for name, newIndex := range indexes() {
@@ -390,10 +361,6 @@ func TestSeenAcrossInputs(t *testing.T) {
 	}
 }
 
-// TestRemoval: each part's file, and its working directory with its outputs' files, is there
-// while the caller's loop body runs for each of its events, its outputs' and its own, and gone
-// once its own event's body returns; a file the caller moved away is no error; the input is never
-// removed.
 func TestRemoval(t *testing.T) {
 	world := map[string]string{"move.txt": "leaf move", "drop.txt": "leaf drop"}
 	f := newFixture(t, world, nil, dispatch.Limits{})
@@ -435,9 +402,6 @@ func TestRemoval(t *testing.T) {
 	}
 }
 
-// TestOutputContent: each output's content is in the content store, by its SHA-256, before its
-// event is yielded, and the index records the output without its path, so a seen part's output
-// carries its SHA-256 alone, its content found in the store.
 func TestOutputContent(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	path := input(t, "top.txt", "leaf")
@@ -467,14 +431,10 @@ func TestOutputContent(t *testing.T) {
 	}
 }
 
-// TestStopEarly: a loop that stops early stops the stage, releases every claim, and leaves the
-// working directory empty, so a second dispatch prepares everything.
 func TestStopEarly(t *testing.T) {
 	world := map[string]string{"b.txt": "file d.txt", "d.txt": "leaf", "c.txt": "leaf c"}
 	f := newFixture(t, world, nil, dispatch.Limits{})
 	path := input(t, "top.txt", "file b.txt\nfile c.txt")
-	// The loop stops at the first part's own event, d.txt's, the outputs of top.txt, b.txt, and
-	// d.txt before it.
 	for ev, err := range f.d.Dispatch(t.Context(), dispatch.Input{Path: path}) {
 		if err != nil {
 			t.Fatal(err)
@@ -499,7 +459,6 @@ func TestStopEarly(t *testing.T) {
 	})
 }
 
-// failingRecord is an index whose Record fails, once the entry's claim has been released.
 type failingRecord struct{ dispatch.Index }
 
 var errRecord = errors.New("told to fail recording")
@@ -509,9 +468,6 @@ func (f failingRecord) Record(ctx context.Context, key dispatch.Key, token strin
 	return errRecord
 }
 
-// TestRecordFails: an index that fails to record stops the dispatch, before the part's own event,
-// with its error, alone and last, a *StoreError of the index, typed apart from an input's; the
-// files of the part it failed on are removed all the same.
 func TestRecordFails(t *testing.T) {
 	f := newFixture(t, map[string]string{"b.txt": "leaf"}, failingRecord{dispatch.NewMemoryIndex(0)}, dispatch.Limits{})
 	var events []dispatch.Event
@@ -537,8 +493,6 @@ func TestRecordFails(t *testing.T) {
 	}
 }
 
-// TestInputErrors: an input that can't be read is an error alone, which stops the dispatch; a
-// cancelled context stops it too.
 func TestInputErrors(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	var errs []error
@@ -562,9 +516,6 @@ func TestInputErrors(t *testing.T) {
 	}
 }
 
-// TestNew: a config with no working directory, a missing one, a nil stage, two stages sharing a
-// name with different identities, a negative cap or release bound, or puts under 1 is refused,
-// matching ErrRequest; one with no index or no content store panics, naming the field.
 func TestNew(t *testing.T) {
 	t.Parallel()
 	index, content := dispatch.NewMemoryIndex(0), dispatch.NewMemoryContent()
@@ -594,7 +545,6 @@ func TestNew(t *testing.T) {
 	}
 }
 
-// other is a leaf whose identity's configuration differs from the leaf's of its name.
 type other struct{ leaf }
 
 func (o *other) Identity() dispatch.Identity {
@@ -603,8 +553,6 @@ func (o *other) Identity() dispatch.Identity {
 	return id
 }
 
-// TestHashConfig: the same configuration hashes the same, whatever its map's order, and another
-// differently.
 func TestHashConfig(t *testing.T) {
 	a, err := dispatch.HashConfig(map[string]int{"dpi": 150, "scale": 2})
 	if err != nil {

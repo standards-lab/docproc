@@ -10,18 +10,12 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
-// The converter's seam, a document in and the model out, and the lines written from the model,
-// against the generated fixtures and the real-world files: the model element by element against
-// the ground truth (the generator's, or a real-world file's, written by hand), and the lines'
-// Markdown against the renderer's whole rendering. The lines' exact bytes are the goldens',
-// compared on the published binary (CliTests).
 public sealed class ConverterTests : IDisposable
 {
     private readonly DirectoryInfo scratch = Directory.CreateTempSubdirectory("docproc-ooxml-converter-tests-");
 
     public void Dispose() => scratch.Delete(recursive: true);
 
-    // Every fixture with its ground truth: the generated variants and the real-world files.
     public static TheoryData<string, string> Cases => Fixtures.All;
 
     [Theory]
@@ -44,8 +38,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal(expected.Count, actual.Count);
     }
 
-    // Sections with their headers and footers, footnotes, endnotes, and comments, each compared
-    // whole; a part the truth leaves out the model must not have.
     [Theory]
     [MemberData(nameof(Cases))]
     public void OtherPartsMatchTheGroundTruth(string name, string variant)
@@ -63,8 +55,6 @@ public sealed class ConverterTests : IDisposable
         }
     }
 
-    // Every media file the conversion holds is named by its bytes' SHA-256 and its part's
-    // extension, and is exactly the set the media blocks name: one per distinct content.
     [Theory]
     [MemberData(nameof(Cases))]
     public void MediaFilesAreNamedByTheirContent(string name, string variant)
@@ -79,7 +69,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal(Names(truth).Order(StringComparer.Ordinal), conversion.Media.Keys.Order(StringComparer.Ordinal));
     }
 
-    // The distinct names of the truth's media elements, wherever they are.
     private static HashSet<string> Names(JsonNode? node)
     {
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -127,14 +116,11 @@ public sealed class ConverterTests : IDisposable
             }
             foreach (var once in truth["once"]!.AsArray().Select(n => (string)n!))
             {
-                Assert.Equal(2, output.Split(once).Length); // One occurrence splits the output in two.
+                Assert.Equal(2, output.Split(once).Length);
             }
         }
     }
 
-    // A macro-enabled document, template, or slide show is read as its base format, its macros
-    // ignored and never run: a fixture whose main part is given each such content type, the
-    // macro-enabled document with a VBA project part too, converts to the fixture's own model.
     [Theory]
     [InlineData("headings", "python-docx", "application/vnd.ms-word.document.macroEnabled.main+xml")]
     [InlineData("headings", "python-docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.template.main+xml")]
@@ -164,7 +150,6 @@ public sealed class ConverterTests : IDisposable
             types = types.Replace(baseType, contentType, StringComparison.Ordinal);
             if (contentType.Contains("ms-word.document.macroEnabled", StringComparison.Ordinal))
             {
-                // A VBA project of bytes that are no macro at all: nothing reads, let alone runs, it.
                 types = types.Replace("</Types>", "<Override PartName=\"/word/vbaProject.bin\" ContentType=\"application/vnd.ms-office.vbaProject\"/></Types>", StringComparison.Ordinal);
                 Write(zip, "word/vbaProject.bin", "not a macro");
                 var relationships = Read(zip, "word/_rels/document.xml.rels").Replace(
@@ -179,8 +164,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal(Write(OfficeReader.Read(source)), Write(OfficeReader.Read(path)));
     }
 
-    // An auto-number's startAt is its list's start, and a startAt of 1 is the default's: the
-    // bullets fixture's first numbered list given startAt 3, its second one 1.
     [Fact]
     public void APptxAutoNumberStartsItsListAtItsStartAt()
     {
@@ -202,10 +185,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal([3, null], lists.Select(list => list.Start));
     }
 
-    // A chartEx chart that caches no data is its mc:Fallback's picture, which goes to vision in
-    // its place; one that caches data is the chart alone, never the picture too (the real-world
-    // truths of chartex and chartex-slide hold that case). Each file's chartEx part loses its
-    // cached points; the other charts stay charts.
     [Fact]
     public void AChartExChartWithNoCacheIsItsFallbackPictureInADocx()
     {
@@ -232,9 +211,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal(0, media.Slide);
     }
 
-    // No real-world xlsx has a chartEx chart, so with-drawing's drawing is given one as Excel
-    // anchors it, after the first picture: chartex-slide's chartEx part, related from the
-    // drawing, in an mc:AlternateContent whose fallback shows the drawing's JPEG.
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -292,7 +268,6 @@ public sealed class ConverterTests : IDisposable
         + "<mc:Fallback><xdr:pic><xdr:nvPicPr><xdr:cNvPr id=\"20\" name=\"Chart 19\" descr=\"the chart's picture\"/><xdr:cNvPicPr/></xdr:nvPicPr>"
         + "<xdr:blipFill><a:blip r:embed=\"rId1\"/></xdr:blipFill><xdr:spPr/></xdr:pic></mc:Fallback></mc:AlternateContent><xdr:clientData/></xdr:twoCellAnchor>";
 
-    // A copy of a real-world file whose given chartEx part caches no points.
     private string Uncached(string name, string part)
     {
         var source = Fixtures.DocumentPath(name, Fixtures.RealWorld);
@@ -308,7 +283,6 @@ public sealed class ConverterTests : IDisposable
     private static string WithoutPoints(string chartEx) =>
         Regex.Replace(chartEx, "<cx:pt [^>]*>[^<]*</cx:pt>", "");
 
-    // The media file name of a package entry's bytes.
     private static string Named(string package, string entry)
     {
         using var zip = ZipFile.OpenRead(package);
@@ -329,10 +303,6 @@ public sealed class ConverterTests : IDisposable
         writer.Write(content);
     }
 
-    // The lines' Markdown fragments, joined in order with nothing between them, are the whole
-    // rendering: a docx's or pptx's on its document line, and an xlsx's split along its sheets'
-    // lines, its document line holding none. The document line comes first and alone carries
-    // the schema; only an xlsx has sheet and rows lines, a sheet line for each sheet.
     [Theory]
     [MemberData(nameof(Cases))]
     public void TheLinesMarkdownJoinsIntoTheWholeRendering(string name, string variant)
@@ -355,7 +325,6 @@ public sealed class ConverterTests : IDisposable
         Assert.Equal(MarkdownRenderer.Render(document), string.Concat(lines.Select(line => (string?)line["markdown"])));
     }
 
-    // The document line names every picture the conversion's media files hold, and only those.
     [Theory]
     [MemberData(nameof(Cases))]
     public void TheDocumentLineNamesEveryMediaFile(string name, string variant)

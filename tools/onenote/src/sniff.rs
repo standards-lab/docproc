@@ -5,6 +5,12 @@
 //! Whether a OneStore file is a section or a notebook is onenote_parser's store type to say,
 //! not its header's: a OneDrive download's .onetoc2 carries the section file type GUID in its
 //! header ([MS-ONESTORE] 2.3.1's guidFileType), so the header alone can't tell them apart.
+//!
+//! The signatures read are a cabinet's CFHEADER.signature, "MSCF" ([MS-CAB] 2.1); a ZIP's local
+//! file header, end of central directory, and spanning marker (APPNOTE 4.3.7, 4.3.16, 8.5.3); and
+//! a OneStore header's guidFileFormat, at offset 48 among its first four GUIDs ([MS-ONESTORE]
+//! 2.3.1): the revision store file format of desktop files or the packaging format of OneDrive
+//! downloads (2.8.1), the two formats onenote_parser reads.
 
 use std::fs::{self, File};
 use std::io::{self, Read};
@@ -23,7 +29,6 @@ pub enum Input {
     Package,
 }
 
-/// What a file's first bytes say it is.
 #[derive(Debug, PartialEq)]
 enum Content {
     OneStore,
@@ -32,18 +37,10 @@ enum Content {
     Other,
 }
 
-/// The bytes [`content`] needs: a OneStore header's first four GUIDs.
 const PREFIX: usize = 64;
 
-/// CFHEADER.signature, "MSCF" ([MS-CAB] 2.1).
 const CAB_MAGIC: &[u8] = b"MSCF";
-/// A ZIP's local file header, its end of central directory (an empty archive), and its
-/// spanning marker (APPNOTE 4.3.7, 4.3.16, 8.5.3).
 const ZIP_MAGICS: [&[u8]; 3] = [b"PK\x03\x04", b"PK\x05\x06", b"PK\x07\x08"];
-/// guidFileFormat, at offset 48 of a OneStore header ([MS-ONESTORE] 2.3.1): the revision store
-/// file format {109ADD3F-911B-49F5-A5D0-1791EDC8AED8} of desktop files, and the packaging
-/// format {638DE92F-A6D4-4BC1-9A36-B3FC2511A5B7} of OneDrive downloads (2.8.1), each in its
-/// stored byte order. These are the formats onenote_parser reads.
 const ONESTORE_FORMATS: [[u8; 16]; 2] = [
     [
         0x3f, 0xdd, 0x9a, 0x10, 0x1b, 0x91, 0xf5, 0x49, 0xa5, 0xd0, 0x17, 0x91, 0xed, 0xc8, 0xae,
@@ -57,10 +54,6 @@ const ONESTORE_FORMATS: [[u8; 16]; 2] = [
 
 /// The input at `path`, or the refusal of it.
 pub fn sniff(path: &Path) -> Result<Input, Fault> {
-    // A reason never leads with the input's path, which docproc already knows. An input that is
-    // missing or without read permission says so and names its path after the reason
-    // (docproc-envelope's input_refusal); any other error is the error alone. A directory is
-    // no refusal: it is a notebook.
     let refuse = Fault::Refused;
     let unreadable =
         |err: io::Error| input_refusal(path, &err).unwrap_or_else(|| refuse(err.to_string()));
@@ -102,9 +95,6 @@ fn content(prefix: &[u8]) -> Content {
     Content::Other
 }
 
-/// The one .onetoc2 among a directory's `entries`, told by its name, as OneNote names a
-/// notebook's table of contents; or why there isn't one. A section group's .onetoc2, in a
-/// directory below, is the notebook's to find.
 fn toc_in(entries: fs::ReadDir) -> Result<PathBuf, String> {
     let mut tocs = Vec::new();
     for entry in entries {
@@ -137,7 +127,6 @@ fn toc_in(entries: fs::ReadDir) -> Result<PathBuf, String> {
 mod tests {
     use super::*;
 
-    /// A OneStore header's first 64 bytes, with the given guidFileFormat.
     fn header(format: &[u8; 16]) -> Vec<u8> {
         let mut bytes = vec![0; 48];
         bytes.extend_from_slice(format);

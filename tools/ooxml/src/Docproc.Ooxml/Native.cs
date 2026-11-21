@@ -2,21 +2,19 @@ using System.Runtime.InteropServices;
 
 namespace Docproc.Ooxml;
 
-/// <summary>The two calls into libc .NET has no API for: a write to a file descriptor that
-/// reports every error, and a file's type. The csproj binds them directly into the NativeAOT
-/// binary (<c>DirectPInvoke</c>), which links libc anyway; in process, .NET resolves
-/// <c>libc</c> itself.</summary>
 internal static partial class Native
 {
-    private const int Interrupted = 4; // EINTR
-    private const int NoSuchFile = 2; // ENOENT
-    private const int PermissionDenied = 13; // EACCES
-    private const int NotADirectory = 20; // ENOTDIR
-    private const int CurrentDirectory = -100; // AT_FDCWD
-    private const uint StatxType = 0x1; // STATX_TYPE
-    private const int FileTypeMask = 0xF000; // S_IFMT
-    private const int RegularFile = 0x8000; // S_IFREG
-    private const int Directory = 0x4000; // S_IFDIR
+    private const int Interrupted = 4;
+    private const int NoSuchFile = 2;
+    private const int PermissionDenied = 13;
+    private const int NotADirectory = 20;
+    private const int CurrentDirectory = -100;
+    private const uint StatxType = 0x1;
+    private const int FileTypeMask = 0xF000;
+    private const int RegularFile = 0x8000;
+    private const int Directory = 0x4000;
+    private const int StatxSize = 256;
+    private const int StatxModeOffset = 28;
 
     /// <summary>A path's kind, as <see cref="KindOf"/> finds it.</summary>
     public enum PathKind
@@ -42,8 +40,7 @@ internal static partial class Native
     /// absence.</exception>
     public static unsafe PathKind KindOf(string path)
     {
-        // struct statx is the same on every architecture: 256 bytes, its u16 stx_mode at 28.
-        var buffer = stackalloc byte[256];
+        var buffer = stackalloc byte[StatxSize];
         if (Statx(CurrentDirectory, path, 0, StatxType, buffer) != 0)
         {
             var error = Marshal.GetLastPInvokeError();
@@ -54,7 +51,7 @@ internal static partial class Native
                 _ => throw new IOException(Marshal.GetPInvokeErrorMessage(error), error),
             };
         }
-        var mode = *(ushort*)(buffer + 28);
+        var mode = *(ushort*)(buffer + StatxModeOffset);
         return (mode & FileTypeMask) switch
         {
             RegularFile => PathKind.RegularFile,
@@ -96,9 +93,6 @@ internal static partial class Native
     private static unsafe partial int Statx(int directory, string path, int flags, uint mask, byte* buffer);
 }
 
-/// <summary>stdout or stderr as the raw file descriptor, written as given with no encoding, no
-/// buffer, and every error reported, so the locale can't change a byte and a broken pipe is an
-/// I/O error.</summary>
 internal sealed class DescriptorStream(int descriptor) : Stream
 {
     /// <summary>The process's stdout.</summary>

@@ -25,6 +25,13 @@
 //! follow, as a whole read writes them. An n past the file's last ordinal, empty entries counted,
 //! is refused before any output. The messages before n were an mbox's, so a resumed read writes
 //! its store line whether or not a message after n parses.
+//!
+//! A separator line with nothing after it is no message: it writes no line and no warning, but
+//! keeps its ordinal, so the messages after it keep theirs. A message is its source byte for byte,
+//! without the blank line the mbox writer adds before the next separator line and after the last
+//! message. With `--after <n>`, an entry before message n that can't be read leaves n unreachable,
+//! and the read is refused with its reason; an entry at n that can't be read is the cursor's own,
+//! and the read ends at it, its tail empty.
 
 use std::convert::Infallible;
 use std::fs::File;
@@ -82,8 +89,6 @@ pub fn read(
             }
         };
         let contents = sniff::without_bom(unseparated(entry.contents()));
-        // A separator line with nothing after it is no message: it writes no line and no
-        // warning, but keeps its ordinal, so the messages after it keep theirs.
         if contents.is_empty() {
             continue;
         }
@@ -130,7 +135,6 @@ pub fn read(
     }
     if held.store {
         if held.skipped.is_empty() {
-            // No entry at all, or empty ones alone: nothing failed, and the mbox is empty.
             held.release(files)?;
         } else {
             let (ordinal, reason) = held.skipped.swap_remove(0);
@@ -142,18 +146,13 @@ pub fn read(
     Ok(())
 }
 
-/// The lines a whole read holds until its first message parses: the store line, and the skipped
-/// lines of the entries before that message, with their warnings.
 struct Held<'a, W: Write> {
     out: &'a mut Lines<W>,
-    /// Whether the store line is still held.
     store: bool,
-    /// The held skipped messages, by ordinal and reason.
     skipped: Vec<(u32, String)>,
 }
 
 impl<W: Write> Held<'_, W> {
-    /// Writes a message's skipped line, and its warning, or holds them behind the store line.
     fn skip(&mut self, ordinal: u32, reason: String) -> Result<(), Fault> {
         if self.store {
             self.skipped.push((ordinal, reason));
@@ -163,8 +162,6 @@ impl<W: Write> Held<'_, W> {
         }
     }
 
-    /// Writes the store line, once, and then the skipped lines held behind it: the input is an
-    /// mbox.
     fn release(&mut self, files: &Media) -> Result<(), Fault> {
         if !std::mem::take(&mut self.store) {
             return Ok(());
@@ -178,11 +175,6 @@ impl<W: Write> Held<'_, W> {
     }
 }
 
-/// Scans past messages 1 to `after`, separators only, so that the next entry is message
-/// `after + 1`, and says whether the read ends there. An entry that can't be read ends a whole
-/// read with its skipped line, so one before `after` leaves `after` unreachable and is refused,
-/// with the reason; one at `after` is the cursor's own, and the read ends at it, its tail empty,
-/// as the whole read's is.
 fn skip_to(
     entries: &mut impl Iterator<Item = (u32, io::Result<Message>)>,
     after: u32,
@@ -207,9 +199,6 @@ fn skip_to(
     })
 }
 
-/// A message's contents without the blank line that ends it, which the mbox writer adds before
-/// the next separator line and after the last message, so the message is its source byte for
-/// byte. Contents that don't end in a blank line are left as they are.
 fn unseparated(contents: &[u8]) -> &[u8] {
     let Some(rest) = contents.strip_suffix(b"\n") else {
         return contents;
@@ -222,7 +211,6 @@ fn unseparated(contents: &[u8]) -> &[u8] {
     }
 }
 
-/// Writes a message's skipped line, and its warning, and flushes it.
 fn skip(out: &mut Lines<impl Write>, ordinal: u32, reason: String) -> Result<(), Fault> {
     warn(&format!("message {ordinal}"), &format!("skipped: {reason}"));
     out.write(&Skipped {

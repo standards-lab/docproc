@@ -14,18 +14,6 @@ import (
 	"github.com/standards-lab/docproc/email"
 )
 
-// These tests run the real docproc-mail, which the unit tier doesn't provide, so they run in the
-// integration tier.
-
-// TestRealConversations runs the real docproc-mail over its generated conversations.pst, read in
-// place, and holds each item of every folder layout.json lists items for to its hand truth in
-// truth.json, in the layout's order. An item of a conversation class is a Message whose
-// Conversation view equals the one the truth gives: its class, its topic the truth's subject, as
-// the store's conversation topic is, its participants the sender then the recipients, its start
-// and end the submit and delivery times, missed by its class, and its Markdown. An item of any
-// other class, the IPM.Note in the same folder, has no Conversation view, and its class, subject,
-// sender, recipients, four times, and Markdown are the truth's. The fixture holds every kind: a
-// conversation, a missed one, and a note.
 func TestRealConversations(t *testing.T) {
 	generated := mailFixture(t, "generated")
 	var l layout
@@ -80,8 +68,6 @@ func TestRealConversations(t *testing.T) {
 	}
 }
 
-// layout is docproc-mail's generated layout.json: each store's file and folders, each folder listing the
-// .eml sources of its messages, or the item sources of its items, in the store's order.
 type layout struct {
 	Stores []struct {
 		File    string `json:"file"`
@@ -93,8 +79,6 @@ type layout struct {
 	} `json:"stores"`
 }
 
-// itemTruth is one item source's hand truth in truth.json's "items": the item as the store holds
-// it, field by field.
 type itemTruth struct {
 	Class            string          `json:"class"`
 	Subject          string          `json:"subject"`
@@ -108,7 +92,6 @@ type itemTruth struct {
 	Markdown         string          `json:"markdown"`
 }
 
-// readJSON decodes the file at path into v.
 func readJSON(t *testing.T, path string, v any) {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -120,8 +103,6 @@ func readJSON(t *testing.T, path string, v any) {
 	}
 }
 
-// bare returns addrs with each address type and SMTP address dropped: the hand truth gives a name
-// and an address alone, and docproc-mail gives a recipient's type as stored, SMTP.
 func bare(addrs []email.Address) []email.Address {
 	out := make([]email.Address, len(addrs))
 	for i, a := range addrs {
@@ -130,7 +111,6 @@ func bare(addrs []email.Address) []email.Address {
 	return out
 }
 
-// checkItem checks m, the message read for the item source name, against want, its hand truth.
 func checkItem(t *testing.T, name string, m *email.Message, want itemTruth) {
 	t.Helper()
 	c, ok := m.Conversation()

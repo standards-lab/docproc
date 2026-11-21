@@ -18,7 +18,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// newDispatcher returns a dispatcher over stages and index, in a working directory of its own.
 func newDispatcher(t *testing.T, stages dispatch.Stages, index dispatch.Index) *dispatch.Dispatcher {
 	t.Helper()
 	d, err := dispatch.New(dispatch.Config{Content: dispatch.NewMemoryContent(), Puts: 2, Stages: stages, Index: index, Dir: t.TempDir()})
@@ -28,22 +27,12 @@ func newDispatcher(t *testing.T, stages dispatch.Stages, index dispatch.Index) *
 	return d
 }
 
-// gsSettings are the stand-in gs's: a PDF of Pages pages, the page Empty with no text layer,
-// and the page Fail failing to render.
 type gsSettings struct {
 	Pages int `json:"pages"`
 	Empty int `json:"empty,omitzero"`
 	Fail  int `json:"fail,omitzero"`
 }
 
-// gsStandin is the stand-in gs. With --version alone it prints 10.08.0. A survey run, with
-// -dNODISPLAY, prints its settings' Pages, then, when they are above zero, false, no portfolio,
-// when its PostScript asks for /Collection. Any other run's pages are its -sPageList's, a page or
-// a range of them between each comma, or its -dFirstPage alone, each in turn: a run of the
-// txtwrite device writes "page N" for each, but a blank line for Empty, to stdout for an
-// OutputFile of -, and otherwise to a file of the OutputFile, its %d the page's place in the run
-// from 1; and a render writes each page's PNG, naming "page N", but fails at Fail, the pages
-// before it written.
 func gsStandin(r tooltest.Run) int {
 	var settings gsSettings
 	if err := r.Settings(&settings); err != nil {
@@ -95,8 +84,6 @@ func gsStandin(r tooltest.Run) int {
 	return 0
 }
 
-// standinPreparer returns a Preparer over the stand-in gs, through the exec runner, with s its
-// settings.
 func standinPreparer(t *testing.T, s gsSettings) *document.Preparer {
 	t.Helper()
 	spec := document.GhostscriptSpec()
@@ -112,8 +99,6 @@ func standinPreparer(t *testing.T, s gsSettings) *document.Preparer {
 	return document.NewPreparer(document.Config{Renderer: g})
 }
 
-// testDocumentStage returns a document stage over prep, reading the pages' text, one page at a
-// time, with a qpdf that finds no password and no form and a pdfdetach that lists nothing.
 func testDocumentStage(t *testing.T, prep *document.Preparer) *stages.DocumentStage {
 	t.Helper()
 	return stages.NewDocumentStage(stages.DocumentConfig{
@@ -122,10 +107,6 @@ func testDocumentStage(t *testing.T, prep *document.Preparer) *stages.DocumentSt
 	})
 }
 
-// TestDocumentStage: a PDF's pages, over the stand-in gs, are a text output and an image output
-// each, in page order, named by the page and carrying its number and the count, and the image its
-// DPI, the PNG a file in the part's directory; a page with no text layer has no text output; and a
-// page gs fails to render is a warning naming the page and gs, the part prepared with the others.
 func TestDocumentStage(t *testing.T) {
 	pdf := input(t, "three.pdf", "%PDF-1.7\n%%EOF\n")
 	d := newDispatcher(t, dispatch.Stages{route.Document: testDocumentStage(t, standinPreparer(t, gsSettings{Pages: 3, Empty: 2}))}, dispatch.NewMemoryIndex(0))

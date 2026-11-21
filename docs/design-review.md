@@ -284,7 +284,7 @@ it.
   wording. The replay skips through the item whose `After` equals `Input.After`, `After` opaque
   and compared by equality alone; no such item ends the dispatch with an error. Supersedes the
   goal's "at most `Input.After`". Rejected: numeric comparison, since mail matches `id == after`
-  (mail: src/pst.rs:433) and a `.pst`'s node ids don't ascend in read order.
+  (mail: `Walk::message` in src/pst.rs) and a `.pst`'s node ids don't ascend in read order.
 - **5 · `Event.Keep` (Q6).** Settled → library; docproc for `run`. Dropped: an event's files are
   the caller's to read, link, or move until its body returns; an output is appended, and a
   part's entry recorded, before its event is yielded. Rejected: keeping it, six callers, all

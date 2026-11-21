@@ -13,7 +13,6 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// envelopeCases are the groups of tools/envelope/cases.json this package reads.
 type envelopeCases struct {
 	ExitCodes []struct {
 		Code    int    `json:"code"`
@@ -35,8 +34,6 @@ type envelopeCases struct {
 	} `json:"media_names"`
 }
 
-// readCases reads tools/envelope/cases.json in place, skipping the test when the tools tree is
-// absent, and fails on an empty group.
 func readCases(t *testing.T) envelopeCases {
 	t.Helper()
 	data, err := os.ReadFile(tooltest.Tools(t, "envelope/cases.json"))
@@ -53,9 +50,6 @@ func readCases(t *testing.T) envelopeCases {
 	return c
 }
 
-// TestMediaNames: each shared case's bytes and stored name make its media name, the stored
-// extension's case kept, and the name resolves in the media directory to its file and the
-// bytes' SHA-256; without a directory, to the SHA-256 alone.
 func TestMediaNames(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -79,8 +73,6 @@ func TestMediaNames(t *testing.T) {
 	}
 }
 
-// TestResolveMediumRefuses: a name the rule can't have made is refused, so no line names a file
-// outside the media directory.
 func TestResolveMediumRefuses(t *testing.T) {
 	t.Parallel()
 	const hash = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
@@ -96,8 +88,6 @@ func TestResolveMediumRefuses(t *testing.T) {
 	}
 }
 
-// TestVersionPattern: the pattern takes the version's dotted numbers from a schema "2"
-// --version, a build suffix left out, and matches no other schema's.
 func TestVersionPattern(t *testing.T) {
 	t.Parallel()
 	for out, want := range map[string]string{
@@ -123,9 +113,6 @@ func TestVersionPattern(t *testing.T) {
 	}
 }
 
-// TestRefusalClass: a reason beginning "encrypted" is Encrypted, onenote's fixed
-// table-of-contents reason ReadElsewhere, and any other reason, the word elsewhere in it among
-// them, Unclassed.
 func TestRefusalClass(t *testing.T) {
 	t.Parallel()
 	for reason, want := range map[string]error{

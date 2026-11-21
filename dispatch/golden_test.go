@@ -13,15 +13,9 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// TestGoldens: dispatch's shapes as JSON on encoding/json, one line each, compared as text with
-// the committed goldens: testdata/dispatch.jsonl, every event of a dispatch over the fixture stage
-// whose found parts are routed and flagged, and testdata/log.jsonl, the input's entry and its log
-// as the index reads them back. With goldentest.RecordEnv set to 1, the goldens are written.
 func TestGoldens(t *testing.T) {
 	world := map[string]string{
-		// A PDF's signature under a picture's extension: routed by its signature and flagged.
-		"scan.png": "%PDF-1.7\n%%EOF\n",
-		// An executable's name over text of no signature: unrouted, its name flagged.
+		"scan.png":      "%PDF-1.7\n%%EOF\n",
 		"notes.txt.exe": "x",
 		"b.txt":         "record {\"a\":1}\nfile c.txt",
 		"c.txt":         "text",
@@ -57,7 +51,6 @@ func TestGoldens(t *testing.T) {
 	golden(t, "log.jsonl", log.Bytes())
 }
 
-// line appends v's JSON to b as one line.
 func line(t *testing.T, b *bytes.Buffer, v any) {
 	t.Helper()
 	j, err := json.Marshal(v)
@@ -67,7 +60,6 @@ func line(t *testing.T, b *bytes.Buffer, v any) {
 	b.Write(append(j, '\n'))
 }
 
-// golden compares got with testdata/name as text, or writes it there under goldentest.RecordEnv.
 func golden(t *testing.T, name string, got []byte) {
 	t.Helper()
 	path := filepath.Join("testdata", name)

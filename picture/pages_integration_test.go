@@ -15,10 +15,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// convertPagesHost converts the picture at path, read as kind, through c's ConvertPages into a
-// working directory of its own, twice, and returns its PNGs decoded, in order, failing unless both
-// runs gave the same bytes, page for page, the working directory holds the PNGs alone, and the
-// original is kept.
 func convertPagesHost(t *testing.T, c *picture.Converter, path string, kind route.Kind) []image.Image {
 	t.Helper()
 	data, err := os.ReadFile(path)
@@ -63,7 +59,6 @@ func convertPagesHost(t *testing.T, c *picture.Converter, path string, kind rout
 	return imgs
 }
 
-// sizes returns each of imgs' width and height, in order.
 func sizes(imgs []image.Image) []image.Point {
 	var out []image.Point
 	for _, img := range imgs {
@@ -72,7 +67,6 @@ func sizes(imgs []image.Image) []image.Point {
 	return out
 }
 
-// wantSizes fails the test unless imgs are of sizes want, in order.
 func wantSizes(t *testing.T, imgs []image.Image, want ...image.Point) {
 	t.Helper()
 	got := sizes(imgs)
@@ -86,7 +80,6 @@ func wantSizes(t *testing.T, imgs []image.Image, want ...image.Point) {
 	}
 }
 
-// near reports whether img's pixel at x, y is within 8 of want in each channel, opaque.
 func near(img image.Image, x, y int, want color.NRGBA) bool {
 	c := color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
 	d := func(a, b uint8) bool { return max(a, b)-min(a, b) <= 8 }
@@ -98,11 +91,6 @@ var (
 	red   = color.NRGBA{0xff, 0, 0, 0xff}
 )
 
-// TestConvertPagesTIFFHost converts the package's TIFFs on the host's magick, each page the same
-// bytes converted twice, in page order: pages.tiff, three pages of 40, 50, and 60 by 30 pixels,
-// white, mid-gray, and black; scanned-g4.tiff, three bilevel Group 4 pages of 64, 72, and 80 by
-// 48 pixels, the first two with a black block on white and the last black; and lzw-gray.tiff, two
-// 8-bit gray LZW pages of 30 and 40 by 20. ConvertBatch still gives a TIFF's first page alone.
 func TestConvertPagesTIFFHost(t *testing.T) {
 	c := hostConverter(t)
 	path := filepath.Join("testdata", "pages.tiff")
@@ -141,12 +129,10 @@ func TestConvertPagesTIFFHost(t *testing.T) {
 	}
 }
 
-// gray returns img's pixel at x, y as 8-bit gray.
 func gray(img image.Image, x, y int) uint8 {
 	return color.GrayModel.Convert(img.At(x, y)).(color.Gray).Y
 }
 
-// decodeFile decodes the PNG at path.
 func decodeFile(t *testing.T, path string) image.Image {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -160,13 +146,6 @@ func decodeFile(t *testing.T, path string) image.Image {
 	return img
 }
 
-// TestConvertRasterHost converts the package's HEIC, WebP, and AVIF fixtures on the host's
-// magick, each the same bytes converted twice. two-images.heic's primary image is stored 48x32,
-// its left half white, and rotated by its irot box a quarter turn clockwise, beside a second
-// image of 32x32 blue: its PNG is the primary, upright, 32x48, white above red. oriented.webp
-// holds the same picture under EXIF orientation 6 and converts to the same. animated.webp and
-// animated.avif are three frames of 24x16, red, green, and blue: each converts to its first
-// frame, red.
 func TestConvertRasterHost(t *testing.T) {
 	c := hostConverter(t)
 	kinds := map[string]route.Kind{".heic": route.HEIC, ".webp": route.WebP, ".avif": route.AVIF}

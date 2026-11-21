@@ -161,7 +161,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/Cargo.lock', matrix.tool)) }}
+          key: cargo-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/Cargo.lock', matrix.tool), 'tools/envelope/Cargo.lock') }}
           restore-keys: cargo-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-
 
       - name: mise run check

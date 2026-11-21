@@ -13,7 +13,7 @@ MimeKit 4.18.2: MsgKit 3.0.6 and PstBuilder.Eml 1.3.0 are built on MimeKit 4
 '''
 
 [tasks.check]
-description = "Shellcheck the scripts, format-check, lint, and test docproc-mail and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
+description = "Shellcheck the scripts, format-check, lint, and test docproc-mail and the shared envelope crate against the static musl release binary, lint the envelope with all its features on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -23,6 +23,7 @@ git ls-files -z '*.sh' | xargs -0 -r shellcheck
 cargo fmt --check
 cargo fmt --check --manifest-path ../envelope/Cargo.toml
 cargo clippy --all-targets --locked --target "$target" -p docproc-mail -p docproc-envelope -- -D warnings
+cargo clippy --all-targets --all-features --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
 cargo test --release --locked --target "$target" -p docproc-mail -p docproc-envelope
 "target/$target/release/docproc-mail" --version
 '''
@@ -56,7 +57,7 @@ dir = "{{config_root}}"
 run = "scripts/mboxrd.sh"
 
 [tasks.currency]
-description = "Report every crate behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, every mise tool behind its latest, and every fixture generator package behind its latest, a held one as held; writes only generator/obj/ and cargo-deny's advisory database"
+description = "Report every crate in Cargo.lock and tools/envelope/Cargo.lock behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, every mise tool behind its latest, and every fixture generator package behind its latest, a held one as held; writes only generator/obj/ and cargo-deny's advisory database"
 dir = "{{config_root}}"
 run = '''
 set -euo pipefail
@@ -82,7 +83,7 @@ exit "$stale"
 '''
 
 [tasks.upgrade]
-description = "Bump every mise tool here and in mise.fixtures.toml, every crate, and every fixture generator package to its latest, but a held one, rewriting the mise files, global.json, Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, Generator.csproj, and its lock file in locked form"
+description = "Bump every mise tool here and in mise.fixtures.toml, every crate, and every fixture generator package to its latest, but a held one, rewriting the mise files, global.json, Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, tools/envelope/Cargo.lock, Generator.csproj, and its lock file in locked form"
 dir = "{{config_root}}"
 run = '''
 set -euo pipefail

@@ -14,13 +14,10 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// sec is n seconds.
 func sec(n float64) time.Duration { return time.Duration(n * float64(time.Second)) }
 
-// span is the span from a to b, in seconds.
 func span(a, b float64) audio.Span { return audio.Span{Start: sec(a), End: sec(b)} }
 
-// win is a window from a to b, in seconds, ended as cut says.
 func win(a, b float64, cut audio.Cut) audio.Window {
 	return audio.Window{Span: span(a, b), Cut: cut}
 }
@@ -93,9 +90,6 @@ func TestPlanWindows(t *testing.T) {
 			seams:    []audio.Span{span(27.4, 29.4)},
 		},
 		{
-			// The silence's part past the first window's limit has its middle at 30.25, in the
-			// second window's leading seam's reach: ending there would leave the window no audio
-			// of its own, and its two seams would overlap.
 			name:     "a silence in a window's first two overlaps doesn't end it",
 			duration: 80,
 			silences: []audio.Span{span(29.5, 31)},
@@ -124,8 +118,6 @@ func TestPlanWindows(t *testing.T) {
 			seams:    []audio.Span{span(23, 25)},
 		},
 		{
-			// The silence ends the first window at the middle of its part within the limit; the
-			// windows after start within it, and it is behind them.
 			name:     "a silence longer than a window ends one window",
 			duration: 100,
 			silences: []audio.Span{span(20, 70)},
@@ -159,10 +151,6 @@ func TestPlanWindows(t *testing.T) {
 	}
 }
 
-// TestPlanWindowsInvariants plans sources of random durations and silences, from a fixed seed,
-// and checks each plan's invariants: the windows cover the source in order, each at most the
-// limit, seams the overlap long and never overlapping, and the same plan for the silences in any
-// order.
 func TestPlanWindowsInvariants(t *testing.T) {
 	r := rand.New(rand.NewPCG(1, 2))
 	for range 2000 {
@@ -194,7 +182,6 @@ func TestPlanWindowsInvariants(t *testing.T) {
 	}
 }
 
-// checkPlan checks plan's invariants for a source duration long.
 func checkPlan(t *testing.T, plan audio.Plan, duration time.Duration) {
 	t.Helper()
 	if plan.Duration != duration {
@@ -264,8 +251,6 @@ func TestPlanWindowsRefuses(t *testing.T) {
 	}
 }
 
-// TestPlannerLimit: a zero Limit and Overlap are the defaults, a set Limit bounds every window
-// PlanWindows plans, and the Overlap must be under half of it; a negative Limit is refused.
 func TestPlannerLimit(t *testing.T) {
 	p, err := audio.NewPlanner(audio.Request{})
 	if err != nil || p.Limit() != audio.DefaultWindowLimit || p.Overlap() != audio.DefaultOverlap {
@@ -301,11 +286,6 @@ func TestSpanString(t *testing.T) {
 	}
 }
 
-// planIncrementally plans a source duration long whose silences are silences through a Planner
-// of req, as a stream: it advances through positions, in order, giving before each the silences
-// that begin before it, and then ends at duration. It checks that each Advance returns exactly
-// the windows of want, PlanWindows' plan, whose limit the position has passed, and returns every
-// window the planner returned, in order.
 func planIncrementally(t *testing.T, duration time.Duration, silences []audio.Span, positions []time.Duration, req audio.Request, want audio.Plan) []audio.Window {
 	t.Helper()
 	p, err := audio.NewPlanner(req)
@@ -349,7 +329,6 @@ func planIncrementally(t *testing.T, duration time.Duration, silences []audio.Sp
 	return append(got, ws...)
 }
 
-// randomPositions returns up to n positions from 0 to duration, in order, from r.
 func randomPositions(r *rand.Rand, duration time.Duration, n int) []time.Duration {
 	var out []time.Duration
 	for range r.IntN(n + 1) {
@@ -359,11 +338,6 @@ func randomPositions(r *rand.Rand, duration time.Duration, n int) []time.Duratio
 	return out
 }
 
-// TestPlannerMatchesPlanWindows plans sources of random durations, silences, and overlaps, from
-// a fixed seed, as streams advanced in random steps, or to each window's limit and just past it:
-// the windows a Planner returns, as each is fixed, are PlanWindows' windows exactly, and each is
-// returned as soon as the stream passes its limit. One silence in eight is longer than a window,
-// 30 to 75 s, so it crosses one limit or more.
 func TestPlannerMatchesPlanWindows(t *testing.T) {
 	r := rand.New(rand.NewPCG(5, 6))
 	for range 2000 {
@@ -384,7 +358,6 @@ func TestPlannerMatchesPlanWindows(t *testing.T) {
 		}
 		positions := randomPositions(r, duration, 30)
 		if r.IntN(2) == 0 {
-			// The positions at each window's limit and just past it, where it is fixed.
 			positions = nil
 			for _, w := range want.Windows {
 				if limit := w.Start + audio.DefaultWindowLimit; limit < duration {
@@ -399,9 +372,6 @@ func TestPlannerMatchesPlanWindows(t *testing.T) {
 	}
 }
 
-// TestPlannerFixtures plans each level-change variant from the tracker's silences, as a stream fed
-// in chunks: the Planner advanced to the tracker's Position after each chunk returns PlanWindows'
-// windows of the same silences, each as soon as it is fixed.
 func TestPlannerFixtures(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -483,7 +453,6 @@ func TestPlannerRefuses(t *testing.T) {
 	if want := []audio.Window{win(0, 30, audio.CutLimit)}; !reflect.DeepEqual(first, want) {
 		t.Errorf("advanced past the first limit: windows %v, want %v", first, want)
 	}
-	// Clipped to 0 and empty, a silence before the position is dropped, not refused.
 	if err := p.Silence(span(-2, -1)); err != nil {
 		t.Errorf("an empty silence: %v", err)
 	}
@@ -518,11 +487,6 @@ func TestPlannerRefuses(t *testing.T) {
 	}
 }
 
-// TestPlannerOpen plans a stream through a silence open across two limits: each window whose limit
-// the open silence passes is returned then, the first ending at the silence's middle up to its
-// limit and the next, which starts inside it, at its limit; the silence, closed, ends no later
-// window; and the windows are PlanWindows'. While it is open, an Advance, an End, a silence inside
-// it or ending before its position, or another open silence, is refused, and so is an empty one.
 func TestPlannerOpen(t *testing.T) {
 	p, err := audio.NewPlanner(audio.Request{})
 	if err != nil {

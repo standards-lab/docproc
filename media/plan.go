@@ -57,7 +57,6 @@ func (req Request) Plan() (VideoPlan, error) {
 	if _, err := audio.NewTracker(areq); err != nil {
 		return VideoPlan{}, fmt.Errorf("media: %w", err)
 	}
-	// A fixed threshold takes the place of the rolling one, whose fields are then zero.
 	percentile, floorWindow, margin := 0.0, time.Duration(0), 0.0
 	if req.Threshold == 0 {
 		percentile = cmp.Or(req.Percentile, audio.DefaultPercentile)

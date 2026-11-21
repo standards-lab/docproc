@@ -21,8 +21,6 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/run"
 )
 
-// inputFile runs docproc run over one text file, through the App with no tool, and returns its
-// input line's file as the record holds it.
 func inputFile(t *testing.T) (*schema.File, string) {
 	t.Helper()
 	t.Setenv("DOCPROC_SHUTDOWN_TIMEOUT", "")
@@ -58,7 +56,6 @@ func inputFile(t *testing.T) (*schema.File, string) {
 	return nil, ""
 }
 
-// The birth time the kernel gives is the file's created time, in UTC.
 func TestFile_BirthTimeGiven(t *testing.T) {
 	born := time.Date(2026, 11, 1, 9, 30, 0, 250, time.FixedZone("east", 5*3600+45*60))
 	var probed string
@@ -75,7 +72,6 @@ func TestFile_BirthTimeGiven(t *testing.T) {
 	}
 }
 
-// Where the kernel gives no birth time, the file has no created time, and every other field.
 func TestFile_NoBirthTime(t *testing.T) {
 	run.SetBirth(t, func(string) (time.Time, error) { return time.Time{}, nil })
 	f, _ := inputFile(t)
@@ -84,7 +80,6 @@ func TestFile_NoBirthTime(t *testing.T) {
 	}
 }
 
-// A probe that fails leaves the line's file out, and the input is dispatched all the same.
 func TestFile_ProbeFails(t *testing.T) {
 	run.SetBirth(t, func(path string) (time.Time, error) {
 		return time.Time{}, &os.PathError{Op: "statx", Path: path, Err: errors.New("refused")}
@@ -94,8 +89,6 @@ func TestFile_ProbeFails(t *testing.T) {
 	}
 }
 
-// The host's probe gives a birth time no later than the run, or none where the filesystem records
-// none.
 func TestFile_HostBirthTime(t *testing.T) {
 	before := time.Now().Add(-time.Second)
 	f, _ := inputFile(t)

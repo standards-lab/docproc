@@ -20,11 +20,8 @@ import (
 	"github.com/standards-lab/go-storage/storagetest"
 )
 
-// prefix is the host's prefix the unit tier's stores keep their contents under.
 const prefix = "docproc/content/"
 
-// newStore returns a started go-storage Store wrapping fake, which bounds a put to maxSize bytes,
-// none when zero.
 func newStore(t *testing.T, fake *storagetest.Fake, maxSize int64) *gostorage.Store {
 	t.Helper()
 	cfg := gostorage.Config{Container: "docproc", MaxObjectSize: maxSize}
@@ -35,11 +32,10 @@ func newStore(t *testing.T, fake *storagetest.Fake, maxSize int64) *gostorage.St
 	if err := s.Start(t.Context()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	t.Cleanup(func() { _ = s.Shutdown(context.Background()) }) // the Fake closes nothing
+	t.Cleanup(func() { _ = s.Shutdown(context.Background()) })
 	return s
 }
 
-// newContent returns a Content over client, under prefix, of renew.
 func newContent(t *testing.T, client gostorage.Client, renew time.Duration) *storage.Content {
 	t.Helper()
 	c, err := storage.New(storage.Config{Client: client, Prefix: prefix, Renew: renew})
@@ -49,7 +45,6 @@ func newContent(t *testing.T, client gostorage.Client, renew time.Duration) *sto
 	return c
 }
 
-// hash returns b's SHA-256 as lowercase hex.
 func hash(b []byte) string {
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
@@ -77,8 +72,6 @@ func TestNew_NegativeRenew(t *testing.T) {
 	}
 }
 
-// TestContent_Key checks the stable layout: the prefix, the first two hex digits, a slash, the
-// whole SHA-256.
 func TestContent_Key(t *testing.T) {
 	fake := storagetest.NewFake(storagetest.Options{})
 	c := newContent(t, newStore(t, fake, 0), time.Hour)
@@ -91,21 +84,18 @@ func TestContent_Key(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get the content's key: %v", err)
 	}
-	defer func() { _ = blob.Body.Close() }() // read only: a close error loses nothing
+	defer func() { _ = blob.Body.Close() }()
 	if got, err := io.ReadAll(blob.Body); err != nil || !bytes.Equal(got, b) {
 		t.Errorf("the content's key holds %q (%v), want %q", got, err, b)
 	}
 }
 
-// TestContent_Renew checks the renew age against the ModifiedAt the Fake's clock stamps: a content
-// older than the age is written again, one within it isn't, and a renew age of zero never
-// rewrites.
 func TestContent_Renew(t *testing.T) {
 	const renew = time.Hour
 	for _, tc := range []struct {
 		name    string
 		renew   time.Duration
-		age     time.Duration // how far the Fake's clock stamps the first put behind the wall clock
+		age     time.Duration
 		rewrite bool
 	}{
 		{"past the age", renew, 2 * renew, true},
@@ -146,8 +136,6 @@ func TestContent_Renew(t *testing.T) {
 	}
 }
 
-// TestContent_TooLarge checks that a Store's size bound reaches the dispatcher as its own
-// ErrTooLarge, go-storage's kept, and that the put stored nothing.
 func TestContent_TooLarge(t *testing.T) {
 	c := newContent(t, newStore(t, storagetest.NewFake(storagetest.Options{}), 4), time.Hour)
 	b := []byte("too large")
@@ -165,8 +153,6 @@ func TestContent_TooLarge(t *testing.T) {
 	}
 }
 
-// TestContent_MissingContainer checks that a container gone from under the store is no miss: an
-// open fails, never matching fs.ErrNotExist, and a put fails too.
 func TestContent_MissingContainer(t *testing.T) {
 	fake := storagetest.NewFake(storagetest.Options{})
 	c := newContent(t, newStore(t, fake, 0), time.Hour)

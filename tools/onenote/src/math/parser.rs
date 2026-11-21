@@ -17,14 +17,14 @@
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Changed from one2html: errors are plain strings; an object's alignment value is read only where
-// the LaTeX uses it, so one the LaTeX ignores no longer fails the equation; an op-char is text
-// without a log warning; a matrix of no columns fails rather than panics in the renderer.
 
 //! The parser: tokens to an equation. Each math object reads its fixed number of arguments,
 //! separated and closed by markers of its own type; an object left open, a stray separator or
 //! end, or an argument count the object doesn't take fails the equation.
+//!
+//! Changed from one2html: errors are plain strings; an object's alignment value is read only where
+//! the LaTeX uses it, so one the LaTeX ignores no longer fails the equation; an op-char is text
+//! without a log warning; a matrix of no columns fails rather than panics in the renderer.
 
 use onenote_parser::contents::MathObjectType;
 
@@ -195,7 +195,6 @@ impl Parser {
             columns,
             brackets,
             items,
-            // MatrixAlignment's ShowMatPlaceHldr: empty cells show a placeholder.
             placeholders: object.align == Some(8),
         })
     }
@@ -300,8 +299,6 @@ impl Parser {
         Ok(Op::UpperLimit { body, limit })
     }
 
-    // Helpers
-
     fn parse_object_1(&mut self, kind: MathObjectType) -> Result<(Object, Equation)> {
         let (object, mut args) = self.parse_object_fixed(kind, 1)?;
         let arg = args.remove(0);
@@ -323,7 +320,6 @@ impl Parser {
         Ok((object, a, b, c))
     }
 
-    /// An object that takes exactly `count` arguments.
     fn parse_object_fixed(
         &mut self,
         kind: MathObjectType,
@@ -335,15 +331,12 @@ impl Parser {
         Ok((object, args))
     }
 
-    /// An object that takes as many arguments as it says.
     fn parse_object_n(&mut self, kind: MathObjectType) -> Result<(Object, Vec<Equation>)> {
         let object = self.bump_start(kind)?;
         let args = self.parse_args(kind, object.args)?;
         Ok((object, args))
     }
 
-    /// `count` arguments, separated by the object's separators and closed by its end. An
-    /// object of no arguments is its start and its end, an end one2html leaves unread.
     fn parse_args(&mut self, kind: MathObjectType, count: u32) -> Result<Vec<Equation>> {
         let mut args = Vec::new();
         if count == 0 {
@@ -414,7 +407,6 @@ fn expect_args(object: &Object, count: u32) -> Result<()> {
     }
 }
 
-/// A token, as an error names it.
 fn describe(token: &Token) -> String {
     match token {
         Token::Text(_) => "text".to_owned(),

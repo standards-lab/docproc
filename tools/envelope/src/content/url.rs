@@ -6,7 +6,9 @@
 //! at a line's start, after whitespace, or after `*`, `_`, `~`, or `(`, then a valid domain, then
 //! anything up to whitespace or `<`, less its trailing punctuation, an unbalanced `)`, and an
 //! entity reference; a `www.` link takes `http:`. URLs compare after RFC 3986 §6.2.2's
-//! syntax-based normalization.
+//! syntax-based normalization: the scheme (RFC 3986 3.1's syntax) and the host in ASCII
+//! lowercase, each percent-encoding of an unreserved character decoded and every other's hex
+//! digits in uppercase, and the path's `.` and `..` segments removed by 5.2.4.
 
 use std::ops::Range;
 
@@ -34,8 +36,6 @@ pub fn find(text: &str) -> Vec<(Range<usize>, String)> {
     out
 }
 
-/// A `<scheme:…>` at the start of `rest`: its length, closing bracket included, and the URL, its
-/// whitespace removed. The URL holds no `<`, and something follows its colon.
 fn angled(rest: &str) -> Option<(usize, String)> {
     let inner = &rest[1..];
     let scheme = scheme_length(inner)?;
@@ -50,8 +50,6 @@ fn angled(rest: &str) -> Option<(usize, String)> {
     (url.len() > scheme + 1).then_some((end + 2, url))
 }
 
-/// The length of a URI's scheme at the start of `text`, followed by its colon (RFC 3986 3.1:
-/// `ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`).
 fn scheme_length(text: &str) -> Option<usize> {
     let bytes = text.as_bytes();
     if !bytes.first()?.is_ascii_alphabetic() {
@@ -64,8 +62,6 @@ fn scheme_length(text: &str) -> Option<usize> {
     (bytes.get(length) == Some(&b':')).then_some(length)
 }
 
-/// Whether an extended autolink may start after `before`: at its start, or after whitespace,
-/// `*`, `_`, `~`, or `(`.
 fn may_start_autolink(before: &str) -> bool {
     before
         .chars()
@@ -73,7 +69,6 @@ fn may_start_autolink(before: &str) -> bool {
         .is_none_or(|c| c.is_whitespace() || matches!(c, '*' | '_' | '~' | '('))
 }
 
-/// A GFM extended autolink at the start of `rest`: its length and its URL.
 fn autolink(rest: &str) -> Option<(usize, String)> {
     let (domain_start, www) = if rest.starts_with("www.") {
         (0, true)
@@ -101,9 +96,6 @@ fn autolink(rest: &str) -> Option<(usize, String)> {
     Some((length, url))
 }
 
-/// The length of a valid domain at the start of `text`: segments of alphanumeric characters,
-/// `_`, and `-`, separated by `.`, no `_` in the last two. A `www.` link's holds a period; an
-/// `http://` link's needn't.
 fn valid_domain(text: &str, www: bool) -> Option<usize> {
     let mut periods = 0;
     let mut underscores = (0, 0);
@@ -125,8 +117,6 @@ fn valid_domain(text: &str, www: bool) -> Option<usize> {
     valid.then_some(length)
 }
 
-/// The length of `link` less its trailing punctuation (`?`, `!`, `.`, `,`, `:`, `*`, `_`, `~`), a
-/// trailing `)` with more `)` than `(` in the link, and a trailing entity reference, repeatedly.
 fn trimmed(link: &str) -> usize {
     let mut end = link.len();
     loop {
@@ -134,9 +124,9 @@ fn trimmed(link: &str) -> usize {
         let Some(last) = text.chars().next_back() else {
             return 0;
         };
-        if matches!(last, '?' | '!' | '.' | ',' | ':' | '*' | '_' | '~') {
-            end -= 1;
-        } else if last == ')' && text.matches(')').count() > text.matches('(').count() {
+        if matches!(last, '?' | '!' | '.' | ',' | ':' | '*' | '_' | '~')
+            || last == ')' && text.matches(')').count() > text.matches('(').count()
+        {
             end -= 1;
         } else if last == ';' {
             let name = text[..end - 1]
@@ -193,8 +183,6 @@ pub fn normalized(url: &str) -> String {
     out
 }
 
-/// `text` with each `%hh` naming an unreserved character (`ALPHA / DIGIT / "-" / "." / "_" /
-/// "~"`) decoded, and every other's hex digits in uppercase.
 fn percent_normalized(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = String::with_capacity(text.len());
@@ -226,7 +214,6 @@ fn percent_normalized(text: &str) -> String {
     out
 }
 
-/// `host` in ASCII lowercase, but each percent-encoding's hex digits.
 fn lowercase_outside_escapes(host: &str) -> String {
     let mut out = String::with_capacity(host.len());
     let mut escape = 0;
@@ -244,7 +231,6 @@ fn lowercase_outside_escapes(host: &str) -> String {
     out
 }
 
-/// `path` with its `.` and `..` segments removed, by RFC 3986 5.2.4.
 fn without_dot_segments(path: &str) -> String {
     let mut input = path;
     let mut out = String::with_capacity(path.len());
@@ -287,7 +273,6 @@ mod tests {
             .collect()
     }
 
-    /// GitHub Flavored Markdown 0.29's extended autolink examples, as plain text.
     #[test]
     fn gfm_extended_autolinks() {
         assert_eq!(
@@ -332,8 +317,6 @@ mod tests {
         assert_eq!(urls("*www.example.com*")[0].0, "www.example.com");
     }
 
-    /// An angle-bracket URI of any scheme, split across lines, is one URL; without a scheme, or
-    /// unclosed, it is none.
     #[test]
     fn angle_bracket_uris() {
         assert_eq!(
@@ -349,7 +332,6 @@ mod tests {
         assert!(urls("<b> <1x:y> <http: > <http://x <x:y").is_empty());
     }
 
-    /// RFC 3986 6.2.2's examples, and its dot-segment examples (5.2.4).
     #[test]
     fn syntax_based_normalization() {
         assert_eq!(

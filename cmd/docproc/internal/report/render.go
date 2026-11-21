@@ -20,29 +20,23 @@ import (
 // ".html".
 const IndexPage = "index.html"
 
-// tempPattern names a report's working directories beside the report directory, under
-// runs/<run>/: the pages being written, and the earlier pages being removed.
 const tempPattern = ".report-*"
 
 //go:embed pages.html.tmpl
 var sources embed.FS
 
-// pages is the report's templates, parsed once: "index" and "content", each a whole page.
 var pages = template.Must(template.New("").Funcs(funcs).ParseFS(sources, "pages.html.tmpl"))
 
-// funcs are the templates' functions.
 var funcs = template.FuncMap{
 	"time":  func(t schema.Time) string { return t.String() },
 	"took":  took,
 	"bytes": byteSize,
 }
 
-// took returns how long span ran, to the millisecond.
 func took(span schema.Span) string {
 	return span.End.Time().Sub(span.Start.Time()).Round(time.Millisecond).String()
 }
 
-// byteSize returns n bytes in binary units, to one decimal place from a KiB up.
 func byteSize(n int64) string {
 	if n < 1024 {
 		return fmt.Sprintf("%d B", n)
@@ -81,7 +75,7 @@ func Render(ctx context.Context, d *rundir.Dir, root, id string) error {
 	var lines []schema.Event
 	for e, err := range d.Record(id) {
 		if errors.Is(err, rundir.ErrNotEnded) {
-			break // the manifest says so too: the page marks the run not ended
+			break
 		}
 		if err != nil {
 			return err
@@ -103,13 +97,11 @@ func Render(ctx context.Context, d *rundir.Dir, root, id string) error {
 	return replace(filepath.Join(root, filepath.FromSlash(rel)), files)
 }
 
-// page is one rendered page: its file name in the report directory and its bytes.
 type page struct {
 	name string
 	body []byte
 }
 
-// render returns v's pages: the index, then each content's, in v's order.
 func render(ctx context.Context, v *model) ([]page, error) {
 	var out []page
 	exec := func(name, tmpl string, data any) error {
@@ -134,14 +126,11 @@ func render(ctx context.Context, v *model) ([]page, error) {
 	return out, nil
 }
 
-// contentView is what a content's page renders: the run and the content.
 type contentView struct {
 	Run     *model
 	Content *content
 }
 
-// replace writes files into dst, a report directory, replacing whatever dst held, as [Render]
-// says.
 func replace(dst string, files []page) (err error) {
 	parent := filepath.Dir(dst)
 	stale, err := filepath.Glob(filepath.Join(parent, tempPattern))
@@ -159,7 +148,7 @@ func replace(dst string, files []page) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			_ = os.RemoveAll(tmp) // the render failed already; the leftover is the lesser loss
+			_ = os.RemoveAll(tmp)
 		}
 	}()
 	if err := os.Chmod(tmp, 0o755); err != nil {
@@ -170,14 +159,12 @@ func replace(dst string, files []page) (err error) {
 			return fmt.Errorf("report: %w", err)
 		}
 	}
-	// The earlier report directory, if any, moves into a working directory of its own, so the new
-	// one can take its name; a rename can't replace a directory that isn't empty.
 	old, err := os.MkdirTemp(parent, tempPattern)
 	if err != nil {
 		return fmt.Errorf("report: %w", err)
 	}
 	if err := os.Rename(dst, filepath.Join(old, filepath.Base(dst))); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		_ = os.Remove(old) // empty: nothing moved into it
+		_ = os.Remove(old)
 		return fmt.Errorf("report: %w", err)
 	}
 	if err := os.Rename(tmp, dst); err != nil {

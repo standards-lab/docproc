@@ -4,18 +4,12 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Rendering;
 
-/// <summary>The model as GitHub-flavored Markdown: a rendering of the model, never a second
-/// reading of the document.</summary>
+// See docs/tool-contract.md, "docproc-ooxml".
 internal sealed class MarkdownRenderer
 {
-    // The labels of the notes and comments referenced so far, numbered in the order the
-    // rendering reaches their references: footnotes and endnotes share one count, [^1], [^2], ...,
-    // so their ids never collide, and comments have their own, [^c1], [^c2], ....
     private readonly Dictionary<(bool Endnote, int Id), int> notes = [];
     private readonly Dictionary<int, int> comments = [];
 
-    // How many levels a heading is rendered below its own: one inside a slide, whose own heading
-    // is the outermost.
     private int headingShift;
 
     private MarkdownRenderer()
@@ -54,8 +48,6 @@ internal sealed class MarkdownRenderer
         return distinct;
     }
 
-    // The notes in label order. A note no reference reached is labeled after the rest, so its
-    // definition is still there; a note's own references are labeled as its definition is made.
     private List<string> NoteDefinitions(Document document)
     {
         var byKey = new Dictionary<(bool Endnote, int Id), Note>();
@@ -83,8 +75,6 @@ internal sealed class MarkdownRenderer
         return definitions;
     }
 
-    // Each comment: its author, its thread's state, the text it is anchored to, its text, and its
-    // replies, each a paragraph of the definition.
     private List<string> CommentDefinitions(Document document)
     {
         var all = document.Comments ?? [];
@@ -120,8 +110,6 @@ internal sealed class MarkdownRenderer
 
     private static string Author(string? author) => author is null ? "an unknown author" : string.Join(" ", Lines(author));
 
-    // A footnote definition: its first paragraph on the label's line, the rest of its chunks
-    // indented four spaces after a blank line, the continuation GFM reads as the same footnote.
     private static string Definition(string label, List<Chunk> chunks)
     {
         const string indent = "    ";
@@ -157,12 +145,8 @@ internal sealed class MarkdownRenderer
         return label;
     }
 
-    // A chunk of rendered blocks: whether it is a list, which joins a list item tightly, and
-    // whether it is a paragraph, which can follow a list marker or a definition's label.
     private readonly record struct Chunk(string Text, bool IsList, bool IsParagraph);
 
-    // Markdown joins two adjacent lists of one kind into one, so a list that follows another of
-    // its kind switches markers, '-' to '*' or '.' to ')', which starts a new list.
     private List<Chunk> RenderBlocks(IReadOnlyList<Block> blocks)
     {
         var chunks = new List<Chunk>();
@@ -194,8 +178,6 @@ internal sealed class MarkdownRenderer
             {
                 chunks.Add(new Chunk(text, false, block is Paragraph));
             }
-            // A chart in a docx table's cell, which a GFM cell can't hold, renders as its own
-            // chunk after the table, its title left in the cell (docs/design-review.md, OX-15).
             if (block is Table docxTable && docxTable.Rows.All(row => row.Row is null))
             {
                 foreach (var chart in CellCharts(docxTable.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Blocks ?? [])))
@@ -210,7 +192,6 @@ internal sealed class MarkdownRenderer
         return chunks;
     }
 
-    // The charts among a table's cells' blocks, in order, through their lists and nested tables.
     private static IEnumerable<Chart> CellCharts(IEnumerable<Block> blocks)
     {
         foreach (var block in blocks)
@@ -235,14 +216,9 @@ internal sealed class MarkdownRenderer
         return text.Length == 0 ? "" : new string('#', Math.Clamp(heading.Level + headingShift, 1, 6)) + " " + text;
     }
 
-    // A line break inside a paragraph is a hard break: a backslash at the end of the line.
     private string RenderParagraph(Paragraph paragraph) =>
         string.Join("\\\n", Lines(paragraph.Inlines));
 
-    // An item's first paragraph follows its marker; its other blocks are indented to the
-    // marker's width, a nested list on the next line, keeping the list tight, anything else after
-    // a blank line. An ordered list counts from its start, which Markdown takes from its first
-    // item's number.
     private string RenderList(ListBlock list, bool alternate)
     {
         var text = new StringBuilder();
@@ -284,8 +260,6 @@ internal sealed class MarkdownRenderer
         return string.Join("\n", lines);
     }
 
-    // A sheet under a heading of its name, marked when it is hidden, then its blocks: its table,
-    // charts, and pictures.
     private string RenderSheet(Sheet sheet) =>
         string.Join("\n\n", [SheetHeading(sheet.Name, sheet.Hidden), .. RenderBlocks(sheet.Blocks).Select(c => c.Text)]);
 
@@ -295,16 +269,6 @@ internal sealed class MarkdownRenderer
         return "# " + (text.Length > 0 ? text : "Sheet") + (hidden ? " (hidden)" : "");
     }
 
-    // An xlsx document's rendering split along its lines (Writing/LineWriter.cs): the document
-    // line holds the Markdown of no sheet, and each sheet's Markdown is a sheet fragment, a row
-    // fragment for each of its table's rows, and a drawing fragment. Each fragment ends in its
-    // own newline and carries the blank line that separates it from the chunk before it, so the
-    // fragments concatenate, with nothing between them, into the whole rendering, and each is
-    // made from what a forward reading of the sheet has at hand when its line is written.
-
-    /// <summary>A sheet's first fragment: its heading and, when it has a table, the table's header
-    /// row of the given columns and its delimiter row; after a blank line when the sheet follows
-    /// another chunk.</summary>
     internal static string SheetFragment(string name, bool hidden, IReadOnlyList<string> columns, bool follows)
     {
         var text = new StringBuilder();
@@ -321,23 +285,16 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    /// <summary>A sheet table row's fragment: its line of the table, under the given columns.</summary>
     internal static string RowFragment(TableRow row, IReadOnlyList<string> columns) =>
         Row(SheetRowCells(row, columns), columns.Count + 1) + "\n";
 
-    /// <summary>A sheet's drawing fragment: its charts' tables and its pictures' links, each after
-    /// a blank line; empty when the sheet has none.</summary>
     internal static string DrawingFragment(IReadOnlyList<Block> drawings) =>
         string.Concat(new MarkdownRenderer().RenderBlocks(drawings).Select(c => "\n" + c.Text + "\n"));
 
-    /// <summary>The column letters a sheet's table uses, in the sheet's order (Z before AA).</summary>
     internal static List<string> SheetColumns(Table table) =>
         [.. table.Rows.SelectMany(row => row.Cells).Select(cell => cell.Ref).OfType<string>()
             .Select(ColumnOf).Distinct().OrderBy(c => c.Length).ThenBy(c => c, StringComparer.Ordinal)];
 
-    // A slide under a heading of its number, marked when it is hidden, then its blocks, its
-    // title's heading a level below the slide's, and then its notes after a bold "Notes" label,
-    // which no slide text can make, as text's asterisks are escaped.
     private string RenderSlide(Slide slide)
     {
         var heading = "# Slide " + slide.Number.ToString(CultureInfo.InvariantCulture) + (slide.Hidden ? " (hidden)" : "");
@@ -352,9 +309,6 @@ internal sealed class MarkdownRenderer
         return string.Join("\n\n", chunks);
     }
 
-    // A GFM table, its first row the header. GFM has no merged cells, so a merged cell's text sits
-    // in its top-left grid position and the positions it covers are empty, as are the positions a
-    // row that starts late skips. A sheet's table has a grid of its own.
     private string RenderTable(Table table)
     {
         if (table.Rows.Count == 0)
@@ -395,11 +349,6 @@ internal sealed class MarkdownRenderer
         return GridTable(grid);
     }
 
-    // A sheet's table as the sheet shows it: a header row of the column letters the cells use, in
-    // order, and each row that has cells under its number, the columns and rows between left
-    // out, so the grid stays as small as the sheet's used cells. A merged cell's value sits in its
-    // anchor's position. A cell shows its value, or else its formula, or for a shared formula's
-    // cell its anchor.
     private static string RenderSheetTable(Table table)
     {
         var columns = SheetColumns(table);
@@ -440,9 +389,6 @@ internal sealed class MarkdownRenderer
 
     private static string ColumnOf(string reference) => new([.. reference.TakeWhile(char.IsAsciiLetter)]);
 
-    // A value plainly: a number in its shortest round-trip form, a boolean as TRUE or FALSE, the
-    // rest as their text. A formula with no cached value is shown as a code span, = and its text.
-    // A cell with an external hyperlink links what it shows to the target.
     private static string SheetCellText(TableCell cell)
     {
         var text = SheetCellValue(cell);
@@ -467,8 +413,6 @@ internal sealed class MarkdownRenderer
         return cell.SharedFrom is { } anchor ? $"(formula shared from {anchor})" : "";
     }
 
-    // A code span on one line, its fence longer than any run of backticks inside, and its pipes
-    // escaped, as a GFM table cell requires even in code.
     private static string Code(string text)
     {
         text = text.Replace('\n', ' ').Replace('\r', ' ').Replace("|", "\\|", StringComparison.Ordinal);
@@ -496,9 +440,6 @@ internal sealed class MarkdownRenderer
         return string.Join("\n", lines);
     }
 
-    // A chart: its title, then a GFM table of its series, a column each, and a row for each
-    // category, the first series' categories naming the rows (another's where it lacks one).
-    // A point a series lacks is an empty cell.
     private static string RenderChart(Chart chart)
     {
         var parts = new List<string>();
@@ -522,12 +463,6 @@ internal sealed class MarkdownRenderer
 
     private static string Cell(string? text) => text is null ? "" : string.Join("<br>", Lines(text));
 
-    // A picture as an image link to its file, relative to the media directory, or to a linked
-    // picture's target; its alternative text, or else its title, is the image text, and a title
-    // that differs from the image text is the image's title, its lines joined by spaces and
-    // written by Title, a pipe escaped as Target escapes one. An embedded package or OLE object is
-    // a link to its file, its text its program id or else its part's file name; it follows its
-    // preview picture (docs/tool-contract.md, "docproc-ooxml").
     private static string RenderMedia(Media media)
     {
         var destination = Target(media.Name ?? media.Target ?? "");
@@ -544,16 +479,7 @@ internal sealed class MarkdownRenderer
             : $"![{alt}]({destination})";
     }
 
-    /// <summary>A link's or an image's title as the text of a Markdown title, within
-    /// <c>"…"</c>, that CommonMark reads back as the title, by the rule every system tool shares
-    /// (tools/envelope/cases.json). Each backslash and <c>"</c> is escaped, and each
-    /// <c>&amp;</c> that could begin a character reference, as in a <see cref="Destination"/>,
-    /// since CommonMark reads both escapes and references in a title; any other character reads
-    /// as itself. A line feed is written <c>&amp;#10;</c> and a carriage return
-    /// <c>&amp;#13;</c>, references CommonMark reads back as them, so the title keeps to its line.
-    /// A NUL, which CommonMark reads as U+FFFD wherever it is, is written as U+FFFD, the one way
-    /// the title reads back other than as written. A pipe is left to a table cell's writer, as the
-    /// caller's is (a picture's title may stand in a cell).</summary>
+    // See docs/tool-contract.md, "Common envelope".
     internal static string Title(string title)
     {
         var text = new StringBuilder(title.Length + 8);
@@ -585,20 +511,9 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    // A link's destination by Destination, a pipe in it escaped too, as a GFM table cell requires
-    // and a backslash escape anywhere else allows: GFM takes \| back to | in a cell before it
-    // reads the cell's spans, and an escaped \ before it stays a backslash.
     private static string Target(string target) => Destination(target).Replace("|", "\\|", StringComparison.Ordinal);
 
-    /// <summary>A link's or an image's target as a Markdown destination that CommonMark reads back
-    /// as the target, by the rule every system tool shares (tools/envelope/cases.json). One holding
-    /// whitespace, a control character, <c>&lt;</c>, or <c>&gt;</c> is written within angle
-    /// brackets, its <c>&lt;</c> and <c>&gt;</c> escaped; any other is written bare, its
-    /// parentheses escaped, so neither form ends before the target does, balanced or not. In both,
-    /// each backslash is escaped, and each <c>&amp;</c> that could begin a character reference,
-    /// since CommonMark reads both escapes and references in a destination. A line ending or a
-    /// NUL, which no destination can hold, is percent-encoded (%0A, %0D, %00), the one way the
-    /// destination reads back other than as the target.</summary>
+    // See docs/tool-contract.md, "Common envelope".
     internal static string Destination(string target)
     {
         var angled = target.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c is '<' or '>');
@@ -643,9 +558,6 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    // Whether what follows a & could make it a character reference: an optional #, one or more
-    // ASCII letters and digits, then ;. Every entity and numeric reference CommonMark reads is
-    // one, and a & escaped that begins none still reads as itself.
     private static bool ReferenceLike(ReadOnlySpan<char> rest)
     {
         if (rest.StartsWith("#", StringComparison.Ordinal))
@@ -683,8 +595,6 @@ internal sealed class MarkdownRenderer
         grid[row][column] = value;
     }
 
-    // A cell's text on one line, its lines and blocks joined by <br>, the one line break a GFM
-    // cell has.
     private string CellText(IReadOnlyList<Block> blocks)
     {
         var lines = new List<string>();
@@ -728,11 +638,6 @@ internal sealed class MarkdownRenderer
         }
     }
 
-    // The lines of inlines, rendered as segments (docs/design-review.md, OX-16): the text split at
-    // its line breaks, each line trimmed (leading spaces would make an indented code block), each
-    // text run escaped on its own, each note's or comment's label appended as it is, and an
-    // external hyperlink's text within [ and ](target). A hyperlink's text keeps to one line, its
-    // line breaks spaces, and one with no text is its text alone. A line left empty is dropped.
     private List<string> Lines(IReadOnlyList<Inline> inlines)
     {
         var lines = new List<List<Segment>> { new() };
@@ -784,8 +689,6 @@ internal sealed class MarkdownRenderer
         return [.. lines.Select(RenderLine).Where(line => line.Length > 0)];
     }
 
-    // A piece of a line of inlines: text, escaped as it is rendered; a label, written as it is;
-    // or a hyperlink's start, or its end, whose text is the target.
     private enum SegmentKind
     {
         Text,
@@ -798,7 +701,6 @@ internal sealed class MarkdownRenderer
 
     private static string RenderLine(List<Segment> line)
     {
-        // The line is trimmed at both ends, through a hyperlink's start or end, up to a label.
         for (var i = 0; i < line.Count && line[i].Kind != SegmentKind.Label; i++)
         {
             if (line[i].Kind == SegmentKind.Text)
@@ -841,7 +743,6 @@ internal sealed class MarkdownRenderer
                     }
                     else
                     {
-                        // A hyperlink with no text is nothing to show.
                         i = end;
                     }
                     break;
@@ -853,20 +754,12 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    // The non-empty lines of a text, trimmed (leading spaces would make an indented code block)
-    // and escaped, tabs as spaces.
     private static IEnumerable<string> Lines(string text) => TrimmedLines(text).Select(line => Escape(line));
 
-    // The non-empty lines of a text, trimmed, tabs as spaces, as they are before they are escaped.
     private static IEnumerable<string> TrimmedLines(string text) =>
         text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0);
 
-    // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
-    // (docs/tool-contract.md, "Common envelope"), which htmd's escaping and so mail's and onenote's
-    // Markdown share: emphasis, code, links, entities, strikethrough, math, and table pipes
-    // anywhere; a `<` that could open an HTML tag, comment, or instruction; and, when the text
-    // begins its line, at its start what would open a heading, a block quote, a list, or a setext
-    // underline.
+    // See docs/tool-contract.md, "Common envelope".
     internal static string Escape(string line, bool lineStart = true)
     {
         var text = new StringBuilder(line.Length + 8);
@@ -899,9 +792,6 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    // Whether what follows a `<` could make it an HTML tag, comment, or instruction, as htmd
-    // judges it: a letter, `/` then a letter or nothing, `!`, or `?`. A `<` that ends the text is
-    // escaped too.
     private static bool OpensHtml(string line, int next) =>
         next >= line.Length
         || line[next] is '!' or '?'

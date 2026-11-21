@@ -8,21 +8,13 @@ import (
 	"io"
 )
 
-// contentTypesName is the name of an OOXML package's content types part, which every package
-// holds at its root.
 const contentTypesName = "[Content_Types].xml"
 
-// xpsSequenceName is the name of an XPS package's fixed document sequence part, and
-// xpsSequencePiece its first piece's, the name an interleaved package stores it under, as
-// LargeData.one's embedded "testing - large.docx" does. Either makes a ZIP an XPS package, which
-// no stage reads, whatever its name.
 const (
 	xpsSequenceName  = "FixedDocumentSequence.fdseq"
 	xpsSequencePiece = xpsSequenceName + "/[0].piece"
 )
 
-// The ZIP records zipHolds reads: the end-of-central-directory record, ZIP64's locator and
-// record, and a central directory header, each by its signature and fixed length.
 var (
 	eocdSignature         = []byte("PK\x05\x06")
 	zip64LocatorSig       = []byte("PK\x06\x07")
@@ -37,11 +29,6 @@ var (
 	errNoCentralDirectory = errors.New("no central directory")
 )
 
-// zipHolds reports which of names the ZIP r holds, size bytes, has an entry named, each as
-// held[i] for names[i], by its central directory, read a header at a time, its memory a header's
-// and its name's whatever the count; the scan ends once every name is found. A ZIP whose central
-// directory can't be found holds nothing, and one whose directory can't be read past a header
-// holds what the headers before it name; an error is r's own.
 func zipHolds(r io.ReaderAt, size int64, names ...string) (held []bool, err error) {
 	held = make([]bool, len(names))
 	offset, length, err := centralDirectory(r, size)
@@ -77,10 +64,6 @@ func zipHolds(r io.ReaderAt, size int64, names ...string) (held []bool, err erro
 	return held, nil
 }
 
-// centralDirectory finds the central directory of the ZIP r holds, size bytes, by its
-// end-of-central-directory record, the last one whose comment ends within the file, and by
-// ZIP64's record when the end record's fields are its markers; it returns the directory's offset
-// and length, or errNoCentralDirectory when no record places one within the file.
 func centralDirectory(r io.ReaderAt, size int64) (offset, length int64, err error) {
 	tail := make([]byte, min(size, int64(eocdLen+maxZIPComment)))
 	if _, err := r.ReadAt(tail, size-int64(len(tail))); err != nil && !errors.Is(err, io.EOF) {
@@ -110,8 +93,6 @@ func centralDirectory(r io.ReaderAt, size int64) (offset, length int64, err erro
 	return offset, length, nil
 }
 
-// zip64Directory reads ZIP64's end-of-central-directory locator, just before the end record at
-// eocdAt, and the ZIP64 record it locates, for the central directory's offset and length.
 func zip64Directory(r io.ReaderAt, eocdAt int64) (offset, length int64, err error) {
 	if eocdAt < int64(zip64LocatorLen) {
 		return 0, 0, errNoCentralDirectory

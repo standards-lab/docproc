@@ -10,10 +10,6 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// TestLevelsTracker cuts each level-change variant through both runners with the tracker at its
-// defaults: the plan's silences hold every inserted gap, before the change and after it; and its
-// windows, ffmpeg decoding the variant, are the incremental path's over the variant's own samples,
-// read without ffmpeg, a Tracker and a Planner fed them as a stream.
 func TestLevelsTracker(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)

@@ -27,7 +27,6 @@ import (
 
 const gib = 1 << 30
 
-// boundVars are the variables the bounds node reads, one per bound.
 var boundVars = []string{
 	"DOCPROC_TOOL_MEMORY",
 	"DOCPROC_UNIT_TIMEOUT",
@@ -51,7 +50,6 @@ var boundVars = []string{
 	"DOCPROC_AUDIO_LIMIT",
 }
 
-// startingBounds returns docproc's starting values, the goal's table written out.
 func startingBounds() app.Bounds {
 	return app.Bounds{
 		Stages: stages.Options{
@@ -70,8 +68,6 @@ func startingBounds() app.Bounds {
 	}
 }
 
-// clearBounds empties every bound's variable for the test, so each reads its starting value
-// whatever the environment holds.
 func clearBounds(t *testing.T) {
 	t.Helper()
 	for _, name := range boundVars {
@@ -79,7 +75,6 @@ func clearBounds(t *testing.T) {
 	}
 }
 
-// buildBounds builds the bounds node of a fresh App, as a run that declares it does.
 func buildBounds(t *testing.T) (app.Bounds, error) {
 	t.Helper()
 	a := app.New(cli.Streams{})
@@ -103,8 +98,6 @@ func TestBounds_StartingValues(t *testing.T) {
 	}
 }
 
-// The library takes the starting values: stages.Build refuses options it can't take before it
-// looks anything up, so a lookup that finds nothing leaves only that refusal to fail it.
 func TestBounds_StartingValuesTakenByStages(t *testing.T) {
 	clearBounds(t)
 	b, err := buildBounds(t)
@@ -163,12 +156,10 @@ func TestBounds_EachVariableOverridesItsBound(t *testing.T) {
 	}
 }
 
-// The node reads every one of boundVars.
 func TestBounds_EveryVariableIsRead(t *testing.T) {
 	for _, name := range boundVars {
 		t.Run(name, func(t *testing.T) {
 			clearBounds(t)
-			// A value no bound takes proves the node reads the variable.
 			t.Setenv(name, "-1")
 
 			_, err := buildBounds(t)
@@ -209,9 +200,6 @@ func TestBounds_BadValueNamesItsVariable(t *testing.T) {
 	}
 }
 
-// The audio window's limit must be over twice the windows' 2 s overlap, so a window cut at the
-// limit keeps audio of its own between its seams; zero, which the library reads as its own
-// default, is refused with the rest rather than read as no bound, and the refusal says why.
 func TestBounds_AudioLimitRefused(t *testing.T) {
 	for _, value := range []string{"4s", "3s", "1ms", "0", "0s", "-30s", "30", "thirty"} {
 		t.Run(value, func(t *testing.T) {
@@ -238,8 +226,6 @@ func TestBounds_AudioLimitRefused(t *testing.T) {
 	})
 }
 
-// A bomb rule is set by its ratio and its size together: one of them zero alone fails, naming
-// both variables, and both zero sets no rule.
 func TestBounds_BombRuleTakesBothOrNeither(t *testing.T) {
 	for _, zero := range []string{"DOCPROC_BOMB_RATIO", "DOCPROC_BOMB_SIZE"} {
 		t.Run(zero, func(t *testing.T) {
@@ -269,7 +255,6 @@ func TestBounds_BombRuleTakesBothOrNeither(t *testing.T) {
 	})
 }
 
-// Every bad variable is named at once, so an operator fixes them in one pass.
 func TestBounds_EveryBadVariableNamed(t *testing.T) {
 	clearBounds(t)
 	t.Setenv("DOCPROC_MAX_DEPTH", "deep")
@@ -284,8 +269,6 @@ func TestBounds_EveryBadVariableNamed(t *testing.T) {
 	}
 }
 
-// A command that declares the bounds node fails, before it runs, on a bound it can't take, the
-// variable named on its error line.
 func TestRun_BadBoundFailsTheCommand(t *testing.T) {
 	clearBounds(t)
 	t.Setenv(shutdownTimeout, "")
@@ -320,8 +303,6 @@ func TestRun_BadBoundFailsTheCommand(t *testing.T) {
 	}
 }
 
-// A run's stages are built under the audio window's limit: DOCPROC_AUDIO_LIMIT's, or 30 s when
-// it is unset or empty.
 func TestRun_AudioLimitReachesStages(t *testing.T) {
 	for _, tc := range []struct {
 		value string
@@ -353,8 +334,6 @@ func TestRun_AudioLimitReachesStages(t *testing.T) {
 	}
 }
 
-// An audio window's limit the run can't take fails it, naming DOCPROC_AUDIO_LIMIT, before any
-// tool is looked up.
 func TestRun_AudioLimitRefusedBeforeLookup(t *testing.T) {
 	for _, value := range []string{"4s", "0", "thirty"} {
 		t.Run(value, func(t *testing.T) {
@@ -380,7 +359,6 @@ func TestRun_AudioLimitRefusedBeforeLookup(t *testing.T) {
 	}
 }
 
-// A command that doesn't declare the bounds node reads none of its variables.
 func TestRun_VersionReadsNoBound(t *testing.T) {
 	for _, name := range boundVars {
 		t.Setenv(name, "unreadable")

@@ -34,6 +34,24 @@
 //! five bytes windows-1252 leaves undefined as U+FFFD. Whatever it reports as a decoding problem
 //! (a malformed or unknown transfer encoding, an unknown charset, bytes not valid in the charset)
 //! gives a note: the text is decoded lossily. It reports none for a header's encoded words.
+//!
+//! Importance is Importance's low, normal or high, and an unknown one falls back to X-Priority's
+//! band, read from its leading number, as in "1 (Highest)": 1 to 2 high, 3 normal and 4 to 5 low.
+//! Sensitivity's Personal, Private and Company-Confidential (RFC 2156) are personal, private and
+//! confidential. The conversation index is Thread-Index base64-decoded, in lowercase hex, as a .pst
+//! or a .msg writes PidTagConversationIndex. A header kept as stored is its raw bytes unfolded and
+//! trimmed: a blank one is left out, and one that isn't valid UTF-8 is decoded lossily, with a
+//! note. A date header with no date that reads, or one outside mail-parser's range, is left out,
+//! with a note.
+//!
+//! A body list's parts of the other kind, the stand-ins RFC 8621 copies in for a missing version,
+//! and its media are no part of a body, and its parts are joined by a line break, so that one's
+//! last line never runs into the next one's first. A detached signature
+//! (`application/pkcs7-signature`) is no opaque part: the content it signs is read. mail-parser
+//! counts only encoded levels toward its nesting limit, so it leaves a transfer-encoded
+//! message/rfc822 part unparsed only past [`DEPTH_MAX`] messages, and such a part is noted as too
+//! deep. An attachment of an embedded message that can't be read has its warning, and no skipped
+//! line: the embedded message has no line to give it one after.
 
 use std::borrow::Cow;
 use std::convert::Infallible;
@@ -49,7 +67,6 @@ use crate::markdown::{self, Bodies};
 use crate::model::{Address, Attachment, Message};
 use crate::msg::{DEPTH_MAX, too_deep};
 
-/// The address type of every address a MIME message carries.
 const SMTP: &str = "SMTP";
 
 /// A message read: its line, its notes, each with its place below the message ("" for the
@@ -97,8 +114,6 @@ pub fn message(parsed: &MessageRef<'_>, files: &mut Media) -> Result<Read, Fault
     })
 }
 
-/// Maps the message `parsed`, at `depth` and at the place `at`, with its attachments; embedded
-/// messages recursively. Returns it with the attachments that couldn't be read.
 fn read(
     parsed: &MessageRef<'_>,
     depth: usize,
@@ -139,8 +154,6 @@ fn read(
         }
         match nested {
             Some(_) if depth + 1 > DEPTH_MAX => notes.push((here, too_deep())),
-            // An attachment inside it that can't be read has its warning; the embedded message
-            // has no line to give it a skipped line after.
             Some(nested) => {
                 let place = format!("{here}, message");
                 let (mut inner, _) = read(&nested, depth + 1, &place, files, notes)?;
@@ -158,9 +171,6 @@ fn read(
     Ok((message, skipped))
 }
 
-/// The note for a part whose content no reader here opens: a TNEF part, by its content type or
-/// its file name, `winmail.dat`, and an opaque S/MIME part. A detached signature
-/// (`application/pkcs7-signature`) is no such part: the content it signs is read.
 fn unread(part: &MessagePart<'_>) -> Option<String> {
     let tnef = part.is_content_type("application", "ms-tnef")
         || part.is_content_type("application", "vnd.ms-tnef")
@@ -183,7 +193,6 @@ fn unread(part: &MessagePart<'_>) -> Option<String> {
     })
 }
 
-/// The header fields of a message line.
 fn headers(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Message {
     let headers = parsed.headers();
     let first_received = headers.all(HeaderName::Received).next();
@@ -224,10 +233,6 @@ fn headers(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Message {
     }
 }
 
-/// The importance: Importance's low, normal or high, else X-Priority's band, 1 to 2 high,
-/// 3 normal and 4 to 5 low, read from its leading number, as in "1 (Highest)". A value of
-/// either that isn't one of these is left out, with a note, and an unknown Importance falls
-/// back to X-Priority.
 fn importance(headers: &Headers<'_>, notes: &mut Vec<String>) -> Option<&'static str> {
     let header = headers.get(HeaderName::Importance);
     let named = header.and_then(|header| {
@@ -257,8 +262,6 @@ fn importance(headers: &Headers<'_>, notes: &mut Vec<String>) -> Option<&'static
     })
 }
 
-/// The sensitivity: Sensitivity's Personal, Private and Company-Confidential (RFC 2156), as
-/// personal, private and confidential. Any other value is left out, with a note.
 fn sensitivity(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<&'static str> {
     let header = header?;
     let value = stored(Some(header), notes)?;
@@ -276,7 +279,6 @@ fn sensitivity(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<&'
     name
 }
 
-/// The note for a header whose value isn't one the model names.
 fn unknown(header: &Header<'_>, value: &str) -> String {
     format!(
         "the {} header has unknown value {value:?}; left out",
@@ -284,8 +286,6 @@ fn unknown(header: &Header<'_>, value: &str) -> String {
     )
 }
 
-/// The conversation index: Thread-Index base64-decoded, in lowercase hex, as a .pst or a .msg
-/// writes PidTagConversationIndex. One that isn't valid base64 is left out, with a note.
 fn thread_index(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<String> {
     let header = header?;
     let value = stored(Some(header), notes)?;
@@ -300,9 +300,6 @@ fn thread_index(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<S
     Some(mapping::hex(&bytes))
 }
 
-/// The text and HTML bodies the Markdown is made from. A body list's parts of the other kind, the
-/// stand-ins RFC 8621 copies in for a missing version, and its media are no part of a body. Parts
-/// are joined by a line break, so that one's last line never runs into the next one's first.
 fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
     let text = joined(
         parsed.text_body(),
@@ -323,8 +320,6 @@ fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
     }
 }
 
-/// The text of a body list's parts of one kind, decoded and joined in order, with one note for
-/// all of their decoding problems.
 fn joined<'m>(
     list: impl Iterator<Item = MessagePart<'m>>,
     kind: impl Fn(&PartKind<'m>) -> bool,
@@ -343,9 +338,6 @@ fn joined<'m>(
     (!texts.is_empty()).then(|| texts.join("\n"))
 }
 
-/// One attachment part read: its record, its Content-Location, its decoded content when it is a
-/// file, which the caller stores and names, and its nested message when it is a message/rfc822
-/// part, with its notes.
 struct Part<'m> {
     record: Attachment,
     location: Option<String>,
@@ -354,8 +346,6 @@ struct Part<'m> {
     notes: Vec<String>,
 }
 
-/// Reads one attachment part; `too_deep_here` says the part is below [`DEPTH_MAX`] messages,
-/// where the parser stops parsing a transfer-encoded message/rfc822 part.
 fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
     let mut notes = Vec::new();
     let mime_type = part.content_type().map(|content_type| {
@@ -386,8 +376,6 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
     }
     if embedded {
         record.method = Some("embedded_message");
-        // The parser's encoded nesting counts encoded levels only, so it reaches its limit only
-        // where the depth is past it too: a part left unparsed there is unparsed for its depth.
         notes.push(if too_deep_here {
             too_deep()
         } else {
@@ -414,12 +402,10 @@ fn attachment<'m>(part: &MessagePart<'m>, too_deep_here: bool) -> Part<'m> {
     }
 }
 
-/// A text that is present and not empty, owned.
 fn owned(text: Option<&str>) -> Option<String> {
     text.filter(|text| !text.is_empty()).map(str::to_owned)
 }
 
-/// A note for the decoding problems mail-parser found in `what`, when it found any.
 fn lossy_note(problems: DecodeProblems, what: &str, notes: &mut Vec<String>) {
     if problems.is_empty() {
         return;
@@ -449,8 +435,6 @@ fn lossy_note(problems: DecodeProblems, what: &str, notes: &mut Vec<String>) {
     ));
 }
 
-/// An address of its name and address, either of which may be missing but not both, with
-/// address type SMTP.
 fn address(name: Option<&str>, address: Option<&str>) -> Option<Address> {
     let made = Address {
         name: owned(name),
@@ -461,7 +445,6 @@ fn address(name: Option<&str>, address: Option<&str>) -> Option<Address> {
     (made.name.is_some() || made.address.is_some()).then_some(made)
 }
 
-/// A recipient header's mailboxes in order, a group's members in its place.
 fn addresses(list: Option<AddressList<'_>>) -> Vec<Address> {
     list.into_iter()
         .flat_map(|list| list.mailboxes())
@@ -469,8 +452,6 @@ fn addresses(list: Option<AddressList<'_>>) -> Vec<Address> {
         .collect()
 }
 
-/// A date header's time in UTC, to the second. One that is present but has no date that reads,
-/// or one outside mail-parser's valid range, is left out with a note.
 fn time(
     header: Option<Header<'_>>,
     date: impl FnOnce(&Header<'_>) -> Option<DateTime>,
@@ -489,8 +470,6 @@ fn time(
     utc
 }
 
-/// A header's value as stored: its raw bytes, unfolded and trimmed. A value that is blank is
-/// left out, and one that isn't valid UTF-8 is decoded lossily, with a note.
 fn stored(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<String> {
     let header = header?;
     let what = format!("{} header", header.raw_name());
@@ -500,7 +479,6 @@ fn stored(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<String>
     (!trimmed.is_empty()).then(|| trimmed.to_owned())
 }
 
-/// The raw header block, without the blank line that ends it, read as [`lossy`] reads it.
 fn header_block(raw: &[u8], notes: &mut Vec<String>) -> Option<String> {
     let block = raw
         .strip_suffix(b"\r\n")
@@ -513,7 +491,6 @@ fn header_block(raw: &[u8], notes: &mut Vec<String>) -> Option<String> {
     Some(lossy(block, "header block", notes))
 }
 
-/// Raw header bytes as UTF-8, decoded lossily, with a note naming `what`, when they aren't.
 fn lossy(raw: &[u8], what: &str, notes: &mut Vec<String>) -> String {
     let text = String::from_utf8_lossy(raw);
     if matches!(text, Cow::Owned(_)) {
@@ -526,7 +503,6 @@ fn lossy(raw: &[u8], what: &str, notes: &mut Vec<String>) -> String {
 mod tests {
     use super::*;
 
-    /// The notes of the message `raw`, mapped with no media directory.
     fn notes(raw: &str) -> Vec<(String, String)> {
         let parsed = parser().parse(raw.as_bytes()).unwrap();
         message(&parsed.root(), &mut Media::new(None))
@@ -534,8 +510,6 @@ mod tests {
             .notes
     }
 
-    /// A multipart/mixed message of a text part and `part`, its headers and its body, whose
-    /// boundary is `b`.
     fn with_part(part: &str) -> String {
         with_part_in("b", part)
     }
@@ -553,7 +527,6 @@ mod tests {
     const SMIME: &str = "it holds an S/MIME part (application/pkcs7-mime), encrypted or \
                          opaquely signed, whose content is not read";
 
-    /// A TNEF part is told by its content type, either of its names, or by its file name.
     #[test]
     fn a_tnef_part_gives_its_message_a_note() {
         for part in [
@@ -570,8 +543,6 @@ mod tests {
         }
     }
 
-    /// An opaque S/MIME part is noted, the whole message's or one part's; a detached signature
-    /// is not, since the content it signs is read.
     #[test]
     fn an_opaque_smime_part_gives_its_message_a_note() {
         let encrypted = "From: ann@example.com\r\n\
@@ -588,7 +559,6 @@ mod tests {
         assert_eq!(notes(signed), []);
     }
 
-    /// A nested message's TNEF part is its own message's note, placed below the attachment.
     #[test]
     fn a_nested_messages_tnef_part_is_its_note() {
         let nested = with_part("Content-Type: application/ms-tnef\r\n\r\nx");

@@ -20,11 +20,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// These tests run the real 7zz, which the unit tier doesn't provide, so they run in the
-// integration tier.
-
-// TestNewReader: the 7zz on the PATH is built and accepted, at least 24.07, its banner giving
-// its version.
 func TestNewReader(t *testing.T) {
 	tl, err := tool.NewExec(t.Context(), sevenzip.SevenZipSpec())
 	if err != nil {
@@ -36,10 +31,6 @@ func TestNewReader(t *testing.T) {
 	t.Logf("7zz %s", tl.Version())
 }
 
-// TestList lists the generated fixtures: clean.7z's directory and files with their sizes and
-// CRC-32s; a symbolic link and a FIFO by their modes; traversing and absolute names as stored;
-// an encrypted entry beside a clear one; a cabinet's entries, its backslashes listed as slashes;
-// and declared-bomb.zst's one item sized by its frame header, bomb.zst's unsized.
 func TestList(t *testing.T) {
 	r := reader(t)
 	list := func(name string, kind route.Kind) []sevenzip.Entry {
@@ -95,9 +86,6 @@ func TestList(t *testing.T) {
 	}
 }
 
-// TestListRefused: a 7z whose headers are encrypted is refused with ErrEncrypted, a file that
-// isn't the kind named with ErrNotArchive, a listing past its Entries with ErrEntries, and a
-// request with no path or a kind the package doesn't read before anything runs, with ErrRequest.
 func TestListRefused(t *testing.T) {
 	r := reader(t)
 	if _, err := r.List(t.Context(), sevenzip.ListRequest{Path: fixture("generated/encrypted-headers.7z"), Kind: route.SevenZip}); !errors.Is(err, sevenzip.ErrEncrypted) {
@@ -120,11 +108,6 @@ func TestListRefused(t *testing.T) {
 	}
 }
 
-// TestExtract extracts one entry at a time to a buffer: each of clean.7z's files by its name, a
-// traversing name's content as any other's, a cabinet's entry, a zstd stream's content, and the
-// ZIP entries of each method archive/zip doesn't read, each to its listed size and CRC-32; a name
-// with a wildcard matches only itself, here nothing; an encrypted entry is refused with
-// ErrEncrypted; and a request names an entry for every kind but zstd, and none for zstd.
 func TestExtract(t *testing.T) {
 	r := reader(t)
 	extract := func(path string, kind route.Kind, name string) ([]byte, error) {
@@ -196,9 +179,6 @@ func TestExtract(t *testing.T) {
 	}
 }
 
-// TestExtractStops: a writer that fails stops 7zz while it writes bomb.7z's 8 MiB of zeros, and
-// Extract returns once 7zz has exited, with the writer's error, not 7zz's exit, writing nothing
-// after the failed write.
 func TestExtractStops(t *testing.T) {
 	r := reader(t)
 	w := &failAfter{n: 64 << 10}
@@ -214,7 +194,6 @@ func TestExtractStops(t *testing.T) {
 	}
 }
 
-// reader returns a Reader over the 7zz mise pins.
 func reader(t *testing.T) *sevenzip.Reader {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), sevenzip.SevenZipSpec())
@@ -228,8 +207,6 @@ func reader(t *testing.T) *sevenzip.Reader {
 	return r
 }
 
-// failAfter is a writer that takes n bytes and then fails, counting the writes after it failed in
-// late.
 type failAfter struct {
 	n      int
 	failed bool
@@ -253,8 +230,6 @@ func (w *failAfter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// loggedReader returns a Reader over the 7zz on the PATH, run through a script that logs each
-// run's command, and a function returning the commands logged so far.
 func loggedReader(t *testing.T) (*sevenzip.Reader, func() []string) {
 	t.Helper()
 	real, err := exec.LookPath("7zz")
@@ -287,12 +262,6 @@ func loggedReader(t *testing.T) (*sevenzip.Reader, func() []string) {
 	}
 }
 
-// TestReadMatches reads each archive whole, through Read, and then each item alone, through
-// Extract, and holds every item read whole to the item read alone: the same bytes, and an error
-// exactly where the item read alone isn't its listed size and CRC-32 or fails. multiblock.7z's
-// four LZMA2 blocks and mixed.7z's six blocks of five methods each read in one 7zz run, but for
-// mixed.7z's symbolic link, read alone; encrypted.7z's encrypted file reads alone; and a
-// cabinet's files, which list no CRC-32, each read alone.
 func TestReadMatches(t *testing.T) {
 	for _, c := range []struct {
 		path string
@@ -347,7 +316,6 @@ func TestReadMatches(t *testing.T) {
 	}
 }
 
-// extractions counts the e runs among logged commands.
 func extractions(logged []string) int {
 	n := 0
 	for _, cmd := range logged {
@@ -358,9 +326,6 @@ func extractions(logged []string) int {
 	return n
 }
 
-// TestReadLineBreak: linebreak.cab's name with a line break lists as "_", and its name ending in a
-// carriage return as stored; the first, its listed name matching nothing, reads no content and
-// fails with ErrContent, and the rest read whole.
 func TestReadLineBreak(t *testing.T) {
 	r := reader(t)
 	path := fixture("generated/linebreak.cab")

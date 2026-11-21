@@ -29,7 +29,6 @@ fn pages(file: &str) -> Vec<Value> {
         .collect()
 }
 
-/// A read with --media into `dir`: its page lines.
 fn pages_into(file: &str, dir: &Path) -> Vec<Value> {
     let out = run(&[
         fixture(file).as_os_str(),
@@ -43,7 +42,6 @@ fn pages_into(file: &str, dir: &Path) -> Vec<Value> {
         .collect()
 }
 
-/// A page's ink drawings' files, in its media's order.
 fn drawings(page: &Value) -> Vec<&str> {
     page["media"]
         .as_array()
@@ -54,16 +52,10 @@ fn drawings(page: &Value) -> Vec<&str> {
         .collect()
 }
 
-/// A drawing's SVG document, read from the media directory `dir`.
 fn svg(dir: &Path, file: &str) -> String {
     std::fs::read_to_string(dir.join(file)).unwrap()
 }
 
-/// The page's ink, every ink container's strokes, is one drawing, its page's last medium: the
-/// handwriting page's 62 containers of one stroke each are one SVG of 62 paths, and the test
-/// page's one container is one SVG of one path. Its view box spans every stroke's points, x
-/// from 1363 to 17926 and y from 38643 to 54392, widened by half the widest pen, 100 ink units,
-/// on every side. A page with no ink has no drawing.
 #[test]
 fn a_pages_ink_is_one_drawing() {
     for (file, strokes) in [(HANDWRITING, 62), (ONE_STROKE[0], 1), (ONE_STROKE[1], 1)] {
@@ -94,9 +86,6 @@ fn a_pages_ink_is_one_drawing() {
     );
 }
 
-/// OneNote recognised two lines of "Hello World", each word with five guesses in German: the
-/// best is the word, written in the Markdown, and the other four its alternatives, each by the
-/// word's index over both lines. The pages without recognition have none.
 #[test]
 fn each_recognised_word_has_its_alternatives() {
     let handwriting = pages(HANDWRITING);
@@ -121,9 +110,6 @@ fn each_recognised_word_has_its_alternatives() {
     }
 }
 
-/// With --media, each drawing is an SVG named by its SHA-256 with the extension "svg": an
-/// XML document whose root is an SVG element holding one path per stroke, each with its
-/// colour and width.
 #[test]
 fn each_drawing_is_an_svg_named_by_its_sha256() {
     for file in [HANDWRITING, ONE_STROKE[0], ONE_STROKE[1]] {
@@ -144,15 +130,12 @@ fn each_drawing_is_an_svg_named_by_its_sha256() {
         for path in root.children().filter(|node| node.is_element()) {
             assert_eq!(path.tag_name().name(), "path", "{file}");
             assert!(path.attribute("d").unwrap().starts_with("M "), "{file}");
-            // No fixture's stroke has a colour, so each is drawn in the default black.
             assert_eq!(path.attribute("stroke"), Some("#000000"), "{file}");
             assert!(path.attribute("stroke-width").is_some(), "{file}");
         }
     }
 }
 
-/// The handwriting page's strokes keep their pens' widths as onenote_parser's width() gives
-/// them: 13 of 35 ink units, 35 of 18.75, and 14 of 100.
 #[test]
 fn each_stroke_keeps_its_width() {
     let dir = scratch("ink-width");
@@ -168,7 +151,6 @@ fn each_stroke_keeps_its_width() {
     assert_eq!((count("35"), count("18.75"), count("100")), (13, 35, 14));
 }
 
-/// Two reads write byte-identical SVGs, and the same lines.
 #[test]
 fn drawings_are_the_same_on_every_read() {
     let first = scratch("ink-first");

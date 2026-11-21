@@ -16,14 +16,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// This test runs the real docproc-mail, built from tools/mail and on PATH, which the unit tier
-// doesn't provide, so it runs in the integration tier.
-
-// TestCleanAttachments inspects the attachments of docproc-mail's committed inputs, read in place,
-// and of the email package's built .msg, as the real docproc-mail writes them: it reads every
-// .pst, .msg, .eml, and mbox among them, each into a media directory of its own, and inspects
-// each attachment's file under the name it was stored with. None yields a flag, but
-// attachmentFlags', which yield exactly their checks, and every verdict is proceed.
 func TestCleanAttachments(t *testing.T) {
 	tl, err := tool.NewExec(t.Context(), email.MailSpec())
 	if err != nil {
@@ -67,15 +59,10 @@ func TestCleanAttachments(t *testing.T) {
 	}
 }
 
-// attachmentFlags are the email fixtures' attachments that carry what a check reads, by their
-// input's name and stored filename, and their checks: Apache POI's alfresco.gif is a BMP, a
-// signature that disagrees with its extension, as real stores have it.
 var attachmentFlags = map[string][]inspect.Check{
 	"example_sent_regular.msg alfresco.gif": {inspect.SignatureMismatch},
 }
 
-// inspectAttachments inspects msg's attachments that have a file, its nested messages' among
-// them, and returns how many it inspected.
 func inspectAttachments(t *testing.T, input string, msg *email.Message) int {
 	t.Helper()
 	n := 0

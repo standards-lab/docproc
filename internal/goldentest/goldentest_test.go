@@ -16,7 +16,6 @@ import (
 	"github.com/standards-lab/docproc/internal/goldentest"
 )
 
-// encoded returns a 2x2 PNG as image/png writes it: IHDR, IDAT, and IEND alone.
 func encoded(t *testing.T) []byte {
 	t.Helper()
 	var b bytes.Buffer
@@ -26,14 +25,12 @@ func encoded(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-// chunk returns a PNG chunk of kind holding data, its length and CRC set.
 func chunk(kind, data string) []byte {
 	b := binary.BigEndian.AppendUint32(nil, uint32(len(data)))
 	b = append(b, kind+data...)
 	return binary.BigEndian.AppendUint32(b, crc32.ChecksumIEEE([]byte(kind+data)))
 }
 
-// withChunks returns p with chunks inserted after its IHDR chunk, the first after the signature.
 func withChunks(p []byte, chunks ...[]byte) []byte {
 	at := 8 + 12 + int(binary.BigEndian.Uint32(p[8:]))
 	out := append([]byte{}, p[:at]...)
@@ -43,9 +40,6 @@ func withChunks(p []byte, chunks ...[]byte) []byte {
 	return append(out, p[at:]...)
 }
 
-// TestCanonicalPNG: the tIME chunk and the text chunks whose keyword begins "date:" are dropped,
-// so two runs that differ only in them compare equal; every other chunk, another text chunk
-// among them, is kept; and content that isn't a well-formed PNG is returned as it is.
 func TestCanonicalPNG(t *testing.T) {
 	plain := encoded(t)
 	timed := func(stamp string) []byte {
@@ -75,8 +69,6 @@ func TestCanonicalPNG(t *testing.T) {
 	}
 }
 
-// TestCheckRecords: with RecordEnv set to 1, Check writes the sums sorted by key, one "sum  key"
-// line each; without it, the same sums compare equal to what it wrote.
 func TestCheckRecords(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "golden.sha256")
 	got := map[string]string{"b/two": goldentest.Sum([]byte("2")), "a/one": goldentest.Sum([]byte("1"))}
@@ -95,7 +87,6 @@ func TestCheckRecords(t *testing.T) {
 	goldentest.Check(t, path, got)
 }
 
-// errorsTB records the errors a check reports, in place of failing the test.
 type errorsTB struct {
 	testing.TB
 	errs []string
@@ -107,9 +98,6 @@ func (e *errorsTB) Errorf(format string, args ...any) {
 	e.errs = append(e.errs, fmt.Sprintf(format, args...))
 }
 
-// TestCheckCompares: without RecordEnv, Check reports each key whose sum differs from the golden
-// file's, each the golden file holds and the run doesn't, and each the run holds and the golden
-// file doesn't, one error each, and none for a run equal to the file.
 func TestCheckCompares(t *testing.T) {
 	t.Setenv(goldentest.RecordEnv, "")
 	path := filepath.Join(t.TempDir(), "golden.sha256")

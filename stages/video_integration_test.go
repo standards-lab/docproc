@@ -20,14 +20,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// scenesFixture is the audio package's audio-and-video fixture: speech.flac's stream beside a
-// generated video of five test patterns, its truth the frames media's defaults take.
 var (
 	scenesFixture = filepath.Join("..", "audio", "testdata", "speech-scenes.mkv")
 	scenesTruth   = filepath.Join("..", "audio", "testdata", "speech-scenes.truth.json")
 )
 
-// scenesFrames reads the fixture's truth: each frame media's defaults take, its reason and time.
 func scenesFrames(t *testing.T) []struct {
 	Reason string `json:"reason"`
 	TimeMS int64  `json:"time_ms"`
@@ -51,14 +48,11 @@ func scenesFrames(t *testing.T) []struct {
 	return truth.Video.Frames
 }
 
-// sumOf returns the SHA-256 an output's file is named by.
 func sumOf(o dispatch.Output) string {
 	sum, _, _ := strings.Cut(filepath.Base(o.Path), ".")
 	return sum
 }
 
-// streamed returns the SHA-256s of the frames and windows media's Streamer writes for a copy of
-// the file at path in a directory of the test's, as media's own caller has them.
 func streamed(t *testing.T, s *media.Streamer, path string) (frames, windows []string) {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -83,8 +77,6 @@ func streamed(t *testing.T, s *media.Streamer, path string) (frames, windows []s
 	return frames, windows
 }
 
-// stripAudio writes a copy of the file at path with its audio stream removed, its video stream
-// copied, into a directory of the test's, through ffmpeg, and returns its path.
 func stripAudio(t *testing.T, ffmpeg *tool.Tool, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -108,11 +100,6 @@ func stripAudio(t *testing.T, ffmpeg *tool.Tool, path string) string {
 	return filepath.Join(dir, "video-only.mkv")
 }
 
-// TestVideoStageReal dispatches the audio-and-video fixture through the video stage over each
-// runner's ffmpeg and ffprobe, and checks that its plan comes first; that its frames are the
-// truth's, reasons and times exactly, and media's own, byte for byte, as are its windows; that
-// nothing is left beside the input; and that the runners prepare the same frames and windows. A
-// copy of the fixture with its audio stripped yields the plan and the same frames alone.
 func TestVideoStageReal(t *testing.T) {
 	truth := scenesFrames(t)
 	path, err := filepath.Abs(scenesFixture)
@@ -218,5 +205,4 @@ func TestVideoStageReal(t *testing.T) {
 	}
 }
 
-// secsOf returns d in seconds, as the stage's Meta gives a time.
 func secsOf(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f', -1, 64) }

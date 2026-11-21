@@ -3,9 +3,6 @@ using Docproc.Ooxml.Rendering;
 
 namespace Docproc.Ooxml.Writing;
 
-/// <summary>A converted document as its lines: the <c>document</c> line, then each xlsx sheet's
-/// <c>sheet</c> line and <c>rows</c> lines. Joined in order, the lines' Markdown fragments are the
-/// renderer's whole rendering.</summary>
 internal static class Lines
 {
     /// <summary>Writes the document's lines to the output.</summary>
@@ -34,9 +31,6 @@ internal static class Lines
     /// line.</summary>
     public static void WriteXlsx(Properties? properties, IReadOnlyList<Media> media, IEnumerable<SheetSource> sheets, Stream output)
     {
-        // An xlsx document's Markdown is its sheets', so its document line holds none. A sheet's
-        // lines are written in the order a forward reading of it gives them: its header, its rows,
-        // and then its drawings, which its drawing part anchors apart from its cells.
         var writer = new LineWriter(output);
         writer.WriteDocument(SourceFormat.Xlsx, properties, "", media);
         var follows = false;
@@ -52,11 +46,6 @@ internal static class Lines
         }
     }
 
-    /// <summary>Every medium of the document, pictures, embedded packages, and OLE objects, in the
-    /// order of the Markdown's chunks: each section's headers, the body, each section's footers,
-    /// the footnotes, the endnotes, and the comments with their replies; within each, in block
-    /// order, nested blocks in place, a payload after its preview picture. A medium shown more
-    /// than once is listed each time, with its own placement.</summary>
     internal static List<Media> MediaOf(Document document)
     {
         var pictures = new List<Media>();
@@ -120,8 +109,4 @@ internal static class Lines
     }
 }
 
-/// <summary>An xlsx sheet as its lines take it: its name, whether it is hidden, the column letters
-/// its table uses in the sheet's order (none when it has no table), its table's rows, which may be
-/// read only as they are enumerated, and its charts and pictures in the order its drawing anchors
-/// them.</summary>
 internal sealed record SheetSource(string Name, bool Hidden, IReadOnlyList<string> Columns, IEnumerable<TableRow> Rows, IReadOnlyList<Block> Drawings);

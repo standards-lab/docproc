@@ -18,16 +18,12 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// capDispatcher returns an archive dispatcher, as archiveDispatcher does, under a bytes cap of
-// limit and no bomb rule.
 func capDispatcher(t *testing.T, limit int64) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	d, _, work := archiveDispatcherLimited(t, stages.ArchiveConfig{}, dispatch.Limits{Bytes: limit})
 	return d, work
 }
 
-// noFilesAt returns an event body that fails the test unless the working directory holds no
-// file but the input's own at the input's event: a stopped entry's partial file removed.
 func noFilesAt(t *testing.T, work string) func(*dispatch.Event) {
 	return func(ev *dispatch.Event) {
 		if ev.Part.Depth != 0 {
@@ -39,8 +35,6 @@ func noFilesAt(t *testing.T, work string) func(*dispatch.Event) {
 	}
 }
 
-// wantLimited fails the test unless ev is an unread child at where, limited at the bytes cap
-// limit, with no size, SHA-256, or flags.
 func wantLimited(t *testing.T, ev dispatched, where string, limit int64) {
 	t.Helper()
 	if ev.Part.Where != where || ev.Outcome != dispatch.Limited || ev.Reason != fmt.Sprintf("past the bytes cap, %d", limit) ||
@@ -50,10 +44,6 @@ func wantLimited(t *testing.T, ev dispatched, where string, limit int64) {
 	}
 }
 
-// TestZipBytesCap: under a bytes cap, a ZIP entry whose bytes would pass what the dispatch may
-// still admit is stopped as written, its partial file removed, and is an unread child, limited,
-// with the bytes cap's reason and no size or SHA-256, its siblings going on; an entry within the
-// cap is written and dispatched as it is with no cap.
 func TestZipBytesCap(t *testing.T) {
 	z := zipBytes(t,
 		zent{name: "zeros.bin", body: string(make([]byte, 8<<20))},
@@ -79,10 +69,6 @@ func TestZipBytesCap(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestZipBytesCapSum: a ZIP's entries, each within the bytes cap alone, are held together to
-// what the dispatch may still admit: the stage counts what it wrote for the entries before, so
-// the entry that would take them past it is stopped, limited, and a later one that still fits
-// is written.
 func TestZipBytesCapSum(t *testing.T) {
 	const mib = 1 << 20
 	z := zipBytes(t,
@@ -105,7 +91,6 @@ func TestZipBytesCapSum(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// tarBytes returns a tar of regular files, each name followed by its content.
 func tarBytes(t *testing.T, entries ...string) string {
 	t.Helper()
 	var b bytes.Buffer
@@ -124,10 +109,6 @@ func tarBytes(t *testing.T, entries ...string) string {
 	return b.String()
 }
 
-// TestTarBytesCap: a tar's entries are held to what the dispatch may still admit as a ZIP's
-// are, and a gzip stream's content as one entry: bomb.tar.gz's 8 MiB tar, past a 1 MiB cap, is
-// stopped and limited, while under a cap it fits it is written, its entry then past what remains
-// beside it.
 func TestTarBytesCap(t *testing.T) {
 	const mib = 1 << 20
 	tr := tarBytes(t, "a.bin", strings.Repeat("a", mib), "b.bin", strings.Repeat("b", mib), "c.bin", "c")
@@ -153,7 +134,6 @@ func TestTarBytesCap(t *testing.T) {
 	wantLimited(t, events[0], "gzip content bomb.tar", limit)
 	wantEmpty(t, work)
 
-	// The tar fits, but its 8 MiB entry doesn't fit beside it.
 	limit = info.Size() + 9*mib
 	d, work = capDispatcher(t, limit)
 	events = dispatchAll(t, d, gz, nil)
@@ -164,9 +144,6 @@ func TestTarBytesCap(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// endless is a 7-Zip whose zstd stream lists one unsized item and extracts zeros, 32 KiB at a
-// write, until a write is refused, counting what it wrote: a stream that ends only where the
-// stage stops it.
 type endless struct {
 	written atomic.Int64
 }
@@ -191,9 +168,6 @@ func (e *endless) Extract(ctx context.Context, _ sevenzip.ExtractRequest, w io.W
 	return ctx.Err()
 }
 
-// TestZstdBytesCap: a zstd stream's content, read through 7-Zip, is stopped at the write that
-// would take it past what the dispatch may still admit, never past it and within a write of it,
-// and is limited, its partial file removed.
 func TestZstdBytesCap(t *testing.T) {
 	const mib = 1 << 20
 	stream := input(t, "endless.zst", "\x28\xb5\x2f\xfd and a frame that never ends")

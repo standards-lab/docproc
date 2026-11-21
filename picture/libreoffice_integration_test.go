@@ -14,28 +14,17 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// legacyFixtures are the office package's committed legacy documents the concurrent test
-// converts, one of each format and more than one of some, so concurrent runs convert the same
-// format and different ones at once.
 var legacyFixtures = []string{
 	"charts.libreoffice.doc", "cells.libreoffice.xls", "bullets.libreoffice.ppt", "lists.libreoffice.doc",
 	"formulas.libreoffice.xls", "slides.libreoffice.ppt", "tables.libreoffice.doc", "merges.libreoffice.xls",
 }
 
-// legacyExports are LibreOffice's export to the OOXML format, the target and its filter, by a
-// legacy extension, as the office package converts each.
 var legacyExports = map[string]string{
 	".doc": "docx:MS Word 2007 XML",
 	".xls": "xlsx:Calc MS Excel 2007 XML",
 	".ppt": "pptx:Impress MS PowerPoint 2007 XML",
 }
 
-// TestRunLibreOfficeConcurrent runs a RunLibreOffice per legacy fixture, all at once, in one
-// working directory, through the host's soffice on the exec runner and through soffice in
-// LibreOfficeImage on the container runner, which pulls the image when it isn't present: every run
-// succeeds with its OOXML package, its user profile its own, and the working directory is left
-// empty once each output is removed. Cerebro converts with concurrent workers, so a profile, HOME,
-// or temporary file two runs shared would fail one of them here.
 func TestRunLibreOfficeConcurrent(t *testing.T) {
 	runners := map[string]func(*testing.T) *tool.Tool{
 		"exec": func(t *testing.T) *tool.Tool {
@@ -78,9 +67,6 @@ func TestRunLibreOfficeConcurrent(t *testing.T) {
 	}
 }
 
-// convertLegacy converts the office package's legacy fixture through c in dir, to the OOXML
-// format its extension names, and fails the test unless soffice wrote that package, a ZIP file;
-// it removes the run's output after.
 func convertLegacy(t *testing.T, c *picture.Converter, dir, fixture string) {
 	ext := filepath.Ext(fixture)
 	to := legacyExports[ext]

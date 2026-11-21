@@ -2,7 +2,6 @@ using System.Text;
 
 namespace Docproc.Ooxml.Model;
 
-/// <summary>The plain text of inlines.</summary>
 internal static class InlineText
 {
     /// <summary>The text of the given inlines, concatenated; inlines that carry no text add

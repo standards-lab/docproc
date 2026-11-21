@@ -66,12 +66,15 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   It runs in `mise run currency` instead.
 - **The CLI's project.** The CLI publishes as one NativeAOT binary per runtime identifier, with no
   .NET runtime needed on the host. The binary is docproc-ooxml; the project and its namespaces keep
-  .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT packages
-  of both, and a publish for either restores nothing the lock doesn't pin. libc's `write` and
-  `statx` (`Native.cs`) bind directly into the binary, which links libc anyway, rather than
-  through a library lookup at run time. The model, the reader, the renderer, and the line writer
-  are internal: the binary's process contract is its interface. The tests reach them in process.
-  The Open XML SDK is the CLI's only package; the command line is parsed by hand.
+  .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT packages of
+  both, and a publish for either restores nothing the lock doesn't pin. libc's `write` and `statx`
+  (`Native.cs`) bind directly into the binary, which links libc anyway, rather than through a
+  library lookup at run time; in process, as the tests run it, .NET resolves libc itself. stdout and
+  stderr are the raw descriptors written through `write`, with no encoding and no buffer, so the
+  locale can't change a byte and every error, a broken pipe among them, is reported; .NET's console
+  streams report none. The model, the reader, the renderer, and the line writer are internal: the
+  binary's process contract is its interface. The tests reach them in process. The Open XML SDK is
+  the CLI's only package; the command line is parsed by hand.
 - **Notices.** The notices give every NuGet package the binary links and the .NET runtime
   NativeAOT compiles into it, with the runtime's license, followed once each by the third-party
   notices those packages bundle: each distinct text once, by its SHA-256, naming the packages that
@@ -93,18 +96,20 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   (`overflow-checks` in each Cargo.toml's release profile): an overflow panics, a fault the CLI
   reports, instead of wrapping silently into a wrong offset or length. Every test runs the
   release musl binary, so no debug build is made.
-- **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and
-  unpublished, with no lock or toolchain of its own: each Rust tool depends on it by path, and
-  each Rust tool's check formats, lints, and tests it with the tool's toolchain, against the tool's
-  Cargo.lock, so it is tested in every graph that links it (docproc-onenote's without its
-  `markdown` feature), and docproc's root check reaches it through `TOOLS`. Its manifest is
-  formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the build
-  output of a cargo run in its directory, and a Cargo.lock, which it has none of. Its features:
-  `markdown`, the content rule's Markdown-to-plain reader, which docproc-mail enables.
+- **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and unpublished,
+  with no toolchain of its own: each Rust tool depends on it by path, and each Rust tool's check
+  formats and tests it with the tool's toolchain, against the tool's Cargo.lock, so it is tested in
+  every graph that links it (docproc-onenote's without its `markdown` feature), and docproc's root
+  check reaches it through `TOOLS`. clippy lints only a workspace member, and the envelope is a
+  member of no tool's graph, so each Rust tool's check also lints it by its own manifest, with every
+  feature and warnings denied, against its own `tools/envelope/Cargo.lock`. Its manifest is
+  formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the build output
+  of a cargo run in its directory. Its features: `markdown`, the content rule's Markdown-to-plain
+  reader, which docproc-mail enables.
 - **Currency and upgrade.** `tools/currency.sh` reports the crates, their RustSec advisories, and
-  the mise tools, as it does for every Rust tool, and moves every mise tool and every crate,
-  raising the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking
-  the tool's graph; [Rust tools' currency](#rust-tools-currency) gives the detail.
+  the mise tools, as it does for every Rust tool, and moves every mise tool and every crate, raising
+  the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking the tool's
+  graph and the envelope's; [Rust tools' currency](#rust-tools-currency) gives the detail.
 - **cargo-about** is not in mise's registry, so it comes from its GitHub release. `tools/notices.sh`
   runs it, in the tool's environment, for the release's third-party notices and their license
   check, under the tool's `about.toml`. Each crate's notice is given under licenses from the
@@ -174,11 +179,13 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   is within now, so this re-locks the tool's graph to it. An update can move other crates with
   the one it names, as re-locking regex moves regex-automata, so a crate whose pin an earlier
   update already moved is no longer locked at that pin, and is passed over.
-- **The envelope.** It has no lock of its own, so each Rust tool's upgrade raises its requirements
-  by the same rules as the tool's and then re-locks the tool's own graph. Run in turn, the second
-  tool finds the envelope's requirements already at their latest and only re-locks to them, so no
-  tool's locked check trails the crate. A bump of the envelope's ICU4X crates that moves the
-  Unicode version fails its unit test asserting it, so it stays a reviewed change.
+- **The envelope.** Each Rust tool's currency reports the envelope's lock, its crates and their
+  advisories, beside the tool's own, under the tool's holds and `deny.toml`. Each Rust tool's
+  upgrade raises the envelope's requirements by the same rules as the tool's, from both graphs,
+  and then re-locks the tool's own graph and the envelope's. Run in turn, the second tool finds
+  the envelope's requirements already at their latest and only re-locks to them, so no locked
+  check trails the crate. A bump of the envelope's ICU4X crates that moves the Unicode version
+  fails its unit test asserting it, so it stays a reviewed change.
 
 ### The envelope's dependencies
 
@@ -197,6 +204,8 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
 - pulldown-cmark, a CommonMark reader (`src/content/markdown.rs`), for a tool that compares a
   source text with its Markdown; behind the `markdown` feature, so a tool comparing two plain texts
   links none.
+- Its own `Cargo.lock`, the graph clippy lints it on, pins each of these at the version
+  docproc-mail's lock does, the ICU4X crates and pulldown-cmark at their exact requirements.
 
 ### docproc-mail
 
@@ -218,7 +227,11 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
 - The generator (`generator/Generator.csproj`) turns the hand-written `.eml` and item sources into
   `.pst` and `.msg` fixtures; the check never builds it. Its lock file pins the transitive packages
   too, so a rerun restores the same graph, and the manifest's package versions are read from the
-  lock file the build restored. It uses MimeKit directly, to read a source's Received date.
+  lock file the build restored, since an assembly's own version needn't be its package's
+  (MimeKit 4.18.2's assembly says 4.18.1.0). It uses MimeKit directly, to read a source's Received
+  date. It registers .NET's code pages, which only MimeKit registers for itself: without them
+  MsgKit fails on a windows-1251 or GB2312 source. MsgKit refuses to overwrite a file, so each
+  output is deleted before it is built.
 - Its dependencies: docproc-envelope, with its Markdown-to-plain reader (`markdown`); codepage and
   encoding_rs, code pages to text (`src/codepage.rs`): codepage maps a Windows code page to its
   encoding_rs encoding, which decodes it, and a charset an HTML body's `<meta>` names, a WHATWG

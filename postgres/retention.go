@@ -10,7 +10,6 @@ import (
 	"github.com/standards-lab/sqlate/query"
 )
 
-// reclaimEntries is the retention's statement, outside the Index's: no Index method drops by age.
 var reclaimEntries = statements.Statement("reclaim_entries")
 
 // Retention drops the entries the index no longer needs, a budget at a time: those created more

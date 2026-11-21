@@ -14,8 +14,6 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 )
 
-// indexes returns a constructor for each shipped index. dispatchtest's suites hold both to the
-// contract; the tests here are the walk's over them and each one's own.
 func indexes() map[string]func(*testing.T) dispatch.Index {
 	return map[string]func(*testing.T) dispatch.Index{
 		"memory": func(*testing.T) dispatch.Index { return dispatch.NewMemoryIndex(0) },
@@ -29,7 +27,6 @@ func indexes() map[string]func(*testing.T) dispatch.Index {
 	}
 }
 
-// waitSignal is an index that tells waiting when a Wait begins.
 type waitSignal struct {
 	dispatch.Index
 	waiting chan struct{}
@@ -43,9 +40,6 @@ func (w *waitSignal) Wait(ctx context.Context, key dispatch.Key) (dispatch.Entry
 	return w.Index.Wait(ctx, key)
 }
 
-// TestConcurrentDispatch: two dispatches of the same content over one index, run together: one
-// claims and prepares it, the other waits on the claim, then reports it seen, with the outputs
-// the first recorded; the stage runs once.
 func TestConcurrentDispatch(t *testing.T) {
 	for name, newIndex := range indexes() {
 		t.Run(name, func(t *testing.T) {
@@ -72,8 +66,6 @@ func TestConcurrentDispatch(t *testing.T) {
 			go run(input(t, "first.txt", content))
 			<-f.text.entered
 			go run(input(t, "second.txt", content))
-			// A second dispatch that enters the stage, rather than waiting on the claim, is a
-			// duplicate prepare.
 			select {
 			case <-idx.waiting:
 			case name := <-f.text.entered:
@@ -102,7 +94,6 @@ func TestConcurrentDispatch(t *testing.T) {
 	}
 }
 
-// storeFiles returns the paths of the files under dir, relative to it, sorted.
 func storeFiles(t *testing.T, dir string) []string {
 	t.Helper()
 	var got []string
@@ -121,19 +112,14 @@ func storeFiles(t *testing.T, dir string) []string {
 	return got
 }
 
-// fileKey is the key of the file index's tests.
 var fileKey = dispatch.Key{
 	SHA256: strings.Repeat("ab", 32), Stage: dispatch.Identity{Name: "s", Version: "1", Config: "c"},
 }
 
-// fileWarning is a log item for the file index's tests.
 func fileWarning(where string) dispatch.Recorded {
 	return dispatch.Recorded{Warning: &dispatch.Warning{Tool: "t", Where: where, What: "w"}}
 }
 
-// TestFileIndexLayout: a claim's log is written under a temporary name beside its entry, in the
-// directory of the key's name's first two hex digits, and renamed at Record; the entry it replaces
-// loses its log, and a FileIndex opened again over the directory reads the entry and its log.
 func TestFileIndexLayout(t *testing.T) {
 	ctx := t.Context()
 	dir := t.TempDir()
@@ -196,8 +182,6 @@ func TestFileIndexLayout(t *testing.T) {
 	}
 }
 
-// TestFileIndexLeftovers: the temporary logs and entries a process that died left are removed
-// when a FileIndex opens the directory, and a release removes its claim's log.
 func TestFileIndexLeftovers(t *testing.T) {
 	ctx := t.Context()
 	dir := t.TempDir()
@@ -248,15 +232,12 @@ func TestFileIndexLeftovers(t *testing.T) {
 	}
 }
 
-// TestNewFileIndex: an empty directory is refused.
 func TestNewFileIndex(t *testing.T) {
 	if _, err := dispatch.NewFileIndex(""); !errors.Is(err, dispatch.ErrRequest) {
 		t.Errorf("NewFileIndex(\"\"): %v, want ErrRequest", err)
 	}
 }
 
-// TestContentFile: the content store's layout, the name's first two hex digits, then the whole
-// name; a name that isn't a SHA-256 has none.
 func TestContentFile(t *testing.T) {
 	sum := strings.Repeat("0f", 32)
 	if got, want := dispatch.ContentFile(sum), filepath.Join("0f", sum); got != want {
@@ -269,9 +250,6 @@ func TestContentFile(t *testing.T) {
 	}
 }
 
-// TestFileContentRenew: a content put again is rewritten once its file is older than the renew
-// age, its age restarting, and skipped while it is younger, or always with no renew age; a put
-// leaves no temporary file.
 func TestFileContentRenew(t *testing.T) {
 	ctx := t.Context()
 	b := []byte("renewed")
@@ -311,7 +289,6 @@ func TestFileContentRenew(t *testing.T) {
 	}
 }
 
-// TestNewFileContent: an empty directory and a negative renew age are refused.
 func TestNewFileContent(t *testing.T) {
 	if _, err := dispatch.NewFileContent("", 0); !errors.Is(err, dispatch.ErrRequest) {
 		t.Errorf("NewFileContent(\"\"): %v, want ErrRequest", err)
@@ -321,7 +298,6 @@ func TestNewFileContent(t *testing.T) {
 	}
 }
 
-// countingReader counts the bytes read through it.
 type countingReader struct {
 	r io.Reader
 	n int

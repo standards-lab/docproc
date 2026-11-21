@@ -20,17 +20,11 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/report"
 )
 
-// The fixture's runs, under testdata/rundir: ended, over five inputs, two of them one content, an
-// archive with parts found two deep and a part whose parent had no line of its own, an input
-// stopped before its own event, and an input whose name and outputs are hostile HTML; and unended,
-// its last line torn.
 const (
 	ended   = "019a5f3c-1d2e-7a10-8b00-0000000000a1"
 	unended = "019a5f3c-1d2e-7a10-8b00-0000000000a2"
 )
 
-// The fixture's contents: the PDF two inputs hold, the archive, the input with a hostile name,
-// and the quarantined part the archive holds.
 const (
 	oddSHA     = "956e499b5e521771b3584eaa57b659d9bae2cebed6c9b9a66b1bde9ef33ab03e"
 	exeSHA     = "d9f0fc6ffd4c580cd4bd9f56d16d92f1e74ab539039d33d33ab256c8995b5b9d"
@@ -38,8 +32,6 @@ const (
 	archiveSHA = "f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014"
 )
 
-// fixture returns a copy of the committed run directory, opened to read, and its root, so a
-// render writes nothing under testdata.
 func fixture(t *testing.T) (*rundir.Dir, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -53,7 +45,6 @@ func fixture(t *testing.T) (*rundir.Dir, string) {
 	return d, root
 }
 
-// render renders the run id of the run directory at root and returns its pages, by file name.
 func render(t *testing.T, d *rundir.Dir, root, id string) map[string]string {
 	t.Helper()
 	if err := report.Render(t.Context(), d, root, id); err != nil {
@@ -62,7 +53,6 @@ func render(t *testing.T, d *rundir.Dir, root, id string) map[string]string {
 	return pages(t, reportDir(t, d, root, id))
 }
 
-// reportDir returns the report directory of the run id, under root.
 func reportDir(t *testing.T, d *rundir.Dir, root, id string) string {
 	t.Helper()
 	rel, err := d.ReportDir(id)
@@ -72,7 +62,6 @@ func reportDir(t *testing.T, d *rundir.Dir, root, id string) string {
 	return filepath.Join(root, filepath.FromSlash(rel))
 }
 
-// pages returns every file in dir, by name.
 func pages(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -90,9 +79,6 @@ func pages(t *testing.T, dir string) map[string]string {
 	return got
 }
 
-// TestRender_Golden: each fixture run's pages, compared as text with the committed goldens under
-// testdata/golden/<run>/, the same files and the same bytes. With goldentest.RecordEnv set to 1,
-// the goldens are written.
 func TestRender_Golden(t *testing.T) {
 	d, root := fixture(t)
 	for _, id := range []string{ended, unended} {
@@ -123,8 +109,6 @@ func TestRender_Golden(t *testing.T) {
 	}
 }
 
-// TestRender_Pages: the ended run's index and one page per distinct content: the PDF's two inputs
-// share one page, the input stopped before its own event has none.
 func TestRender_Pages(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, ended)
@@ -139,7 +123,6 @@ func TestRender_Pages(t *testing.T) {
 			t.Errorf("the PDF's page doesn't list its input %s", path)
 		}
 	}
-	// The input stopped before its own event is on the index, unlinked, with its error.
 	locked := row(got["index.html"], "/docs/locked.pdf")
 	if strings.Contains(locked, "href") || !strings.Contains(locked, `data-outcome="error"`) ||
 		!strings.Contains(locked, "permission denied") {
@@ -150,7 +133,6 @@ func TestRender_Pages(t *testing.T) {
 	}
 }
 
-// row returns the line of the index page's table of inputs naming path, or "".
 func row(page, path string) string {
 	for line := range strings.Lines(page) {
 		if strings.HasPrefix(line, "<tr><td>") && strings.Contains(line, "<code>"+path+"</code>") {
@@ -160,8 +142,6 @@ func row(page, path string) string {
 	return ""
 }
 
-// TestRender_Tree: the archive's parts nest by their parent IDs, two deep, and the part whose
-// parent had no line of its own stays at the top of the tree.
 func TestRender_Tree(t *testing.T) {
 	d, root := fixture(t)
 	page := render(t, d, root, ended)[archiveSHA+".html"]
@@ -171,8 +151,6 @@ func TestRender_Tree(t *testing.T) {
 	if inner < 0 || voice < 0 || lost < 0 {
 		t.Fatalf("the archive's page lacks a part:\n%s", page)
 	}
-	// Each nesting opens a list; voice.wav is one deeper than inner.zip, and lost.txt is back at
-	// the top.
 	depth := func(at int) int {
 		return strings.Count(page[:at], "<ul") - strings.Count(page[:at], "</ul>")
 	}
@@ -185,8 +163,6 @@ func TestRender_Tree(t *testing.T) {
 	}
 }
 
-// TestRender_Deterministic: a second render of the same run directory, under UTC this time,
-// renders the same bytes.
 func TestRender_Deterministic(t *testing.T) {
 	d, root := fixture(t)
 	first := render(t, d, root, ended)
@@ -198,8 +174,6 @@ func TestRender_Deterministic(t *testing.T) {
 	}
 }
 
-// TestRender_Replaces: a render replaces the earlier pages whole, a page no render writes among
-// them, and removes the working directories a killed render left.
 func TestRender_Replaces(t *testing.T) {
 	d, root := fixture(t)
 	dir := reportDir(t, d, root, ended)
@@ -228,8 +202,6 @@ func TestRender_Replaces(t *testing.T) {
 	}
 }
 
-// TestRender_Unended: an unended run renders what its record holds, its torn last line dropped,
-// marked not ended.
 func TestRender_Unended(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, unended)
@@ -244,8 +216,6 @@ func TestRender_Unended(t *testing.T) {
 	}
 }
 
-// TestRender_NoRun: an id that isn't a run of the directory is refused, matching fs.ErrNotExist,
-// and writes nothing.
 func TestRender_NoRun(t *testing.T) {
 	d, root := fixture(t)
 	err := report.Render(t.Context(), d, root, "019a5f3c-1d2e-7a10-8b00-0000000000ff")
@@ -257,8 +227,6 @@ func TestRender_NoRun(t *testing.T) {
 	}
 }
 
-// TestRender_Escapes: hostile text in an input's path, a part's name, a reason, and an output's
-// content shows escaped, never as markup; TestRender_SelfContained proves no page holds a script.
 func TestRender_Escapes(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, ended)
@@ -276,18 +244,13 @@ func TestRender_Escapes(t *testing.T) {
 	}
 }
 
-// TestRender_Outputs: text, Markdown, and record outputs inline, whole and escaped, Markdown as
-// its source; a PNG as an img and a WAV as an audio player, each at its content's file; any other
-// output linked; and a quarantined part's kept file named, not linked.
 func TestRender_Outputs(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, ended)
 	pdf, archive := got[pdfSHA+".html"], got[archiveSHA+".html"]
 	for _, want := range []string{
-		// The page's text, whole, its last line with no newline after it.
 		"<pre>Quarterly report\nA line with &lt;/pre&gt;&lt;script&gt;alert(&#34;x&#34;)&lt;/script&gt; &amp; more.\n\nThe end, no newline after it.</pre>",
 		`<img src="../../../content/43/4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2"`,
-		// The form record, whole.
 		"&lt;b&gt;Ada&lt;/b&gt;",
 		`<a href="file:///docs/b/copy%20of%20report.pdf">`,
 	} {
@@ -310,11 +273,8 @@ func TestRender_Outputs(t *testing.T) {
 	}
 }
 
-// attrs matches every link and source of a page.
 var attrs = regexp.MustCompile(`(?:href|src)="([^"]*)"`)
 
-// TestRender_Links: every link and source of every page but an input's file URL is relative and
-// resolves to a file in the run directory, after the run directory has moved whole.
 func TestRender_Links(t *testing.T) {
 	d, root := fixture(t)
 	got := render(t, d, root, ended)
@@ -350,9 +310,6 @@ func TestRender_Links(t *testing.T) {
 	}
 }
 
-// TestRender_Header: the index's header names the run, its start and end, the docproc build, its
-// workers, path arguments, the number collected, the tools, the stage table, and the run's error,
-// and its summary counts the inputs and parts by route and outcome.
 func TestRender_Header(t *testing.T) {
 	d, root := fixture(t)
 	index := render(t, d, root, ended)["index.html"]
@@ -367,7 +324,6 @@ func TestRender_Header(t *testing.T) {
 		"<td class=\"error\">soffice: not found</td>",
 		"<tr><td>video</td><td>excluded</td>",
 		"<dt>Error</dt><dd class=\"error\">dispatch: index: write index/ab: no space left on device &lt;full&gt;</dd>",
-		// The archive's input and its parts: itself and inner.zip prepared.
 		"<tr><td>archive</td><td><span class=\"badge\" data-outcome=\"prepared\">prepared</span></td><td class=\"n\">1</td><td class=\"n\">2</td></tr>",
 		"<tr><td>-</td><td><span class=\"badge\" data-outcome=\"error\">error</span></td><td class=\"n\">1</td><td class=\"n\">1</td></tr>",
 	} {
@@ -377,8 +333,6 @@ func TestRender_Header(t *testing.T) {
 	}
 }
 
-// TestRender_SelfContained: no page loads anything from elsewhere: no script, no external style
-// sheet or font, its style inline and following the reader's light or dark scheme.
 func TestRender_SelfContained(t *testing.T) {
 	d, root := fixture(t)
 	for name, page := range render(t, d, root, ended) {
@@ -393,8 +347,6 @@ func TestRender_SelfContained(t *testing.T) {
 	}
 }
 
-// TestRender_Missing: an output whose content the store misses is marked so, neither shown nor
-// linked, and the rest renders.
 func TestRender_Missing(t *testing.T) {
 	d, root := fixture(t)
 	const png = "4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2"

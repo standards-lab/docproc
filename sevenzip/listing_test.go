@@ -12,8 +12,6 @@ import (
 	"github.com/standards-lab/docproc/sevenzip"
 )
 
-// listed lists an archive of kind through a stand-in 7zz that prints out as its listing, so the
-// listing is one no fixture gives, bounded by entries.
 func listed(t *testing.T, kind route.Kind, out string, entries int) (sevenzip.Listing, error) {
 	t.Helper()
 	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05", Listing: out})})
@@ -23,8 +21,6 @@ func listed(t *testing.T, kind route.Kind, out string, entries int) (sevenzip.Li
 	return r.List(t.Context(), sevenzip.ListRequest{Path: "t." + string(kind), Kind: kind, Entries: entries})
 }
 
-// slt is a technical listing as 7zz writes one, its banner, archive properties, and items: a
-// directory, a file, a symbolic link, a FIFO, an encrypted file, and an item with no Unix mode.
 const slt = `
 7-Zip (z) 26.05 (x64) : Copyright (c) 1999-2026 Igor Pavlov : 2026-10-21
  64-bit locale=en_US.UTF-8 Threads:22 OPEN_MAX:524288, ASM
@@ -91,9 +87,6 @@ Attributes = A
 Method = MSZip
 `
 
-// TestListParses: the archive's method, and each item's name, size, CRC-32, encryption, method,
-// and Unix mode, a directory by its attributes, are read; an item with no Unix mode has none, and
-// an empty value is no value.
 func TestListParses(t *testing.T) {
 	t.Parallel()
 	l, err := listed(t, route.SevenZip, slt, 0)
@@ -121,9 +114,6 @@ func TestListParses(t *testing.T) {
 	}
 }
 
-// TestListParseErrors: a listing with no items section, an item line that isn't a property, a
-// size or CRC that isn't a number, and a line past the parser's 1 MiB are refused, with
-// sevenzip.ErrListing.
 func TestListParseErrors(t *testing.T) {
 	t.Parallel()
 	for name, out := range map[string]string{
@@ -139,9 +129,6 @@ func TestListParseErrors(t *testing.T) {
 	}
 }
 
-// TestListEntries: a listing of six items is refused past an Entries of five, with
-// sevenzip.ErrEntries, and read at six; zero bounds none, and a negative bound is refused before
-// anything runs.
 func TestListEntries(t *testing.T) {
 	t.Parallel()
 	if _, err := listed(t, route.SevenZip, slt, 5); !errors.Is(err, sevenzip.ErrEntries) {
@@ -157,8 +144,6 @@ func TestListEntries(t *testing.T) {
 	}
 }
 
-// TestListLineEnds: a listing's lines end in "\n" alone, so a carriage return in a name is part
-// of it, and a last line with no line break is read.
 func TestListLineEnds(t *testing.T) {
 	t.Parallel()
 	l, err := listed(t, route.MSCF, "--\nType = Cab\n----------\nPath = return\r\nSize = 1\n\nPath = last\nSize = 2", 0)
@@ -170,8 +155,6 @@ func TestListLineEnds(t *testing.T) {
 	}
 }
 
-// TestListZstdSize: a zstd stream's unsized item takes the content size its Method reports, and an
-// item with a size, or a Method with none, is left as it is.
 func TestListZstdSize(t *testing.T) {
 	t.Parallel()
 	zstd := func(method, size string) sevenzip.Entry {

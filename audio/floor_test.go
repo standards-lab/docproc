@@ -16,8 +16,6 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// feedTracker feeds pcm to a tracker of req in chunks of chunk bytes, the last shorter, and
-// ends it, returning the silences it found in order.
 func feedTracker(t *testing.T, pcm []byte, req audio.Request, chunk int) []audio.Silence {
 	t.Helper()
 	tr, err := audio.NewTracker(req)
@@ -33,7 +31,6 @@ func feedTracker(t *testing.T, pcm []byte, req audio.Request, chunk int) []audio
 	return append(out, tr.End()...)
 }
 
-// track is feedTracker's silences' spans.
 func track(t *testing.T, pcm []byte, req audio.Request, chunk int) []audio.Span {
 	t.Helper()
 	var out []audio.Span
@@ -43,8 +40,6 @@ func track(t *testing.T, pcm []byte, req audio.Request, chunk int) []audio.Span 
 	return out
 }
 
-// samplesOf returns the samples of the canonical 44-byte WAV name in testdata, as 16-bit
-// little-endian PCM.
 func samplesOf(t *testing.T, name string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))
@@ -54,14 +49,11 @@ func samplesOf(t *testing.T, name string) []byte {
 	return data[44:]
 }
 
-// trackFile is track over the samples of the WAV name in testdata.
 func trackFile(t *testing.T, name string, req audio.Request, chunk int) []audio.Span {
 	t.Helper()
 	return track(t, samplesOf(t, name), req, chunk)
 }
 
-// gapsFound counts the inserted gaps of the levels fixture f that lie within one of silences,
-// those before the change and those after it.
 func gapsFound(t *testing.T, f levelsFixture, silences []audio.Span) (before, after int) {
 	t.Helper()
 	change := ms(f.ChangeMS)
@@ -77,10 +69,6 @@ func gapsFound(t *testing.T, f levelsFixture, silences []audio.Span) (before, af
 	return before, after
 }
 
-// TestTrackerLevels runs the tracker, at its defaults, over each level-change variant: it finds
-// every inserted gap, before the change and after it, each within one silence, where v0.9.0's
-// silencedetect at the threshold fixed from the first 30 s found none after it. The tracker at
-// that fixed threshold finds none after the noise's change either: the gaps there are above it.
 func TestTrackerLevels(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -107,10 +95,6 @@ func TestTrackerLevels(t *testing.T) {
 	}
 }
 
-// TestTrackerChunking feeds each variant in chunks of random sizes, odd ones among them so samples
-// split across them, and in chunks of one byte: the silences are the same, each with the same
-// threshold, however the stream is chunked. Each silence a Feed returns begins at or after the
-// Position before it, so a Planner given them in order is never refused.
 func TestTrackerChunking(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -155,15 +139,11 @@ func TestTrackerChunking(t *testing.T) {
 	}
 }
 
-// tone is a stretch of a test signal: d of a sine at 500 Hz and amplitude amp, 0 for digital
-// silence. At 500 Hz a 10 ms frame holds 5 whole cycles, so every frame of a tone that starts on a
-// frame has the same energy.
 type tone struct {
 	d   time.Duration
 	amp float64
 }
 
-// pcmOf returns 16-bit little-endian PCM of tones in order.
 func pcmOf(tones ...tone) []byte {
 	var out []byte
 	i := 0
@@ -177,14 +157,11 @@ func pcmOf(tones ...tone) []byte {
 	return out
 }
 
-// The test signal's levels: speech's bursts at -23 dB RMS, and its floor at -63 dB.
 const (
 	loud  = 0.1
 	floor = 0.001
 )
 
-// speechLike is 2.05 s of a speech-like signal: 100 ms bursts, loud, with 50 ms of floor between
-// them, a third of its frames, none a silence's minimum.
 func speechLike() []tone {
 	var out []tone
 	for range 13 {
@@ -193,20 +170,15 @@ func speechLike() []tone {
 	return append(out, tone{100 * time.Millisecond, loud})
 }
 
-// TestTrackerSilences runs the tracker over a speech-like signal broken by pauses at its floor, at
-// its defaults and at a fixed threshold: a pause of the minimum is a silence, to the frame, and
-// one a frame shorter isn't; one open at the stream's end ends at its last sample, a part frame's
-// included; and each reports the threshold in force when it opened. The silence open at the end is
-// reported open once it is the minimum long, to the frames decided, and not before.
 func TestTrackerSilences(t *testing.T) {
 	var tones []tone
 	tones = append(tones, speechLike()...)
-	tones = append(tones, tone{300 * time.Millisecond, floor}) // the minimum: a silence
+	tones = append(tones, tone{300 * time.Millisecond, floor})
 	tones = append(tones, speechLike()...)
-	tones = append(tones, tone{290 * time.Millisecond, floor}) // a frame short of it: no silence
+	tones = append(tones, tone{290 * time.Millisecond, floor})
 	tones = append(tones, speechLike()...)
-	tones = append(tones, tone{505 * time.Millisecond, floor}) // open at the end, half a frame past one
-	pcm := append(pcmOf(tones...), 0)                          // and a byte short of a sample, dropped
+	tones = append(tones, tone{505 * time.Millisecond, floor})
+	pcm := append(pcmOf(tones...), 0)
 	want := []audio.Span{
 		{Start: 2050 * time.Millisecond, End: 2350 * time.Millisecond},
 		{Start: 6740 * time.Millisecond, End: 7245 * time.Millisecond},
@@ -216,8 +188,6 @@ func TestTrackerSilences(t *testing.T) {
 		req       audio.Request
 		threshold float64
 	}{
-		// The floor, a third of the frames, is the 10th percentile, -63.05 dB as its amplitude
-		// rounds to 16 bits; the threshold is the default margin, 12 dB, above it.
 		{"rolling", audio.Request{}, -51.05},
 		{"fixed", audio.Request{Threshold: -40}, -40},
 	}
@@ -242,7 +212,6 @@ func TestTrackerSilences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The silence open at the end begins at 6.74 s, frame 674.
 	open := 674 * frameBytes
 	tr.Feed(pcm[:open+29*frameBytes])
 	if s, ok := tr.Open(); ok {
@@ -253,7 +222,6 @@ func TestTrackerSilences(t *testing.T) {
 		t.Errorf("a run of 300 ms open: %v at %v dB, %v; want 6.74 s to 7.04 s at -51.05 dB", s.Span, s.Threshold, ok)
 	}
 	tr.Feed(pcm[open+30*frameBytes:])
-	// The open run's start: the stream is settled up to the silence it may yet be.
 	if got, want := tr.Position(), 6740*time.Millisecond; got != want {
 		t.Errorf("position before the end %v, want %v", got, want)
 	}
@@ -272,8 +240,6 @@ func TestTrackerSilences(t *testing.T) {
 	}
 }
 
-// TestTrackerWarming: a stream shorter than the warming second is decided whole at its end, and a
-// stream of nothing has no silences.
 func TestTrackerWarming(t *testing.T) {
 	pcm := pcmOf(tone{200 * time.Millisecond, loud}, tone{400 * time.Millisecond, 0}, tone{100 * time.Millisecond, loud})
 	tr, err := audio.NewTracker(audio.Request{})
@@ -293,10 +259,6 @@ func TestTrackerWarming(t *testing.T) {
 	}
 }
 
-// TestTrackerThreshold feeds the gain-step variant a frame at a time: after the first second, the
-// threshold in force after each frame is the one it was decided against, so each silence's is the
-// one read after its first frame; the threshold moves with the gain step; after End it is the one
-// read after the last frame; and a fixed threshold is always the request's.
 func TestTrackerThreshold(t *testing.T) {
 	pcm := samplesOf(t, "speech-gain.wav")
 	tr, err := audio.NewTracker(audio.Request{})
@@ -380,13 +342,8 @@ func TestNewTrackerRefuses(t *testing.T) {
 	}
 }
 
-// frameBytes is the bytes of the tracker's frame of PCM.
 const frameBytes = 2 * audio.SampleRate * int(audio.FrameLength) / int(time.Second)
 
-// live is a stream planned as it arrives: the windows in the order the Planner returned them, the
-// silences the tracker found, and, for each window, the stream's whole frames fed before the chunk
-// it was returned after, and after it; for one End returned, all of them, and the stream's
-// duration.
 type live struct {
 	windows  []audio.Window
 	silences []audio.Span
@@ -394,12 +351,6 @@ type live struct {
 	after    []time.Duration
 }
 
-// livePlan plans pcm as a stream, the incremental path: a Tracker of req fed it in chunks, each of
-// next(rest) bytes with rest the bytes left, its silences given to a Planner of req as they close,
-// and after each chunk the Planner given the tracker's open silence, once it has one, or advanced
-// to its Position, each taken no further than duration, the source's, at which it is ended. Each
-// open silence the tracker reports is checked against the silence it closes into: the same start,
-// and an end as late or later.
 func livePlan(t *testing.T, pcm []byte, req audio.Request, next func(rest int) int, duration time.Duration) live {
 	t.Helper()
 	tr, err := audio.NewTracker(audio.Request{
@@ -467,8 +418,6 @@ func livePlan(t *testing.T, pcm []byte, req audio.Request, next func(rest int) i
 	return out
 }
 
-// streamPlan plans pcm as a stream, livePlan's incremental path, in chunks of chunk bytes, and
-// returns the windows in the order the Planner returned them.
 func streamPlan(t *testing.T, pcm []byte, req audio.Request, chunk int, duration time.Duration) []audio.Window {
 	t.Helper()
 	return livePlan(t, pcm, req, func(int) int { return chunk }, duration).windows

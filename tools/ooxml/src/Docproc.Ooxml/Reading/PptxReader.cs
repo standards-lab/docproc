@@ -9,16 +9,7 @@ using P = DocumentFormat.OpenXml.Presentation;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>Reads a pptx package into the model: its slides in presentation order, hidden ones
-/// included and marked, each with its shapes' text, tables, charts, pictures, and embedded
-/// packages and OLE objects in shape-tree order, and its notes; and the package's
-/// properties.</summary>
-/// <remarks>Shapes are read in the order the slide's shape tree holds them, which is their
-/// z-order, back to front; nothing is re-sorted by position. A group is read in place, its own
-/// shapes in its tree's order. A placeholder holds only the slide's own text, so one left empty
-/// is left out, and the prompt text its layout shows is never read. Content inside
-/// mc:AlternateContent is not read, but for a chartEx chart's: its cached data, or with none
-/// its fallback's picture.</remarks>
+// See docs/tool-contract.md, "docproc-ooxml".
 internal static class PptxReader
 {
     public static Conversion Read(PresentationDocument package)
@@ -44,7 +35,6 @@ internal static class PptxReader
             {
                 Notes = ReadNotes(slidePart.NotesSlidePart, unread, place) is { Count: > 0 } notes ? notes : null,
             });
-            // A slide's comments, in its legacy comments part or its modern ones, are not read.
             if (slidePart.SlideCommentsPart?.CommentList?.HasChildren == true
                 || slidePart.GetPartsOfType<PowerPointCommentPart>().Any(comments => comments.RootElement?.HasChildren == true))
             {
@@ -54,13 +44,8 @@ internal static class PptxReader
         return new Conversion(new Document(SourceFormat.Pptx, blocks) { Properties = properties }, media.Files) { Warnings = warnings };
     }
 
-    // Where a text body's paragraphs are read: the part that holds their hyperlinks'
-    // relationships, and the place the unread kinds they hold are warned of at.
     private sealed record TextScope(OpenXmlPart Part, UnreadKinds Unread, string Place);
 
-    // A notes page's text: its body placeholders' paragraphs, never the slide image, the slide
-    // number, or a header, footer, or date placeholder. Their bullets come from their own list
-    // style and the notes master's body placeholder and notes style.
     private static List<Block> ReadNotes(NotesSlidePart? part, UnreadKinds unread, string place)
     {
         var blocks = new List<Block>();
@@ -142,9 +127,6 @@ internal static class PptxReader
                 : null;
         }
 
-        // An OLE object's frame: its preview picture, then its embedded package or OLE object as
-        // stored, with its program id. PowerPoint writes the object twice in alternate content,
-        // the preview only in the fallback's copy; both name the same relationship.
         private List<Block> ReadObject(A.GraphicData? data)
         {
             var objects = data?.Descendants<P.OleObject>().ToList() ?? [];
@@ -161,8 +143,6 @@ internal static class PptxReader
             return blocks;
         }
 
-        // A title placeholder's text is the slide's heading, its paragraphs its lines; any other
-        // shape's paragraphs are paragraphs and lists.
         private List<Block> ReadShapeText(P.Shape shape, P.TextBody body)
         {
             var placeholder = Placeholder(shape);
@@ -175,10 +155,6 @@ internal static class PptxReader
             return ReadText(body, Styles(body.ListStyle, placeholder, type), scope);
         }
 
-        // The list styles a shape's paragraphs inherit their bullets from, nearest first: the
-        // shape's own; for a placeholder, its layout placeholder's, that one's master
-        // placeholder's, and the master's title, body, or other text style by its type; for any
-        // other shape, the master's other text style; and last the presentation's default.
         private List<OpenXmlElement?> Styles(A.ListStyle? own, P.PlaceholderShape? placeholder, P.PlaceholderValues? type)
         {
             List<OpenXmlElement?> styles = [own];
@@ -214,8 +190,6 @@ internal static class PptxReader
                 : null;
         }
 
-        // A table's rows of cells. A cell that a merge covers, from the left (hMerge) or from
-        // above (vMerge), is left out; the merge's first cell carries its spans.
         private static Table ReadTable(A.Table table, TextScope scope)
         {
             var rows = new List<TableRow>();
@@ -242,11 +216,6 @@ internal static class PptxReader
         }
     }
 
-    // A text body's paragraphs as paragraphs and lists. A paragraph is a list item when its
-    // bullet is a character, a picture, or an auto-number (ordered), its own or else the first
-    // the list styles give for its level, nearest first; with none, or buNone, it is a paragraph.
-    // An auto-number counts from its startAt, 1 by default. An empty paragraph is spacing and is
-    // left out.
     private static List<Block> ReadText(OpenXmlElement body, List<OpenXmlElement?> styles, TextScope scope)
     {
         var blocks = new TextBlocks();
@@ -281,8 +250,6 @@ internal static class PptxReader
         Ordered,
     }
 
-    // The bullet a paragraph's or a list style level's properties set, or null when they set
-    // none, so it is inherited.
     private static Bullet? BulletOf(OpenXmlElement? properties)
     {
         foreach (var child in properties?.ChildElements ?? [])
@@ -302,13 +269,9 @@ internal static class PptxReader
         return null;
     }
 
-    // The auto-number a paragraph's or a list style level's properties set, which the bullet
-    // that applies has when it is ordered.
     private static A.AutoNumberedBullet? AutoNumberOf(OpenXmlElement? properties) =>
         properties?.ChildElements.FirstOrDefault(c => c is A.NoBullet or A.CharacterBullet or A.PictureBullet or A.AutoNumberedBullet) as A.AutoNumberedBullet;
 
-    // A list style's properties for a level from 0: its lvl1pPr to lvl9pPr. The presentation's
-    // default style and the masters' text styles hold the same elements as a shape's list style.
     private static OpenXmlElement? LevelProperties(OpenXmlElement? style, int level)
     {
         var name = $"lvl{level + 1}pPr";
@@ -317,10 +280,6 @@ internal static class PptxReader
 
     private const string DrawingNamespace = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
-    // A paragraph's inlines: its runs' and fields' text, line breaks as \n, an external
-    // hyperlink's runs (each run's own a:hlinkClick) between its start and end. A hyperlink to a
-    // slide or an action is no external one, so its text stays text. An equation, in alternate
-    // content, is not read.
     private static List<Inline> InlinesOf(A.Paragraph paragraph, TextScope scope)
     {
         var inlines = new List<Inline>();
@@ -379,7 +338,6 @@ internal static class PptxReader
         return inlines;
     }
 
-    // Paragraphs' inlines as one block's, a line break between each, adjacent text merged.
     private static List<Inline> Joined(List<List<Inline>> paragraphs)
     {
         var inlines = new List<Inline>();
@@ -403,13 +361,9 @@ internal static class PptxReader
     private static P.PlaceholderShape? Placeholder(P.Shape shape) =>
         shape.NonVisualShapeProperties?.ApplicationNonVisualDrawingProperties?.PlaceholderShape;
 
-    // A placeholder's type; one without is a content (object) placeholder.
     private static P.PlaceholderValues TypeOf(P.PlaceholderShape placeholder) =>
         placeholder.Type?.Value ?? P.PlaceholderValues.Object;
 
-    // The placeholder of a layout or master that a slide's or layout's placeholder takes after:
-    // the one of the same index, or else the first of the same type, a centered title matching
-    // a title.
     private static P.Shape? Match(OpenXmlElement? tree, P.PlaceholderValues type, uint? index)
     {
         var shapes = tree?.Descendants<P.Shape>().Where(s => Placeholder(s) is not null).ToList() ?? [];
@@ -423,8 +377,6 @@ internal static class PptxReader
 
     private static bool IsTitle(P.PlaceholderValues type) => type == P.PlaceholderValues.Title || type == P.PlaceholderValues.CenteredTitle;
 
-    // The kind of master placeholder a layout placeholder takes after: the title, a date,
-    // footer, slide number, or header placeholder, or else the body.
     private static P.PlaceholderValues MasterKind(P.PlaceholderValues type) =>
         IsTitle(type) ? P.PlaceholderValues.Title
         : type == P.PlaceholderValues.DateAndTime || type == P.PlaceholderValues.Footer
@@ -433,10 +385,6 @@ internal static class PptxReader
 
     private static string? NonEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
-    // A text body's blocks as they are read. Consecutive list paragraphs make up lists: a deeper
-    // level opens a list inside the last item, and at the same level an item continues the list
-    // unless it is ordered where the list isn't, or the reverse. A paragraph ends every list. A
-    // list starts at its first item's number.
     private sealed class TextBlocks
     {
         private readonly List<Block> blocks = [];

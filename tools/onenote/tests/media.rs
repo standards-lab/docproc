@@ -12,7 +12,6 @@ use serde_json::{Value, json};
 
 use common::{NAME, files_under, fixture, run, run_in, scratch, sha256};
 
-/// The committed sections that hold images or embedded files.
 const WITH_MEDIA: [&str; 5] = [
     "interop/SUT/OneWithFileData.one",
     "interop/SUT/FileSyncWOPI_OneNoteWithODB.one",
@@ -21,14 +20,12 @@ const WITH_MEDIA: [&str; 5] = [
     "onenote-rs/handwriting_recognition.one",
 ];
 
-/// The SHA-256s of the five distinct contents among them.
 const DOCX: &str = "8e99dc44681b8399608f7a181e44d3e41dc36fbacd35a9cfb2d1fc330ac68459";
 const CHRYSANTHEMUM: &str = "954f7d96502b5c5fe2e98a5045bca7f5e9ba11e3dbf92a5c0214a6aa4c7f2208";
 const DUMMY: &str = "b7702e05282d4dfffe233281443536319d4739946f54ebce194230df8805b650";
 const MP3: &str = "d2318cc34b6254cdc2db84b931adad166a4b2b701b4241c27b338b959ac738b0";
 const SCREENSHOT: &str = "d6d4898c203cbff35fe92e844bbf404064293314a71d1e6b24e907334e5bdff9";
 
-/// Every image and embedded file in a read's page lines' media, in order.
 fn records(lines: &[Value]) -> Vec<Value> {
     media(lines)
         .into_iter()
@@ -36,7 +33,6 @@ fn records(lines: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-/// Every medium of a read's page lines, in order.
 fn media(lines: &[Value]) -> Vec<Value> {
     lines
         .iter()
@@ -52,7 +48,6 @@ fn read(file: &str) -> Vec<Value> {
     records(&out.lines())
 }
 
-/// An embedded .docx, with no type: its file named by its filename's extension.
 #[test]
 fn an_embedded_document() {
     assert_eq!(
@@ -66,7 +61,6 @@ fn an_embedded_document() {
     );
 }
 
-/// An image with no extension of its own, named by its filename's.
 #[test]
 fn an_image_named_by_its_filenames_extension() {
     let records = read("interop/SUT/FileSyncWOPI_OneNoteWithODB.one");
@@ -82,8 +76,6 @@ fn an_image_named_by_its_filenames_extension() {
     );
 }
 
-/// A page-level image with its own extension, stored as ".png"; then, on the next page, an
-/// embedded mp3 of type audio.
 #[test]
 fn a_page_image_and_an_audio_file() {
     assert_eq!(
@@ -107,8 +99,6 @@ fn a_page_image_and_an_audio_file() {
     );
 }
 
-/// The test page's image in both samples: "New Section 1.one" stores its extension,
-/// handwriting_recognition.one doesn't. Both name the same file.
 #[test]
 fn the_test_pages_image() {
     let image = json!({
@@ -123,10 +113,6 @@ fn the_test_pages_image() {
     assert_eq!(read("onenote-rs/New Section 1.one"), [with_extension]);
 }
 
-/// With --media, the directory is created, nested, and holds exactly the files the page lines'
-/// media name, each once, its SHA-256 its name and its size the record's. The lines are the
-/// same as without --media. The pages' ink drawings are among the files named; tests/ink.rs
-/// checks them.
 #[test]
 fn media_files_are_named_by_their_sha256() {
     for file in WITH_MEDIA {
@@ -158,7 +144,6 @@ fn media_files_are_named_by_their_sha256() {
     }
 }
 
-/// The files of the pages' ink drawings a read names.
 fn drawings(lines: &[Value]) -> Vec<String> {
     media(lines)
         .iter()
@@ -167,8 +152,6 @@ fn drawings(lines: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// The same content read twice into one directory is one file there. The two pages' ink
-/// drawings differ, so each is a file of its own.
 #[test]
 fn a_repeated_content_is_one_file() {
     let dir = scratch("media-repeated");
@@ -190,8 +173,6 @@ fn a_repeated_content_is_one_file() {
     assert_eq!(files_under(&dir), expected);
 }
 
-/// A media directory that can't be created exits 1 with one error line. It is created once the
-/// section is read, before its first line, so no line is written.
 #[test]
 fn an_unwritable_media_directory_exits_1() {
     let base = scratch("media-unwritable");
@@ -211,8 +192,6 @@ fn an_unwritable_media_directory_exits_1() {
     assert_eq!(out.stdout, "");
 }
 
-/// The media directory is created once the input is read, with or without a medium to write: a
-/// section with none leaves it, empty. An input refused before it is read leaves none.
 #[test]
 fn the_media_directory_is_created_once_the_input_is_read() {
     let base = scratch("media-created");
@@ -229,8 +208,6 @@ fn the_media_directory_is_created_once_the_input_is_read() {
     assert!(!refused.exists());
 }
 
-/// Without --media nothing is written to disk: the working directory stays empty, without a
-/// file or a directory.
 #[test]
 fn without_media_nothing_is_written() {
     let dir = scratch("media-none");

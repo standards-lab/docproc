@@ -24,8 +24,6 @@ var Zone = time.FixedZone("tooltest", 5*3600+45*60)
 // failed its version command. 8 GiB leaves it four times that room.
 const Memory = 8 << 30
 
-// settingsSuffix and logSuffix end the names of a link's settings file and run log, which sit
-// beside the link.
 const (
 	settingsSuffix = ".tooltest"
 	logSuffix      = ".runs"
@@ -43,8 +41,7 @@ type Run struct {
 	// starts another of itself runs again.
 	Link string
 	// Args are the run's arguments, the program's name not among them.
-	Args []string
-	// settings is the link's settings, as Link or Set wrote them.
+	Args     []string
 	settings json.RawMessage
 }
 
@@ -87,9 +84,6 @@ func Main(m *testing.M, programs map[string]Program) {
 	os.Exit(m.Run())
 }
 
-// standinLink returns the absolute path of the link the process was started through, and whether
-// it was started through one: whether its argument zero, found on PATH when it has no separator,
-// has a settings file beside it.
 func standinLink() (string, bool) {
 	if len(os.Args) == 0 {
 		return "", false
@@ -112,8 +106,6 @@ func standinLink() (string, bool) {
 	return abs, true
 }
 
-// standin runs the stand-in started through link: it reads the link's settings, logs the run,
-// and runs the link's program.
 func standin(link string, programs map[string]Program) int {
 	name := filepath.Base(link)
 	data, err := os.ReadFile(link + settingsSuffix)
@@ -134,8 +126,6 @@ func standin(link string, programs map[string]Program) int {
 	return program(r)
 }
 
-// logRun appends one run to link's log, a JSON object a line, in one write, so the runs of a
-// link started at once each land whole.
 func logRun(link string, run Logged) error {
 	line, err := json.Marshal(run)
 	if err != nil {

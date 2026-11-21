@@ -34,7 +34,8 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file removed,
   and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
   docproc-mail, and docproc-onenote write are held to the cap only once written.
-- **document.** A PDF that needs a password is flagged and not read. A page past the request's
+- **document.** A PDF that needs a password is flagged and not read. An AcroForm whose qpdf JSON
+  passes 64 MiB fails `QPDF.Form` rather than being held in memory. A page past the request's
   MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
   share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
   `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that

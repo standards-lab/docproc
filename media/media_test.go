@@ -22,8 +22,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// The stand-in ffprobe's reports: a source with video and audio, as the fixture is; one with audio
-// only; one with video only; and one whose only video is an attached picture.
 const (
 	probeBoth    = `{"streams":[{"index":0,"codec_type":"video","disposition":{"attached_pic":0}},{"index":1,"codec_type":"audio","disposition":{"attached_pic":0}}]}`
 	probeAudio   = `{"streams":[{"index":0,"codec_type":"audio","disposition":{"attached_pic":0}}]}`
@@ -31,9 +29,6 @@ const (
 	probePicture = `{"streams":[{"index":0,"codec_type":"video","disposition":{"attached_pic":1}},{"index":1,"codec_type":"data"}]}`
 )
 
-// sceneFrames are the frames the stand-in takes, the fixture's under the default policy, their
-// scores as select gives them; the frame at 31 s scores the threshold exactly, as select's printed
-// score rounds one just past it, before the gap has passed, so it is a scene change.
 var sceneFrames = []mediatest.Frame{
 	{MS: 0, Score: 0, Width: 32, Height: 18},
 	{MS: 6000, Score: 1, Width: 32, Height: 18},
@@ -45,17 +40,13 @@ var sceneFrames = []mediatest.Frame{
 	{MS: 47000, Score: 0, Width: 32, Height: 18},
 }
 
-// sceneReasons are sceneFrames' reasons.
 var sceneReasons = []media.Reason{
 	media.ReasonFirst, media.ReasonScene, media.ReasonScene, media.ReasonInterval,
 	media.ReasonInterval, media.ReasonScene, media.ReasonScene, media.ReasonInterval,
 }
 
-// gainWAV is the gain-step fixture, 75.23 s of canonical WAV, whose samples the stand-in writes.
 var gainWAV = filepath.Join("..", "audio", "testdata", "speech-gain.wav")
 
-// source makes an empty source file in a directory of the test's own, which the stand-in never
-// reads, and returns its path.
 func source(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "source.mkv")
@@ -65,8 +56,6 @@ func source(t *testing.T) string {
 	return path
 }
 
-// setStandin sets what the stand-ins report and write: probe's streams, the PCM of gainWAV, and
-// frames.
 func setStandin(t *testing.T, st *standins, probe string, frames []mediatest.Frame) {
 	t.Helper()
 	pcm, err := filepath.Abs(gainWAV)
@@ -76,7 +65,6 @@ func setStandin(t *testing.T, st *standins, probe string, frames []mediatest.Fra
 	st.set(func(c *settings) { c.Probe, c.PCM, c.Frames = probe, pcm, frames })
 }
 
-// collect ranges over a stream to its end, failing the test on any error.
 func collect(t *testing.T, events func(func(media.Event, error) bool)) []media.Event {
 	t.Helper()
 	var out []media.Event
@@ -89,7 +77,6 @@ func collect(t *testing.T, events func(func(media.Event, error) bool)) []media.E
 	return out
 }
 
-// split returns events' window events and frame events, each in the order yielded.
 func split(events []media.Event) (windows, frames []media.Event) {
 	for _, e := range events {
 		switch {
@@ -102,13 +89,11 @@ func split(events []media.Event) (windows, frames []media.Event) {
 	return windows, frames
 }
 
-// sum returns the lowercase hex SHA-256 of b.
 func sum(b []byte) string {
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:])
 }
 
-// checkDir checks that dir holds exactly the files of events, by name.
 func checkDir(t *testing.T, dir string, events []media.Event) {
 	t.Helper()
 	var want []string
@@ -135,7 +120,6 @@ func checkDir(t *testing.T, dir string, events []media.Event) {
 	}
 }
 
-// checkNoScratch checks that the source's directory, dir, holds no run directory of frames.
 func checkNoScratch(t *testing.T, dir string) {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -149,21 +133,14 @@ func checkNoScratch(t *testing.T, dir string) {
 	}
 }
 
-// expectedWindows plans the gain fixture's windows as audio's tracker and planner do over its
-// samples, at req's settings, and returns them with each one's WAV.
 func expectedWindows(t *testing.T, req audio.Request) ([]audio.Window, [][]byte) {
 	t.Helper()
 	windows, wavs, _ := expectedThresholds(t, req)
 	return windows, wavs
 }
 
-// frameBytes is the bytes of the tracker's frame of PCM.
 const frameBytes = 2 * audio.SampleRate * int(audio.FrameLength) / int(time.Second)
 
-// expectedThresholds is expectedWindows, and the threshold each window was cut under, as the
-// tracker, fed a frame at a time, gives them: the fixed threshold; for a window cut at a silence,
-// the one that silence, taken up to the window's limit, opened under; for one cut at the limit,
-// the one in force after its last sample's frame; and for the last, the one in force at the end.
 func expectedThresholds(t *testing.T, req audio.Request) ([]audio.Window, [][]byte, []float64) {
 	t.Helper()
 	data, err := os.ReadFile(gainWAV)
@@ -173,7 +150,6 @@ func expectedThresholds(t *testing.T, req audio.Request) ([]audio.Window, [][]by
 	return expectedOf(t, data[44:], req)
 }
 
-// expectedOf is expectedThresholds for the PCM pcm.
 func expectedOf(t *testing.T, pcm []byte, req audio.Request) ([]audio.Window, [][]byte, []float64) {
 	t.Helper()
 	tr, err := audio.NewTracker(req)
@@ -216,7 +192,6 @@ func expectedOf(t *testing.T, pcm []byte, req audio.Request) ([]audio.Window, []
 	return plan.Windows, wavs, thresholds
 }
 
-// TestNewStreamer: a nil Tool panics naming its field, and one older than 9.0 is refused.
 func TestNewStreamer(t *testing.T) {
 	t.Parallel()
 	cfg := installStandins(t, "8.1").config()
@@ -242,7 +217,6 @@ func TestNewStreamer(t *testing.T) {
 	}
 }
 
-// TestEventsRefused refuses each invalid request with ErrRequest, once, before anything runs.
 func TestEventsRefused(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -301,8 +275,6 @@ func TestEventsRefused(t *testing.T) {
 	}
 }
 
-// TestEventsNoMedia refuses a source whose only video is an attached picture with ErrNoMedia,
-// after its probe and before ffmpeg runs.
 func TestEventsNoMedia(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -319,11 +291,6 @@ func TestEventsNoMedia(t *testing.T) {
 	}
 }
 
-// TestEventsStandin streams a source with audio and video through the stand-in: its frames'
-// reasons, times, and sizes, in order, each its PNG named by its SHA-256; its windows, in plan
-// order, the tracker's and planner's over the same PCM, each the same WAV bytes, with its seams and
-// the threshold it was cut under; ffmpeg's one run and its arguments; and a media directory holding
-// exactly the events' files, the run's directory of frames gone.
 func TestEventsStandin(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -417,7 +384,6 @@ func TestEventsStandin(t *testing.T) {
 	}
 }
 
-// TestEventsFixedThreshold streams the audio with a fixed threshold: every window names it.
 func TestEventsFixedThreshold(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -434,9 +400,6 @@ func TestEventsFixedThreshold(t *testing.T) {
 	}
 }
 
-// TestEventsLimitThreshold streams the gain fixture's audio with no silence long enough to end a
-// window: each window cut at the limit names the rolling threshold its last sample's frame was
-// decided against, and the last the one in force at the end, which the gain step moves.
 func TestEventsLimitThreshold(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -459,12 +422,6 @@ func TestEventsLimitThreshold(t *testing.T) {
 	}
 }
 
-// TestEventsOpenSilence streams 25 s of the gain fixture's speech, 70 s of digital silence, and
-// 20 s more of its speech, the stand-in waiting, just past the limit of each window whose limit is
-// inside the silence, for the test to have that window: so each is yielded with the PCM that
-// carries the stream past its limit, not when the silence ends, which the stand-in would never
-// reach. The first is cut at the silence's middle up to its limit, under the threshold it opened
-// at, and the next two, which start inside it, at their limits; the windows are the plan's.
 func TestEventsOpenSilence(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -487,7 +444,6 @@ func TestEventsOpenSilence(t *testing.T) {
 	open := map[int]string{}
 	for i, w := range wantWindows {
 		if limit := w.Start + audio.DefaultWindowLimit; w.Cut != audio.CutEnd && limit > 25*time.Second && limit < 95*time.Second {
-			// The frame that carries the stream past the limit, and no byte more.
 			path := filepath.Join(gateDir, fmt.Sprint(i))
 			gates = append(gates, standinGate{At: (int(limit/audio.FrameLength) + 1) * frameBytes, Path: path})
 			open[i] = path
@@ -521,8 +477,6 @@ func TestEventsOpenSilence(t *testing.T) {
 	}
 }
 
-// TestEventsOneStream streams a source with audio only, which yields windows only and runs no
-// video output, and one with video only, which yields frames only and runs no audio output.
 func TestEventsOneStream(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -552,8 +506,6 @@ func TestEventsOneStream(t *testing.T) {
 	}
 }
 
-// TestEventsBreak stops the loop after the first event: the run stops, and the media directory
-// holds that event's file alone.
 func TestEventsBreak(t *testing.T) {
 	s, st := standinStreamer(t)
 	setStandin(t, st, probeBoth, sceneFrames)
@@ -576,9 +528,6 @@ func TestEventsBreak(t *testing.T) {
 	checkNoScratch(t, filepath.Dir(path))
 }
 
-// TestEventsCancel ends the context after the first event, with the stand-in holding its run
-// open: the stream yields the context's error once and ends, and the media directory holds the
-// one event's file.
 func TestEventsCancel(t *testing.T) {
 	s, st := standinStreamer(t)
 	setStandin(t, st, probeBoth, sceneFrames)
@@ -608,9 +557,6 @@ func TestEventsCancel(t *testing.T) {
 	checkNoScratch(t, filepath.Dir(path))
 }
 
-// TestEventsFail streams a run that fails once it has written its output: the stream yields every
-// frame it wrote and the windows already fixed, and then the run's error, carrying ffmpeg's last
-// line; the window still open when it failed isn't yielded.
 func TestEventsFail(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -641,8 +587,6 @@ func TestEventsFail(t *testing.T) {
 	checkDir(t, dir, events)
 }
 
-// TestEventsNoPNG streams a run that reports frames and writes no PNG for them: the stream ends
-// with an error naming the first.
 func TestEventsNoPNG(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -663,7 +607,6 @@ func TestEventsNoPNG(t *testing.T) {
 	checkDir(t, dir, nil)
 }
 
-// TestReasonString names each reason.
 func TestReasonString(t *testing.T) {
 	t.Parallel()
 	for r, want := range map[media.Reason]string{

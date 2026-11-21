@@ -28,7 +28,8 @@ type Config struct {
 }
 
 // Content is a [dispatch.Content] over a go-storage Client, each content an object at its key,
-// as the package says. A put is the Client's Put, all or nothing. It is safe for concurrent use
+// as the package says. A put is the Client's Put, all or nothing. A sha256 that isn't 64
+// lowercase hex digits is refused, matching [dispatch.ErrRequest]. It is safe for concurrent use
 // as its Client is. Its zero value is not ready; [New] makes one.
 type Content struct {
 	client gostorage.Client
@@ -48,8 +49,6 @@ func New(cfg Config) (*Content, error) {
 	return &Content{client: cfg.Client, prefix: cfg.Prefix, renew: cfg.Renew}, nil
 }
 
-// key returns the key of the content sha256 names, or an error matching [dispatch.ErrRequest]
-// when sha256 isn't 64 lowercase hex digits.
 func (c *Content) key(sha256 string) (string, error) {
 	if !isSHA256(sha256) {
 		return "", fmt.Errorf("storage: content %q isn't a SHA-256 as lowercase hex: %w", sha256, dispatch.ErrRequest)
@@ -57,7 +56,6 @@ func (c *Content) key(sha256 string) (string, error) {
 	return c.prefix + sha256[:2] + "/" + sha256, nil
 }
 
-// isSHA256 reports whether s is a SHA-256 as lowercase hex.
 func isSHA256(s string) bool {
 	if len(s) != 64 {
 		return false
@@ -72,7 +70,7 @@ func isSHA256(s string) bool {
 
 // Put stats sha256's key, then puts r's bytes there unless the object is there and no older than
 // the renew age. An object past the Client's size bound fails matching [dispatch.ErrTooLarge] as
-// well as go-storage's ErrTooLarge.
+// well as go-storage's ErrTooLarge. A put of a long stream stops when ctx ends.
 func (c *Content) Put(ctx context.Context, sha256 string, r io.Reader) error {
 	key, err := c.key(sha256)
 	if err != nil {
@@ -118,13 +116,10 @@ func (c *Content) Open(ctx context.Context, sha256 string) (io.ReadCloser, error
 	return blob.Body, nil
 }
 
-// isMiss reports whether err is a Client's word that a key holds no object, in a container that
-// exists.
 func isMiss(err error) bool {
 	return errors.Is(err, gostorage.ErrNotFound) && !errors.Is(err, gostorage.ErrContainerNotFound)
 }
 
-// contextReader reads r until ctx ends, so a put of a long stream stops with its context.
 type contextReader struct {
 	ctx context.Context
 	r   io.Reader

@@ -11,7 +11,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// checksOf returns the checks of r's flags, in order.
 func checksOf(r inspect.Report) []inspect.Check {
 	var checks []inspect.Check
 	for _, f := range r.Flags {
@@ -20,10 +19,6 @@ func checksOf(r inspect.Report) []inspect.Check {
 	return checks
 }
 
-// TestCheckListing: a 7z listing raises the checks tar's headers are held to, by the same rules,
-// each flag's evidence naming its entry, and only a bomb is unsafe; a cabinet's listing raises
-// the same; a zstd stream's raises its bomb alone, by its declared size; and an entry with no
-// declared size is no bomb.
 func TestCheckListing(t *testing.T) {
 	unsafe := []inspect.Listed{
 		{Name: "notes.txt", Type: inspect.FileEntry, Declared: 18, Sized: true},
@@ -75,7 +70,6 @@ func TestCheckListing(t *testing.T) {
 		t.Errorf("bomb's flags %v, want evidence %q", rep.Flags, want)
 	}
 
-	// Links, devices, and an encrypted entry alone are active, so the archive proceeds.
 	rep, err = inspect.CheckListing(route.SevenZip, 1024, unsafe[3:7], rule)
 	if err != nil {
 		t.Fatal(err)
@@ -83,7 +77,6 @@ func TestCheckListing(t *testing.T) {
 	if rep.Verdict != inspect.Proceed || len(rep.Flags) != 4 {
 		t.Errorf("links, a device, and encryption: %v, %s", rep.Flags, rep.Verdict)
 	}
-	// An entry with no declared size is no bomb, as a zstd stream's whose header declares none.
 	rep, err = inspect.CheckListing(route.Zstd, 10, []inspect.Listed{{Name: "zeros", Type: inspect.FileEntry}}, rule)
 	if err != nil {
 		t.Fatal(err)
@@ -93,8 +86,6 @@ func TestCheckListing(t *testing.T) {
 	}
 }
 
-// TestCheckListingSum: 2,000 entries of 1 GiB each, none past the rule's size alone, are a bomb
-// by their sum against the archive's 200 KiB, while 2,000 entries of 256 KiB, 500 MiB in all, aren't.
 func TestCheckListingSum(t *testing.T) {
 	listing := func(each uint64) []inspect.Listed {
 		var l []inspect.Listed
@@ -115,9 +106,6 @@ func TestCheckListingSum(t *testing.T) {
 	}
 }
 
-// TestCheckListingOptions: a policy lets a listing's unsafe flags proceed, lowered thresholds make
-// a smaller entry a bomb, the zero Options apply no rule, invalid options are refused as Inspect
-// refuses them, and a kind with no listing checks is refused.
 func TestCheckListingOptions(t *testing.T) {
 	bomb := []inspect.Listed{{Name: "zeros.bin", Type: inspect.FileEntry, Declared: 4 << 30, Sized: true}}
 	permissive := rule

@@ -7,17 +7,14 @@ use std::path::PathBuf;
 
 use docproc_envelope::{Fault, Media};
 
-/// SHA-256 of "abc", as FIPS 180-2 gives it.
 const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
-/// A fresh directory for one test, under Cargo's temporary directory.
 fn scratch(test: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("envelope-media-{test}"));
     let _ = fs::remove_dir_all(&dir);
     dir
 }
 
-/// The directory's entries' names, sorted.
 fn entries(dir: &PathBuf) -> Vec<String> {
     let mut names: Vec<String> = fs::read_dir(dir)
         .unwrap()
@@ -27,8 +24,6 @@ fn entries(dir: &PathBuf) -> Vec<String> {
     names
 }
 
-/// The directory is created at `create`, with no payload yet, and is left holding no temporary
-/// file once a payload is stored under its name.
 #[test]
 fn the_directory_is_created_once_the_input_is_read() {
     let dir = scratch("created").join("made");
@@ -43,8 +38,6 @@ fn the_directory_is_created_once_the_input_is_read() {
     assert_eq!(entries(&dir), [name]);
 }
 
-/// A payload stored twice is written once: the file removed after the first store is not
-/// written again by the second, which still names it, and leaves no temporary file behind.
 #[test]
 fn a_repeated_payload_is_written_once() {
     let dir = scratch("once");
@@ -57,7 +50,6 @@ fn a_repeated_payload_is_written_once() {
     assert!(entries(&dir).is_empty());
 }
 
-/// Without `--media` nothing is written, and the name stands.
 #[test]
 fn without_a_directory_a_payload_is_hashed_only() {
     let mut media = Media::new(None);
@@ -68,7 +60,6 @@ fn without_a_directory_a_payload_is_hashed_only() {
     );
 }
 
-/// A directory that can't be created is a media fault, exit 1.
 #[test]
 fn a_directory_that_cant_be_created_is_a_media_fault() {
     let dir = scratch("blocked");
@@ -80,7 +71,6 @@ fn a_directory_that_cant_be_created_is_a_media_fault() {
     assert_eq!(fault.code(), 1);
 }
 
-/// A payload that fails partway is a media fault and leaves no file, whole or temporary.
 #[test]
 fn a_payload_that_cant_be_read_leaves_nothing() {
     struct Failing;
@@ -97,8 +87,6 @@ fn a_payload_that_cant_be_read_leaves_nothing() {
     assert!(entries(&dir).is_empty());
 }
 
-/// A payload whose read fails is a read failure with and without `--media`: the temporary file
-/// it was being copied into is never named, and is removed.
 #[test]
 fn a_payload_that_cant_be_read_is_worded_as_a_read_failure() {
     let dir = scratch("unreadable");
@@ -117,8 +105,6 @@ fn a_payload_that_cant_be_read_is_worded_as_a_read_failure() {
     assert!(entries(&dir).is_empty());
 }
 
-/// A media file that can't be written, here its temporary file in a directory that is missing,
-/// is named.
 #[test]
 fn a_media_file_that_cant_be_written_is_named() {
     let dir = scratch("unwritable").join("missing");
@@ -136,7 +122,6 @@ fn a_media_file_that_cant_be_written_is_named() {
     );
 }
 
-/// A payload whose every read fails.
 struct Unreadable;
 
 impl Read for Unreadable {

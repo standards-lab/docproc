@@ -8,13 +8,10 @@ mod common;
 use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha256};
 use serde_json::{Value, json};
 
-/// The media name of 03-html-inline-image.eml's moth picture: its SHA-256 and its extension.
 const MOTH: &str = "83b67b7e132c07726a0309f13395c7a19884e27ca084eff8e8fe6e320d6d7795.png";
 
-/// The MIME group's hand-written sources, under tests/fixtures/mime/eml.
 const MIME_SOURCES: &[&str] = &["09-threading.eml"];
 
-/// The generated sources, under tests/fixtures/generated/eml.
 const SOURCES: &[&str] = &[
     "01-plain.eml",
     "02-reply-latin1.eml",
@@ -26,7 +23,6 @@ const SOURCES: &[&str] = &[
     "08-forward-attached-message.eml",
 ];
 
-/// Each truth field compared as it is, and the field of the model it gives.
 const FIELDS: &[(&str, &str)] = &[
     ("subject", "subject"),
     ("date", "submit_time"),
@@ -40,9 +36,6 @@ const FIELDS: &[(&str, &str)] = &[
     ("conversation_index", "conversation_index"),
 ];
 
-/// The truth fields compared otherwise: each address with address type SMTP, the bodies, the
-/// attachments and embedded messages as attachment records. The charset is the source's label,
-/// no field of the model.
 const MAPPED: &[&str] = &[
     "sender",
     "to",
@@ -54,28 +47,22 @@ const MAPPED: &[&str] = &[
     "charset",
 ];
 
-/// A group's truth, by its directory under tests/fixtures.
 fn truth(group: &str) -> Value {
     serde_json::from_slice(&std::fs::read(fixture(&format!("{group}/truth.json"))).unwrap())
         .unwrap()
 }
 
-/// A truth address as the model writes it: with address type SMTP.
 fn smtp(address: &Value) -> Value {
     let mut address = address.clone();
     address["address_type"] = json!("SMTP");
     address
 }
 
-/// A truth recipient list as the model writes it.
 fn recipients(truth: Option<&Value>) -> Option<Value> {
     let list = truth?.as_array().unwrap();
     Some(Value::Array(list.iter().map(smtp).collect()))
 }
 
-/// The attachment records a truth entry gives, in the source's order: each attachment by value,
-/// its file named by its SHA-256 and its filename's extension, then each attached message,
-/// embedded, without a file. The generated sources attach their messages last.
 fn attachments(truth: &Value) -> Vec<Value> {
     let mut records: Vec<Value> = truth
         .get("attachments")
@@ -110,15 +97,12 @@ fn attachments(truth: &Value) -> Vec<Value> {
     records
 }
 
-/// The source's header block, its blank line left out, as the transport headers hold it.
 fn header_block(bytes: &[u8]) -> String {
     let text = String::from_utf8(bytes.to_vec()).unwrap();
     let end = text.find("\r\n\r\n").unwrap();
     text[..end + 2].to_owned()
 }
 
-/// One message against its truth entry: a message line, or, with `nested`, a message embedded
-/// in another, which is no line. The transport headers are the caller's to check.
 fn assert_message(got: &Value, truth: &Value, source: &str, nested: bool) {
     for key in truth.as_object().unwrap().keys() {
         assert!(
@@ -179,8 +163,6 @@ fn assert_message(got: &Value, truth: &Value, source: &str, nested: bool) {
     }
 }
 
-/// Each .eml of a group is a store line and one message line that matches the group's truth in
-/// full, without a warning.
 fn assert_group_matches_its_truth(group: &str, sources: &[&str]) {
     let truth = truth(group);
     let listed: Vec<&String> = truth["messages"].as_object().unwrap().keys().collect();
@@ -207,21 +189,16 @@ fn assert_group_matches_its_truth(group: &str, sources: &[&str]) {
     }
 }
 
-/// Each generated .eml matches truth.json in full.
 #[test]
 fn eml_files_match_the_truth() {
     assert_group_matches_its_truth("generated", SOURCES);
 }
 
-/// The MIME group's hand-written .eml matches its own truth in full: the threading and
-/// priority headers, and the body lines starting "From " and ">From " as they are.
 #[test]
 fn the_mime_group_matches_its_truth() {
     assert_group_matches_its_truth("mime", MIME_SOURCES);
 }
 
-/// Every file of the MIME group has the SHA-256 its list records, and every committed file is
-/// listed, but the list itself.
 #[test]
 fn the_mime_group_matches_its_sha256_list() {
     let list: Value =
@@ -254,8 +231,6 @@ fn the_mime_group_matches_its_sha256_list() {
     assert_eq!(listed, committed, "the list names every file of the group");
 }
 
-/// The Markdown body is made from the HTML, its cid: image linking the attachment's file, and
-/// followed by the text body's sentence the HTML lacks, else from the text.
 #[test]
 fn markdown_is_made_from_the_html_else_the_text() {
     let markdown = |source: &str| {
@@ -276,8 +251,6 @@ fn markdown_is_made_from_the_html_else_the_text() {
     );
 }
 
-/// With --media, each distinct content is written once, named by its SHA-256 and
-/// extension, in a directory created as it was missing; an embedded message has no file.
 #[test]
 fn attachments_are_written_by_content() {
     for source in SOURCES {
@@ -303,7 +276,6 @@ fn attachments_are_written_by_content() {
     }
 }
 
-/// Without --media, a run writes nothing to disk: its working directory stays empty.
 #[test]
 fn nothing_is_written_without_the_flag() {
     let dir = scratch("eml-no-attachments");
@@ -312,7 +284,6 @@ fn nothing_is_written_without_the_flag() {
     assert_eq!(names(&dir), Vec::<String>::new());
 }
 
-/// The message line of a test-built .eml, and its stderr.
 fn read(name: &str, bytes: &[u8]) -> (Value, String) {
     let out = run(&[built(name, bytes)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
@@ -321,7 +292,6 @@ fn read(name: &str, bytes: &[u8]) -> (Value, String) {
     (lines[1].clone(), out.stderr)
 }
 
-/// A test-built .eml of these header lines and a one-line body.
 fn with_headers(name: &str, headers: &str) -> (Value, String) {
     read(
         name,
@@ -329,13 +299,10 @@ fn with_headers(name: &str, headers: &str) -> (Value, String) {
     )
 }
 
-/// The warning line for a record's note.
 fn warning(note: &str) -> String {
     format!("docproc-mail: warning: message: {note}\n")
 }
 
-/// Importance gives the importance, whatever its case, before X-Priority; without it,
-/// X-Priority's leading number gives its band.
 #[test]
 fn importance_comes_from_importance_else_x_priority() {
     let cases = [
@@ -358,7 +325,6 @@ fn importance_comes_from_importance_else_x_priority() {
     }
 }
 
-/// Sensitivity's three values, whatever their case, in schema "2"'s words.
 #[test]
 fn sensitivity_values_map_to_the_schemas() {
     let cases = [
@@ -374,8 +340,6 @@ fn sensitivity_values_map_to_the_schemas() {
     }
 }
 
-/// A value that maps to none of the model's is left out, with a warning naming the header; an
-/// unknown Importance falls back to X-Priority.
 #[test]
 fn unknown_values_are_left_out_with_a_warning() {
     let cases = [
@@ -422,9 +386,6 @@ fn unknown_values_are_left_out_with_a_warning() {
     );
 }
 
-/// Thread-Index is base64-decoded into the conversation index, in lowercase hex; one that
-/// isn't valid base64 is left out, with a warning. Thread-Topic is decoded from its encoded
-/// words.
 #[test]
 fn thread_index_and_topic_fill_the_conversation_fields() {
     let (message, stderr) = with_headers(
@@ -442,7 +403,6 @@ fn thread_index_and_topic_fill_the_conversation_fields() {
     );
 }
 
-/// Groups are flattened into their members, in order, and an empty group gives nothing.
 #[test]
 fn groups_are_flattened() {
     let (message, _) = read(
@@ -468,8 +428,6 @@ fn groups_are_flattened() {
     assert_eq!(message.get("cc"), None);
 }
 
-/// The delivery time is the first Received header's, the newest hop's, in UTC; References is
-/// kept as stored, unfolded.
 #[test]
 fn the_first_received_header_gives_the_delivery_time() {
     let (message, stderr) = read(
@@ -487,7 +445,6 @@ fn the_first_received_header_gives_the_delivery_time() {
     assert_eq!(message["references"], "<a@example.com> <b@example.com>");
 }
 
-/// A Date that can't be read is left out, with one warning naming the record "message".
 #[test]
 fn a_date_that_cannot_be_read_is_left_out_with_a_warning() {
     let (message, stderr) = read(
@@ -502,8 +459,6 @@ fn a_date_that_cannot_be_read_is_left_out_with_a_warning() {
     );
 }
 
-/// An .eml is told by its content: a header block whose first field isn't From or Date, and a
-/// name that says nothing.
 #[test]
 fn an_eml_is_sniffed_not_named() {
     let (message, _) = read(
@@ -514,8 +469,6 @@ fn an_eml_is_sniffed_not_named() {
     assert_eq!(message["submit_time"], "2026-01-12T22:00:00Z");
 }
 
-/// A leading UTF-8 byte-order mark, which an editor may write, is skipped before the header
-/// check and the parse, so the first field is read as the first field.
 #[test]
 fn a_leading_byte_order_mark_is_skipped() {
     let (message, stderr) = read(
@@ -527,7 +480,6 @@ fn a_leading_byte_order_mark_is_skipped() {
     assert_eq!(stderr, "");
 }
 
-/// An .eml of 4 GiB or more is refused before it is read: here a sparse file.
 #[test]
 fn an_eml_of_4_gib_is_refused() {
     let path = built("huge.eml", b"From: ann@example.com\r\n\r\n");
@@ -547,8 +499,6 @@ fn an_eml_of_4_gib_is_refused() {
     );
 }
 
-/// A message `levels` deep: each level a text part and, but for the last, the next level
-/// attached as message/rfc822, so the last is `levels - 1` messages below the top.
 fn nested(levels: usize) -> Vec<u8> {
     let mut message = format!(
         "From: ann@example.com\r\nSubject: level {}\r\n\r\nthe last level\r\n",
@@ -566,8 +516,6 @@ fn nested(levels: usize) -> Vec<u8> {
     message.into_bytes()
 }
 
-/// Embedded messages nest to 16 levels below the top; one deeper is listed, embedded, without
-/// its message, with one warning naming its place.
 #[test]
 fn nesting_stops_at_16_levels() {
     let (message, stderr) = read("nested.eml", &nested(18));
@@ -595,8 +543,6 @@ fn nesting_stops_at_16_levels() {
     );
 }
 
-/// `bytes` in base64, by coreutils' base64, so the tests take no encoding crate. The bytes go
-/// through its standard input, so tests running side by side share no file.
 fn base64(bytes: &[u8]) -> String {
     use std::io::Write;
     use std::process::{Command, Stdio};
@@ -614,9 +560,6 @@ fn base64(bytes: &[u8]) -> String {
     String::from_utf8(out.stdout).unwrap().replace('\n', "\r\n")
 }
 
-/// A transfer-encoded message/rfc822 part is an embedded message as an unencoded one is, at
-/// every level, past mail-parser's default of 3 encoded levels. An inline disposition is not
-/// `inline`, which says whether the Markdown links the attachment.
 #[test]
 fn an_encoded_message_is_embedded() {
     let mut message = "From: ann@example.com\r\nSubject: level 5\r\n\r\nlast\r\n".to_owned();
@@ -642,9 +585,6 @@ fn an_encoded_message_is_embedded() {
     assert_eq!(at["markdown"], "last");
 }
 
-/// A transfer-encoded message/rfc822 part nests to 16 levels below the top as an unencoded one
-/// does; one deeper, which mail-parser leaves unparsed, is listed without its message with the
-/// same warning, naming its place.
 #[test]
 fn encoded_nesting_stops_at_16_levels() {
     let mut message = "From: ann@example.com\r\nSubject: level 19\r\n\r\nlast\r\n".to_owned();
@@ -680,9 +620,6 @@ fn encoded_nesting_stops_at_16_levels() {
     );
 }
 
-/// The text body is the text parts joined in order, an attachment between them, a line each in
-/// the Markdown; each attachment part is a record in order, its filename, type and content ID
-/// from the part.
 #[test]
 fn text_parts_are_joined_and_attachments_listed_in_order() {
     let dir = scratch("eml-ordered-attachments");
@@ -718,8 +655,6 @@ fn text_parts_are_joined_and_attachments_listed_in_order() {
     assert_eq!(names(&dir), [sha.to_owned(), format!("{sha}.bin")]);
 }
 
-/// US-ASCII and ISO-8859-1, in parts and in encoded words, decode as windows-1252: the HTML
-/// part, which the Markdown is made from, and, alone, a text part.
 #[test]
 fn latin1_and_ascii_decode_as_windows_1252() {
     let (message, stderr) = read(
@@ -734,7 +669,6 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     );
     assert_eq!(stderr, "");
     assert_eq!(message["subject"], "€5café");
-    // The text part's sentence holds `Ÿ`, which the HTML lacks, so the content rule appends it.
     assert_eq!(message["markdown"], "\u{201c}café\u{201d}\n\ncafé € Ÿ");
     let (message, stderr) = read(
         "latin1-text.eml",
@@ -746,9 +680,6 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     assert_eq!(message["markdown"], "café € Ÿ");
 }
 
-/// A byte windows-1252 leaves undefined becomes U+FFFD, and malformed base64 is decoded as
-/// best it can be, each with one warning naming its record. An attachment's content is its
-/// bytes, so its charset, here an unknown one, is never decoded.
 #[test]
 fn lossy_decoding_gives_a_warning_naming_the_record() {
     let (message, stderr) = read(
@@ -773,10 +704,6 @@ fn lossy_decoding_gives_a_warning_naming_the_record() {
     );
 }
 
-/// In a MIME message too, an image's source is rewritten to its media name: a percent-decoded
-/// `cid:` matches a part's Content-ID, another source its Content-Location, and a `data:` image is
-/// written as media and listed in `media`. A source that matches nothing is kept, with a warning,
-/// and a part is `inline` when the Markdown links it, whatever its Content-Disposition says.
 #[test]
 fn images_link_their_media_names() {
     let eml = "From: ann@example.com\r\nSubject: images\r\n\
@@ -801,7 +728,6 @@ fn images_link_their_media_names() {
     let inline: Vec<&Value> = attachments.iter().map(|a| &a["inline"]).collect();
     assert_eq!(inline, [true, true, false]);
     let file = |at: usize| attachments[at]["file"].as_str().unwrap();
-    // The payload, "GIF89a", named by its SHA-256 and the media type's subtype.
     let gif = format!("{}.gif", sha256(&built("payload.gif", b"GIF89a")));
     assert_eq!(
         message["media"],

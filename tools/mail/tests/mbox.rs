@@ -4,6 +4,12 @@
 //! for byte, and each of its messages is compared with the CLI's read of its source .eml. Apache
 //! James mime4j's mbox.rlug, under tests/fixtures/mime/rlug/, is compared with its five expected
 //! splits the same way.
+//!
+//! Each of mime4j's expected splits is exactly the bytes between two separator lines, so it ends
+//! with the blank line before the next separator, or the file's last line. RFC 4155 and mboxrd give
+//! that blank line to the separator, and the reader drops it, where mime4j keeps it in the message,
+//! so each split is read without its final line ending, which is checked to be "\n" alone so that
+//! the comparison hides no other difference.
 
 mod common;
 
@@ -13,7 +19,6 @@ use std::process::Command;
 use common::{built, fixture, run, scratch, sha256};
 use serde_json::{Value, json};
 
-/// The mboxrd's sources, in its order, under tests/fixtures.
 const SOURCES: &[&str] = &[
     "generated/eml/01-plain.eml",
     "generated/eml/02-reply-latin1.eml",
@@ -26,7 +31,6 @@ const SOURCES: &[&str] = &[
     "mime/eml/09-threading.eml",
 ];
 
-/// mime4j's mbox.rlug and its expected splits, in the MIME group.
 const RLUG: &[&str] = &[
     "rlug/mbox.rlug",
     "rlug/mbox.rlug-0",
@@ -36,12 +40,10 @@ const RLUG: &[&str] = &[
     "rlug/mbox.rlug-4",
 ];
 
-/// The committed mboxrd.
 fn mboxrd() -> PathBuf {
     fixture("mime/nine.mboxrd")
 }
 
-/// A run's lines but its store line, each without its id, and the ids apart.
 fn without_ids(lines: &[Value]) -> (Vec<Value>, Vec<Value>) {
     let mut ids = Vec::new();
     let lines = lines[1..]
@@ -57,7 +59,6 @@ fn without_ids(lines: &[Value]) -> (Vec<Value>, Vec<Value>) {
     (lines, ids)
 }
 
-/// The script rebuilds the committed mboxrd byte for byte.
 #[test]
 fn the_mboxrd_is_rebuilt_byte_for_byte() {
     let rebuilt = scratch("mboxrd-rebuilt").join("nine.mboxrd");
@@ -70,8 +71,6 @@ fn the_mboxrd_is_rebuilt_byte_for_byte() {
     );
 }
 
-/// Each message of the mboxrd is the CLI's read of its source .eml, its attachments too, with
-/// ids 1 to 9.
 #[test]
 fn the_mboxrd_gives_its_sources_by_ordinal() {
     let dir = scratch("mboxrd-attachments");
@@ -103,8 +102,6 @@ fn the_mboxrd_gives_its_sources_by_ordinal() {
     assert_eq!(messages, expected);
 }
 
-/// 09's body lines starting "From " and ">From ", quoted in the mboxrd, are read back as they
-/// were: each a line of the Markdown, the ">" escaped so it is no quote.
 #[test]
 fn from_lines_survive_the_mboxrd() {
     let out = run(&[mboxrd()]);
@@ -163,7 +160,6 @@ fn an_mbox_gives_its_messages_by_ordinal() {
     );
 }
 
-/// A file of separator lines alone has no messages: the store line alone.
 #[test]
 fn an_mbox_with_no_messages_gives_its_store_line_alone() {
     let mbox = built(
@@ -179,9 +175,6 @@ fn an_mbox_with_no_messages_gives_its_store_line_alone() {
     assert_eq!(lines[0]["format"], "mbox");
 }
 
-/// A message whose HTML nests 20,000 elements, which htmd would overflow its stack on, ending
-/// the run by signal, is capped before htmd, between two good messages: its Markdown is its HTML's
-/// text, with a warning, and the messages either side of it arrive.
 #[test]
 fn a_deeply_nested_message_costs_only_its_markdown() {
     let good = |n: u32| {
@@ -223,8 +216,6 @@ fn a_deeply_nested_message_costs_only_its_markdown() {
     );
 }
 
-/// A text file that starts "From " but none of whose entries is a message is no mbox: refused,
-/// with nothing on stdout and no warning for its entries.
 #[test]
 fn an_mbox_whose_every_entry_fails_is_refused() {
     let mbox = built(
@@ -243,8 +234,6 @@ fn an_mbox_whose_every_entry_fails_is_refused() {
     );
 }
 
-/// The store line is held until the first message parses, and the entries that failed before
-/// it follow it, with their warnings, in their places.
 #[test]
 fn entries_before_the_first_message_follow_the_store_line() {
     let mbox = built(
@@ -279,8 +268,6 @@ fn entries_before_the_first_message_follow_the_store_line() {
     );
 }
 
-/// A leading byte-order mark is skipped before the first separator line and before an entry's
-/// header block.
 #[test]
 fn a_leading_byte_order_mark_is_skipped() {
     let mbox = built(
@@ -314,8 +301,6 @@ fn a_leading_byte_order_mark_is_skipped() {
     );
 }
 
-/// An empty entry, a separator line with nothing after it, keeps its ordinal but writes no
-/// line, so the message after it keeps its own ordinal.
 #[test]
 fn an_empty_entry_keeps_its_ordinal() {
     let mbox = built(
@@ -353,8 +338,6 @@ fn an_empty_entry_keeps_its_ordinal() {
     );
 }
 
-/// mboxo quotes only "From " lines, and is read as mboxrd: a body line that was ">From " to begin
-/// with, which mboxo leaves as it is, loses its ">" (a known limit).
 #[test]
 fn an_mboxo_body_line_that_was_quoted_loses_its_quote() {
     let mbox = built(
@@ -375,8 +358,6 @@ fn an_mboxo_body_line_that_was_quoted_loses_its_quote() {
     );
 }
 
-/// mboxcl's Content-Length is not read (a known limit): an unquoted body line starting "From "
-/// starts a new message, which here fails the header-shape check.
 #[test]
 fn an_mboxcl_content_length_is_ignored() {
     let mbox = built(
@@ -406,14 +387,6 @@ fn an_mboxcl_content_length_is_ignored() {
     );
 }
 
-/// mime4j's mbox.rlug gives five messages, ids 1 to 5, each the CLI's read of its expected split
-/// as an .eml, every field but the id alike.
-///
-/// Each split is exactly the bytes between two separator lines, so it ends with the blank line
-/// before the next separator, or the file's last line. RFC 4155 and mboxrd give that blank line
-/// to the separator, and the reader drops it; mime4j keeps it in the message. So each split is
-/// read without its final line ending, and that line ending is checked to be "\n" alone, so the
-/// comparison can't hide any other difference.
 #[test]
 fn mbox_rlug_gives_its_splits_by_ordinal() {
     let out = run(&[fixture("mime/rlug/mbox.rlug")]);
@@ -441,8 +414,6 @@ fn mbox_rlug_gives_its_splits_by_ordinal() {
     assert_eq!(messages, expected);
 }
 
-/// Every committed mime4j file has a sources entry whose SHA-256 matches it, and the license
-/// notices it names are committed.
 #[test]
 fn every_rlug_file_has_a_matching_sources_entry() {
     let sources: Value =

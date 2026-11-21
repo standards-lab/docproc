@@ -12,9 +12,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestAdaptersShareOutcomes: each adapter's exit errors are the shared ones, so an exit code's
-// ExitError from either adapter matches the other adapter's error of the same code, and no
-// other. office and email each report a run through cli.ExitError itself.
 func TestAdaptersShareOutcomes(t *testing.T) {
 	officeErrs := []error{office.ErrNotWritten, office.ErrUsage, office.ErrRefused, office.ErrFailed}
 	emailErrs := []error{email.ErrNotWritten, email.ErrUsage, email.ErrRefused, email.ErrFailed}

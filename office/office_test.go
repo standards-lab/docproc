@@ -21,8 +21,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// dockerStandin is a stand-in docker CLI enough to build a container Tool: its daemon's version,
-// every image present, and a run that prints the stand-in docproc-ooxml's version.
 func dockerStandin(args []string) int {
 	switch {
 	case len(args) > 0 && args[0] == "version":
@@ -33,11 +31,6 @@ func dockerStandin(args []string) int {
 	return 0
 }
 
-// TestNewConverter: the constructor takes a docproc-ooxml at or past 0.1.0, a development build's
-// version included, panics naming Config.Office or Config.Pictures given none, and refuses an older one, whatever
-// minimum the Tool's own Spec declared; the spec's own minimum refuses an older one at the Tool's
-// construction, and its version pattern one with no schema "2" line. A docproc-ooxml the
-// container runner built is refused with ErrRequest.
 func TestNewConverter(t *testing.T) {
 	t.Parallel()
 	func() {
@@ -109,10 +102,6 @@ func TestNewConverter(t *testing.T) {
 	}
 }
 
-// TestConvertRun: a conversion runs docproc-ooxml once in the request's working directory, on the
-// document's path in place, with a media directory of its own made there, nothing copied, and
-// yields the document line as the Document, leaving the media directory alone in the working
-// directory. Nothing runs until the sequence is ranged over.
 func TestConvertRun(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -150,10 +139,6 @@ func TestConvertRun(t *testing.T) {
 	}
 }
 
-// TestConvertRecords: each line is decoded into its record, in order, warnings among them: an
-// xlsx's document, its sheets and their rows, typed cells, a closing rows line with Markdown
-// alone, and a line of a kind the package doesn't know, kept with its JSON. Properties keep their
-// stored order, and write it back.
 func TestConvertRecords(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -229,9 +214,6 @@ func TestConvertRecords(t *testing.T) {
 	}
 }
 
-// TestConvertDecodeErrors: a first line of another kind or schema is ErrSchema, and a line of a
-// known kind that doesn't decode ends the sequence with its error, after the records before it,
-// and removes the media directory.
 func TestConvertDecodeErrors(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -256,10 +238,6 @@ func TestConvertDecodeErrors(t *testing.T) {
 	}
 }
 
-// TestConvertExits: docproc-ooxml's exit codes 1 to 4 are each a *cli.ExitError matching its own
-// error and no other's, carrying the last error line's reason; a refusal whose reason begins
-// "encrypted" is classed Encrypted, any other Unclassed. A failed conversion leaves nothing in the
-// working directory, and its warnings come before its error.
 func TestConvertExits(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -309,8 +287,6 @@ func TestConvertExits(t *testing.T) {
 	}
 }
 
-// TestConvertCancel: a conversion whose context ends while docproc-ooxml runs ends with an error
-// matching the context's, never a *cli.ExitError, and leaves nothing in the working directory.
 func TestConvertCancel(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -318,8 +294,6 @@ func TestConvertCancel(t *testing.T) {
 	dir := t.TempDir()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	// The stand-in logs its run before it sleeps, so the log's existence says it is running. The
-	// poll ends with ctx, so it never outlives the test when docproc-ooxml never runs.
 	log := ins.log
 	go func() {
 		for ctx.Err() == nil {
@@ -350,8 +324,6 @@ func TestConvertCancel(t *testing.T) {
 	}
 }
 
-// TestConvertStop: a caller that stops ranging after the Document ends the run, and the media
-// directory stays, the caller's.
 func TestConvertStop(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -371,8 +343,6 @@ func TestConvertStop(t *testing.T) {
 	}
 }
 
-// TestConvertRefuses: a request with no path, no working directory, or a scale out of range is
-// refused with ErrRequest before docproc-ooxml runs, and a path that isn't there is an error.
 func TestConvertRefuses(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -394,10 +364,6 @@ func TestConvertRefuses(t *testing.T) {
 	}
 }
 
-// TestConvertMedia: each medium with a file is resolved in the media directory, its Path the file
-// as stored and its SHA256 its name's, a PNG and a JPEG needing no conversion; a linked picture has neither, and an
-// embedded package and an OLE object keep their kinds and ProgIDs. A name the envelope's rule
-// can't have made fails the conversion.
 func TestConvertMedia(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)

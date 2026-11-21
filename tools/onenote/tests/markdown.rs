@@ -14,7 +14,6 @@ const LOREM: &str = "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, se
                      eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam \
                      voluptua.";
 
-/// A section's page lines, in order.
 fn pages(file: &str) -> Vec<Value> {
     let out = run(&[fixture(file)]);
     assert_eq!(out.code, Some(0), "{file}: {}", out.stderr);
@@ -28,19 +27,6 @@ fn markdown(page: &Value) -> &str {
     page["markdown"].as_str().unwrap_or_default()
 }
 
-/// The test page's Markdown, but for its ink line, whose file is `ink`'s. The title area's
-/// date and time paragraphs are one line after the title; the blank paragraphs are left out;
-/// the paragraphs indented under blank ones, which Markdown can't indent, sit at the outline's
-/// level. Its note tags are two To Dos, one open and one completed, each its box then its
-/// label, then a completed Important. Its formatted paragraph has one run
-/// each of bold, italic, underline, strikethrough, subscript, superscript, highlight and font
-/// colour, of which underline, subscript, superscript, highlight and colour are plain text, and
-/// "magna" links to its hidden HYPERLINK field's target; a URL typed as text links to itself.
-/// Its bullets nest three deep; its numbers nest three deep, then run on for two items, and the
-/// last restarts at 1, so a comment parts it from the list before. Its tables are A B C over
-/// 1 2 3, and A B alone. Its equation, 𝑎=𝑏 alone in its paragraph, is display math. The page's
-/// containers go title, main outline (vertical 2.4), ink (its strokes at 38643 ink units, 30.4
-/// half inches) and a last, empty outline (32.1).
 fn test_page(ink: &str) -> String {
     let lorem3 = [LOREM; 3];
     [
@@ -72,7 +58,6 @@ fn test_page(ink: &str) -> String {
     .join("\n\n")
 }
 
-/// The page's ink file, as its page line's media name it.
 fn ink_file(page: &Value) -> &str {
     page["media"]
         .as_array()
@@ -90,12 +75,8 @@ fn the_test_page_renders_in_full() {
     assert_eq!(markdown(&pages[0]), test_page(&ink));
 }
 
-/// The second page of the test page's sections: its title, then its date and time.
 const SECOND_PAGE: &str = "# Test Page\n\nMonday, 2. November 2020 14:45";
 
-/// handwriting_recognition.one's first page is the test page, its page ink's alt text the
-/// words its strokes belong to, every one of the page's recognised words, two lines of
-/// "Hello World", so none is stray.
 #[test]
 fn recognised_ink_is_the_ink_lines_alt_text() {
     let pages = pages("onenote-rs/handwriting_recognition.one");
@@ -104,12 +85,9 @@ fn recognised_ink_is_the_ink_lines_alt_text() {
     assert_eq!(markdown(&pages[1]), SECOND_PAGE);
 }
 
-/// The other sections' pages, each Markdown checked for its shape: a title heading where the
-/// page has a title, its text, media by their files, and none for a page with nothing on it.
 #[test]
 fn the_other_pages_render_their_titles_text_and_media() {
     let alternative = pages("interop/Resources/AlternativePackaging.one");
-    // A page-title paragraph outside the title area is text: the title renders once.
     assert_eq!(
         markdown(&alternative[0]),
         "# Test Suite Sample\n\n2021年7月15日 17:07\n\nTest Suite Sample"
@@ -129,8 +107,6 @@ fn the_other_pages_render_their_titles_text_and_media() {
         format!("2019年3月14日 17:06\n\n[testing.docx]({docx})")
     );
 
-    // An untitled page has no heading: its date and time come first. Its image has no alt
-    // text, so the image's alt text is its OCR text, by the content rule all of it.
     let wopi = &pages("interop/SUT/FileSyncWOPI_OneNoteWithODB.one")[0];
     let md = markdown(wopi);
     assert!(
@@ -172,7 +148,6 @@ fn the_other_pages_render_their_titles_text_and_media() {
         "# Te\n\nTuesday, 27. October 2020 11:47"
     );
 
-    // An untitled page with nothing but its date and blank lines is its date and time alone.
     for (file, dates) in [
         ("interop/SUT/InvalidData.one", &["2019年1月22日 11:24"][..]),
         (
@@ -192,7 +167,6 @@ fn the_other_pages_render_their_titles_text_and_media() {
         assert_eq!(read, dates, "{file}");
     }
 
-    // non-legacy's copy of the test page renders as the original does.
     let copy = pages("onenote-rs/non-legacy/New Section 1 2.one");
     let ink = format!("![ink]({})", ink_file(&copy[0]));
     assert_eq!(markdown(&copy[0]), test_page(&ink));

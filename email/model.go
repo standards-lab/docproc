@@ -284,10 +284,6 @@ func (*Skipped) record()       {}
 func (*Warning) record()       {}
 func (*UnknownRecord) record() {}
 
-// decodeLine decodes one of docproc-mail's lines, of kind kind, into its Record, every time UTC. A
-// message's sender, and each nested message's, takes its SMTP address from its transport headers
-// when the line leaves it out. The raw JSON is the reader's to keep, as cli.Read yields it, so an
-// UnknownRecord holds it as it is.
 func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 	var rec Record
 	switch kind {
@@ -311,8 +307,6 @@ func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 	return rec, nil
 }
 
-// fillSenders sets the SMTP address of m's sender, and of each nested message's, from its
-// transport headers' From when the line left it out.
 func fillSenders(m *Message) {
 	if m.Sender.SMTPAddress == "" {
 		m.Sender.SMTPAddress = headerFrom(m.TransportHeaders)
@@ -324,18 +318,13 @@ func fillSenders(m *Message) {
 	}
 }
 
-// headerFrom returns the address of the From field of headers, a raw header block as a message
-// stores it; "" when it has no From field or the field doesn't parse. A line that isn't a field,
-// such as the "Microsoft Mail Internet Headers Version 2.0" line Exchange may begin a block with,
-// is passed over, and a folded field is unfolded. The first From field is read, and of a list of
-// addresses, the first.
+// See docs/api.md, "Running the tools".
 func headerFrom(headers string) string {
 	var value strings.Builder
 	in := false
 	for line := range strings.Lines(headers) {
 		line = strings.TrimRight(line, "\r\n")
 		if line == "" {
-			// The header block's end.
 			break
 		}
 		if line[0] == ' ' || line[0] == '\t' {

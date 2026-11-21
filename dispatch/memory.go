@@ -20,8 +20,6 @@ type MemoryIndex struct {
 	claims  claims[[][]byte]
 }
 
-// memoryEntry is a recorded entry and its log, never changed once recorded: a later record or a
-// drop replaces it, which a reader of its log tells by its pointer.
 type memoryEntry struct {
 	entry []byte
 	log   [][]byte

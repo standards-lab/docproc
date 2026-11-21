@@ -23,7 +23,6 @@ func Sum(b []byte) string {
 	return hex.EncodeToString(s[:])
 }
 
-// pngSignature begins every PNG.
 const pngSignature = "\x89PNG\r\n\x1a\n"
 
 // CanonicalPNG returns png without its tIME chunk and the tEXt, zTXt, and iTXt chunks whose

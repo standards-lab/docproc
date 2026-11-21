@@ -21,12 +21,9 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// ffmpegImage is linuxserver/ffmpeg's 9.0.2 CLI image, build ls89, pinned by its index digest.
 const ffmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls89@sha256:" +
 	"822d04f0b2d0c4847430f5cc90f20ea48be866bb502ece63fdeb729400bf5361"
 
-// ffprobeSpec declares ffprobe, minimum 9.0. ffprobe prints "ffprobe version n9.0.2 ..." on the
-// host and "ffprobe version 9.0.2 ..." in the image; the pattern skips the n.
 func ffprobeSpec() tool.Spec {
 	return tool.Spec{
 		Program:        "ffprobe",
@@ -36,19 +33,12 @@ func ffprobeSpec() tool.Spec {
 	}
 }
 
-// ffprobeTool is ffprobe built through one runner, with the runner's checks on a run: running
-// blocks until a run started after the build has its program in place, and leftover checks that
-// the runs left nothing behind.
 type ffprobeTool struct {
 	*tool.Tool
 	running  func(t *testing.T)
 	leftover func(t *testing.T)
 }
 
-// ffprobeRunners are the runners ffprobe runs through: the host's ffprobe through the exec
-// runner, and ffprobe in the pinned image through the container runner, which pulls the image
-// first when it isn't present. The runner is the only difference between the runs the tests
-// below compare.
 var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 	"exec": func(t *testing.T) ffprobeTool {
 		tl, err := tool.NewExec(t.Context(), ffprobeSpec())
@@ -58,9 +48,6 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 		return ffprobeTool{Tool: tl, running: func(*testing.T) {}, leftover: func(*testing.T) {}}
 	},
 	"container": func(t *testing.T) ffprobeTool {
-		// A run's container name is the runner's own, so the runner's docker CLI is a script that
-		// logs each run's --name before it runs the host's docker; the checks are on the
-		// containers so named alone, whatever other packages' tests run at the same time.
 		docker, names := loggingDocker(t)
 		tl, err := tool.NewContainer(t.Context(), docker, tool.Image{Ref: ffmpegImage}, ffprobeSpec())
 		if err != nil {
@@ -95,8 +82,6 @@ var ffprobeRunners = map[string]func(t *testing.T) ffprobeTool{
 	},
 }
 
-// loggingDocker returns a docker CLI that appends the --name of each docker run to a log, then
-// runs the host's docker on its arguments, and a function returning the names logged so far.
 func loggingDocker(t *testing.T) (string, func(t *testing.T) []string) {
 	t.Helper()
 	real, err := exec.LookPath("docker")
@@ -126,8 +111,6 @@ func loggingDocker(t *testing.T) (string, func(t *testing.T) []string) {
 	}
 }
 
-// containers returns the IDs of the containers named names: the running ones only, or with
-// running false, every one.
 func containers(t *testing.T, names []string, running bool) []string {
 	t.Helper()
 	var ids []string
@@ -145,18 +128,15 @@ func containers(t *testing.T, names []string, running bool) []string {
 	return ids
 }
 
-// probeArgs are ffprobe's arguments for a JSON report of input's format and streams.
 func probeArgs(input string) []string {
 	return []string{"-v", "error", "-print_format", "json", "-show_format", "-show_streams", input}
 }
 
-// probeStream is the part of a stream in ffprobe's JSON report that the tests compare.
 type probeStream struct {
 	CodecName  string `json:"codec_name"`
 	SampleRate string `json:"sample_rate"`
 }
 
-// probe is the part of ffprobe's JSON report that the tests compare.
 type probe struct {
 	Format struct {
 		FormatName string `json:"format_name"`
@@ -169,7 +149,6 @@ func (p probe) equal(q probe) bool {
 	return p.Format == q.Format && slices.Equal(p.Streams, q.Streams)
 }
 
-// toneProbe is testdata/tone.wav's report: one second of 16 kHz 16-bit PCM in a WAV.
 const toneProbe = `{"format":{"format_name":"wav","duration":"1.000000"},` +
 	`"streams":[{"codec_name":"pcm_s16le","sample_rate":"16000"}]}`
 
@@ -182,8 +161,6 @@ func TestFFprobeVersion(t *testing.T) {
 	}
 }
 
-// TestFFprobeProbesTone checks that ffprobe, given the same invocation through both runners,
-// reports the same format and streams for the fixed tone, and that the report is the tone's.
 func TestFFprobeProbesTone(t *testing.T) {
 	var want probe
 	if err := json.Unmarshal([]byte(toneProbe), &want); err != nil {
@@ -221,12 +198,6 @@ func TestFFprobeProbesTone(t *testing.T) {
 	}
 }
 
-// TestFFprobeCancelHeldStdin checks that ffprobe, reading a stdin the test holds open, is
-// cancelled mid-run through both runners: Run returns the context's error, and the run leaves no
-// container behind. The test writes only the tone's 44-byte header, so ffprobe waits on stdin for
-// the samples until the cancel. The cancel comes once the run is under way: the header's write
-// has returned, so Run has started its program and is copying stdin, and, through the container
-// runner, the run's container is running.
 func TestFFprobeCancelHeldStdin(t *testing.T) {
 	dir, err := filepath.Abs("testdata")
 	if err != nil {

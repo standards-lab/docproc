@@ -2,6 +2,14 @@
 //! first, by their magic: a .pst, an .ost and a .msg's compound file. Then the text formats: an
 //! mbox by its first line, and an .eml by the shape of its header block ([`header_shape`]). A
 //! text format's leading UTF-8 byte-order mark is skipped ([`BOM`]); the readers skip it too.
+//!
+//! A .pst starts with HEADER.dwMagic `!BDN` (MS-PST 2.2.2.6) and has HEADER.wMagicClient `SM`, an
+//! .ost `SO`; HEADER.wVer 14 and 15 are ANSI and 23 Unicode, the versions outlook-pst reads. A
+//! compound file starts with its header signature (MS-CFB 2.2). The header-shape check reads lines
+//! of up to 64 KiB, a longer one ending the header block: RFC 5322 2.1.1 caps a line at 998
+//! characters, which real mail sometimes passes, though not by this much. A field's name is
+//! printable ASCII but the colon (RFC 5322 3.6.8's ftext), then the colon, after any spaces or
+//! tabs, as RFC 5322 4.5.8's obsolete syntax allows.
 
 use std::io::{self, BufRead, Read};
 
@@ -40,14 +48,10 @@ impl Encoding {
 /// The bytes [`sniff`] needs.
 pub const PREFIX: usize = 12;
 
-/// HEADER.dwMagic (MS-PST 2.2.2.6).
 const PST_MAGIC: &[u8] = b"!BDN";
-/// HEADER.wMagicClient of a .pst and of an .ost.
 const PST_CLIENT: &[u8] = b"SM";
 const OST_CLIENT: &[u8] = b"SO";
-/// The compound file header signature (MS-CFB 2.2).
 const CFB_MAGIC: &[u8] = &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-/// The start of an mbox's separator line.
 const MBOX_SEPARATOR: &[u8] = b"From ";
 /// The UTF-8 byte-order mark, which an editor may write before an .eml's or an mbox's first line.
 pub const BOM: &[u8] = b"\xEF\xBB\xBF";
@@ -65,8 +69,6 @@ pub fn sniff(prefix: &[u8]) -> Format {
     Format::Other
 }
 
-/// A prefix that starts with the PST magic: a .pst of a version it names, an .ost, or, when
-/// it is short or its client magic is neither, [`Format::Other`].
 fn pst(prefix: &[u8]) -> Format {
     if prefix.len() < PREFIX {
         return Format::Other;
@@ -78,7 +80,6 @@ fn pst(prefix: &[u8]) -> Format {
     if client != PST_CLIENT {
         return Format::Other;
     }
-    // HEADER.wVer: 14 and 15 are ANSI, 23 is Unicode; outlook-pst reads no other.
     match u16::from_le_bytes([prefix[10], prefix[11]]) {
         14 | 15 => Format::Pst(Encoding::Ansi),
         23 => Format::Pst(Encoding::Unicode),
@@ -86,8 +87,6 @@ fn pst(prefix: &[u8]) -> Format {
     }
 }
 
-/// The longest line [`header_shape`] reads; a longer one ends the header block. RFC 5322 2.1.1
-/// caps a line at 998 characters, which real mail sometimes passes, though not by this much.
 const LINE_MAX: u64 = 64 * 1024;
 
 /// `text` without its leading UTF-8 byte-order mark, when it has one.
@@ -124,16 +123,12 @@ pub fn header_shape(mut input: impl BufRead) -> io::Result<bool> {
             None => return Ok(false),
         }
         if !line.ends_with(b"\n") {
-            // The end of the input, or a line past LINE_MAX.
             return Ok(false);
         }
         first = false;
     }
 }
 
-/// The name of the header field `line` starts, if it starts one: printable ASCII but the colon
-/// (RFC 5322 3.6.8's ftext), then the colon, after any spaces or tabs, as RFC 5322 4.5.8's
-/// obsolete syntax allows.
 fn field_name(line: &[u8]) -> Option<&[u8]> {
     let end = line
         .iter()
@@ -182,8 +177,6 @@ mod tests {
         assert_eq!(sniff(b"From: ann@example.com"), Format::Other);
     }
 
-    /// A leading byte-order mark is skipped before the separator line and the header check, and
-    /// only there: a second one, or one on a later line, is text.
     #[test]
     fn a_leading_byte_order_mark_is_skipped() {
         assert_eq!(sniff(b"\xEF\xBB\xBFFrom ann@ex"), Format::Mbox);

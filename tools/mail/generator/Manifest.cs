@@ -7,7 +7,8 @@ namespace Docproc.Mail.Generator;
 
 /// <summary>
 /// manifest.json: what the last run built. Each source and output has its SHA-256; each output
-/// names its sources and whether two builds of it in that run were byte-identical.
+/// names its sources and whether two builds of it in that run were byte-identical. Non-ASCII is
+/// written unescaped, so it stays readable; the file holds no HTML.
 /// </summary>
 public sealed record Manifest(
     [property: JsonPropertyName("note")] string Note,
@@ -18,7 +19,6 @@ public sealed record Manifest(
     static readonly JsonSerializerOptions Options = new()
     {
         WriteIndented = true,
-        // Non-ASCII stays readable in the file; it holds no HTML.
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 

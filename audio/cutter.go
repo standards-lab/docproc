@@ -43,26 +43,20 @@ type Piece struct {
 // chunk being fed, and every silence and window found, for its Plan. It isn't safe for concurrent
 // use.
 type Cutter struct {
-	tracker *Tracker
-	planner *Planner
-	// threshold is the request's fixed threshold, zero for a rolling one.
+	tracker   *Tracker
+	planner   *Planner
 	threshold float64
 
-	// pcm holds the stream's bytes from base, a sample index, on; received is the bytes received.
-	pcm      []byte
-	base     int64
-	received int64
-	// thresholds holds the threshold in force after each whole frame from the frame base is in on,
-	// the one the tracker decided it against: a window cut at the limit names its last frame's.
+	pcm        []byte
+	base       int64
+	received   int64
 	thresholds []float64
-	// silences are every silence the tracker closed, in order; open is its open silence, when
-	// isOpen, as the planner was last given it.
-	silences []Silence
-	open     Silence
-	isOpen   bool
-	windows  []Window
-	ended    bool
-	failed   error
+	silences   []Silence
+	open       Silence
+	isOpen     bool
+	windows    []Window
+	ended      bool
+	failed     error
 }
 
 // NewCutter returns a Cutter that cuts as req says: its Limit and Overlap, as PlanWindows reads
@@ -91,8 +85,6 @@ func (c *Cutter) Feed(p []byte) ([]Piece, error) {
 		return nil, c.failed
 	}
 	c.pcm = append(c.pcm, p...)
-	// The tracker is fed a frame at a time, so the threshold read after each whole frame is the
-	// one it decided that frame against.
 	for rest := p; len(rest) > 0; {
 		n := int(min(int64(len(rest)), frameBytes-c.received%frameBytes))
 		found := c.tracker.Feed(rest[:n])
@@ -105,8 +97,6 @@ func (c *Cutter) Feed(p []byte) ([]Piece, error) {
 			return nil, c.fail(err)
 		}
 	}
-	// A silence open past a window's limit ends the window as it will once closed, so the planner
-	// is given it open, and fixes the window as the stream passes the limit inside it.
 	var windows []Window
 	var err error
 	if c.open, c.isOpen = c.tracker.Open(); c.isOpen {
@@ -163,13 +153,11 @@ func (c *Cutter) Plan() Plan {
 	return plan
 }
 
-// fail ends the cutting with err, as the planner's.
 func (c *Cutter) fail(err error) error {
 	c.failed = fmt.Errorf("audio: planning the windows: %w", err)
 	return c.failed
 }
 
-// give gives the planner silences, keeping them.
 func (c *Cutter) give(silences []Silence) error {
 	c.silences = append(c.silences, silences...)
 	for _, s := range silences {
@@ -180,11 +168,8 @@ func (c *Cutter) give(silences []Silence) error {
 	return nil
 }
 
-// frameBytes is the bytes of the tracker's frame, FrameLength at SampleRate.
 const frameBytes = 2 * int64(frameSamples)
 
-// cut returns windows as pieces, in order, dropping the PCM and thresholds behind each next
-// window's start. A piece's PCM is the cutter's buffer, valid until the next Feed or End.
 func (c *Cutter) cut(windows []Window) []Piece {
 	var out []Piece
 	overlap := c.planner.Overlap()
@@ -203,19 +188,12 @@ func (c *Cutter) cut(windows []Window) []Piece {
 		out = append(out, p)
 		c.windows = append(c.windows, win)
 	}
-	// The pieces' PCM stays where it is until the next Feed or End, which drops what the next
-	// window's start leaves behind before appending.
 	if n := len(out); n > 0 && out[n-1].Window.Cut != CutEnd {
 		c.drop(out[n-1].Window.End - overlap)
 	}
 	return out
 }
 
-// cutThreshold returns the threshold win was cut under: the fixed threshold; or, with a rolling
-// one, for a window cut at a silence, the threshold of the silence whose middle, taken up to the
-// window's limit as the planner takes it, is the window's end, the open one's when it is still
-// open; for one cut at the end, the tracker's last, which End decided the last frame against; and
-// for one cut at the limit, the one its last sample's frame was decided against.
 func (c *Cutter) cutThreshold(win Window) float64 {
 	switch {
 	case c.threshold != 0:
@@ -223,8 +201,6 @@ func (c *Cutter) cutThreshold(win Window) float64 {
 	case win.Cut == CutEnd:
 		return c.tracker.Threshold()
 	case win.Cut == CutLimit:
-		// The planner fixes a window at its limit only once the tracker has decided past it, so
-		// its last sample's frame is whole.
 		frame := (Sample(win.End)-1)/int64(frameSamples) - c.base/int64(frameSamples)
 		if frame >= 0 && frame < int64(len(c.thresholds)) {
 			return c.thresholds[frame]
@@ -250,11 +226,8 @@ func (c *Cutter) cutThreshold(win Window) float64 {
 	return 0
 }
 
-// drop forgets the PCM and thresholds before start, the next window's.
 func (c *Cutter) drop(start time.Duration) {
 	first := Sample(start)
-	// The pieces cut from the PCM are the caller's until the next Feed or End, so the PCM kept is
-	// copied to a buffer of its own rather than moved down over them.
 	c.pcm = append([]byte(nil), c.pcm[2*(first-c.base):]...)
 	if n := min(first/int64(frameSamples)-c.base/int64(frameSamples), int64(len(c.thresholds))); n > 0 {
 		c.thresholds = append(c.thresholds[:0], c.thresholds[n:]...)

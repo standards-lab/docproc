@@ -126,6 +126,13 @@ every occurrence. A link, a device, and a traversing or absolute name in an arch
 the entry an unread child ("Dispatch") and the others read; a bomb and an unreadable directory
 are unsafe. The bomb rule weighs each entry and the sum of an archive's entries.
 
+`Identify` checks email's signatures first, in v0.5.0's order, then the other strong signatures,
+then the weak ones, ending with an mbox's `From ` line and, after it, the byte order marks. A
+message's header is read as mail reads one: a line past mail's `LINE_MAX` ends the block, and a
+field's name is checked by route itself, not by net/textproto, which refuses the space before the
+colon that mail allows (RFC 5322 4.5.8's obsolete syntax). A OneNote section or table of contents is
+told by its OneStore file type GUID ([MS-ONESTORE] 2.3.1).
+
 ## Running the tools
 
 Cerebro runs the exec runner inside an image that bundles the tools (`tool-packaging`). The
@@ -174,6 +181,43 @@ can't be made fails before the program starts. It writes the program's `oom_scor
 to /proc once the program has started, best effort. The container runner passes no `Spec.Env`, the
 image's environment being the container's, and a `--pids-limit` of 4096.
 
+How the exec runner ends a run, and why:
+
+- The program starts and is reaped on one locked OS thread, since its parent-death signal is sent
+  when the thread that started it exits, not the process.
+- os/exec's `WaitDelay` timer starts in `Start`'s own goroutine when the context ends, so it
+  SIGKILLs a program that outlasts `KillAfter` while the runner waits for its exit. os/exec
+  reports an exit 0 after the context ended as the context's error, so the run's facts come from
+  the process state.
+- The runner waits for the exit with `waitid` and `WNOWAIT`, leaving the program unreaped: a
+  zombie keeps its pid, and so the group's ID, from reuse, so the group's SIGKILL reaches only what
+  the program started. Should `waitid` fail, the group is left alone rather than risk a reused ID.
+  The `os.Process`'s own wait then reaps it.
+- A `Stdin` that isn't an `*os.File` goes through a pipe the runner copies into itself. os/exec's
+  own copy is waited for without bound once the program exits, even past `WaitDelay`, so a copy
+  blocked in a `Read` of the caller's would keep `Run` from returning. The runner waits for its copy
+  at most `KillAfter`, not at all for a cancelled run, then closes the write end; an exited program
+  that left its input unread is no error.
+- The version check runs in a run's environment, its `HOME` a new empty directory, so a program
+  that answers only under the host's `HOME`, such as a version manager's shim, is refused at
+  construction rather than failing every run.
+
+How the container runner stops a run, and why:
+
+- The docker CLI forwards SIGTERM to its container but can't forward SIGKILL, and a CLI killed by
+  its `KillAfter` period would leave the container running. So the CLI runs under a context of its
+  own, which the run's context doesn't reach. When the run's context ends, the runner runs `docker
+  stop` on the run's container name, `KillAfter` rounded up to whole seconds, repeated each second
+  while the CLI runs, since a stop can come before the CLI has created its container, within
+  `KillAfter` plus a margin for the daemon's own work. Only once a stop succeeds or the bound passes
+  does it end the CLI's context; a CLI that doesn't then exit has a fixed `KillAfter` of its own.
+  Once the CLI has exited, `docker rm --force` removes any container a stop missed.
+- A run whose context has already ended never starts, so no container starts after the stop meant
+  for it.
+- A working directory holding a colon is refused, since it would split `--volume`. The version the
+  runner checks is the server's, so a daemon the CLI can't reach fails it; 20.10 is the first with
+  run's `--pull`.
+
 `office`, `email`, and `onenote` keep their readers over a `*tool.Tool`, through the exec runner
 only: a constructor refuses a tool whose image is a container. `internal/cli` holds the one envelope
 reader all three run: it runs the tool with stdout and stderr on pipes, checks the first line's kind
@@ -214,6 +258,142 @@ type Request struct { Path, Dir, Name string; MetafileScale int }
 `office.Config` takes the tool and a `*picture.Converter`, whose `RunLibreOffice` is the one
 LibreOffice runner, for a legacy document's or an RTF's conversion, and which converts every
 picture.
+
+How `document` runs gs, and why (the measurements behind it are on
+[`acceptance.md`](acceptance.md), "PDF pages in shared gs processes"):
+
+- gs runs a PDF named on its command line through `runpdf`, in `pdf_main.ps`, which, for a
+  catalog holding `/Collection`, runs a portfolio's embedded documents' pages in place of its own,
+  the run's page range applied to each document in turn; gs has no parameter that turns that off.
+  A page's own run opens the PDF in PostScript and runs `runpdf`'s other branch, word for word:
+  `runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend`. A portfolio's page is
+  then its cover's own, and any other PDF's page is byte for byte what the file named on the
+  command line gives, its PNG, its text, and gs's messages, as gs 10.08.0 gives them over every
+  fixture. A shared run names the PDF on its command line, so a portfolio never shares one.
+- The path is a PostScript string, its backslashes and parentheses escaped, and `-dSAFER` is
+  permitted to read that one file. gs splits a permitted path at a colon, so a path holding one
+  can't be read.
+- The renders and the text runs take `-sstdout=%stderr`, since gs otherwise writes its own
+  messages to stdout, even under `-q`, ahead of a page it renders with one, such as `**** Error:
+  Page drawing error occurred.`. The count and the survey print with `=`, which writes to
+  `%stdout` as those messages do, so they don't take it. The survey prints the count, then, only
+  for a count above zero, whether the PDF is a portfolio, then, when asked, each page's size, its
+  page set up by `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the
+  released count run printed.
+- A page's PNG reaches its writer only once stdout begins with PNG's signature, so gs's message for
+  a page past the last, written in place of a PNG, never reaches a page file. A shared render's
+  stdout is split into PNGs by their chunks, through `IEND`, reading no chunk's data and checking
+  no CRC, so gs's PNGs pass through byte for byte; output past the pages asked for, or not a PNG
+  where one begins, is the content's failure, as is a text file missing.
+- The alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default
+  and gs doesn't. gs reads a `%` in `OutputFile` as a format's, so the shared text run's directory
+  has each `%` doubled.
+- `Tool.Run` keeps stderr in its `*tool.ExitError` only when the caller passes no writer for it,
+  so `Render` and `Text`, which read stderr, set the message themselves, from its first 4 KiB.
+- A shared process's failure is the content's when gs exits nonzero, dies by its own fault, passes
+  its bound, or writes output that doesn't hold its pages, and its unhanded pages then run alone;
+  any other failure is the run's, which a page's own process wouldn't change.
+- Each page has a turn, open once the page `Concurrency` before it is taken by the consumer, and
+  a lane starts writing a page only on its turn. That page is the lane's own last, so a lane holds
+  one page at a time and the stream at most `Concurrency`, each outcome buffered so a lane never
+  waits on the consumer to hand one over.
+
+How `document` reads qpdf and pdfdetach, and why:
+
+- qpdf lists a field once for each of its widgets, so a radio group's buttons are one field, at its
+  first button's place. qpdf's JSON version 2 writes a string as `u:` and its text or `b:` and its
+  bytes in hex, and a name as `/` and its text or `n:/` and its text where it isn't UTF-8; a value
+  of any other shape, a reference such as a signature's `12 0 R` among them, is no value. A
+  pushbutton is a button field whose flags hold bit 17, Pushbutton. qpdf's stderr lines that
+  aren't warnings are its error.
+- `pdfdetach -list` prints `N embedded files`, then `i: name` for each from 1; a line that isn't
+  the next number's continues the name before it, so a name holding a line break reads whole.
+
+How `office` converts through LibreOffice, and why:
+
+- A conversion names LibreOffice's export filter, not only the extension, so a template's export
+  doesn't choose a template format. soffice exits zero having written nothing when it can't
+  export what it loaded, so a converted document that isn't there is an error.
+- An SVG is handed on as stored, since an Office application stores a PNG beside the SVG it shows.
+- A converted picture's stored name is swapped for its PNG's longest name first, so a stored
+  `.tif` and `.tiff` of one stem are each swapped whole, and a swapped-in name is never swapped
+  again.
+
+How `picture` runs magick and soffice, and why:
+
+- An output stem is ASCII letters, digits, `.`, `-`, and `_`, beginning with a letter or digit, so
+  magick reads no part of a name made from it as a format prefix, a frame suffix, or a pattern.
+- Every magick run that writes a converted PNG defines `png:exclude-chunks=date,time` before its
+  output, which leaves out the `date:create`, `date:modify`, and `date:timestamp` text chunks and
+  the `tIME` chunk magick otherwise writes with the time of the run.
+- Each picture is read through its kind's coder, named as a prefix, whatever its content: a TIFF
+  as TIFF, so a multi-image TIFF gives one PNG, its first image; a HEIC, WebP, or AVIF through the
+  coder its kind names. A page conversion has magick write each image of the TIFF to a PNG of its
+  own with `+adjoin` and a `%d` pattern after the stem, which holds no `%`, in a run whose working
+  directory is the copy's, so the pattern is relative and nothing in the caller's path is read as
+  one; the pages written must be PNGs numbered from 0 without a gap, and no other file.
+- magick's format listing, `-list format`, marks each coder's modes, `r` when it reads the format.
+  It writes to the `null:` output, without which magick refuses the `-limit` options before it, and
+  a Converter reads at most 1 MiB of it, some fifty times what ImageMagick 7.1.2 prints.
+- A conversion has written its PNG when the path is a regular file beginning with PNG's signature,
+  as `route.Identify` tells it. A failed magick run's error carries the first line of its output
+  that isn't blank, from at most 64 KiB of it; a failed soffice run's, the first line
+  beginning `Error`, or else the last that isn't blank.
+- A metafile run names Draw's PNG export filter, not only the extension, with the page's pixel size
+  as its options, so a file soffice doesn't open as a picture, such as text named `.emf`, fails
+  rather than being exported as a text document's page. The page is A4 in pixels at 96 dpi, the
+  picture at its own size at its center, so rendering the page at a scale renders the picture at
+  that scale; a page of another shape than the pixel size would stretch it. `-trim` then crops to
+  what differs from the corners' color and `+repage` drops the crop's offset, PNG in and out.
+
+How `audio` and `media` run ffmpeg, and why:
+
+- The decode is bit-exact, `+bitexact` on the codec and the format, so the same source is the
+  same samples, and so the same windows, whatever the build's CPU paths and through either runner.
+  Its arguments are v0.9.0's tracker decode, and media's run decodes its audio with the same ones,
+  so its windows are audio's Splitter's; media's decodes audio in one thread, which is cheap, since
+  threads change no output.
+- The tracker measures a frame's energy in integer centibels, hundredths of a dB, relative to full
+  scale, from -120 dB, where it puts digital silence and anything quieter, to 0 dB, so its
+  percentile and its comparisons are exact. The rolling window's energies are counted in a Fenwick
+  tree over those values, whose descent finds the percentile.
+- A Cutter keeps each threshold the tracker decided a whole frame against, and gives the planner a
+  silence still open, so a window whose limit falls inside it is fixed as the stream passes the
+  limit, ending where it will once the silence closes.
+- A window or frame on its way is a hidden temporary file in the media directory, the package's
+  own, so a failure to remove one leaves that hidden file and nothing else.
+- media's PNG encoder runs in one thread, since with frame threads it holds a frame until the
+  frames after it fill its threads. Its filter chain is `select`, then `settb` to microseconds, so
+  the reported pts is the frame's time exactly, then `metadata` printing each taken frame's pts and
+  scene score, then `scale`, bit-exact and never enlarging, then `format` to RGB. A taken frame that
+  is neither the first nor past the gap is a scene change, though its score as printed, to six
+  decimals, may round to the threshold. The watcher polls for each announced frame's PNG every
+  10 ms. ffmpeg's refusal of a protocol the whitelist doesn't hold comes lines before its last,
+  which says only that the input failed, so the run keeps the first refusal for its error. An
+  audio stream that decodes to no samples is an error.
+
+How `email` reads docproc-mail, and why:
+
+- docproc-mail writes a folder's line before reading what the folder holds, but a warning about
+  the folder's own properties before it, and its stdout is buffered while its stderr isn't, so a
+  warning naming a folder by its node id can come before the folder's line. The reader holds such
+  a warning until that line comes, and each warning after it with it, so their order is kept;
+  whatever is held at the read's end is yielded then, its node id kept.
+- A sender's address from the transport headers is the first `From` field's, unfolded, and of a
+  list the first address. A line that isn't a field, such as the `Microsoft Mail Internet Headers
+  Version 2.0` line Exchange may begin a block with, is passed over, and the block ends at its
+  first empty line.
+- `Threader.Threads` follows RFC 5256, section 2.2: step 1 links each message's references, its
+  References' valid Message-IDs, else In-Reply-To's first, each the parent of the next unless that
+  would make a loop, the last the message's parent; the first message with a Message-ID keeps it
+  and another is linked by its references alone. A message with no reference takes the parent its
+  conversation index names, a valid index being a 22-byte header and whole 5-byte child blocks
+  (MS-OXOMSG 2.2.1.3). Step 2 takes the roots, step 3 prunes the dummies, steps 4 and 6 sort, the
+  deepest siblings first, and step 5 gathers by base subject, one root per subject, preferring a
+  dummy, then a message that isn't a reply or forward. A valid Message-ID holds an `@`, as RFC
+  5322's msg-id does, and a field with no angle bracket is read as IDs separated by white space,
+  as some writers store them. Base subjects follow section 2.1's steps and its section 5 grammar,
+  compared under the `i;ascii-casemap` folding.
 
 ## Input from a stream, or a path
 
@@ -292,15 +472,17 @@ type StoreError struct { Store string; Err error } // "index" or "content": the 
 ```
 
 A stage's `Prepare` runs on a goroutine of its own: each item is handed to the walk and taken before
-the stage goes on, as a yield is. A tool's stderr warning, the common envelope's `<tool>: warning:
-<where>: <what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an
-output's does, and the index records it, so a seen part replays its warnings. A warning says a unit
-of the part read badly or not at all (a page, a window, the form, a tool's `skipped` item with no
-content to name), its `Where` naming the unit; a stage's own warning names the stage in `Tool`. A
-store's warning is appended where its reader yields it: the order between a warning and a record is
-best effort, since they travel on two pipes, but a warning never precedes its store's first record,
-and a resumed replay and a resumed preparation both carry the warnings read after the cursor. The
-mail stage sets the cursor, `Item.After` and `Event.After`, on each message's last output, so a host
+the stage goes on, as a yield is. A stage's panic is raised again on the walk's goroutine, the
+caller's; when the caller's loop body panics, the stage is told to stop, and its goroutine ends once
+`Prepare` returns. A tool's stderr warning, the common envelope's `<tool>: warning: <where>:
+<what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an output's
+does, and the index records it, so a seen part replays its warnings. A warning says a unit of the
+part read badly or not at all (a page, a window, the form, a tool's `skipped` item with no content
+to name), its `Where` naming the unit; a stage's own warning names the stage in `Tool`. A store's
+warning is appended where its reader yields it: the order between a warning and a record is best
+effort, since they travel on two pipes, but a warning never precedes its store's first record, and a
+resumed replay and a resumed preparation both carry the warnings read after the cursor. The mail
+stage sets the cursor, `Item.After` and `Event.After`, on each message's last output, so a host
 checkpoints a store by the outputs it has handled (docinfer's `job` package doc). `After` is opaque
 and compared by equality alone, never ordered: a `.pst`'s ids are node ids, which don't ascend in
 read order.
@@ -413,20 +595,20 @@ and replayed parts count toward `Limits` as prepared ones do, a replayed part pa
 its entry kept.
 
 A part is seen when its entry's `Stages` each equal the current identity of the stage of that name,
-one check per stage the subtree used; `New` maps each name to its wired stage and refuses two
-stages that share a name with different identities. An entry found but not fresh is dropped, then
-claimed. A replayed child recorded prepared, encrypted, no processor yet, or seen is looked up
-under its route's current stage and replays its own log; a child of any other outcome replays as
-recorded. A part resolves its children one level down before it yields its first event, looking up
-each that needs it without recursing. A miss (a child whose entry is gone or not seen, or a stage
-wired since for a child that had none) is resolved by the nearest part that has a file: a
-replaying part with a file (the input, or a part a stage found in this dispatch) drops its own
-entry, claims it, and is prepared as not seen, its stage finding the children again with files,
-the live ones replaying and the missing one prepared; a replaying part with no file passes the miss
-up to its parent's resolve. A miss met deeper, after events are out, is resolved the same way, and
-the events already replayed repeat as prepared events. A dispatch may therefore repeat a part's
-events: events are at-least-once, so a consumer counts by part ID and cursor, never by event. A
-replay costs a lookup per replayed child, O(parts).
+one check per stage the subtree used; `New` maps each name to its wired stage and refuses two stages
+that share a name with different identities. An entry found but not fresh is dropped, then claimed.
+A replayed child recorded prepared, encrypted, no processor yet, or seen is looked up under its
+route's current stage and replays its own log; a child of any other outcome replays as recorded. A
+part resolves its children one level down before it yields its first event, looking up each that
+needs it without recursing. A miss (a child whose entry is gone or not seen, or a stage wired since
+for a child that had none) is resolved by the nearest part that has a file: a replaying part with a
+file (the input, or a part a stage found in this dispatch) drops its own entry, claims it, and is
+prepared as not seen, its stage finding the children again with files, the live ones replaying and
+the missing one prepared, and what its replay had admitted toward `Limits` taken back; a replaying
+part with no file passes the miss up to its parent's resolve. A miss met deeper, after events are
+out, is resolved the same way, and the events already replayed repeat as prepared events. A dispatch
+may therefore repeat a part's events: events are at-least-once, so a consumer counts by part ID and
+cursor, never by event. A replay costs a lookup per replayed child, O(parts).
 
 Flags have two sources. A part's content flags are recorded in its `Entry`, its stage's flags
 (`Item.Flag`) among them; its name flags come from `inspect.Name` at every occurrence, seen or not.
@@ -451,19 +633,24 @@ onenote, and office stages give it by construction, and the dispatcher keeps the
 for a stage that implements `UntrustedWhere` (the archive stage, and the document stage for its
 attachments), whose siblings `inspect.Options.Entries` bounds. There, a `Where` a sibling already
 has gains ` (n)`, n the smallest from 2 that no sibling's `Where` already takes, repeated until it
-is unique. A part's `ID` is the chain of `Where` from the input: the input's ID is `/`, and a found
-part's is its parent's ID followed by its `Where` as one more path segment, `%` and `/`
-percent-encoded, after a `/` unless the parent's ends in one. So the ID names one occurrence of
-content in the input, stable across runs, where the content's SHA-256 can't.
+is unique; one past 255 bytes with its ` (n)` is cut as any `Where` is, its hash the whole's. A
+part's `ID` is the chain of `Where` from the input: the input's ID is `/`, and a found part's is its
+parent's ID followed by its `Where` as one more path segment, `%` and `/` percent-encoded, after a
+`/` unless the parent's ends in one. So the ID names one occurrence of content in the input, stable
+across runs, where the content's SHA-256 can't.
 
 Every string of the wire shapes leaves the dispatcher under one rule, applied before an event is
 yielded or an item appended: valid UTF-8, no U+0000, no C0 or C1 control but tab and line feed in a
-reason, and a stated cap per field (a name, a `Where`, a reason, a warning's parts, a flag's
-evidence, a Meta value); a string past its cap is cut as a `Where` is. The wire's package is
-`encoding/json` for `dispatch`'s shapes and the index; a record output is the bytes its stage made,
-and its `MediaType` names that shape and its version, so a reader checks what it decodes. Every
-`Meta` key a stage sets (`MetaPage`, `MetaCount`, `MetaWindow`, `MetaSheet`, `MetaDPI`, and the
-rest) and every record output's media type (`MediaAudioPlan`,
+reason, and a stated cap per field: 255 bytes for a part's name and `Where`, an output's name, a
+Meta key, and a string named from a vocabulary rather than the content (a media type, a stored MIME
+type, a route's reason, a warning's tool, an identity's fields); 4096 for an event's or a child's
+reason, the only strings that keep tab and line feed; and 1024 for a warning's where and what, a
+flag's evidence, and a Meta value. A string past its cap is cut as a `Where` is, and of two Meta
+keys the rule makes alike, the later in sorted order keeps its value, the same on every run. The
+wire's package is `encoding/json` for `dispatch`'s shapes and the index; a record output is the
+bytes its stage made, and its `MediaType` names that shape and its version, so a reader checks what
+it decodes. Every `Meta` key a stage sets (`MetaPage`, `MetaCount`, `MetaWindow`, `MetaSheet`,
+`MetaDPI`, and the rest) and every record output's media type (`MediaAudioPlan`,
 `application/vnd.docproc.audio-plan+json; version=1`, and a tool's lines under that tool's media
 type with `schema=2`, such as `MediaMail`) is an exported constant in `dispatch`, beside `Output`
 and `OutputKind`, each documented with the stage that writes it and its format, and versioned by
@@ -615,6 +802,178 @@ per run           time (Timeout, Idle), memory,     tool, from Options  classifi
 per process       puts in flight, concurrency,      dispatch.Config,    no outcome
                   the release timeout               Options
 ```
+
+What each stage yields, and why, beside the `Meta` keys `dispatch` documents on its constants:
+
+- **document.** qpdf first says whether the PDF needs a password: one that does raises qpdf's
+  finding as the part's own flag, `pdf-encrypt`, then ends with `ErrEncrypted`, nothing rendered;
+  one restricted only by its permissions opens with no password and is prepared as any other. A
+  PDF whose AcroForm has fields then yields, before anything else, a `MediaForm` record named
+  `forms`, a `document.Form`. Each embedded file, the name tree's and the file attachment
+  annotations', is then streamed from pdfdetach's stdout under its content's SHA-256, never its
+  stored name, and found `attachment <name>`; one past the bomb rule, against the whole PDF's size,
+  or past the bytes cap is stopped as an archive's entry is, and one pdfdetach can't save is a
+  failed child. The pages come last, each `page N`: its text layer, when the request reads it and
+  it holds text, then its PNG. Each unit, `form`, `attachments`, and `page N`, reads on its own, so
+  a failure of the content's class is a warning naming the unit and its tool, and the part fails,
+  recorded, only when nothing of it reads; a failed page count names no page, and none follows it.
+- **office.** After the Markdown and the sheets, each medium the document names is found at
+  `document, media <n>`, in the document's order: a picture converted to PNG as its PNG; any other
+  picture, an embedded package, or an OLE object as stored, typed by its stored content type, so its
+  own stage reads it; and a linked picture, with no file, an unread child, no processor yet. An RTF
+  converts through LibreOffice to docx, as a `.doc` does. An ODF package, a WordPerfect document,
+  and an Excel binary workbook end with `ErrNoProcessor`, the reason naming the kind.
+  docproc-ooxml writes its lines once it has read the whole package, so its run is a unit, under
+  `Timeout`.
+- **picture.** A TIFF yields a PNG per page, in page order, each `page N`, as the document stage
+  yields a PDF's. An EMF or WMF at the request's `MetafileScale`, an SVG at its `Density`, and a
+  HEIC's primary image or a WebP's or AVIF's first frame each yield one PNG named `picture`, read
+  as the kind its content type names and named by the part's SHA-256. A HEIC, WebP, or AVIF whose
+  reader magick lacks ends with `ErrNoProcessor`, its reason naming why.
+- **vision.** A PNG, JPEG, GIF, or BMP passes through as an image output named `picture`, its
+  `Path` the part's own file, so a layer above meets every picture, converted or not, as an image
+  output. The dispatcher removes the file once the event's body returns, as it does any found
+  part's; a caller that sends the picture on later reads it from `Content` by the output's
+  SHA-256, or links the file within the body.
+- **email.** Each of docproc-mail's lines is a `MediaMail` record, its JSON as `email`'s record
+  marshals it back to its line, in its order: `store`; `folder <id>`; `message <id>`, or `message`
+  for a `.msg` or an `.eml`, which has no id, then its Markdown of the same name; and a line of a
+  kind `email` doesn't know, by its kind. A message of a conversation class, a Skype for Business
+  conversation or missed conversation, is read as `email`'s `Message.Conversation` views it,
+  embedded or not, since the class decides: a `MediaMailConversation` record, `conversation <id>` or
+  `conversation`, then its transcript's Markdown, the `Meta` of both naming its topic and `missed`
+  in place of the subject and Message-ID. docproc-mail writes a message's files before its line,
+  so the message's attachments and media are dispatched first, each with every part found in it,
+  and its last output, its Markdown or else its record, is the last of everything it holds, which
+  is why the cursor rides on it. An attachment docproc-mail wrote is found at
+  `<message>, attachment <n>`, named by its filename and typed by its stored MIME type, and a
+  medium, a `data:` image the Markdown links, at `<message>, media <n>`. An embedded message with
+  no file, as a `.msg`'s or an `.eml`'s, is prepared inline in its attachment's place. An
+  attachment by reference, or a `.pst`'s embedded message listed by its metadata alone, is an
+  unread child, no processor yet, and one docproc-mail didn't write is failed. A `skipped` line
+  naming a message or an attachment is a failed child at `message <id>` or
+  `message <id>, skipped attachment <id>`; one naming a folder or a folder's table is a warning at
+  the folder. A `.msg`'s or an `.eml`'s read with an `After`, or an `After` naming no message,
+  fails.
+- **onenote.** Every part is read under `--file-only`, so a table of contents ends with
+  `ErrReadElsewhere` and its sections are read as their own parts. Each line is a `MediaOneNote`
+  record: `notebook`, `section group <id>`, `section <id>`, `page <id>` then its Markdown, and a
+  line of a kind `onenote` doesn't know, by its kind. After a page's outputs, each of its media, its
+  images, embedded files, and ink, is found at `page <id>, media <n>`, named by the name it was
+  inserted or attached under, else by its media name; one with no content written, its data missing
+  or invalid, is a failed child. A recording, an embedded file of type `audio` or `video`, carries
+  that type as its stored type, so content of no signature route knows is routed by it. A page's
+  ink is an SVG, routed vision-converted, to the picture stage's PNG. A skipped section is an
+  unread child at `skipped section <name>`: encrypted for a password-protected one, else failed.
+- **audio.** No model runs: the stage prepares the windows a layer above transcribes and joins, and
+  the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan
+  order, `window N`, a 16 kHz mono 16-bit PCM WAV named by its SHA-256, its `Meta` carrying what a
+  caller needs to transcribe and join it before the plan arrives. Every time is strconv's shortest
+  decimal of its seconds, such as `24.91`. The plan, a `MediaAudioPlan` record named `plan`, an
+  `audio.PlanRecord` carrying ffprobe's duration beside the decoded one when the two differ, comes
+  last. A failure of the content's class after a window is a warning at the next window, and the
+  part is prepared with its windows and no plan; with none, the part fails, recorded. A source
+  with no audio stream, such as an M4A holding none, fails before ffmpeg runs.
+- **video.** One ffmpeg run reads each part. The plan, a `MediaVideoPlan` record named `plan`, a
+  `media.VideoPlan` of the run's settings with every default applied, comes first, once the run
+  has a stream, just before its first frame or window, so a source media refuses has no outputs;
+  it holds no windows, which media plans as the audio arrives. Frames, `frame N`, PNGs named by
+  their SHA-256, and windows, `window N`, as the audio stage's, follow interleaved as the run
+  completes them. A video with no audio stream yields frames only, a part routed video with no
+  video stream windows only, and one with neither fails, recorded, before ffmpeg runs. media writes
+  a file's frames into a hidden directory beside it, so the stage runs it over a hard link to the
+  part's file in the part's directory, a copy where the file system refuses one, never over a
+  caller's input, and everything it makes is removed with that directory. A failure of the
+  content's class after a frame or window is a warning at `stream`.
+- **text.** One UTF-8 text output named `text`, its line endings as stored. Its encoding is decided,
+  never detected: a byte order mark, UTF-8's, UTF-32's (checked before the UTF-16 marks they begin
+  with), or UTF-16's, which the output drops; else UTF-8, when the whole part is valid UTF-8; else
+  windows-1252, a fallback, with a warning that the text may be in another encoding. Bytes the
+  encoding can't decode become U+FFFD, golang.org/x/text decoding windows-1252's five undefined
+  bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d) so, and a warning at `text`, its `Tool` `text`, counts them.
+  It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
+  never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
+  other text is decoded, streamed, into a file, so a large part is never held in memory, and the
+  decoding stops when the context ends. The text and vision stages run no tool, so their identity's
+  version is this package's; a golang.org/x/text change that changes the text stage's output
+  changes it.
+
+How the archive stage reads each kind, and why:
+
+- A ZIP that is neither an office document nor an ODF package is read through archive/zip, one
+  entry at a time, in the central directory's order; a directory's entry is skipped. Each file
+  entry is streamed into a temporary file while it is hashed, renamed to its content's SHA-256, and
+  found `zip entry <name>`, the dispatcher's to route and inspect again. A stored entry's raw bytes
+  are its content; a deflated or bzip2 (method 12) entry's are decompressed by the stage's own
+  decompressors, archive/zip's deflate and compress/bzip2, never registered with archive/zip,
+  whose registry is the process's, so the stage's own rules hold the bytes to the central
+  directory's size and CRC-32 (archive/zip checks a CRC-32 only when the directory declares one
+  other than 0). An entry of any other method, such as Deflate64, implode, LZMA, xz, zstd, or PPMd,
+  is extracted alone by 7-Zip to its stdout, under the same rules. A ZIP that won't open is the
+  run's failure; a central directory that won't read, the content's.
+- An entry the stage doesn't write is an unread child at its place, never dropped. One inspect
+  flags by its name or its type, a `..` element, an absolute name or a drive letter, a link, or a
+  device, is quarantined with its flag, and no link or node is made; the flags come from
+  `inspect.CheckListing` for that one entry, so the stage and inspect hold one rule. An encrypted
+  entry, which archive/zip can't decrypt, is encrypted, flagged `archive-encrypted`. One whose
+  written bytes pass the bomb rule against its compressed size, whatever its central directory
+  declares, is stopped, its partial file removed, and quarantined, flagged `archive-bomb` with the
+  evidence. One whose bytes don't match its central directory or don't decompress is failed, and
+  one past the bytes cap is limited. A ZIP with an encrypted entry ends, once every other entry is
+  dispatched, with `ErrEncrypted`, naming how many of its entries are encrypted.
+- A tar is read through archive/tar, in the tar's order, its headers as inspect reads them;
+  archive/tar's `ErrInsecurePath` is passed over, since the name is only ever a name here. A
+  regular file, a sparse one among them, is written as a ZIP's entry is and found
+  `tar entry <name>`; a directory or a global header is no part; a link, a device, a FIFO, or a
+  traversing or absolute name is an unread child, as a ZIP's is, and an entry of another type, or
+  whose content doesn't read, is failed. The bomb rule weighs an entry against the whole tar's
+  size, since its bytes come from no more than the tar: only a sparse entry's holes, read as zeros,
+  can pass it. A header that can't be read fails the tar once the entries before it are dispatched.
+- A gzip stream, its members concatenated as gzip concatenates them, is decompressed through
+  compress/gzip into one part, found `gzip content <name>`, named by its header's name, else by the
+  stream's name without its `.gz`, or with a `.tgz`'s `.tar`, as `gzip -d` names it. The dispatcher
+  routes it again, so a `.tar.gz` is a gzip part holding a tar part. The bomb rule weighs it against
+  the stream's size; content that doesn't decompress, or passes the bomb rule, is an unread child,
+  and a header that doesn't read fails the part.
+- A 7z, and a cabinet not named `.onepkg`, is listed first by 7zz's technical listing, bounded by
+  `Entries`, and the listing checked by `inspect.CheckListing` under the rules inspect holds a tar
+  to, before anything is extracted. The listing's flags are yielded as the archive's own, through
+  `Item.Flag`, and a verdict to quarantine them stops the stage, nothing extracted. Otherwise its
+  files are read in the listing's order through one 7zz run of the whole archive to its stdout, an
+  unsized or encrypted entry alone, and found `7z entry <name>` or `cabinet entry <name>`; a
+  directory is no part. The bomb rule weighs the bytes against the whole archive's size, since a
+  7z's or a cabinet's entries share their packed blocks, and the bytes are held to the listing's
+  size and CRC-32. A link, a device, a traversing or absolute name, and an encrypted entry are
+  unread children, as a ZIP's are; a 7z whose headers are encrypted, so nothing of it lists, ends
+  with `ErrEncrypted` at once.
+- A zstd stream is read through 7-Zip into one part, as a gzip stream is, found
+  `zstd content <name>`, named by its name without its `.zst`, or with a `.tzst`'s `.tar`, so a
+  `.tar.zst` is a zstd part holding a tar part. 7-Zip lists it as one item with no name, its size
+  the frame header's when the header declares one, checked first as a listing is; the bomb rule
+  weighs the bytes against the stream's size.
+- Every write of found content, an archive's and the document stage's attachments' alike, goes
+  through one writer. A bomb, the bytes cap, or the writer's own write failure is decided by its
+  record before the content's error is weighed: every fill, 7-Zip's extract among them, wraps a
+  failed write in an error that would read as the content's, and a failed write is the stage's.
+  Content met earlier in the same `Prepare` is still at its SHA-256's path, so it is found again
+  there rather than replaced.
+
+How the stages are built, and why:
+
+- A stage's identity's `Version` joins its tools' version lines, as each version command printed
+  them, with `, ` in the table's order; an empty one panics, since it would key every tool
+  version's outputs alike. The adapters' own version, which `Config` hashes with the resolved
+  request, changes whenever an adapter yields otherwise for the same tools and request, so the
+  index prepares the content again.
+- mail and onenote write each distinct content once, one file by its SHA-256 for every record that
+  holds it, and the dispatcher removes a found part's file once its event is done. So a stage yields
+  a hard link to the file, a copy where the file system refuses one, in a directory of its own, and
+  the original stays for later records until the dispatcher's `Release`; an original that can't be
+  removed stays, and a later record finds it there.
+- soffice's exit 77 is LibreOffice's `EXITHELPER_FATAL_ERROR`, which it exits with only from a fatal
+  error at its start (no disk space, no write access, a broken profile or installation), never
+  because of a document, so it is the run's; 7zz's 8, out of memory, is the content's, as an
+  allocation refused under the memory bound is.
 
 ## Content
 

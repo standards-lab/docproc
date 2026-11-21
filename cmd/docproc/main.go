@@ -16,8 +16,6 @@ func main() {
 	os.Exit(run())
 }
 
-// run runs docproc and returns its exit code. It is separate from main so the deferred stop
-// releases the signal registration before os.Exit, which skips deferred calls.
 func run() int {
 	ctx, stop := process.SignalContext()
 	defer stop()

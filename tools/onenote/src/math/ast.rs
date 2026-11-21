@@ -17,12 +17,12 @@
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Changed from one2html: only what the LaTeX renderer reads is kept. Alignment bits it never
-// reads (a box's alignment and spacing, a boxed formula's, an equation array's, a sub-sup's) are
-// left out, and the bitflags and primitive enums are plain fields.
 
 //! The parsed equation: a list of operations, each math object with its arguments.
+//!
+//! Changed from one2html: only what the LaTeX renderer reads is kept. Alignment bits it never
+//! reads (a box's alignment and spacing, a boxed formula's, an equation array's, a sub-sup's) are
+//! left out, and the bitflags and primitive enums are plain fields.
 
 pub(super) type Equation = Vec<Op>;
 
@@ -136,7 +136,6 @@ pub(super) enum Op {
     },
 }
 
-/// A box's size: its alignment value's bits 5 and 6.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub(super) enum BoxSize {
     Text,
@@ -144,7 +143,6 @@ pub(super) enum BoxSize {
     ScriptScript,
 }
 
-/// A bracket's size, from its alignment value; brackets with none grow with their content.
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub(super) enum BracketSize {
     DontGrow,
@@ -174,8 +172,6 @@ pub(super) enum MatrixBrackets {
     DoubleVerticalBars,
 }
 
-/// An n-ary's alignment value: where its limits go, and its options. An n-ary with no value
-/// has the default limits and no options.
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub(super) struct NAryDisplay {
     pub(super) limits: NAryLimits,
@@ -209,7 +205,6 @@ impl NAryDisplay {
     }
 }
 
-/// A phantom's display bits.
 pub(super) const PHANTOM_SHOW: u8 = 1;
 pub(super) const PHANTOM_ZERO_WIDTH: u8 = 2;
 pub(super) const PHANTOM_ZERO_ASCENT: u8 = 4;

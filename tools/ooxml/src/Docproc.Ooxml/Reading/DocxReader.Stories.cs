@@ -7,9 +7,6 @@ using W15 = DocumentFormat.OpenXml.Office2013.Word;
 
 namespace Docproc.Ooxml.Reading;
 
-// The state one docx conversion shares across its story parts: the styles and numbering, the
-// media found so far, the section the body is in, the notes the text has referenced, and the
-// comments with the ranges they are anchored to.
 internal static partial class DocxReader
 {
     private sealed class DocxContext(List<Warning> warnings, MainDocumentPart main, Styles styles, Numbering numbering)
@@ -39,8 +36,6 @@ internal static partial class DocxReader
         public UnreadKinds Unread { get; } = new(warnings);
     }
 
-    /// <summary>A notes part's footnotes or endnotes, each read when the text first references
-    /// it. Word's separator and continuation notes are no notes of the text.</summary>
     private sealed class NoteSet
     {
         private readonly Dictionary<int, W.FootnoteEndnoteType> notes = [];
@@ -76,7 +71,6 @@ internal static partial class DocxReader
             }
             if (referenced.Add(id))
             {
-                // A note the note references comes after it.
                 var index = Read.Count;
                 var blocks = new BodyReader(context, part, isBody: false).ReadBlocks(note);
                 Read.Insert(index, new Note(id, blocks));
@@ -85,12 +79,6 @@ internal static partial class DocxReader
         }
     }
 
-    /// <summary>The comments part's comments, as threads: a comment whose commentsExtended entry
-    /// names a parent is a reply in its root's thread, and a thread is resolved when its root's
-    /// entry is done. Without commentsExtended every comment is a thread of its own, unresolved.
-    /// The body reader gives each thread's root its anchor, the accepted text between its range's
-    /// start and end, and marks where the range ends, or where its reference is when the range
-    /// ends between paragraphs.</summary>
     private sealed class CommentSet
     {
         private readonly OpenXmlPart? part;
@@ -114,7 +102,6 @@ internal static partial class DocxReader
                     extended.TryAdd(paraId, entry);
                 }
             }
-            // A comment's commentsExtended entry is its last paragraph's.
             var byParagraph = new Dictionary<string, W.Comment>(StringComparer.OrdinalIgnoreCase);
             foreach (var comment in comments)
             {
@@ -186,7 +173,6 @@ internal static partial class DocxReader
             }
         }
 
-        // A range across paragraphs keeps their break.
         public void EndParagraph()
         {
             foreach (var anchor in open.Values)

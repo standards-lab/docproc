@@ -24,10 +24,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestNewReader: a stand-in at the minimum, or a build past it, is accepted; an older one fails at
-// construction, whether the Tool's Spec or NewReader refuses it, and one whose --version names
-// another schema fails as the Tool is built; one the container runner built is refused with
-// ErrRequest; a nil Tool panics, naming the field.
 func TestNewReader(t *testing.T) {
 	t.Parallel()
 	for _, version := range []string{"0.1.0", "0.1.0+0b6b5a4", "0.2.0"} {
@@ -95,7 +91,6 @@ func TestNewReader(t *testing.T) {
 	})
 }
 
-// fullLines are a .pst's lines with every field of schema "2" set, an unknown kind among them.
 var fullLines = `{"line":"store","schema":"2","format":"pst","encoding":"unicode","password":true,"display_name":"Personal Folders"}
 {"line":"folder","id":32802,"path":["Top"]}
 {"line":"folder","id":32898,"parent":32802,"path":["Top","Inbox"],"container_class":"IPF.Note"}
@@ -105,22 +100,16 @@ var fullLines = `{"line":"store","schema":"2","format":"pst","encoding":"unicode
 {"line":"calendar","when":"later"}
 `
 
-// mediaName returns the media name of content stored with ext, an extension with its dot or "".
 func mediaName(content, ext string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:]) + ext
 }
 
-// The media names fullLines gives its attachment and its data: image.
 var (
 	mediaPDF = mediaName("a pdf", ".pdf")
 	mediaPNG = mediaName("a png", ".png")
 )
 
-// TestRead: the stand-in's lines are yielded in its order, each decoded into its typed record,
-// every field of schema "2" set; a line of an unknown kind is kept with its JSON. docproc-mail
-// runs once, on the input made absolute, with no media directory, and the files the lines name
-// have their SHA-256 and no Path.
 func TestRead(t *testing.T) {
 	r, mail := standinReader(t)
 	mail.stdout(fullLines)
@@ -200,9 +189,6 @@ func TestRead(t *testing.T) {
 	}
 }
 
-// TestReadMedia: a Request's media directory, made absolute, reaches docproc-mail as --media, and
-// each attachment's and medium's Path is its file there, a nested message's too, the file
-// docproc-mail wrote; a file name the media name rule can't have made ends the read with an error.
 func TestReadMedia(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -248,9 +234,6 @@ func TestReadMedia(t *testing.T) {
 	}
 }
 
-// TestReadAfter: a Request's After reaches docproc-mail as --after and its decimal id, after the
-// media directory and before the input; a zero After passes none. An After past docproc-mail's
-// range is refused before anything runs, with ErrRequest.
 func TestReadAfter(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -284,9 +267,6 @@ func TestReadAfter(t *testing.T) {
 	}
 }
 
-// TestReadMIMESkipped: an .eml's and an mbox's skipped records decode as docproc-mail writes them:
-// an .eml's skipped attachment names no message, an mbox's names its message's ordinal, and an
-// mbox's skipped message has its ordinal for its id.
 func TestReadMIMESkipped(t *testing.T) {
 	t.Parallel()
 	one, two, three := uint64(1), uint64(2), uint64(3)
@@ -329,11 +309,6 @@ func TestReadMIMESkipped(t *testing.T) {
 	}
 }
 
-// TestReadWarnings: a read whose stderr holds warnings, with records skipped, succeeds; each
-// warning line is one Warning record, docproc-mail's name its Tool, in order. A where that names a
-// folder names it by its path, its display names joined by "/", the warning coming after the
-// folder's line though docproc-mail wrote it first; one whose folder has no line keeps its id, as
-// does any other where.
 func TestReadWarnings(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -380,11 +355,6 @@ func TestReadWarnings(t *testing.T) {
 	}
 }
 
-// TestReadSenderFromHeaders: a sender whose line leaves its SMTP address out takes the address of
-// its transport headers' From field: an Exchange sender's, a folded field's, one after a line that
-// isn't a field, the first of a list, and a nested message's. A sender with its own SMTP address
-// keeps it, and one whose headers have no From, or one that doesn't parse, or whose From comes
-// after the header block's end, has none.
 func TestReadSenderFromHeaders(t *testing.T) {
 	t.Parallel()
 	ex := `"sender":{"name":"Ada","address":"/O=EX/CN=ADA","address_type":"EX"}`
@@ -422,10 +392,6 @@ func TestReadSenderFromHeaders(t *testing.T) {
 	}
 }
 
-// TestReadExit: exit codes 1 to 4 are a *cli.ExitError matching the code's error and no other,
-// carrying docproc-mail's reason and unwrapping to the Tool's *tool.ExitError; a warning before
-// the error is still yielded, as is a usage error's usage, any line but the error's a warning. A refusal whose reason begins "encrypted" is classed Encrypted, any
-// other Unclassed.
 func TestReadExit(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
@@ -476,8 +442,6 @@ func TestReadExit(t *testing.T) {
 	}
 }
 
-// TestReadSchema: a store line of another schema, or of none, or a first line that isn't a store
-// line, ends the read with ErrSchema, and nothing is yielded.
 func TestReadSchema(t *testing.T) {
 	t.Parallel()
 	cases := map[string]string{
@@ -502,8 +466,6 @@ func TestReadSchema(t *testing.T) {
 	}
 }
 
-// TestReadMalformed: output that isn't docproc-mail's lines is an error, whatever was yielded
-// before it.
 func TestReadMalformed(t *testing.T) {
 	t.Parallel()
 	store := `{"line":"store","schema":"2"}` + "\n"
@@ -529,9 +491,6 @@ func TestReadMalformed(t *testing.T) {
 	}
 }
 
-// TestReadCancel: records are yielded while docproc-mail runs, and a read whose context is
-// cancelled while it runs stops it and ends with an error matching context.Canceled, never an
-// ExitError, well before docproc-mail would have exited.
 func TestReadCancel(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -562,10 +521,6 @@ func TestReadCancel(t *testing.T) {
 	}
 }
 
-// TestReadDeadline: a read whose deadline passes while docproc-mail runs ends with an error
-// matching context.DeadlineExceeded, its records before the deadline yielded. The deadline is
-// 10 s, far past the stand-in's start, a race-built test binary's, and far short of its 60 s
-// sleep, so a slow start on a loaded machine never cuts its records short.
 func TestReadDeadline(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -581,8 +536,6 @@ func TestReadDeadline(t *testing.T) {
 	}
 }
 
-// TestReadStop: a loop that stops early stops docproc-mail, without waiting for it to exit, and
-// nothing more is yielded.
 func TestReadStop(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)
@@ -604,10 +557,6 @@ func TestReadStop(t *testing.T) {
 	}
 }
 
-// TestReadRefused: Read refuses an invalid request with an error matching ErrRequest before
-// anything runs: an empty Input, and, from a working directory that has been removed, a relative
-// Input or Media, which can't be made absolute. A cancelled context runs nothing either. An
-// absolute Input with no Media is still read from there.
 func TestReadRefused(t *testing.T) {
 	r, mail := standinReader(t)
 	cwd := t.TempDir()
@@ -642,7 +591,6 @@ func TestReadRefused(t *testing.T) {
 	}
 }
 
-// TestReadUTC: a time docproc-mail writes with an offset is decoded as the same instant in UTC.
 func TestReadUTC(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)

@@ -25,8 +25,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// fakeQPDF is a qpdfReader that answers as it is told: whether the PDF needs a password, or
-// lockErr, and its form, or formErr; it counts the forms it is asked for.
 type fakeQPDF struct {
 	locked  bool
 	lockErr error
@@ -44,8 +42,6 @@ func (q *fakeQPDF) Form(context.Context, string) (document.Form, error) {
 	return q.form, q.formErr
 }
 
-// fakeDetach is a pdfDetacher over files, each attachment's stored name and content, in
-// order, numbered from 1; a content of "fail" fails its save, and listErr fails the listing.
 type fakeDetach struct {
 	files   []string
 	listErr error
@@ -67,18 +63,14 @@ func (d *fakeDetach) Save(_ context.Context, _ string, number int, w io.Writer) 
 	if content == "fail" {
 		return errors.New("told to fail")
 	}
-	// Written in 32 KiB pieces, as a pipe delivers them, so a refused write stops the save.
 	_, err := io.Copy(w, struct{ io.Reader }{strings.NewReader(content)})
 	return err
 }
 
-// qpdfFailed is qpdf's failure to read the PDF, which is the content's: exit 2, with its message.
 func qpdfFailed(message string) error {
 	return fmt.Errorf("document: qpdf: %w", &tool.ExitError{Program: "qpdf", Code: 2, Message: message})
 }
 
-// formsDocumentStage returns a document stage over three pages of their own, reading their text,
-// given qpdf and pdfdetach as q and d, and the bomb rule of opts.
 func formsDocumentStage(t *testing.T, q stages.QPDFReader, d stages.PDFDetacher, opts inspect.Options) *stages.DocumentStage {
 	t.Helper()
 	return stages.NewDocumentStage(stages.DocumentConfig{
@@ -87,9 +79,6 @@ func formsDocumentStage(t *testing.T, q stages.QPDFReader, d stages.PDFDetacher,
 	})
 }
 
-// documentOrder dispatches pdf through s and returns the dispatch's events, each with its
-// outputs, and every event's place in order: a part's output by its name, a found part by its
-// Where, and a warning by its tool and Where.
 func documentOrder(t *testing.T, s *stages.DocumentStage, pdf string) ([]dispatched, []string) {
 	t.Helper()
 	d := newDispatcher(t, dispatch.Stages{route.Document: s}, dispatch.NewMemoryIndex(0))
@@ -107,13 +96,8 @@ func documentOrder(t *testing.T, s *stages.DocumentStage, pdf string) ([]dispatc
 	return events, order
 }
 
-// pagesOrder are the outputs of formsDocumentStage's three pages, in order.
 var pagesOrder = []string{"text page 1", "image page 1", "text page 2", "image page 2", "text page 3", "image page 3"}
 
-// TestDocumentStagePassword: a PDF qpdf says needs a password raises qpdf's finding as its own
-// flag, pdf-encrypt, through Item.Flag, and is Encrypted, its reason saying so, with no output
-// and no form read; one encrypted only by its permissions, which opens without a password, has
-// its pages prepared as any other.
 func TestDocumentStagePassword(t *testing.T) {
 	pdf := input(t, "locked.pdf", "%PDF-1.7\n%%EOF\n")
 	q := &fakeQPDF{locked: true}
@@ -138,11 +122,6 @@ func TestDocumentStagePassword(t *testing.T) {
 	}
 }
 
-// TestDocumentStageForms: a PDF whose AcroForm has fields yields its forms record first, the
-// fields as qpdf's form gives them, as JSON, and their count in its Meta, then its pages; a PDF
-// whose form has no fields yields none; qpdf failing to read the form, or to answer the password
-// check, as the content's is a warning at "form" naming qpdf, and the pages are prepared, the part
-// prepared; and a failure of the run's class, outside qpdf's own exit, fails the part unrecorded.
 func TestDocumentStageForms(t *testing.T) {
 	form := document.Form{Fields: []document.FormField{
 		{Name: "applicant.name", Type: document.TextField, Value: "Ada Lovelace"},
@@ -195,12 +174,6 @@ func TestDocumentStageForms(t *testing.T) {
 	}
 }
 
-// TestDocumentStageAttachments: each embedded file is a part written under its SHA-256 inside
-// the working directory, never its stored name, a traversing one among them, named by its stored
-// name, found "attachment <name>", and routed by its content, after the forms record and before
-// the pages; a file that doesn't save is an unread child, failed, its reason why; a listing that
-// fails is a warning at "attachments" naming pdfdetach; and nothing is left once the dispatch is
-// done.
 func TestDocumentStageAttachments(t *testing.T) {
 	png := pngOf(t)
 	detach := &fakeDetach{files: []string{
@@ -260,7 +233,6 @@ func TestDocumentStageAttachments(t *testing.T) {
 	}
 }
 
-// pngOf returns a 1x1 PNG.
 func pngOf(t *testing.T) string {
 	t.Helper()
 	var b bytes.Buffer
@@ -270,10 +242,6 @@ func pngOf(t *testing.T) string {
 	return b.String()
 }
 
-// TestDocumentStageAttachmentBomb: an embedded file of 8 MiB of zeros from a PDF of a few bytes
-// passes the ratio at once; under a 1 MiB bomb size, its saving stops just past it, its partial
-// file is removed, and it is an unread child, quarantined, flagged archive-bomb, unsafe, with the
-// bytes written as evidence; the PDF's pages are prepared.
 func TestDocumentStageAttachmentBomb(t *testing.T) {
 	zeros := string(make([]byte, 8<<20))
 	s := formsDocumentStage(t, &fakeQPDF{}, &fakeDetach{files: []string{"zeros.bin", zeros}}, inspect.Options{BombRatio: 1000, BombSize: 1 << 20})
@@ -295,10 +263,6 @@ func TestDocumentStageAttachmentBomb(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestDocumentStageAttachmentBytesCap: under a bytes cap, an attachment whose saved bytes would
-// pass what the dispatch may still admit, less what the stage saved before it, is stopped, its
-// partial file removed, and is an unread child, limited, with the bytes cap's reason and no size
-// or SHA-256; an attachment before it that fits is saved and dispatched, and the pages go on.
 func TestDocumentStageAttachmentBytesCap(t *testing.T) {
 	const mib = 1 << 20
 	pdf := "%PDF-1.7\n%%EOF\n"
@@ -330,9 +294,6 @@ func TestDocumentStageAttachmentBytesCap(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestDocumentIdentity: the identity hashes the request resolved, its DPI's default filled, so a
-// zero DPI and the default are one identity, and the bomb rule; concurrency, PagesPerProcess, and
-// the request's Dir are out of it; and the tools' version lines are its Version.
 func TestDocumentIdentity(t *testing.T) {
 	prep := standinPreparer(t, gsSettings{Pages: 1})
 	id := func(req document.ImagesRequest, opts inspect.Options) dispatch.Identity {

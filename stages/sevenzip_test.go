@@ -16,13 +16,8 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-// sevenZipSignature begins a 7z archive, so a test input routes to the archive stage as a 7z.
 const sevenZipSignature = "7z\xbc\xaf\x27\x1c\x00\x04"
 
-// fakeSevenZip stands in for sevenzip's Reader: List returns its listing, or its listErr; Read
-// yields its listing's items, each one's content the content its contents hold for its name; and
-// Extract writes that content for the name asked. A name is recorded as extracted when its
-// content is first read, or Extract writes it.
 type fakeSevenZip struct {
 	listing   sevenzip.Listing
 	listErr   error
@@ -51,14 +46,12 @@ func (f *fakeSevenZip) Extract(_ context.Context, req sevenzip.ExtractRequest, w
 	return err
 }
 
-// note records name as extracted.
 func (f *fakeSevenZip) note(name string) {
 	f.mu.Lock()
 	f.extracted = append(f.extracted, name)
 	f.mu.Unlock()
 }
 
-// fakeContent is an item's content as fakeSevenZip's Read yields it, noted at its first read.
 type fakeContent struct {
 	f    *fakeSevenZip
 	name string
@@ -73,7 +66,6 @@ func (c *fakeContent) Read(p []byte) (int, error) {
 	return c.r.Read(p)
 }
 
-// fakeEntries returns a listing's file entries of contents' names, in names' order, each sized.
 func fakeEntries(contents map[string]string, names ...string) []sevenzip.Entry {
 	var entries []sevenzip.Entry
 	for _, n := range names {
@@ -82,12 +74,6 @@ func fakeEntries(contents map[string]string, names ...string) []sevenzip.Entry {
 	return entries
 }
 
-// TestListingQuarantine: under a policy that quarantines archive-traversal, a 7z whose listing
-// names a traversing entry is quarantined by the stage before anything is extracted: its outcome
-// is quarantined, its flags hold the listing's flag beside its inspection's and its reason says a
-// policy quarantined it, and 7-Zip extracts nothing. By default, the flag active, the ordinary
-// entry is extracted and found, "7z entry <name>", and the traversing one is an unread child,
-// quarantined with its flag, never extracted.
 func TestListingQuarantine(t *testing.T) {
 	contents := map[string]string{"notes.txt": "an ordinary entry\n", "docs/../../evil.txt": "evil\n"}
 	fake := func() *fakeSevenZip {
@@ -132,9 +118,6 @@ func TestListingQuarantine(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestListedMismatch: an entry whose bytes from 7-Zip aren't the size or CRC-32 its listing
-// declares is an unread child, failed, its reason naming the mismatch, its partial file removed,
-// and the archive is prepared.
 func TestListedMismatch(t *testing.T) {
 	contents := map[string]string{"short.txt": "short\n", "crc.txt": "crc\n"}
 	entries := fakeEntries(contents, "short.txt", "crc.txt")
@@ -152,8 +135,6 @@ func TestListedMismatch(t *testing.T) {
 	wantEmpty(t, work)
 }
 
-// TestListedFailures: a 7z whose headers are encrypted ends encrypted, nothing extracted, and a
-// listing 7-Zip fails fails the part.
 func TestListedFailures(t *testing.T) {
 	for _, c := range []struct {
 		err     error

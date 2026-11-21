@@ -67,6 +67,9 @@
 //
 // The Meta keys and the record media types the stages set are dispatch's constants.
 //
+// What each stage yields, how the archive stage reads each kind, and how the stages are built,
+// with the reasons, are on docs/api.md, "Dispatch".
+//
 // Its exported identifiers:
 //
 //   - [Build] builds a [Set] under [Options], through a [Lookup].

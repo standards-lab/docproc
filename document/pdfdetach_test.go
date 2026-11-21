@@ -15,8 +15,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinDetacher links the stand-in pdfdetach at version and builds a Detacher over it,
-// returning the stand-in.
 func standinDetacher(t *testing.T, version string) (*document.Detacher, *standin) {
 	t.Helper()
 	st := newStandin(t, "pdfdetach", version)
@@ -27,9 +25,6 @@ func standinDetacher(t *testing.T, version string) (*document.Detacher, *standin
 	return d, st
 }
 
-// TestNewDetacher: pdfdetach's version, printed by -v, which exits 99, is read; a nil PDFDetach
-// panics naming the field, and a pdfdetach older than 22.02, whatever its Spec's minimum, is
-// refused with a *tool.VersionError wrapping tool.ErrTooOld.
 func TestNewDetacher(t *testing.T) {
 	t.Parallel()
 	wantPanic(t, "document: Config.PDFDetach is nil", func() { _, _ = document.NewDetacher(document.Config{}) })
@@ -51,9 +46,6 @@ func TestNewDetacher(t *testing.T) {
 	}
 }
 
-// TestList: pdfdetach -list's count and numbered names read as attachments, in order, in UTF-8;
-// a name with a line break in it is read whole; a listing whose count its lines don't match, or
-// that begins with no count, fails, and so does a failed run, naming pdfdetach's message.
 func TestList(t *testing.T) {
 	t.Parallel()
 	d, st := standinDetacher(t, "26.10.0")
@@ -90,8 +82,6 @@ func TestList(t *testing.T) {
 	}
 }
 
-// TestSave: a file is saved to /dev/stdout, never to its stored name, and its bytes reach the
-// writer; a number pdfdetach refuses, or one below 1, is ErrNoAttachment.
 func TestSave(t *testing.T) {
 	t.Parallel()
 	d, st := standinDetacher(t, "26.10.0")

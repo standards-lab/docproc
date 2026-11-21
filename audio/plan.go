@@ -91,10 +91,6 @@ type Plan struct {
 	Silences []Silence
 }
 
-// windowing returns the window limit and the overlap req asks for, each default applied: Limit,
-// DefaultWindowLimit when it is zero, and Overlap, DefaultOverlap when it is zero. A Limit below
-// zero, or an Overlap below zero or Limit/2 or more, is an error wrapping ErrRequest. Under half
-// the limit, a window cut at the limit still has audio of its own between its two seams.
 func (req Request) windowing() (limit, overlap time.Duration, err error) {
 	limit, overlap = cmp.Or(req.Limit, DefaultWindowLimit), cmp.Or(req.Overlap, DefaultOverlap)
 	switch {
@@ -138,7 +134,6 @@ func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, er
 		return Plan{}, err
 	}
 	for _, s := range clipSilences(duration, silences) {
-		// Clipped to the source and in order, from a position of 0: never refused.
 		_ = p.Silence(s)
 	}
 	windows, err := p.End(duration)
@@ -170,18 +165,13 @@ func PlanWindows(duration time.Duration, silences []Span, req Request) (Plan, er
 // A Planner keeps only the silences that can still end a window: those that begin at the current
 // window's start or later. It isn't safe for concurrent use.
 type Planner struct {
-	limit   time.Duration
-	overlap time.Duration
-	// start is the start of the window not yet fixed, and windows the windows fixed before it.
-	start   time.Duration
-	windows int
-	// pos is the stream's settled position: every silence that begins before it has been given.
-	// reach is the stream's position, pos or, while a silence is open from pos, how far it has
-	// lasted; open is whether one is.
-	pos   time.Duration
-	reach time.Duration
-	open  bool
-	// silences are the silences given that begin at start or later, sorted by start and then end.
+	limit    time.Duration
+	overlap  time.Duration
+	start    time.Duration
+	windows  int
+	pos      time.Duration
+	reach    time.Duration
+	open     bool
 	silences []Span
 	ended    bool
 }
@@ -299,12 +289,6 @@ func (p *Planner) End(duration time.Duration) ([]Window, error) {
 	return p.fix(duration, true), nil
 }
 
-// fix returns the windows the position fixes, from the window not yet fixed on: while the stream
-// has passed the window's limit, or, once ended at duration, until the window that reaches it.
-// A window that doesn't reach the end ends where PlanWindows says; a silence past duration, which
-// the planner doesn't clip, begins past every limit fix reads, so it ends no window. An open
-// silence is a silence to the stream's position, past every limit fix reads: taken up to a limit,
-// it is the closed silence taken up to it.
 func (p *Planner) fix(duration time.Duration, ended bool) []Window {
 	var out []Window
 	for !p.ended {
@@ -317,8 +301,6 @@ func (p *Planner) fix(duration time.Duration, ended bool) []Window {
 		if !ended && p.reach <= limit {
 			break
 		}
-		// The window's own audio begins after its leading seam, if it has one, and must reach
-		// past its end less Overlap, the seam after it.
 		own := p.start
 		if p.windows > 0 {
 			own += p.overlap
@@ -336,7 +318,6 @@ func (p *Planner) fix(duration time.Duration, ended bool) []Window {
 		out = append(out, w)
 		p.windows++
 		p.start = w.End - p.overlap
-		// A silence that begins before the next window's start is behind it and ends no window.
 		i := 0
 		for i < len(p.silences) && p.silences[i].Start < p.start {
 			i++
@@ -346,8 +327,6 @@ func (p *Planner) fix(duration time.Duration, ended bool) []Window {
 	return out
 }
 
-// clipSilences returns silences clipped to the source, 0 to duration, the empty ones dropped,
-// sorted by start and then end.
 func clipSilences(duration time.Duration, silences []Span) []Span {
 	var out []Span
 	for _, s := range silences {
@@ -360,13 +339,10 @@ func clipSilences(duration time.Duration, silences []Span) []Span {
 	return out
 }
 
-// compareSpans orders spans by start and then end.
 func compareSpans(a, b Span) int {
 	return cmp.Or(cmp.Compare(a.Start, b.Start), cmp.Compare(a.End, b.End))
 }
 
-// latestMiddle returns the latest middle past after of the sorted silences that begin at start or
-// later, each taken up to limit; ok is false when no silence's is.
 func latestMiddle(sorted []Span, start, limit, after time.Duration) (end time.Duration, ok bool) {
 	for _, s := range sorted {
 		if s.Start < start {

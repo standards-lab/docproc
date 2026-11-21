@@ -157,15 +157,12 @@ func (c *Converter) Convert(ctx context.Context, req Request) iter.Seq2[Record, 
 			stopped = !yield(rec, err)
 			return !stopped
 		})
-		// A removal that fails after the caller stopped ranging has no one to tell.
 		if err != nil && !stopped {
 			yield(nil, err)
 		}
 	}
 }
 
-// convert is Convert's sequence: it yields each record and returns the conversion's error, nil
-// when it succeeded or yield stopped it.
 func (c *Converter) convert(ctx context.Context, req Request, yield func(Record, error) bool) (err error) {
 	scale, err := picture.CheckMetafileScale(req.MetafileScale)
 	if err != nil {
@@ -217,8 +214,6 @@ func (c *Converter) convert(ctx context.Context, req Request, yield func(Record,
 	return c.read(ctx, dir, path, media, from, scale, yield)
 }
 
-// readHead returns the first legacyHeadLen bytes of the document at path, fewer for a shorter
-// one.
 func readHead(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -233,11 +228,6 @@ func readHead(path string) ([]byte, error) {
 	return head[:n], nil
 }
 
-// read runs docproc-ooxml on the document at path, in dir, with media as its media directory, and
-// yields its records: the Document once its pictures are converted at scale, with from as its
-// ConvertedFrom, and every record's Markdown with the converted pictures' links rewritten. It
-// returns the run's error, or a line's that didn't decode, nil when the run succeeded or yield
-// stopped it.
 func (c *Converter) read(ctx context.Context, dir, path, media, from string, scale int, yield func(Record, error) bool) error {
 	var swaps *strings.Replacer
 	for line, err := range cli.Read(ctx, cli.Run{
@@ -282,9 +272,6 @@ func (c *Converter) read(ctx context.Context, dir, path, media, from string, sca
 	return nil
 }
 
-// resolveMedia sets each of media's Path and SHA256 from its File, by the envelope's media name
-// rule, in the media directory dir; a linked picture, with no File, has neither. A File the rule
-// can't have made is an error.
 func resolveMedia(dir string, media []Medium) error {
 	for i, m := range media {
 		if m.File == "" {

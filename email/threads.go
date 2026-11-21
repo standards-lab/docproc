@@ -43,23 +43,15 @@ type Threader struct {
 	keys []threadKey
 }
 
-// threadKey is what threading needs of one message.
 type threadKey struct {
-	// seq is the message's place in the read, which settles a tie of date and store id.
-	seq  int
-	id   uint64
-	date time.Time
-	// subject is the base subject, folded for comparison; replyFwd says extracting it removed a
-	// reply or forward marker.
-	subject  string
-	replyFwd bool
-	// messageID is the first valid Message-ID of the Message-ID field, "" for none.
+	seq       int
+	id        uint64
+	date      time.Time
+	subject   string
+	replyFwd  bool
 	messageID string
-	// refs are the message's references: References' valid Message-IDs, else In-Reply-To's
-	// first.
-	refs []string
-	// index is the conversation index's bytes, "" when absent or malformed.
-	index string
+	refs      []string
+	index     string
 }
 
 // Threads ranges over records, a read's, and returns the threads of their messages,
@@ -107,24 +99,18 @@ func (t *Threader) Add(rec Record) {
 	t.keys = append(t.keys, k)
 }
 
-// The conversation index's layout, MS-OXOMSG 2.2.1.3: a 22-byte header, then one 5-byte child
-// block per reply.
 const (
 	indexHeader = 22
 	indexBlock  = 5
 )
 
-// validIndex reports whether n bytes is a conversation index's length: the header and whole
-// child blocks.
 func validIndex(n int) bool {
 	return n >= indexHeader && (n-indexHeader)%indexBlock == 0
 }
 
-// container is a node of the thread tree as RFC 5256's REFERENCES algorithm builds it: a
-// message's, or a dummy's, whose key is nil.
+// See docs/api.md, "Running the tools".
 type container struct {
-	key *threadKey
-	// messageID is the Message-ID a dummy stands for.
+	key       *threadKey
 	messageID string
 	parent    *container
 	children  []*container
@@ -148,8 +134,6 @@ func (t *Threader) Threads() []*Thread {
 	byIndex := map[string]*container{}
 	msgs := make([]*container, len(t.keys))
 	var dummies []*container
-	// Step 1's Message-ID rules: the first message with an ID keeps it, and any other is
-	// linked by its own references alone. Conversation indexes are registered the same way.
 	for i := range t.keys {
 		k := &t.keys[i]
 		c := &container{key: k}
@@ -161,8 +145,6 @@ func (t *Threader) Threads() []*Thread {
 			byIndex[k.index] = c
 		}
 	}
-	// lookup returns the container of id in table, making a dummy for it when none has it, which
-	// every later reference to it shares.
 	lookup := func(table map[string]*container, id, messageID string) *container {
 		if c := table[id]; c != nil {
 			return c
@@ -174,16 +156,12 @@ func (t *Threader) Threads() []*Thread {
 	}
 	for _, c := range msgs {
 		refs := c.key.refs
-		// Step 1.A: each reference the parent of the next, unless the next has a parent or the
-		// link would make a loop.
 		for i := 0; i+1 < len(refs); i++ {
 			parent, child := lookup(byID, refs[i], refs[i]), lookup(byID, refs[i+1], refs[i+1])
 			if child.parent == nil && !makesLoop(parent, child) {
 				link(parent, child)
 			}
 		}
-		// Step 1.B: the last reference is the message's parent, replacing any it has; with no
-		// reference, the parent its conversation index names, else none.
 		var parent *container
 		if len(refs) > 0 {
 			parent = lookup(byID, refs[len(refs)-1], refs[len(refs)-1])
@@ -197,14 +175,12 @@ func (t *Threader) Threads() []*Thread {
 			}
 		}
 	}
-	// Step 2: the containers without a parent are the roots.
 	var roots []*container
 	for _, c := range slices.Concat(msgs, dummies) {
 		if c.parent == nil {
 			roots = append(roots, c)
 		}
 	}
-	// Step 3, 4, 5, and 6.
 	roots = prune(roots, true)
 	sortTree(roots)
 	roots = gather(roots)
@@ -216,8 +192,6 @@ func (t *Threader) Threads() []*Thread {
 	return threads
 }
 
-// makesLoop reports whether making child a child of parent would make a loop: whether child is
-// parent or one of its ancestors.
 func makesLoop(parent, child *container) bool {
 	for p := parent; p != nil; p = p.parent {
 		if p == child {
@@ -227,13 +201,11 @@ func makesLoop(parent, child *container) bool {
 	return false
 }
 
-// link makes child, which has no parent, the last child of parent.
 func link(parent, child *container) {
 	child.parent = parent
 	parent.children = append(parent.children, child)
 }
 
-// unlink removes c from its parent's children, if it has a parent.
 func unlink(c *container) {
 	if p := c.parent; p != nil {
 		p.children = slices.DeleteFunc(p.children, func(x *container) bool { return x == c })
@@ -241,8 +213,6 @@ func unlink(c *container) {
 	}
 }
 
-// prune is step 3 over list, the roots when atRoot: it removes each dummy without children and
-// promotes a dummy's children to its own level, unless that would make several roots of them.
 func prune(list []*container, atRoot bool) []*container {
 	var out []*container
 	for _, c := range list {
@@ -264,7 +234,6 @@ func prune(list []*container, atRoot bool) []*container {
 	return out
 }
 
-// sortKey returns the key c sorts by: its message's, or a dummy's first child's.
 func (c *container) sortKey() *threadKey {
 	for c.key == nil {
 		c = c.children[0]
@@ -272,8 +241,6 @@ func (c *container) sortKey() *threadKey {
 	return c.key
 }
 
-// sortTree sorts every set of siblings under list, and list, by sent date, then store id, then
-// order in the read, the deepest first so a dummy sorts by its first child: steps 4 and 6.
 func sortTree(list []*container) {
 	for _, c := range list {
 		sortTree(c.children)
@@ -284,12 +251,8 @@ func sortTree(list []*container) {
 	})
 }
 
-// gather is step 5 over roots: it gathers the roots that share a base subject.
 func gather(roots []*container) []*container {
-	// threadSubject returns a root's base subject, a dummy's first child's.
 	threadSubject := func(c *container) string { return c.sortKey().subject }
-	// Step 5.B: one root per subject, preferring a dummy, then a message that isn't a reply or
-	// forward.
 	table := map[string]*container{}
 	for _, c := range roots {
 		subject := threadSubject(c)
@@ -301,7 +264,6 @@ func gather(roots []*container) []*container {
 			table[subject] = c
 		}
 	}
-	// Step 5.C: merge each other root into its subject's.
 	removed := map[*container]bool{}
 	replaced := map[*container]*container{}
 	for _, c := range roots {
@@ -344,7 +306,6 @@ func gather(roots []*container) []*container {
 	return out
 }
 
-// thread returns c and its children as a Thread.
 func (c *container) thread() *Thread {
 	t := &Thread{Placeholder: c.key == nil, MessageID: c.messageID}
 	if c.key != nil {
@@ -356,13 +317,8 @@ func (c *container) thread() *Thread {
 	return t
 }
 
-// msgIDPattern matches a Message-ID in angle brackets.
 var msgIDPattern = regexp.MustCompile(`<([^<>\s]*)>`)
 
-// messageIDs returns the valid Message-IDs of a Message-ID, In-Reply-To, or References field,
-// each in angle brackets, in order. A valid one has an "@", as RFC 5322's msg-id does. A field
-// without any angle bracket is read as Message-IDs without them, separated by white space, as
-// some writers store them.
 func messageIDs(field string) []string {
 	var ids []string
 	if !strings.ContainsAny(field, "<>") {
@@ -381,23 +337,15 @@ func messageIDs(field string) []string {
 	return ids
 }
 
-// RFC 5256's subject grammar, section 5, case-insensitive: a subj-blob, and a subj-leader that
-// is a subj-refwd after any subj-blobs; and runs of spaces, which extraction makes one.
 var (
 	subjBlob  = regexp.MustCompile(`^\[[^\[\]]*\][ \t]*`)
 	subjRefwd = regexp.MustCompile(`(?i)^(?:\[[^\[\]]*\][ \t]*)*(?:re|fwd?)[ \t]*(?:\[[^\[\]]*\][ \t]*)?:`)
 	spaces    = regexp.MustCompile(`  +`)
 )
 
-// subjFwdHdr is RFC 5256's subj-fwd-hdr, matched case-insensitively.
 const subjFwdHdr = "[fwd:"
 
-// baseSubject returns subject's base subject, by RFC 5256's section 2.1, and whether extracting
-// it removed a subj-refwd, a "(fwd)" subj-trailer, or a subj-fwd-hdr and subj-fwd-trl: whether
-// the message is a reply or forward.
 func baseSubject(subject string) (base string, replyFwd bool) {
-	// (1) Encoded-words decoded, where they can be; tabs and continuations made spaces, and runs
-	// of spaces one.
 	s := subject
 	if decoded, err := new(mime.WordDecoder).DecodeHeader(s); err == nil {
 		s = decoded
@@ -405,7 +353,6 @@ func baseSubject(subject string) (base string, replyFwd bool) {
 	s = strings.NewReplacer("\r\n", " ", "\r", " ", "\n", " ", "\t", " ").Replace(s)
 	s = spaces.ReplaceAllString(s, " ")
 	for {
-		// (2) Trailers: white space and "(fwd)".
 		for {
 			if t, ok := strings.CutSuffix(s, " "); ok {
 				s = t
@@ -415,9 +362,7 @@ func baseSubject(subject string) (base string, replyFwd bool) {
 				break
 			}
 		}
-		// (5) Repeating (3) and (4).
 		for {
-			// (3) Leaders: white space and subj-refwd.
 			for {
 				if t, ok := strings.CutPrefix(s, " "); ok {
 					s = t
@@ -427,14 +372,12 @@ func baseSubject(subject string) (base string, replyFwd bool) {
 					break
 				}
 			}
-			// (4) A subj-blob, when what follows isn't empty.
 			loc := subjBlob.FindStringIndex(s)
 			if loc == nil || s[loc[1]:] == "" {
 				break
 			}
 			s = s[loc[1]:]
 		}
-		// (6) A subj-fwd, its header and trailer removed, from (2) again.
 		if len(s) > len(subjFwdHdr) && strings.EqualFold(s[:len(subjFwdHdr)], subjFwdHdr) && strings.HasSuffix(s, "]") {
 			s, replyFwd = s[len(subjFwdHdr):len(s)-1], true
 			continue
@@ -443,8 +386,6 @@ func baseSubject(subject string) (base string, replyFwd bool) {
 	}
 }
 
-// asciiUpper returns s with its ASCII letters upper case, the i;ascii-casemap comparator's
-// folding, under which RFC 5256 compares base subjects.
 func asciiUpper(s string) string {
 	return strings.Map(func(r rune) rune {
 		if 'a' <= r && r <= 'z' {

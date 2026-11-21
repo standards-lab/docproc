@@ -69,9 +69,6 @@ func (e *ExitError) Refusal() error {
 // Unwrap returns the run's *tool.ExitError.
 func (e *ExitError) Unwrap() error { return e.ExitError }
 
-// faultSignals are the signals a tool dies by through its own fault: a bad access, an abort, a
-// bus error, an arithmetic fault, or an illegal instruction. An allocation refused under the
-// memory bound ends a tool by one of them, SIGABRT or SIGSEGV, never by an exit code.
 var faultSignals = []string{"SIGSEGV", "SIGABRT", "SIGBUS", "SIGFPE", "SIGILL"}
 
 // OwnFault reports whether signal, a *tool.ExitError's Signal, is one a tool dies by through its
@@ -98,8 +95,6 @@ func RefusalClass(reason string) error {
 	return nil
 }
 
-// exitError returns err, a run's error, as the envelope reader reports it: a *tool.ExitError
-// becomes an [*ExitError] whose Message is message; any other error is returned as it is.
 func exitError(err error, message string) error {
 	exit, ok := errors.AsType[*tool.ExitError](err)
 	if !ok {

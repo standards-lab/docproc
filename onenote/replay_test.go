@@ -21,17 +21,8 @@ import (
 	"github.com/standards-lab/docproc/onenote"
 )
 
-// goldens is docproc-onenote's committed goldens, read in place: a .jsonl and a .stderr per input,
-// and a table of contents' read under --file-only, its stem ending ".file-only".
 const goldens = "onenote/tests/golden"
 
-// TestReplayGoldens replays every committed golden of docproc-onenote through the stand-in and
-// decodes it. A read yields one record per line, each of the line's kind, none unknown, and each
-// record written back as JSON is the line less its kind; each medium with a file resolves in the
-// media directory; and each stderr line is a Warning record, in order. A refused input, the
-// encrypted section and the table of contents under --file-only, ends with a *cli.ExitError of
-// exit code 3, no record before it, its message the .stderr's reason and its refusal classed by
-// it: the encrypted section's Encrypted, the table of contents' ReadElsewhere.
 func TestReplayGoldens(t *testing.T) {
 	t.Parallel()
 	root := tooltest.Tools(t, goldens)
@@ -82,8 +73,6 @@ func TestReplayGoldens(t *testing.T) {
 		if t.Failed() {
 			return
 		}
-		// No committed golden holds a section_group line: the onenote.rs section group's table of
-		// contents is read as its own notebook, and TestRead decodes one.
 		for _, k := range []string{"notebook", "section", "page", "skipped"} {
 			if !kinds[k] {
 				t.Errorf("no golden holds a %s line", k)
@@ -98,8 +87,6 @@ func TestReplayGoldens(t *testing.T) {
 	})
 }
 
-// checkReplay checks a golden's records against stem's .jsonl and .stderr, read with media as the
-// media directory, and returns the kinds of its lines.
 func checkReplay(t *testing.T, stem, media string, recs []onenote.Record) (kinds []string) {
 	t.Helper()
 	lines := readLines(t, stem+".jsonl")
@@ -150,9 +137,6 @@ func checkReplay(t *testing.T, stem, media string, recs []onenote.Record) (kinds
 	return kinds
 }
 
-// checkRefused checks a refused golden's outcome against stem's .jsonl and .stderr: no line, no
-// record, and a *cli.ExitError of exit code 3, matching ErrRefused, its message the error line's
-// reason, its refusal classed by it, and either Encrypted or ReadElsewhere, which it returns.
 func checkRefused(t *testing.T, stem string, recs []onenote.Record, err error) error {
 	t.Helper()
 	if lines := readLines(t, stem+".jsonl"); len(lines) != 0 {
@@ -180,8 +164,6 @@ func checkRefused(t *testing.T, stem string, recs []onenote.Record, err error) e
 	return refusal
 }
 
-// goldenWarnings returns the warnings of the golden .stderr at path, each line split into where
-// and what at its first ": " after the warning's prefix.
 func goldenWarnings(t *testing.T, path string) []onenote.Warning {
 	t.Helper()
 	var warnings []onenote.Warning
@@ -196,8 +178,6 @@ func goldenWarnings(t *testing.T, path string) []onenote.Warning {
 	return warnings
 }
 
-// checkFiles fails the test unless each of p's media with a file has its Path in media and its
-// SHA-256 its name's, and each without one has neither.
 func checkFiles(t *testing.T, n int, media string, p *onenote.Page) {
 	t.Helper()
 	for i, m := range p.Media {
@@ -212,8 +192,6 @@ func checkFiles(t *testing.T, n int, media string, p *onenote.Page) {
 	}
 }
 
-// sameJSON fails the test unless rec, written back as JSON, holds what line, less its kind,
-// holds.
 func sameJSON(t *testing.T, n int, line map[string]any, rec onenote.Record) {
 	t.Helper()
 	out, err := json.Marshal(rec)
@@ -229,7 +207,6 @@ func sameJSON(t *testing.T, n int, line map[string]any, rec onenote.Record) {
 	}
 }
 
-// readLines returns the lines of the file at path, their line feeds left out.
 func readLines(t *testing.T, path string) [][]byte {
 	t.Helper()
 	f, err := os.Open(path)

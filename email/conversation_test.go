@@ -10,11 +10,6 @@ import (
 	"github.com/standards-lab/docproc/email"
 )
 
-// TestMessageConversation: Message.Conversation reads a message of a conversation class, matched
-// without regard to case, and no other: a Voice subclass, a note, and no class are messages. The
-// topic is the stored conversation topic, else the subject; the participants are the sender, when
-// there is one, then To, CC, and BCC in order; the start and end are the submit and delivery
-// times; the transcript and media are the message's; and missed is the Missed class's.
 func TestMessageConversation(t *testing.T) {
 	a := email.Address{Name: "A", Address: "a@example.com"}
 	b := email.Address{Name: "B", Address: "b@example.com", AddressType: "SMTP"}

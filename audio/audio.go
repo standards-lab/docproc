@@ -80,7 +80,8 @@ type Request struct {
 	// 30 s; below zero is refused.
 	Limit time.Duration `json:"limit"`
 	// Overlap is how long before a window's end the next window starts: zero is DefaultOverlap,
-	// 2 s, and it must be under Limit/2.
+	// 2 s, and it must be under Limit/2, so a window cut at the limit still has audio of its own
+	// between its two seams.
 	Overlap time.Duration `json:"overlap"`
 	// MinSilence is the shortest silence a window may end in: zero is DefaultMinSilence, 0.3 s.
 	// Below zero is refused.
@@ -93,14 +94,14 @@ type Request struct {
 	// DefaultPercentile, the 10th; it must be under 100.
 	Percentile float64 `json:"percentile"`
 	// FloorWindow is the tracker's rolling window, the frames the percentile is taken over: zero
-	// is DefaultFloorWindow, 4 s; it must otherwise be from 1 s to 10 minutes.
+	// is DefaultFloorWindow, 4 s; it must otherwise be from 1 s to 10 minutes. The tracker keeps
+	// each of its frames' energy, 2 bytes a frame, 120,000 bytes at 10 minutes.
 	FloorWindow time.Duration `json:"floor_window"`
 	// Margin is how far above the percentile, in dB, the tracker's threshold is: zero is
 	// DefaultMargin, 12 dB; below zero is refused.
 	Margin float64 `json:"margin"`
 }
 
-// finite reports whether f is neither NaN nor infinite.
 func finite(f float64) bool { return !math.IsNaN(f) && !math.IsInf(f, 0) }
 
 // Source is what ffprobe reports of a source: its duration and its first audio stream.
@@ -120,7 +121,6 @@ type Source struct {
 	Channels int
 }
 
-// probeReport is the part of ffprobe's JSON report Probe reads.
 type probeReport struct {
 	Format struct {
 		Duration string `json:"duration"`
@@ -150,7 +150,6 @@ func (s *Splitter) Probe(ctx context.Context, path string) (Source, error) {
 	return s.probe(ctx, abs)
 }
 
-// probe is Probe on an absolute path.
 func (s *Splitter) probe(ctx context.Context, path string) (Source, error) {
 	var stdout bytes.Buffer
 	err := s.ffprobe.Run(ctx, tool.Invocation{
@@ -192,8 +191,6 @@ func (s *Splitter) probe(ctx context.Context, path string) (Source, error) {
 	return Source{}, fmt.Errorf("audio: probe %s: %w", path, ErrNoAudio)
 }
 
-// seconds parses a count of seconds as FFmpeg prints one, such as "49.820000" or "5e-05", to the
-// nearest nanosecond.
 func seconds(s string) (time.Duration, error) {
 	f, err := strconv.ParseFloat(s, 64)
 	if err != nil {
@@ -205,9 +202,7 @@ func seconds(s string) (time.Duration, error) {
 	return time.Duration(math.Round(f * float64(time.Second))), nil
 }
 
-// decodeArgs are ffmpeg's arguments to decode the source's audio stream to 16 kHz, SampleRate,
-// mono 16-bit little-endian PCM on its stdout, bit-exact, so the same source is the same samples
-// through either runner. They are v0.9.0's tracker decode, whose windows Splitter.Windows cuts.
+// See docs/api.md, "Running the tools".
 func decodeArgs(path string, src Source) []string {
 	return []string{
 		"-nostdin", "-hide_banner", "-nostats", "-loglevel", "error",

@@ -15,15 +15,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// flacProbe is ffprobe's report of a 49.82 s FLAC whose audio is its second stream, after a cover
-// picture.
 const flacProbe = `{"streams":[` +
 	`{"index":0,"codec_name":"mjpeg","codec_type":"video"},` +
 	`{"index":1,"codec_name":"flac","codec_type":"audio","sample_rate":"16000","channels":1,"duration":"49.820000"}],` +
 	`"format":{"duration":"49.820000"}}`
 
-// TestNewSplitterRefuses: a nil Tool panics naming its field, and a Tool older than the minimum,
-// whatever its Spec's, is refused.
 func TestNewSplitterRefuses(t *testing.T) {
 	t.Parallel()
 	ffmpeg, ffprobe := installStandins(t, "9.0.2").tools()
@@ -78,8 +74,6 @@ func TestSpecsMatchTheirVersions(t *testing.T) {
 	}
 }
 
-// TestSpecsRefuseOld builds the stand-ins through the exec runner from the Specs as the package
-// returns them: 9.0.2 passes, and the runner itself refuses 8.1, below the Specs' minimum.
 func TestSpecsRefuseOld(t *testing.T) {
 	t.Parallel()
 	for version, ok := range map[string]bool{"9.0.2": true, "8.1": false} {
@@ -124,8 +118,6 @@ func TestProbe(t *testing.T) {
 	}
 }
 
-// TestWindowsRefusesNoAudioBeforeFFmpeg: a source ffprobe finds no audio stream in, or no
-// duration for, is refused with ErrNoAudio, and ffmpeg never runs.
 func TestWindowsRefusesNoAudioBeforeFFmpeg(t *testing.T) {
 	t.Parallel()
 	for name, report := range map[string]string{
@@ -149,8 +141,6 @@ func TestWindowsRefusesNoAudioBeforeFFmpeg(t *testing.T) {
 	}
 }
 
-// TestRequestRefusedBeforeRuns: each field out of range is refused with ErrRequest before
-// anything runs.
 func TestRequestRefusedBeforeRuns(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -196,8 +186,6 @@ func TestRequestRefusedBeforeRuns(t *testing.T) {
 	}
 }
 
-// TestWindowsFFmpegFails: a decode that fails before any sample is a *tool.ExitError carrying
-// ffmpeg's last line, with no window and nothing left in the media directory.
 func TestWindowsFFmpegFails(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -218,7 +206,6 @@ func TestWindowsFFmpegFails(t *testing.T) {
 	}
 }
 
-// programs returns the runs' programs, in order.
 func programs(rs []run) []string {
 	var out []string
 	for _, r := range rs {

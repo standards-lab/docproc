@@ -2,14 +2,17 @@
 //! page always gives the same text.
 //!
 //! The title comes first, its date and time paragraphs on one line after it, then the page's
-//! containers top to bottom, then left to right. A paragraph is a block: an hN heading one level
-//! below the title's `#`, capped at 6; a code paragraph fenced, with the code paragraphs beside
-//! it in one fence; a quote or citation quoted, with the ones beside it in one quote. Bold,
-//! italic, strikethrough and links are marked; underline, highlight, colour, superscript and
-//! subscript are plain text. A list marker makes its element a list item, its children nested
-//! under it and its numbers counted from its restart; a To Do tag makes one a task item. Every
-//! tag's label is a `[Label]` prefix, a To Do's after its box. A table is GFM's, its first row
-//! the header.
+//! containers top to bottom, then left to right. The page's ink is one drawing of all its ink
+//! containers, placed where its strokes' top left corner is, since an ink container's offsets don't
+//! place its strokes. A paragraph is a block: an hN heading one level below the title's `#`, capped
+//! at 6; a code paragraph fenced, with the code paragraphs beside it in one fence; a quote or
+//! citation quoted, with the ones beside it in one quote. Bold, italic, strikethrough and links are
+//! marked; underline, highlight, colour, superscript and subscript are plain text. A list marker
+//! makes its element a list item, its children nested under it and its numbers counted from its
+//! restart (where a list's items would run into the list before them, an HTML comment, CommonMark's
+//! own way to part two lists, keeps them apart); a To Do tag makes one a task item. Every tag's
+//! label is a `[Label]` prefix, a To Do's after its box. A table is GFM's, its first row the
+//! header.
 //!
 //! An image's alt text is followed by the sentences of its OCR text that the alt text lacks, by
 //! the shared content rule over plain text, and a hyperlinked image is a link. An ink drawing's
@@ -39,7 +42,6 @@ use crate::page::{
 pub fn page(page: &Page) -> String {
     let words = Words::new(&page.words);
     let mut containers: Vec<&Container> = page.content.iter().collect();
-    // Stable, so containers at one place keep their stored order.
     containers.sort_by(|a, b| {
         let (a, b) = (place(a), place(b));
         a.0.cmp(&b.0)
@@ -71,8 +73,6 @@ pub fn page(page: &Page) -> String {
             Container::EmbeddedFile { file, .. } => {
                 chunks.push(Chunk::Text(vec![file_md(file, false)]));
             }
-            // The page's ink is one drawing of all its ink containers, so it goes once, where
-            // the first container that holds strokes is.
             Container::Ink { bounds, .. } => {
                 if bounds.is_some()
                     && let Some(ink) = page_ink.take()
@@ -94,10 +94,6 @@ pub fn page(page: &Page) -> String {
     join(chunks, false).join("\n")
 }
 
-/// A container's place: the title before all else, then its vertical offset, then its
-/// horizontal one, a missing offset as the page's origin. An ink container's offsets don't
-/// place its strokes, which hold their own coordinates on the page, so its place is its
-/// strokes' top left corner, in half-inch units as offsets are.
 fn place(container: &Container) -> (u8, f32, f32) {
     let offsets = match container {
         Container::Title { .. } => return (0, 0.0, 0.0),
@@ -123,11 +119,8 @@ fn place(container: &Container) -> (u8, f32, f32) {
     )
 }
 
-/// A page's recognised ink words as its drawings take them: each drawing the words its strokes
-/// belong to, and the words no drawing rendered so far has taken.
 struct Words<'a> {
     words: &'a [Word],
-    /// The ids of the words a rendered drawing has taken.
     carried: RefCell<HashSet<u32>>,
 }
 
@@ -139,8 +132,6 @@ impl<'a> Words<'a> {
         }
     }
 
-    /// A drawing's words, in the recognition's order, joined by spaces; each is carried once
-    /// the drawing is rendered.
     fn of(&self, ink: &Ink) -> String {
         self.carried.borrow_mut().extend(&ink.words);
         self.words
@@ -151,7 +142,6 @@ impl<'a> Words<'a> {
             .join(" ")
     }
 
-    /// The words no rendered drawing carries, in the recognition's order, joined by spaces.
     fn stray(&self) -> String {
         let carried = self.carried.borrow();
         self.words
@@ -163,13 +153,10 @@ impl<'a> Words<'a> {
     }
 }
 
-/// A paragraph's style id, lowercased; a paragraph without one is `p`.
 fn style(p: &Paragraph) -> String {
     p.style.as_deref().unwrap_or("p").to_ascii_lowercase()
 }
 
-/// The title area's date and time paragraphs, OneNote's PageDateTime, as one line: each
-/// paragraph's text, joined by one space. Empty when there are none.
 fn date_time(items: &[Item]) -> String {
     let mut line = String::new();
     date_time_items(items, &mut line);
@@ -200,32 +187,20 @@ fn date_time_items(items: &[Item], line: &mut String) {
     }
 }
 
-/// A rendered block, before the blocks around it are joined to it.
 enum Chunk {
-    /// Where a container starts: lists on either side of it are separate lists.
     Break,
-    /// A block's lines.
     Text(Vec<String>),
-    /// A code paragraph's lines, unfenced: code paragraphs side by side share one fence.
     Code(Vec<String>),
-    /// A quote or citation's lines, without their `>`: those side by side share one quote.
     Quote(Vec<String>),
     Item(ListItem),
 }
 
-/// A list item: its marker, numbered when it is joined to its list, and its content's lines.
 struct ListItem {
-    /// None for a bullet; for a number, the number its list restarts at, if it does.
     number: Option<Option<i32>>,
-    /// For a task item, whether it is done.
     task: Option<bool>,
     body: Vec<String>,
 }
 
-/// An outline item's chunks. An element with a list marker or a To Do tag on its first
-/// paragraph is one list item holding its blocks and, nested, its children; any other
-/// element's blocks and children are blocks at its own level, since Markdown can indent only
-/// under a list item. `title` says the item is in the page's title area.
 fn item_chunks(item: &Item, title: bool, words: &Words, out: &mut Vec<Chunk>) {
     match item {
         Item::Group { items } => items
@@ -259,18 +234,14 @@ fn item_chunks(item: &Item, title: bool, words: &Words, out: &mut Vec<Chunk>) {
     }
 }
 
-/// A list marker's number, the number its list restarts at, if it is a numbered one.
 fn number(list: &List) -> Option<Option<i32>> {
     list.numbered.then_some(list.restart)
 }
 
-/// The first To Do tag's state: whether it is done.
 fn task(tags: &[Tag]) -> Option<bool> {
     tags.iter().find(|tag| tag.task).map(|tag| tag.completed)
 }
 
-/// A block's chunk. `marked` says its element is a list item that this block leads, so its
-/// first To Do tag is the item's task box, not a prefix.
 fn block_chunks(block: &Block, title: bool, marked: bool, words: &Words, out: &mut Vec<Chunk>) {
     let chunk = match block {
         Block::Paragraph(p) => paragraph(p, title, marked, words),
@@ -284,11 +255,6 @@ fn block_chunks(block: &Block, title: bool, marked: bool, words: &Words, out: &m
     out.extend(chunk);
 }
 
-/// A paragraph's chunk; none for an empty paragraph, which OneNote writes for a blank line, or
-/// for the title area's date and time, which its own line holds (`date_time`). The page title
-/// is the `#` heading in the title area, `title`; a paragraph of its style elsewhere is text,
-/// so the title is rendered once, and so is a date and time paragraph. A code paragraph holding
-/// handwriting is text, so its drawing is rendered.
 fn paragraph(p: &Paragraph, title: bool, marked: bool, words: &Words) -> Option<Chunk> {
     let style = style(p);
     if title && style == "pagedatetime" {
@@ -332,9 +298,6 @@ fn paragraph(p: &Paragraph, title: bool, marked: bool, words: &Words) -> Option<
     Some(Chunk::Text(hard_breaks(lines)))
 }
 
-/// A paragraph's tags as the prefix of its text: `[ ]` or `[x]` for a To Do, unless `marked`
-/// makes the first one its list item's task box, then every tag's `[Label]`, a To Do's after
-/// its box: the box carries the task's state, not the label's words.
 fn tag_prefix(tags: &[Tag], marked: bool) -> String {
     let mut prefix = String::new();
     let mut boxed = marked;
@@ -355,7 +318,6 @@ fn tag_prefix(tags: &[Tag], marked: bool) -> String {
     prefix
 }
 
-/// A paragraph's lines in flow, each but the last ending in a hard break.
 fn hard_breaks(mut lines: Vec<String>) -> Vec<String> {
     let last = lines.len().saturating_sub(1);
     for line in &mut lines[..last] {
@@ -364,7 +326,6 @@ fn hard_breaks(mut lines: Vec<String>) -> Vec<String> {
     lines
 }
 
-/// A code paragraph's lines, as stored: unescaped and unmarked, an equation as its LaTeX.
 fn code_lines(runs: &[Run]) -> Vec<String> {
     let mut text = String::new();
     for run in runs {
@@ -383,12 +344,10 @@ fn code_lines(runs: &[Run]) -> Vec<String> {
         .collect()
 }
 
-/// A line break in stored text: OneNote's vertical tab, or a newline.
 fn is_break(c: char) -> bool {
     matches!(c, '\n' | '\r' | '\u{b}')
 }
 
-/// Bold, italic and strikethrough, in the order they open.
 #[derive(Clone, Copy, PartialEq)]
 enum Mark {
     Strike,
@@ -417,10 +376,6 @@ fn marks(run: &Run) -> Vec<Mark> {
     .collect()
 }
 
-/// Runs as Markdown lines, one per line of their text, each trimmed, with empty lines left
-/// out. `block` says a line's start is a block's, where its first characters are escaped so
-/// they can't start a heading, a list item, a quote or a rule; in a table cell they can't.
-/// `cell` says the runs are in a table cell, where a `|` in LaTeX or a destination is escaped.
 fn inline(runs: &[Run], block: bool, cell: bool) -> Vec<String> {
     let mut inline = Inline {
         block,
@@ -436,8 +391,6 @@ fn inline(runs: &[Run], block: bool, cell: bool) -> Vec<String> {
     inline.lines
 }
 
-/// The state of runs being written: the lines done, the line being written, and the marks
-/// open on it.
 struct Inline {
     block: bool,
     cell: bool,
@@ -468,8 +421,6 @@ impl Inline {
         }
     }
 
-    /// Text without a line break, in its run's formatting. Its leading and trailing spaces go
-    /// outside its marks, where emphasis can close and open.
     fn segment(&mut self, text: &str, run: &Run) {
         let text = if self.line.is_empty() {
             text.trim_start()
@@ -517,7 +468,6 @@ impl Inline {
         }
     }
 
-    /// Closes the open marks above the first `keep`, inside the line's trailing spaces.
     fn close_to(&mut self, keep: usize) {
         if self.open.len() <= keep {
             return;
@@ -541,15 +491,10 @@ impl Inline {
     }
 }
 
-/// A link's or an image's target as a Markdown destination, by the shared destination writer;
-/// in a table cell, `cell`, its `|` escaped too.
 fn target(target: &str, cell: bool) -> String {
     pipes(&destination(target), cell)
 }
 
-/// Text that isn't literal text, in a table cell, `cell`, with each `|` written `\|`: GFM
-/// splits a row at every unescaped `|` before it reads a cell's spans, and takes `\|` back to
-/// `|` inside them.
 fn pipes(text: &str, cell: bool) -> String {
     if cell {
         text.replace('|', "\\|")
@@ -558,18 +503,14 @@ fn pipes(text: &str, cell: bool) -> String {
     }
 }
 
-/// Text with its whitespace one space, trimmed.
 fn collapse(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Text for a link's or an image's label: its whitespace one space, escaped.
 fn label(text: &str) -> String {
     escape(&collapse(text), false)
 }
 
-/// An image's alt text, then the sentences of its OCR text that the alt text lacks, by the
-/// shared content rule over the two as plain text; none when it has neither.
 fn image_alt(image: &Image) -> Option<String> {
     let alt = image.alt_text.as_deref().unwrap_or("");
     let missing = match &image.ocr_text {
@@ -583,8 +524,6 @@ fn image_alt(image: &Image) -> Option<String> {
     (!parts.is_empty()).then(|| parts.join(" "))
 }
 
-/// An image, `![alt](file)`; without a file, its data missing, `[image: alt]`, its alt text
-/// else its filename. A hyperlinked image is a link around it, `[![alt](file)](hyperlink)`.
 fn image_md(image: &Image, cell: bool) -> String {
     let alt = image_alt(image);
     let text = match &image.file {
@@ -605,8 +544,6 @@ fn image_md(image: &Image, cell: bool) -> String {
     }
 }
 
-/// An embedded file, `[filename](file)`, named by its file when it has no filename; without a
-/// file, `[file: filename]`.
 fn file_md(file: &EmbeddedFile, cell: bool) -> String {
     match (&file.file, &file.filename) {
         (Some(stored), name) => format!(
@@ -619,8 +556,6 @@ fn file_md(file: &EmbeddedFile, cell: bool) -> String {
     }
 }
 
-/// An ink drawing, `![ink: words](file)` with the recognised words its strokes belong to, or
-/// `![ink](file)` with none.
 fn ink_md(ink: &Ink, words: &Words, cell: bool) -> String {
     let text = words.of(ink);
     let alt = if text.is_empty() {
@@ -631,8 +566,6 @@ fn ink_md(ink: &Ink, words: &Words, cell: bool) -> String {
     format!("![{alt}]({})", target(&ink.file, cell))
 }
 
-/// A GFM table: its first row the header, its rows padded to its widest, and a cell's blocks
-/// joined by `<br>`. Its tags go on a line before it.
 fn table_md(table: &Table, words: &Words) -> Option<Chunk> {
     let width = table.rows.iter().map(Vec::len).max().unwrap_or(0);
     if width == 0 {
@@ -655,15 +588,12 @@ fn table_md(table: &Table, words: &Words) -> Option<Chunk> {
     Some(Chunk::Text(lines))
 }
 
-/// A table cell's blocks, each on one line, joined by `<br>`.
 fn cell_md(cell: &Cell, words: &Words) -> String {
     let mut parts = Vec::new();
     cell_items(&cell.items, words, &mut parts);
     parts.join("<br>")
 }
 
-/// A cell's items as one line each: a list item's marker as text, numbered among its
-/// siblings, and its children after it.
 fn cell_items(items: &[Item], words: &Words, parts: &mut Vec<String>) {
     let mut count: Option<i32> = None;
     for item in items {
@@ -694,8 +624,6 @@ fn cell_items(items: &[Item], words: &Words, parts: &mut Vec<String>) {
     }
 }
 
-/// A block on one line of a table cell: a paragraph's lines joined by `<br>`, a code
-/// paragraph as a code span, its `|` escaped, a table inside a cell as its rows of cells.
 fn cell_block(block: &Block, words: &Words) -> Option<String> {
     let text = match block {
         Block::Paragraph(p) => {
@@ -734,7 +662,6 @@ fn cell_block(block: &Block, words: &Words) -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// Code as a code span, its backticks one more than its longest run of them.
 fn code_span(code: &str) -> String {
     if code.is_empty() {
         return String::new();
@@ -752,20 +679,11 @@ fn longest_backticks(text: &str) -> usize {
     text.split(|c| c != '`').map(str::len).max().unwrap_or(0)
 }
 
-/// Joins chunks into lines, a blank line between blocks. Code paragraphs side by side share a
-/// fence and quotes a quote. A list's items are joined without blank lines and numbered from
-/// its restart, each item's content indented under its marker; where a list's items would run
-/// into the list before them, its restart or a container's start between them, an HTML
-/// comment, CommonMark's own way to part two lists, keeps them apart. With `in_item`, the
-/// chunks are a list item's content, and a list right after its first paragraph is nested
-/// without a blank line when it can interrupt a paragraph.
 fn join(chunks: Vec<Chunk>, in_item: bool) -> Vec<String> {
     let mut lines: Vec<String> = Vec::new();
-    // The last item's list kind and number, while a list is open.
     let mut list: Option<(bool, i64)> = None;
     let mut parted = false;
     let mut prev_text = false;
-    // How many blocks and items are joined so far.
     let mut count = 0;
     for chunk in merge(chunks) {
         let (block, item) = match chunk {
@@ -850,8 +768,6 @@ fn join(chunks: Vec<Chunk>, in_item: bool) -> Vec<String> {
     lines
 }
 
-/// Code paragraphs side by side as one, and quotes side by side as one, a blank line between
-/// their paragraphs.
 fn merge(chunks: Vec<Chunk>) -> Vec<Chunk> {
     let mut merged: Vec<Chunk> = Vec::with_capacity(chunks.len());
     for chunk in chunks {
@@ -867,8 +783,6 @@ fn merge(chunks: Vec<Chunk>) -> Vec<Chunk> {
     merged
 }
 
-/// Code lines in a fence of backticks, one more than the longest run of them in the code and
-/// three at least.
 fn fence(code: Vec<String>) -> Vec<String> {
     let longest = code.iter().map(|line| longest_backticks(line)).max();
     let ticks = "`".repeat(longest.unwrap_or(0).max(2) + 1);
@@ -905,7 +819,6 @@ mod tests {
         Item::Element { blocks, children }
     }
 
-    /// An element of one paragraph of style `p` and the text `t`.
     fn line(t: &str) -> Item {
         element(vec![Block::Paragraph(para("p", vec![text(t)]))], Vec::new())
     }
@@ -932,7 +845,6 @@ mod tests {
         }
     }
 
-    /// The Markdown of one outline holding `items`.
     fn md(items: Vec<Item>) -> String {
         page(&page_of(vec![outline(1.0, 1.0, items)]))
     }
@@ -957,7 +869,6 @@ mod tests {
         }
     }
 
-    /// A tag labelled `label`, a To Do when `task`, completed when `completed`.
     fn tag(label: &str, task: bool, completed: bool) -> Tag {
         Tag {
             label: Some(label.to_owned()),
@@ -982,7 +893,6 @@ mod tests {
         }
     }
 
-    /// A drawing whose strokes belong to the words `words`, by id.
     fn ink(file: &str, words: &[u32]) -> Ink {
         Ink {
             file: file.to_owned(),
@@ -990,7 +900,6 @@ mod tests {
         }
     }
 
-    /// Recognised words, their ids 10, 11, and so on, in the recognition's order.
     fn words(texts: &[&str]) -> Vec<Word> {
         (10..)
             .zip(texts)
@@ -1001,14 +910,12 @@ mod tests {
             .collect()
     }
 
-    /// A paragraph of handwriting, its drawing `ink`.
     fn handwriting(ink: Ink) -> Item {
         let mut p = para("p", Vec::new());
         p.ink = Some(ink);
         element(vec![Block::Paragraph(p)], Vec::new())
     }
 
-    /// A page ink container whose strokes start `y` ink units down the page.
     fn ink_at(y: f32) -> Container {
         Container::Ink {
             offsets: at(0.0, 0.0),
@@ -1052,9 +959,6 @@ mod tests {
         );
     }
 
-    /// A page's ink goes once, where its first ink container's strokes are: their bounds, in
-    /// ink units on the page, place it, since its offsets don't. Its alt text is the words its
-    /// strokes belong to.
     #[test]
     fn page_ink_goes_once_where_its_strokes_are() {
         let mut page = page_of(vec![
@@ -1077,8 +981,6 @@ mod tests {
         assert!(super::page(&page).contains("\n![ink](page.svg)\n"));
     }
 
-    /// A paragraph's handwriting alone, with no page ink: its drawing's alt text is its own
-    /// strokes' words, in the recognition's order, not the order its strokes name them in.
     #[test]
     fn paragraph_ink_alone_takes_its_own_words() {
         let mut page = page_of(vec![outline(
@@ -1090,8 +992,6 @@ mod tests {
         assert_eq!(super::page(&page), "before\n\n![ink: Dear diary](hand.svg)");
     }
 
-    /// Page ink and paragraph ink together: each drawing takes the words its own strokes belong
-    /// to, and a word whose strokes are in both is in both; none is stray.
     #[test]
     fn page_and_paragraph_ink_each_take_their_own_words() {
         let mut page = page_of(vec![
@@ -1114,9 +1014,6 @@ mod tests {
         );
     }
 
-    /// A recognised word no drawing carries, its strokes in none, is written once, as one
-    /// plain line after the page's content, beside the words a drawing does carry; a drawing in
-    /// a table cell carries its words too.
     #[test]
     fn a_stray_recognised_word_is_one_line_after_the_content() {
         let table = Table {
@@ -1140,14 +1037,11 @@ mod tests {
             "![ink: kept](hand.svg)\n\n| ![ink: boxed](cell.svg) |\n| --- |\n\nafter\n\n\
              \\#lost \\*also\\*"
         );
-        // With no drawing at all, every word is the one line.
         let mut page = page_of(Vec::new());
         page.words = words(&["only", "words"]);
         assert_eq!(super::page(&page), "only words");
     }
 
-    /// The title is `#`, an hN paragraph one level down, capped at 6, and a page-title
-    /// paragraph outside the title area is text.
     #[test]
     fn headings_sit_below_the_title() {
         let title = Container::Title {
@@ -1231,8 +1125,6 @@ mod tests {
         );
     }
 
-    /// A line break in a paragraph is a hard break, and empty paragraphs, OneNote's blank
-    /// lines, are left out.
     #[test]
     fn line_breaks_are_hard_breaks() {
         let items = vec![
@@ -1243,8 +1135,6 @@ mod tests {
         assert_eq!(md(items), "one  \n\\# two  \nthree\n\nfour");
     }
 
-    /// Code paragraphs side by side share one fence, their text as stored; a fence is longer
-    /// than any run of backticks in its code.
     #[test]
     fn code_paragraphs_are_fenced() {
         let code = |t: &str| {
@@ -1296,9 +1186,6 @@ mod tests {
         assert_eq!(md(items), "- one\n  - one.one\n    1. deep\n- two");
     }
 
-    /// Numbers count from a list's restart, else from 1; a restart that breaks the count
-    /// starts a new list, parted from the one before it by an HTML comment, and so does a
-    /// container's start.
     #[test]
     fn lists_are_numbered_from_their_restart() {
         let items = vec![
@@ -1318,8 +1205,6 @@ mod tests {
         assert_eq!(super::page(&page), "1. a\n\n<!-- -->\n\n1. b");
     }
 
-    /// An element without a list marker can't indent in Markdown, so its children are blocks
-    /// at its level; a non-list block in a list item is indented under it.
     #[test]
     fn indented_text_outside_a_list_stays_at_its_level() {
         let items = vec![
@@ -1332,8 +1217,6 @@ mod tests {
         assert_eq!(md(items), "parent\n\nchild\n\n- item\n\n  inside");
     }
 
-    /// A To Do tag makes a task item, `[ ]` open and `[x]` done, a bullet unless its paragraph
-    /// is numbered. Every tag's label is a `[Label]` prefix, a To Do's after its box.
     #[test]
     fn to_do_tags_are_task_items_and_others_prefixes() {
         let mut numbered_task = para("p", vec![text("numbered")]);
@@ -1356,8 +1239,6 @@ mod tests {
         );
     }
 
-    /// A table is GFM's: its first row the header, short rows padded, a cell's blocks joined
-    /// by `<br>`, and a pipe in a cell escaped.
     #[test]
     fn tables_are_gfm() {
         let table = Table {
@@ -1389,8 +1270,6 @@ mod tests {
         );
     }
 
-    /// A tag without a label is no prefix; a To Do's box still is. A table's tags, on the
-    /// line before it, take the same prefix, a To Do's box first.
     #[test]
     fn a_tags_label_follows_its_box() {
         let unlabelled = Tag {
@@ -1411,8 +1290,6 @@ mod tests {
         );
     }
 
-    /// The title area's date and time paragraphs are one line after the title heading, joined
-    /// by one space, escaped as a line's start; outside the title area, such a paragraph is text.
     #[test]
     fn the_titles_date_and_time_are_one_line_after_it() {
         let paragraph = |style: &str, t: &str| {
@@ -1436,7 +1313,6 @@ mod tests {
             super::page(&page),
             "# Notes\n\n27\\. October 2020 10:41\n\nMonday"
         );
-        // An untitled page's date and time are its title area's one line.
         let page = page_of(vec![Container::Title {
             items: vec![
                 paragraph("PageDateTime", "Tuesday"),
@@ -1446,7 +1322,6 @@ mod tests {
         assert_eq!(super::page(&page), "Tuesday 09:00");
     }
 
-    /// A hyperlinked image is a link around the image; without a file, around its text.
     #[test]
     fn a_hyperlinked_image_is_a_link() {
         let linked = |file: Option<&str>, alt: Option<&str>| Image {
@@ -1466,10 +1341,6 @@ mod tests {
         );
     }
 
-    /// Destinations are the shared writer's: one holding a space is written in `<…>`, so a
-    /// spaced link and a hyperlinked image with a spaced target stay links, and each `\` is
-    /// escaped, so a UNC path keeps both its leading backslashes. In a table cell, a
-    /// `|` in a destination, a code span or LaTeX is escaped, so GFM keeps the cell whole.
     #[test]
     fn destinations_go_through_the_shared_writer_and_cells_escape_pipes() {
         let spaced = Run {
@@ -1532,9 +1403,6 @@ mod tests {
         );
     }
 
-    /// An image's alt text is followed by its OCR text's sentences the alt text lacks, by the
-    /// shared content rule: a sentence whose words the alt text holds, in order, adds nothing,
-    /// whatever its punctuation or spacing. With no alt text, the OCR text is the alt text.
     #[test]
     fn an_images_ocr_sentences_follow_its_alt_text() {
         let scanned = |alt: Option<&str>, ocr: &str| Image {
@@ -1582,8 +1450,6 @@ mod tests {
         assert_eq!(md(items), "so $x_1^2$ holds\n\n$$\\frac{a}{b}$$");
     }
 
-    /// Images, embedded files and ink name their files; without a file, its data missing,
-    /// each is text.
     #[test]
     fn media_name_their_files() {
         let file = |file: Option<&str>, filename: Option<&str>| EmbeddedFile {
@@ -1616,9 +1482,6 @@ mod tests {
         );
     }
 
-    /// Literal text is escaped by the shared escape: the characters Markdown reads as markup
-    /// anywhere, and at a line's start the ones that would make it a heading, a rule, a quote
-    /// or a list item. `$` is escaped since math is written between `$`s.
     #[test]
     fn literal_text_is_escaped_by_the_shared_escape() {
         let paragraphs = [
@@ -1643,7 +1506,6 @@ mod tests {
         );
     }
 
-    /// A line's start is escaped only where it starts a line, not after a mark or in a cell.
     #[test]
     fn only_a_lines_start_is_escaped_as_one() {
         let bold = Run {

@@ -15,7 +15,6 @@ import (
 	pgdialect "github.com/standards-lab/sqlate/postgres"
 )
 
-// The set is named for the module and recorded in its own history table, apart from a host's.
 func TestMigrationsName(t *testing.T) {
 	set, err := postgres.Migrations()
 	if err != nil {
@@ -26,8 +25,6 @@ func TestMigrationsName(t *testing.T) {
 	}
 }
 
-// Every object the set creates carries the docproc_ prefix, so it sits beside a host's own
-// schema without a clash.
 func TestMigrationsPrefixTheirObjects(t *testing.T) {
 	set, err := postgres.Migrations()
 	if err != nil {
@@ -45,8 +42,6 @@ func TestMigrationsPrefixTheirObjects(t *testing.T) {
 	}
 }
 
-// Statements lists the compiled statements in name order; only discard_items, a takeover's
-// second statement, requires a transaction, the claim's.
 func TestStatementsList(t *testing.T) {
 	var names, tx []string
 	for _, st := range postgres.Statements() {
@@ -67,10 +62,8 @@ func TestStatementsList(t *testing.T) {
 	}
 }
 
-// fakeDriver is a database/sql driver other than pgx's, whose connections do nothing.
 type fakeDriver struct{}
 
-// fakeConn is fakeDriver's connection.
 type fakeConn struct{}
 
 func (fakeDriver) Open(string) (driver.Conn, error)  { return fakeConn{}, nil }
@@ -80,7 +73,6 @@ func (fakeConn) Begin() (driver.Tx, error)           { return nil, errors.New("f
 
 func init() { sql.Register("docproc-postgres-fake", fakeDriver{}) }
 
-// fake returns a session over a pool on fakeDriver.
 func fake(t *testing.T) *sqlate.DB {
 	t.Helper()
 	pool, err := sql.Open("docproc-postgres-fake", "")
@@ -91,7 +83,6 @@ func fake(t *testing.T) *sqlate.DB {
 	return sqlate.Wrap(pool, pgdialect.Dialect{})
 }
 
-// New refuses a pool on any driver but pgx's, naming the driver it found.
 func TestNewRefusesAnotherDriver(t *testing.T) {
 	_, err := postgres.New(t.Context(), postgres.Config{DB: fake(t), Lease: time.Second, Flush: 1})
 	if !errors.Is(err, dispatch.ErrRequest) || !strings.Contains(err.Error(), "postgres_test.fakeConn") {
@@ -99,7 +90,6 @@ func TestNewRefusesAnotherDriver(t *testing.T) {
 	}
 }
 
-// New panics on a nil DB, naming the field, and refuses a lease or a flush that isn't positive.
 func TestNewRefusesItsConfig(t *testing.T) {
 	func() {
 		defer func() {

@@ -8,15 +8,8 @@ using Docproc.Ooxml.Writing;
 
 namespace Docproc.Ooxml.Tests;
 
-// The line writer's seam, independent of the reader: hand-built models against lines written by
-// hand from the contract (docs/tool-contract.md, "docproc-ooxml"), never a snapshot of
-// docproc-ooxml's own output, and a sheet past the rows line's bound.
 public sealed class LineWriterTests
 {
-    // Every field of the document, sheet, and rows lines, in order and in snake_case: a value
-    // typed as its JSON primitive, a field with no value left out, a sheet hidden only when it is,
-    // a sheet's drawings on a closing rows line with no rows, and a medium's sheet the ordinal of
-    // its sheet line: the second sheet's picture is on sheet 2.
     [Fact]
     public void AnXlsxIsItsDocumentLineThenEachSheetsLines()
     {
@@ -56,8 +49,6 @@ public sealed class LineWriterTests
             Write(document));
     }
 
-    // A docx or pptx is its document line alone, its Markdown whole; a document with no text and
-    // no pictures has neither field.
     [Fact]
     public void ADocxOrPptxIsItsDocumentLineAlone()
     {
@@ -77,9 +68,6 @@ public sealed class LineWriterTests
             Write(new Document(SourceFormat.Docx, [])));
     }
 
-    // The properties come before the Markdown, each map in stored order, each value its JSON
-    // type, a map with none left out; an embedded package or OLE object is a medium of its kind
-    // with its program id, after its preview picture, and a docx medium's placement its section.
     [Fact]
     public void PropertiesAndPayloadsAreOnTheDocumentLine()
     {
@@ -99,8 +87,6 @@ public sealed class LineWriterTests
             Write(new Document(SourceFormat.Docx, [preview, ole, embedded]) { Properties = properties }));
     }
 
-    // A docx's pictures are listed in the order of the Markdown's chunks, headers first, each
-    // time one is shown, nested ones in place.
     [Fact]
     public void PicturesAreListedInTheMarkdownsOrder()
     {
@@ -121,9 +107,6 @@ public sealed class LineWriterTests
             Lines.MediaOf(document).Select(m => m.Name));
     }
 
-    // A sheet past the bound: rows lines each within 256 KiB, its newline included, holding as
-    // many of the next rows as fit, and a row larger than the bound alone on its line; together
-    // they hold every row in order, and their Markdown is the sheet's table rows in order.
     [Fact]
     public void ASheetPastTheBoundIsSplitIntoBoundedRowsLines()
     {
@@ -161,8 +144,6 @@ public sealed class LineWriterTests
             }
             if (i + 1 < rowsLines.Count)
             {
-                // The next line's first row, its JSON, a comma, and its Markdown as escaped, would
-                // not have fit on this one.
                 var first = rows[(int)JsonNode.Parse(rowsLines[i + 1])!["rows"]![0]!["row"]! - 1];
                 var json = JsonNode.Parse(rowsLines[i + 1])!["rows"]![0]!.ToJsonString(Relaxed);
                 var escaped = JsonEncodedText.Encode(MarkdownRenderer.RowFragment(first, ["A", "B"]), JavaScriptEncoder.UnsafeRelaxedJsonEscaping);
@@ -189,7 +170,6 @@ public sealed class LineWriterTests
 
     private static string Write(Document document) => Encoding.UTF8.GetString(WriteBytes(document));
 
-    // The lines of an output, as UTF-8 bytes measured as written: every line ends in a newline.
     private static List<string> SplitLines(byte[] output)
     {
         Assert.Equal((byte)'\n', output[^1]);

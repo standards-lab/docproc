@@ -16,9 +16,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// flood is a stage that yields n inline outputs, each named o<i> and holding size bytes of i's
-// low byte, made as it yields them; with failAt above zero, it fails once it has yielded that
-// many.
 type flood struct {
 	n, size, failAt int
 }
@@ -42,8 +39,6 @@ func (f *flood) Prepare(_ context.Context, _ dispatch.Part, _ string) iter.Seq2[
 	}
 }
 
-// floodDispatcher returns a dispatcher with s on route.Text over a file index in a directory of
-// its own, and the index's directory.
 func floodDispatcher(t *testing.T, s dispatch.Stage) (*dispatch.Dispatcher, dispatch.Index, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -58,10 +53,8 @@ func floodDispatcher(t *testing.T, s dispatch.Stage) (*dispatch.Dispatcher, disp
 	return d, idx, dir
 }
 
-// floodSum returns the SHA-256 of flood's output i, of size bytes.
 func floodSum(i, size int) string { return sha(bytes.Repeat([]byte{byte(i)}, size)) }
 
-// heap returns the bytes of the live heap, once a collection has run.
 func heap() uint64 {
 	runtime.GC()
 	var m runtime.MemStats
@@ -69,16 +62,8 @@ func heap() uint64 {
 	return m.HeapAlloc
 }
 
-// heapBound is the most the live heap may grow while 200,000 outputs of 512 bytes stream through
-// a dispatch: a tenth of what holding them would take, the outputs alone over 100 MB.
 const heapBound = 24 << 20
 
-// TestStreamedOutputs: 200,000 outputs stream through a dispatch over a file index, each an
-// output event in the stage's order, the caller's Ref set on it, and the live heap stays within
-// a bound far under the outputs' size while they do, so neither the dispatcher nor the index
-// holds them. The part's event counts them; the index's record counts them and reads them back,
-// streamed, with their Refs. A second dispatch sees the part, its outputs streamed from the index
-// in order, as seen output events, within the same bound.
 func TestStreamedOutputs(t *testing.T) {
 	const n, size, every = 200_000, 512, 20_000
 	s := &flood{n: n, size: size}
@@ -147,9 +132,6 @@ func TestStreamedOutputs(t *testing.T) {
 	}
 }
 
-// TestStreamReleased: a stage that fails after yielding outputs, and a loop that stops among
-// them, each leave no record and no log, under either index: the claim is released, so the key
-// may be claimed again, and the file index holds no temporary log.
 func TestStreamReleased(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -212,8 +194,6 @@ func TestStreamReleased(t *testing.T) {
 	})
 }
 
-// interleaved is a stage that, for the input, yields an output, finds a part, inner.txt, then
-// yields another output; for a part below the input, it yields two outputs.
 type interleaved struct{}
 
 func (interleaved) Identity() dispatch.Identity {
@@ -239,9 +219,6 @@ func (interleaved) Prepare(_ context.Context, p dispatch.Part, dir string) iter.
 	}
 }
 
-// TestStreamOrder: a stage's outputs and the parts it finds reach the caller in the stage's
-// order, each found part's subtree, its outputs, then its own event, between the outputs yielded
-// before and after it; the part's own event comes last.
 func TestStreamOrder(t *testing.T) {
 	d, err := dispatch.New(dispatch.Config{
 		Content: dispatch.NewMemoryContent(), Puts: 2,
@@ -271,16 +248,12 @@ func TestStreamOrder(t *testing.T) {
 	}
 }
 
-// brood is a stage that, for the input, finds n parts, each a file it writes as it finds it,
-// all of one content, named and placed by its index at length, so a child's reference is some
-// hundreds of bytes.
 type brood struct{ n int }
 
 func (b brood) Identity() dispatch.Identity {
 	return dispatch.Identity{Name: "brood", Version: "1", Config: fmt.Sprint(b.n)}
 }
 
-// broodName returns the name, or with where set, the place, of brood's child i.
 func broodName(i int, where bool) string {
 	label := "child"
 	if where {
@@ -308,16 +281,8 @@ func (b brood) Prepare(_ context.Context, p dispatch.Part, dir string) iter.Seq2
 	}
 }
 
-// childBound is the most the live heap may grow while 100,000 children stream through a
-// dispatch: their references alone, held, would take over 40 MB.
 const childBound = 12 << 20
 
-// TestStreamedChildren: 100,000 parts found in one input stream through a dispatch over a file
-// index, the first prepared and the rest seen, and the live heap stays within a bound far under
-// their references' size, so neither the dispatcher nor the index holds them. The input's event
-// counts them; the index's record counts them and reads them back, streamed, in the order found.
-// A second dispatch sees the input and replays its children from the index, streamed, each seen
-// at its place.
 func TestStreamedChildren(t *testing.T) {
 	const n, every = 100_000, 10_000
 	s := brood{n: n}
@@ -385,8 +350,6 @@ func TestStreamedChildren(t *testing.T) {
 		t.Errorf("the live heap grew %d MB while %d children were read back", (peak-base)>>20, n)
 	}
 
-	// The replay streams too: its first children come with the heap within the bound, the loop
-	// stopping there, since every child already went through a seen part's replay above.
 	base, peak, i = heap(), 0, 0
 	for ev, err := range d.Dispatch(t.Context(), dispatch.Input{Path: path}) {
 		if err != nil {

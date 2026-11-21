@@ -19,15 +19,8 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// goldens is docproc-mail's committed goldens, read in place: a .jsonl and a .stderr per fixture.
 const goldens = "mail/tests/golden"
 
-// TestReplayGoldens replays every committed golden of docproc-mail through the stand-in and decodes
-// it. Each read yields one record per line, each of the line's kind, none unknown, and each record
-// written back as JSON is the line less its kind and its false booleans, but for the sender's SMTP
-// address the Reader adds from the transport headers' From, an address those headers hold. Each
-// attachment's file resolves in the media directory. Each stderr line is a Warning record, in
-// order, its folder named by its path.
 func TestReplayGoldens(t *testing.T) {
 	t.Parallel()
 	root := tooltest.Tools(t, goldens)
@@ -80,9 +73,6 @@ func TestReplayGoldens(t *testing.T) {
 	})
 }
 
-// checkReplay checks a golden's records against stem's .jsonl and .stderr, read with media as the
-// media directory, and returns the kinds of its lines and the count of senders whose SMTP address
-// the Reader added.
 func checkReplay(t *testing.T, stem, media string, recs []email.Record) (kinds []string, filled int) {
 	t.Helper()
 	lines := readLines(t, stem+".jsonl")
@@ -143,8 +133,6 @@ func checkReplay(t *testing.T, stem, media string, recs []email.Record) (kinds [
 	return kinds, filled
 }
 
-// rewritten returns where with its leading "folder <id>" naming the folder by its path in
-// folders, when folders has it.
 func rewritten(where string, folders map[string]string) string {
 	rest, ok := strings.CutPrefix(where, "folder ")
 	if !ok {
@@ -161,8 +149,6 @@ func rewritten(where string, folders map[string]string) string {
 	return "folder " + path
 }
 
-// goldenWarnings returns the warnings of the golden .stderr at path, each line split into where
-// and what at its first ": " after the warning's prefix.
 func goldenWarnings(t *testing.T, path string) []email.Warning {
 	t.Helper()
 	var warnings []email.Warning
@@ -177,8 +163,6 @@ func goldenWarnings(t *testing.T, path string) []email.Warning {
 	return warnings
 }
 
-// checkFiles fails the test unless each of m's attachments and media with a file, a nested
-// message's included, has its Path in media and its SHA-256 its name's.
 func checkFiles(t *testing.T, n int, media string, m *email.Message) {
 	t.Helper()
 	for _, a := range m.Attachments {
@@ -196,9 +180,6 @@ func checkFiles(t *testing.T, n int, media string, m *email.Message) {
 	}
 }
 
-// sameJSON fails the test unless rec, written back as JSON, holds what line holds less its kind and
-// its false booleans, but for each sender's SMTP address the Reader added, which must be an
-// address its message's transport headers hold. It returns the count of those.
 func sameJSON(t *testing.T, n int, line map[string]any, rec email.Record) int {
 	t.Helper()
 	want := dropFalse(line).(map[string]any)
@@ -221,9 +202,6 @@ func sameJSON(t *testing.T, n int, line map[string]any, rec email.Record) int {
 	return filled
 }
 
-// dropAdded removes from got, a message as the record writes it, and from each message nested
-// under its attachments, the sender's smtp_address that want, the line's, lacks, failing the test
-// unless the message's transport headers hold it. It returns the count it removed.
 func dropAdded(t *testing.T, n int, got, want map[string]any) int {
 	t.Helper()
 	filled := 0
@@ -254,8 +232,6 @@ func dropAdded(t *testing.T, n int, got, want map[string]any) int {
 	return filled
 }
 
-// dropFalse returns v, a decoded JSON value, with every false boolean member of its objects
-// removed, as the records omit them.
 func dropFalse(v any) any {
 	switch x := v.(type) {
 	case map[string]any:
@@ -274,7 +250,6 @@ func dropFalse(v any) any {
 	return v
 }
 
-// readLines returns the lines of the file at path, their line feeds left out.
 func readLines(t *testing.T, path string) [][]byte {
 	t.Helper()
 	f, err := os.Open(path)

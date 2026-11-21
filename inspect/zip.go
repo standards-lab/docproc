@@ -16,21 +16,10 @@ import (
 	"strings"
 )
 
-// maxRels is the most of a package's relationship parts, expanded and summed, the OOXML checks
-// read: one budget for every part, so a package of many parts costs no more than one of one.
-// The part that passes it is unreadable past it.
 const maxRels = 16 << 20
 
-// relHyperlink is the last element of a hyperlink relationship's type URI: an external
-// hyperlink is a link a reader follows by choice, not content fetched when the document opens,
-// so it isn't active content.
 const relHyperlink = "hyperlink"
 
-// zip reads a ZIP's central directory, extracting no entry, and checks each entry's name, mode,
-// declared sizes, and encryption, then the sums of its declared sizes; an OOXML package, one
-// with a [Content_Types].xml entry, has its parts and relationships checked too. A ZIP whose
-// end record lists more entries than the options allow is [ZIPUnreadable] before archive/zip
-// reads its central directory, as is one archive/zip can't read.
 func (in *inspection) zip(ctx context.Context) error {
 	if listed, ok := zipListed(in.file, in.size); ok && in.opts.Entries > 0 && listed > uint64(in.opts.Entries) {
 		in.flag(ZIPUnreadable, fmt.Sprintf("%d entries listed, past %d", listed, in.opts.Entries))
@@ -64,8 +53,6 @@ func (in *inspection) zip(ctx context.Context) error {
 	return nil
 }
 
-// addSat returns a+b, or the largest uint64 when the sum would pass it, so a sum of declared
-// sizes that lie can't wrap.
 func addSat(a, b uint64) uint64 {
 	if a > math.MaxUint64-b {
 		return math.MaxUint64
@@ -73,12 +60,8 @@ func addSat(a, b uint64) uint64 {
 	return a + b
 }
 
-// ratio returns expanded over against, against at least one.
 func ratio(expanded, against uint64) float64 { return float64(expanded) / float64(max(against, 1)) }
 
-// zipEntry checks one entry's name, mode, sizes, and encryption. The bomb rule reads the sizes
-// the central directory declares: the stage that extracts the entry enforces the same rule on
-// the bytes it writes, since a declared size may lie.
 func (in *inspection) zipEntry(f *zip.File) {
 	quoted := fmt.Sprintf("entry %q", f.Name)
 	in.entryName(f.Name)
@@ -94,8 +77,6 @@ func (in *inspection) zipEntry(f *zip.File) {
 	}
 }
 
-// entryName checks an archive entry's name: a ".." element, by either separator, and an
-// absolute name or one that begins with a drive letter.
 func (in *inspection) entryName(name string) {
 	quoted := fmt.Sprintf("entry %q", name)
 	if traverses(name) {
@@ -106,25 +87,20 @@ func (in *inspection) entryName(name string) {
 	}
 }
 
-// traverses reports whether an entry's name has a ".." element, either separator dividing it.
 func traverses(name string) bool {
 	elements := strings.FieldsFunc(name, func(r rune) bool { return r == '/' || r == '\\' })
 	return slices.Contains(elements, "..")
 }
 
-// absolute reports whether an entry's name is absolute, by either separator, or begins with a
-// drive letter.
 func absolute(name string) bool {
 	return strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || driveLetter(name)
 }
 
-// driveLetter reports whether name begins with a drive letter and a colon, as "C:" does.
 func driveLetter(name string) bool {
 	return len(name) >= 2 && name[1] == ':' &&
 		(name[0] >= 'a' && name[0] <= 'z' || name[0] >= 'A' && name[0] <= 'Z')
 }
 
-// The ZIP records zipListed reads, by their signatures and lengths.
 var (
 	zip64Locator = []byte("PK\x06\x07")
 	zip64Record  = []byte("PK\x06\x06")
@@ -136,9 +112,6 @@ const (
 	maxZIPComment   = 0xffff
 )
 
-// zipListed returns how many entries the ZIP r holds, size bytes, lists, by its end record, the
-// last one whose comment ends within the file, or ZIP64's record when the end record's count is
-// its marker; false when no record gives a count, which archive/zip then reports.
 func zipListed(r io.ReaderAt, size int64) (uint64, bool) {
 	tail := make([]byte, min(max(size, 0), int64(eocdLen+maxZIPComment)))
 	if _, err := r.ReadAt(tail, size-int64(len(tail))); err != nil && !errors.Is(err, io.EOF) {
@@ -172,8 +145,6 @@ func zipListed(r io.ReaderAt, size int64) (uint64, bool) {
 	return 0, false
 }
 
-// ooxmlPart checks one part of an OOXML package, by its name: a VBA project, a macro sheet, an
-// ActiveX control, or an OLE object; and a relationships part's external relationships.
 func (in *inspection) ooxmlPart(f *zip.File) {
 	lower := strings.ToLower(f.Name)
 	base := path.Base(lower)
@@ -193,18 +164,12 @@ func (in *inspection) ooxmlPart(f *zip.File) {
 	}
 }
 
-// relationship is one Relationship element of a relationships part.
 type relationship struct {
 	Type       string `xml:"Type,attr"`
 	Target     string `xml:"Target,attr"`
 	TargetMode string `xml:"TargetMode,attr"`
 }
 
-// relationships checks a relationships part for an external relationship, other than a
-// hyperlink: a remote template, a linked picture, an OLE link. It decodes the part's charset,
-// a declared one or a UTF-16 byte order mark's, and reads it from what remains of the package's
-// budget. A part that doesn't open, doesn't decode to its end, or passes the budget is
-// [RelationshipsUnreadable], checked as far as it was read.
 func (in *inspection) relationships(f *zip.File) {
 	quoted := fmt.Sprintf("part %q", f.Name)
 	rc, err := f.Open()
@@ -212,7 +177,7 @@ func (in *inspection) relationships(f *zip.File) {
 		in.flag(RelationshipsUnreadable, fmt.Sprintf("%s: %v", quoted, err))
 		return
 	}
-	defer func() { _ = rc.Close() }() // read only: a close error loses nothing
+	defer func() { _ = rc.Close() }()
 	budget := &budgetReader{r: rc, n: in.rels}
 	defer func() { in.rels = budget.n }()
 	d := xmlDecoder(budget)
@@ -242,8 +207,6 @@ func (in *inspection) relationships(f *zip.File) {
 	}
 }
 
-// budgetReader reads r until n bytes are spent, then ends as if r had, setting past when r held
-// more.
 type budgetReader struct {
 	r    io.Reader
 	n    int64
@@ -252,7 +215,6 @@ type budgetReader struct {
 
 func (b *budgetReader) Read(p []byte) (int, error) {
 	if b.n <= 0 {
-		// One byte more tells a part that ends at the budget from one past it.
 		var one [1]byte
 		if n, _ := b.r.Read(one[:]); n > 0 {
 			b.past = true

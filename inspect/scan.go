@@ -12,29 +12,17 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// chunkSize is how much of a file the stream reads at a time, each chunk beginning at a multiple
-// of it.
 const chunkSize = 1 << 16
 
-// pdfNames are the PDF names the scan flags, decoded, each with its check: pdfid's, and two more.
 var pdfNames = map[string]Check{
 	"JavaScript": PDFJavaScript, "JS": PDFJS, "OpenAction": PDFOpenAction, "AA": PDFAA,
 	"Launch": PDFLaunch, "EmbeddedFile": PDFEmbeddedFile, "RichMedia": PDFRichMedia,
 	"XFA": PDFXFA, "Encrypt": PDFEncrypt,
-	// Beyond pdfid's list, which counts /EmbeddedFile, an embedded file stream's optional type: the
-	// catalog's name tree of embedded files and a file specification's embedded file key, which
-	// mark one whether its stream has the type or not.
 	"EmbeddedFiles": PDFEmbeddedFile, "EF": PDFEmbeddedFile,
 }
 
-// maxPDFName is the longest name, raw, the PDF scan reads; a longer one is none of pdfNames,
-// whose longest, hex-escaped throughout, is 36 bytes.
 const maxPDFName = 64
 
-// containerKinds are the kinds whose content holds other files' bytes as stored, so another
-// format's signature inside one is a file it holds, not a polyglot: archives, compound files,
-// mail stores, and OneNote's stores. Text, of no signature or marked by a byte order mark or an
-// mbox's "From " line, isn't checked either: it may quote a signature.
 var containerKinds = map[route.Kind]bool{
 	route.ZIP: true, route.ODF: true, route.OLE2: true, route.PST: true, route.OST: true,
 	route.Mbox: true, route.Tar: true, route.MSCF: true, route.OneStore: true,
@@ -43,29 +31,20 @@ var containerKinds = map[route.Kind]bool{
 	route.Shebang: true,
 }
 
-// The signatures the stream looks for: a ZIP's end-of-central-directory record and a PDF's
-// header.
 var (
 	eocdSignature = []byte("PK\x05\x06")
 	pdfHeader     = []byte("%PDF-")
 )
 
-// eocdLen is the length of an end-of-central-directory record without its comment.
 const eocdLen = 22
 
-// maxEOCDCandidates is how many end-of-central-directory signatures the stream keeps to check,
-// the last ones, where a ZIP appended to a file has its record.
 const maxEOCDCandidates = 64
 
-// pattern is a byte string the stream looks for, and what it does at each offset it is found.
 type pattern struct {
 	sig   []byte
 	found func(off int64)
 }
 
-// stream reads the whole content once, from its start, for what its kind calls for: the PDF
-// names in a PDF, and the polyglot signatures in content that isn't a container. Its memory is a
-// chunk and a few bytes carried between chunks.
 func (in *inspection) stream(ctx context.Context) error {
 	var patterns []pattern
 	var names *pdfScanner
@@ -97,7 +76,7 @@ func (in *inspection) stream(ctx context.Context) error {
 	file := io.NewSectionReader(in.file, 0, in.size)
 	buf := make([]byte, carryMax+chunkSize)
 	carry := 0
-	var base int64 // the file offset of buf[0]
+	var base int64
 	for {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -106,7 +85,6 @@ func (in *inspection) stream(ctx context.Context) error {
 		if n > 0 {
 			data := buf[:carry+n]
 			for _, p := range patterns {
-				// A match ending within the carried bytes was found in the chunk before.
 				for i := 0; ; {
 					j := bytes.Index(data[i:], p.sig)
 					if j < 0 {
@@ -140,9 +118,6 @@ func (in *inspection) stream(ctx context.Context) error {
 	return in.checkEOCD(eocd)
 }
 
-// checkEOCD flags a polyglot for the first candidate that reads as a real end-of-central-
-// directory record: its central directory ends at or before the record, and its comment ends
-// within the file. Content of no container kind holds a ZIP then, appended or embedded.
 func (in *inspection) checkEOCD(candidates []int64) error {
 	rec := make([]byte, eocdLen)
 	for _, off := range candidates {
@@ -163,36 +138,22 @@ func (in *inspection) checkEOCD(candidates []int64) error {
 	return nil
 }
 
-// pdfScanner reads a PDF's names, a chunk at a time, as pdfid does, but for a stream's data: a
-// name begins with "/" and runs to the next delimiter or whitespace, and "#" and two hex digits
-// stand for a byte, so /J#61vaScript is /JavaScript. A stream's data, from the end of line after
-// its "stream" keyword through its "endstream", is skipped, since its bytes are compressed or
-// binary and any "/" in them is no name; a name inside a compressed object stream is unseen, as
-// it is by pdfid.
 type pdfScanner struct {
-	in *inspection
-	// raw is the name being read, its "/" left out; inName is set while one is.
-	raw    []byte
-	inName bool
-	// start is the file offset of the name's "/"; long is set once it outgrows maxPDFName.
-	start int64
-	long  bool
-	// word is the run of regular bytes being read outside a name, kept up to one byte longer
-	// than "stream", so a "stream" keyword is told from a longer word.
-	word []byte
-	// inStream is set within a stream's data; tail is its last bytes read, fewer than
-	// "endstream", carried to the next chunk.
+	in       *inspection
+	raw      []byte
+	inName   bool
+	start    int64
+	long     bool
+	word     []byte
 	inStream bool
 	tail     []byte
 }
 
-// The keywords that begin and end a stream's data.
 var (
 	streamKeyword    = []byte("stream")
 	endstreamKeyword = []byte("endstream")
 )
 
-// pdfDelimiter reports whether b ends a PDF name: whitespace or a delimiter.
 func pdfDelimiter(b byte) bool {
 	switch b {
 	case 0, '\t', '\n', '\f', '\r', ' ', '(', ')', '<', '>', '[', ']', '{', '}', '/', '%':
@@ -201,7 +162,6 @@ func pdfDelimiter(b byte) bool {
 	return false
 }
 
-// scan reads chunk, whose first byte is at file offset base.
 func (s *pdfScanner) scan(chunk []byte, base int64) {
 	for i := 0; i < len(chunk); {
 		if s.inStream {
@@ -240,11 +200,7 @@ func (s *pdfScanner) scan(chunk []byte, base int64) {
 	}
 }
 
-// skip reads data within a stream for its "endstream", which may begin in the chunk before. It
-// returns how many of data's bytes the stream's data and its keyword took, and false when the
-// stream runs past data, its last bytes kept for the next chunk.
 func (s *pdfScanner) skip(data []byte) (int, bool) {
-	// A keyword across the chunks' boundary: the bytes carried, then data's first.
 	joined := append(slices.Clip(s.tail), data[:min(len(data), len(endstreamKeyword)-1)]...)
 	if k := bytes.Index(joined, endstreamKeyword); k >= 0 {
 		return s.close(k + len(endstreamKeyword) - len(s.tail)), true
@@ -262,18 +218,15 @@ func (s *pdfScanner) skip(data []byte) (int, bool) {
 	return len(data), false
 }
 
-// close ends a stream's data at n bytes into the chunk being read, and returns n.
 func (s *pdfScanner) close(n int) int {
 	s.inStream, s.tail, s.word = false, s.tail[:0], s.word[:0]
 	return n
 }
 
-// begin starts a name whose "/" is at file offset off.
 func (s *pdfScanner) begin(off int64) {
 	s.inName, s.start, s.long, s.raw = true, off, false, s.raw[:0]
 }
 
-// end ends the name being read, flagging it when it is one of pdfNames.
 func (s *pdfScanner) end() {
 	if !s.inName {
 		return
@@ -287,7 +240,6 @@ func (s *pdfScanner) end() {
 	}
 }
 
-// decodeName decodes a PDF name's "#" escapes; a "#" not followed by two hex digits is kept.
 func decodeName(raw []byte) string {
 	if bytes.IndexByte(raw, '#') < 0 {
 		return string(raw)
@@ -308,7 +260,6 @@ func decodeName(raw []byte) string {
 	return string(out)
 }
 
-// unhex returns the value of the hex digit c.
 func unhex(c byte) (byte, bool) {
 	switch {
 	case c >= '0' && c <= '9':

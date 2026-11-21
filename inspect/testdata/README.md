@@ -4,8 +4,10 @@ The inspect package's synthesized hazard fixtures, each the smallest file that r
 it is for, and the clean tars and gzip streams the dispatcher's archive stage reads beside them.
 `~/docs`' archive hazards aren't redistributable, so none is copied; these stand in for them.
 `generate.go` wrote them, every byte fixed, so a rerun writes the same files: run
-`go run generate.go` in this directory. The check never runs it, and reads the committed files;
-`TestFixtureNotes` holds the table below to them. All are this repository's, Apache-2.0.
+`go run generate.go` in this directory. It writes `encrypted.zip`'s and `declared-bomb.zip`'s
+marked entries raw, since archive/zip's writer sets an entry's flags and sizes itself. The check
+never runs it, and reads the committed files; `TestFixtureNotes` holds the table below to them.
+All are this repository's, Apache-2.0.
 
 | File | Bytes | SHA-256 |
 | --- | --- | --- |
@@ -63,7 +65,8 @@ default rule. What each holds:
   mark, declared UTF-16.
 - `hyperlink.docx`: the same package with its external hyperlink alone.
 - `javascript.pdf`: a one-page PDF whose catalog runs JavaScript through /OpenAction and again
-  through /AA, the second action's /S hex-escaped as /J#61vaScript.
+  through /AA, the second action's /S hex-escaped as /J#61vaScript, so a scan that matches bytes
+  alone misses it. It has no cross-reference table, since no reader opens it.
 - `script.svg`: an onload handler, a script element, an external xlink:href, and a
   foreignObject, beside an internal href and a data: href, which aren't external.
 - `script-latin1.svg`: `script.svg` declared ISO-8859-1, with a comment line of Latin-1 bytes,
@@ -78,7 +81,8 @@ default rule. What each holds:
   EncryptedPackage stream names, the shape the checks read an encrypted OOXML package by; it is
   no readable compound file.
 - `clean.tar`: a POSIX tar of a directory, `docs/`, and a text and a 2x1 PNG's signature under
-  it, `docs/notes.txt` and `docs/pixel.png`: no hazard.
+  it, `docs/notes.txt` and `docs/pixel.png`: no hazard. The picture is 2x1, so its bytes are no
+  other fixture's.
 - `clean.tar.gz`: `clean.tar` as a gzip stream whose header names it `clean.tar`.
 - `unnamed.tgz`: the same tar as a gzip stream whose header names nothing, so its content is
   named by the stream's stem, `unnamed.tar`.

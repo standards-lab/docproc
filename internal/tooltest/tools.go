@@ -34,7 +34,6 @@ func Tools(t testing.TB, rel string) string {
 	return path
 }
 
-// treeAbsentError is toolsPath's error when the base module has no tools module beside it.
 type treeAbsentError struct {
 	tree string
 	rel  string
@@ -44,9 +43,6 @@ func (e *treeAbsentError) Error() string {
 	return fmt.Sprintf("tooltest: no tools tree at %s, as in the module's zip, so %s isn't read", e.tree, e.rel)
 }
 
-// toolsPath returns the path of rel under the tools tree beside the go.mod nearest dir: a
-// *treeAbsentError when the tree has no go.mod of its own, and an error naming rel when the tree
-// is present and rel isn't.
 func toolsPath(dir, rel string) (string, error) {
 	root, err := moduleRoot(dir)
 	if err != nil {
@@ -65,7 +61,6 @@ func toolsPath(dir, rel string) (string, error) {
 	return path, nil
 }
 
-// moduleRoot returns the nearest directory at or above dir that holds a go.mod.
 func moduleRoot(dir string) (string, error) {
 	for d := dir; ; {
 		if _, err := os.Stat(filepath.Join(d, "go.mod")); err == nil {

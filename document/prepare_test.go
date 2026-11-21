@@ -20,8 +20,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// fixture is a Preparer over the stand-in gs at 10.08.0, the stand-in, a PDF path, and a request
-// whose pages go to a directory of the test's own.
 type fixture struct {
 	prep *document.Preparer
 	gs   *standin
@@ -29,14 +27,11 @@ type fixture struct {
 	req  document.ImagesRequest
 }
 
-// newFixture builds a fixture whose stand-in gs counts pages pages, at concurrency 1. The
-// stand-in reads no PDF, so the file is empty.
 func newFixture(t *testing.T, pages int) *fixture {
 	t.Helper()
 	return newTimedFixture(t, pages, 0)
 }
 
-// newTimedFixture is newFixture with timeout the Spec's Timeout, a unit's bound.
 func newTimedFixture(t *testing.T, pages int, timeout time.Duration) *fixture {
 	t.Helper()
 	st := newStandin(t, "gs", "10.08.0")
@@ -58,7 +53,6 @@ func newTimedFixture(t *testing.T, pages int, timeout time.Duration) *fixture {
 	}
 }
 
-// images ranges over the fixture's stream to its end, returning every page and error it yields.
 func (f *fixture) images(ctx context.Context) ([]document.PageImage, []error) {
 	var pages []document.PageImage
 	var errs []error
@@ -69,8 +63,6 @@ func (f *fixture) images(ctx context.Context) ([]document.PageImage, []error) {
 	return pages, errs
 }
 
-// rendered returns the page and the DPI of every page a render run the stand-in gs logged names,
-// in the order the runs began, each run's pages in its order.
 func (f *fixture) rendered() (pages, dpi []int) {
 	for _, r := range f.gs.runs() {
 		if !slices.Contains(r.Args, "-sDEVICE=png16m") {
@@ -90,9 +82,6 @@ func (f *fixture) rendered() (pages, dpi []int) {
 	return pages, dpi
 }
 
-// processes returns the pages of each run of the stand-in gs with device, "png16m" or
-// "txtwrite", as gs names them, "-sPageList=1,4" or "-sPageList=1-3" for a shared process and
-// "-dFirstPage=2" for a page's own, sorted, since lanes start their processes in no fixed order.
 func (f *fixture) processes(device string) []string {
 	var got []string
 	for _, r := range f.gs.runs() {
@@ -109,7 +98,6 @@ func (f *fixture) processes(device string) []string {
 	return got
 }
 
-// files returns the names of the files in dir, sorted.
 func files(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -123,17 +111,13 @@ func files(t *testing.T, dir string) []string {
 	return names
 }
 
-// zero reports whether p is the zero PageImage a stream's own error comes with.
 func zero(p document.PageImage) bool { return p == document.PageImage{} }
 
-// TestNewPreparerNil: a Config with no Renderer is the caller's mistake, and panics naming the
-// field.
 func TestNewPreparerNil(t *testing.T) {
 	t.Parallel()
 	wantPanic(t, "document: Config.Renderer is nil", func() { document.NewPreparer(document.Config{}) })
 }
 
-// TestImagesLazy checks that nothing runs until the stream is ranged over.
 func TestImagesLazy(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
@@ -151,9 +135,6 @@ func TestImagesLazy(t *testing.T) {
 	}
 }
 
-// TestImagesPages checks that each page is yielded in page order as a PNG file in the request's
-// directory, page-N.png holding the page gs rendered, with its number, the count, and the
-// default DPI, when later pages finish first: page 1 is the slowest to render.
 func TestImagesPages(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 4)
@@ -178,7 +159,6 @@ func TestImagesPages(t *testing.T) {
 	}
 }
 
-// TestImagesDPI checks a request's DPI reaches every render and its PageImage.
 func TestImagesDPI(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 2)
@@ -189,11 +169,6 @@ func TestImagesDPI(t *testing.T) {
 	}
 }
 
-// TestImagesSlots checks a page's slot is released only when its outcome is taken: at
-// concurrency 2, while the consumer holds page 1, pages 2 and 3 are written, page 2 waiting
-// untaken in its slot, and page 4 isn't written until page 2 is taken, though its lane's process
-// has rendered it. The test waits for page 3's file before it looks for page 4's, so a slow
-// render can't hide a slot released too early.
 func TestImagesSlots(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 6)
@@ -223,8 +198,6 @@ func TestImagesSlots(t *testing.T) {
 	}
 }
 
-// TestImagesFailedPage checks a page that fails to render yields its number and count with an
-// error naming the page and wrapping gs's, no file of it left, and the stream carries on.
 func TestImagesFailedPage(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
@@ -243,8 +216,6 @@ func TestImagesFailedPage(t *testing.T) {
 	}
 }
 
-// TestImagesExistingFile checks a page whose file is already in the directory fails, the file
-// left as it was.
 func TestImagesExistingFile(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 2)
@@ -261,7 +232,6 @@ func TestImagesExistingFile(t *testing.T) {
 	}
 }
 
-// TestImagesCountFails checks a failed count is the stream's one error, with a zero PageImage.
 func TestImagesCountFails(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
@@ -272,8 +242,6 @@ func TestImagesCountFails(t *testing.T) {
 	}
 }
 
-// TestImagesBreak checks breaking out of the stream ends the work in flight, and leaves only the
-// pages yielded in the directory: the pages rendered ahead and never taken are removed.
 func TestImagesBreak(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 6)
@@ -290,9 +258,6 @@ func TestImagesBreak(t *testing.T) {
 	}
 }
 
-// TestImagesContextEnds checks an ended context is the stream's one error, once, with a zero
-// PageImage, the pages not yet taken removed; and that a context ended before the range runs
-// nothing.
 func TestImagesContextEnds(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 6)
@@ -325,9 +290,6 @@ func TestImagesContextEnds(t *testing.T) {
 	}
 }
 
-// TestImagesRefusals checks a request Images can't run is refused, wrapping ErrRequest, before gs
-// runs: no directory, a negative DPI, a concurrency below 1, which has no default, a negative
-// MaxPixels, and a negative PagesPerProcess.
 func TestImagesRefusals(t *testing.T) {
 	t.Parallel()
 	for name, change := range map[string]func(*document.ImagesRequest){
@@ -350,9 +312,6 @@ func TestImagesRefusals(t *testing.T) {
 	}
 }
 
-// TestImagesText checks a request with Text reads every page's text layer into its PageImage,
-// in a shared process before the shared process that renders the pages, and renders every page as
-// usual.
 func TestImagesText(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 2)
@@ -369,15 +328,11 @@ func TestImagesText(t *testing.T) {
 			return strings.HasPrefix(a, "-sDEVICE=") || a == "-dNODISPLAY"
 		})])
 	}
-	// The pages' text before their render.
 	if want := []string{"-dNODISPLAY", "-sDEVICE=txtwrite", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
 		t.Errorf("gs ran %q, want %q", devices, want)
 	}
 }
 
-// TestImagesTextFails checks a shared text process that fails falls back to a process a page,
-// its text and its render each, and a page whose text fails there fails, unrendered, and the
-// stream carries on.
 func TestImagesTextFails(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
@@ -398,11 +353,6 @@ func TestImagesTextFails(t *testing.T) {
 	}
 }
 
-// TestImagesMaxPixels checks a request's MaxPixels: the pages' sizes are read in the one gs run
-// that counts them, and a page past it at the request's DPI renders at the largest DPI that
-// fits, a letter page's 1275x1650 at 150 dpi, 2103750 pixels, at 149 dpi with one pixel fewer,
-// rounded as gs rounds its device's sides; a page within it at the request's DPI, a rotated page
-// read as its rotated size; and a page past it at 1 dpi fails.
 func TestImagesMaxPixels(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 0)
@@ -432,14 +382,12 @@ func TestImagesMaxPixels(t *testing.T) {
 		t.Errorf("%d count runs, want the one sizes run", n)
 	}
 
-	// Exactly the pixels of 150 dpi is within the bound.
 	f = newFixture(t, 1)
 	f.req.MaxPixels = 1275 * 1650
 	if pages, errs := f.images(t.Context()); errs[0] != nil || pages[0].DPI != 150 {
 		t.Errorf("MaxPixels exactly a letter page's at 150 dpi: %+v, %v", pages, errs)
 	}
 
-	// Output the sizes run can't read fails the count.
 	f = newFixture(t, 0)
 	f.gs.set(func(s *settings) { s.Sizes = []string{"612"} })
 	f.req.MaxPixels = 1
@@ -448,13 +396,6 @@ func TestImagesMaxPixels(t *testing.T) {
 	}
 }
 
-// TestImagesShared checks the pages share gs processes: with concurrency C, lane k takes pages k,
-// k+C, k+2C, and so on, up to PagesPerProcess of them a process, through gs's page list, its
-// consecutive pages a range, its text in one process before its render in another, and a process
-// that would take one page alone is the page's own; and every page, yielded in page order, holds
-// the PNG and text a process of its own gives, at PagesPerProcess 1, 2, 4, which divides neither
-// 7 pages nor a lane's 3, and 10, past the count, at concurrency 1 and 3. Zero PagesPerProcess is
-// the default, 8, past the count.
 func TestImagesShared(t *testing.T) {
 	t.Parallel()
 	own := func(pages ...int) []string {
@@ -505,10 +446,6 @@ func TestImagesShared(t *testing.T) {
 	}
 }
 
-// TestImagesContainer checks a Preparer over gs through the container runner, which mounts a
-// run's working directory alone: every run, the survey's among them, works in the PDF's
-// directory, the pages' text is read a page a run, as Text reads it, and the renders still share
-// processes; every page is its own.
 func TestImagesContainer(t *testing.T) {
 	t.Parallel()
 	st := newStandin(t, "docker", "10.08.0")
@@ -552,9 +489,6 @@ func TestImagesContainer(t *testing.T) {
 	}
 }
 
-// TestImagesSharedTextFiles checks the shared text processes write their files in a directory
-// of the stream's own, neither the PDF's nor the request's, a file a page numbered within the
-// process, and that the directory is gone once the stream ends.
 func TestImagesSharedTextFiles(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 8)
@@ -592,9 +526,6 @@ func TestImagesSharedTextFiles(t *testing.T) {
 	}
 }
 
-// TestImagesSharedFallback checks a shared process that fails partway as the content's: the pages
-// it handed over stand, each page it didn't gets processes of its own, its text and its render,
-// and only the page that fails there fails, with the error naming gs's reason, its file removed.
 func TestImagesSharedFallback(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 7)
@@ -627,9 +558,6 @@ func TestImagesSharedFallback(t *testing.T) {
 	}
 }
 
-// TestImagesSharedMessage checks that gs's own message in a shared process, written for a page it
-// renders nonetheless, goes to stderr, so the process's stdout is its pages' PNGs alone: every page
-// is its own, from the one process, none rerun in a process of its own.
 func TestImagesSharedMessage(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 7)
@@ -649,9 +577,6 @@ func TestImagesSharedMessage(t *testing.T) {
 	}
 }
 
-// TestImagesSharedRunFailure checks a shared process that fails as the run's, gs killed by a
-// SIGKILL docproc didn't send, falls back to nothing: the pages it handed over stand, and each
-// page it didn't fails with its error, no process of its own run.
 func TestImagesSharedRunFailure(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 5)
@@ -676,10 +601,6 @@ func TestImagesSharedRunFailure(t *testing.T) {
 	}
 }
 
-// TestImagesMaxPixelsOwnProcess checks a page MaxPixels renders at a lower DPI gets a process of
-// its own, at that DPI, the lane's run of pages at the request's DPI broken around it, a page the
-// break leaves alone in its own as well, at concurrency 1 and 2: page 3, a letter page, at 149
-// dpi, the half-letter pages at 150.
 func TestImagesMaxPixelsOwnProcess(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -708,11 +629,6 @@ func TestImagesMaxPixelsOwnProcess(t *testing.T) {
 	}
 }
 
-// TestImagesIdleBound checks a shared process's bound is the Spec's Timeout read as an idle bound
-// between its pages: a process whose pages each take most of the bound, and whose consumer holds
-// a page for three times the bound, runs to its end, the time it waits on the consumer not idle;
-// and a page that takes past the bound ends its shared process, the pages before it standing, and
-// fails in its own process, which takes the bound whole, the pages after it rendered in their own.
 func TestImagesIdleBound(t *testing.T) {
 	t.Parallel()
 	const bound = time.Second
@@ -744,9 +660,6 @@ func TestImagesIdleBound(t *testing.T) {
 	}
 }
 
-// TestImagesOnePage checks a lane's batch of one page is the page's own process, never a shared
-// one: a one-page PDF whose page fails runs gs for it once, its text and its render, not a shared
-// process and then its own; and the page fails with gs's reason.
 func TestImagesOnePage(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 1)
@@ -764,14 +677,6 @@ func TestImagesOnePage(t *testing.T) {
 	}
 }
 
-// TestImagesOwnTmpdir checks that a page's own gs processes, which work in the PDF's directory,
-// keep their temporary files out of it: each run's TMPDIR is the exec runner's, a directory of
-// the run's own under the process's temporary directory, removed with what gs left in it. The
-// stand-in gs leaves a file in its TMPDIR each run, as a gs ended early leaves its band list's,
-// and a portfolio's every page gets processes of its own. Whether the stream runs to its end or
-// the consumer stops after the first page, while the second's render is still in flight, the
-// PDF's directory holds the PDF alone and the TMPDIR the test sets is empty once the stream
-// returns. It sets TMPDIR, so it isn't parallel.
 func TestImagesOwnTmpdir(t *testing.T) {
 	for _, take := range []int{3, 1} {
 		f := newFixture(t, 3)
@@ -799,12 +704,6 @@ func TestImagesOwnTmpdir(t *testing.T) {
 	}
 }
 
-// TestImagesPortfolio checks a PDF portfolio, whose pages gs renders as its documents' pages when
-// a shared process names it, a process's output not a page's own, never shares a process: its
-// survey says so, and every page gets processes of its own, which read it through the
-// non-portfolio half of runpdf, its file and its text the page's own, one PNG and its text alone,
-// at PagesPerProcess 4 and concurrency 1 and 2, and with a MaxPixels, whose survey reads the
-// pages' sizes too.
 func TestImagesPortfolio(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -836,12 +735,6 @@ func TestImagesPortfolio(t *testing.T) {
 	}
 }
 
-// TestImagesPageListLimit checks a shared process's page list never passes the 2047 bytes gs
-// takes in an argument, whatever PagesPerProcess and the concurrency: at concurrency 1, 3000
-// pages at PagesPerProcess 1000 are three ranges; at concurrency 2, each lane's 1500 pages, none
-// consecutive, are split where the next page would take its list past the limit, the four-digit
-// pages five bytes each with their comma: a lane's odd pages to 1035, 518 of them, its list 2045
-// bytes, then 407 pages to 1849, to 2663, and the rest. Every page is its own.
 func TestImagesPageListLimit(t *testing.T) {
 	t.Parallel()
 	list := func(from, to int) string {
@@ -884,11 +777,6 @@ func TestImagesPageListLimit(t *testing.T) {
 	}
 }
 
-// TestImagesSurveyUnreadable checks a survey whose output doesn't read fails as the released
-// count and sizes runs failed, its error quoting gs's output without the portfolio line the
-// survey adds: a PDF gs can't open prints gs's message and a count of 0, and no portfolio line,
-// its error the count's or the sizes', as MaxPixels asks for sizes; and a sizes run that prints
-// fewer sizes than its count quotes the count and the sizes alone.
 func TestImagesSurveyUnreadable(t *testing.T) {
 	t.Parallel()
 	const unopened = "   **** Error: Couldn't initialise file.\n               Output may be incorrect.\n0\n"
@@ -913,12 +801,6 @@ func TestImagesSurveyUnreadable(t *testing.T) {
 	}
 }
 
-// TestImagesWorkDir checks the survey and the shared processes work in a scratch directory of the
-// stream's own, neither the PDF's nor the request's, and that none of the temporary files a gs
-// ended early leaves, as the stand-in leaves one each run in its TMPDIR, is left beside the PDF,
-// whether the stream runs to its end or the consumer stops after its first page. A page's own
-// processes work in the PDF's directory, as Render and Text do; TestImagesOwnTmpdir checks where
-// their temporary files go.
 func TestImagesWorkDir(t *testing.T) {
 	t.Parallel()
 	for _, take := range []int{8, 1} {
@@ -952,7 +834,6 @@ func TestImagesWorkDir(t *testing.T) {
 		}
 	}
 
-	// A one-page PDF's page is its own process, in the PDF's directory.
 	f := newFixture(t, 1)
 	f.req.Text = true
 	if _, errs := f.images(t.Context()); errs[0] != nil {

@@ -14,7 +14,6 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 )
 
-// total returns how many parts the container prepared, by any name.
 func (c *container) total() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -25,8 +24,6 @@ func (c *container) total() int {
 	return n
 }
 
-// pooled writes n inputs, in-0.txt and on, the content of each made by content, and returns
-// them.
 func pooled(t *testing.T, n int, content func(i int) string) []dispatch.Input {
 	t.Helper()
 	inputs := make([]dispatch.Input, n)
@@ -36,7 +33,6 @@ func pooled(t *testing.T, n int, content func(i int) string) []dispatch.Input {
 	return inputs
 }
 
-// leftIn returns the entries left in dir.
 func leftIn(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -50,11 +46,6 @@ func leftIn(t *testing.T, dir string) []string {
 	return names
 }
 
-// TestPool: 4 workers over 40 inputs, each finding its own part and one every input shares, in
-// a different place. The shared content is prepared exactly once, every other dispatch's part
-// seen, carrying the prepared part's outputs, which the index records before the part's own
-// event. Each input's events come in its own dispatch's order, each with its input, and every input is prepared; the working directory
-// is empty once the pool returns.
 func TestPool(t *testing.T) {
 	const n, workers = 40, 4
 	world := map[string]string{"shared.txt": "leaf shared"}
@@ -81,7 +72,6 @@ func TestPool(t *testing.T) {
 			t.Errorf("input %s's event is %s's", pe.Input.Path, ev.Part.Path)
 		}
 		if ev.Part.Name == "shared.txt" && ev.Output == nil && ev.Outcome != dispatch.Seen {
-			// The prepared one, recorded before its own event.
 			key := dispatch.Key{SHA256: ev.Part.SHA256, Stage: ev.Stage}
 			if _, ok, err := f.index.Lookup(t.Context(), key); err != nil || !ok {
 				t.Errorf("shared.txt not recorded by its own event: %t, %v", ok, err)
@@ -131,8 +121,6 @@ func TestPool(t *testing.T) {
 	}
 }
 
-// TestPoolErrors: an input that can't be read stops its own dispatch alone: its error is yielded
-// with it, and every other input is prepared. Workers under 1 is an error, yielded alone.
 func TestPoolErrors(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	inputs := pooled(t, 10, func(i int) string { return fmt.Sprintf("leaf %d", i) })
@@ -171,8 +159,6 @@ func TestPoolErrors(t *testing.T) {
 	}
 }
 
-// blockingPool returns a fixture whose container tells entered of each input it prepares and
-// blocks it until release closes, and n inputs, each its own content that blocks.
 func blockingPool(t *testing.T, n, workers int) (*fixture, []dispatch.Input) {
 	t.Helper()
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
@@ -181,9 +167,6 @@ func blockingPool(t *testing.T, n, workers int) (*fixture, []dispatch.Input) {
 	return f, pooled(t, n, func(i int) string { return fmt.Sprintf("block\nnumber %d", i) })
 }
 
-// TestPoolCancel: ctx ending while every worker's stage blocks stops all of them: the pool takes
-// no more inputs, yields ctx's error alone, last, and returns with its working directory empty
-// and every claim released, so another dispatch prepares the inputs.
 func TestPoolCancel(t *testing.T) {
 	const n, workers = 20, 4
 	f, inputs := blockingPool(t, n, workers)
@@ -201,7 +184,6 @@ func TestPoolCancel(t *testing.T) {
 			errs = append(errs, err)
 			continue
 		}
-		// Each input's first output comes before its stage blocks.
 		if pe.Event.Output == nil {
 			t.Errorf("an event of %s after the stages blocked", pe.Event.Part.Name)
 		}
@@ -224,13 +206,6 @@ func TestPoolCancel(t *testing.T) {
 	}
 }
 
-// TestPoolBackPressure: a loop that holds its first event, an input's first output, holds every
-// worker at its own: once each worker's input has yielded its first output, no more is prepared,
-// and the working directory holds no more than a part directory per worker, the held event's
-// files among them. The event's part file is there while the body holds it. Once the loop goes
-// on, every input is prepared, each yielding four events, its output, its part's output, its
-// part's, and its own, and the working directory is empty when the pool returns. Stopping early
-// then stops every worker.
 func TestPoolBackPressure(t *testing.T) {
 	const n, workers = 30, 3
 	world := map[string]string{}
@@ -253,7 +228,6 @@ func TestPoolBackPressure(t *testing.T) {
 		if _, err := os.Stat(pe.Event.Part.Path); err != nil {
 			t.Errorf("the held event's file: %v", err)
 		}
-		// Every worker comes to an event of its own, then waits on this loop.
 		deadline := time.Now().Add(10 * time.Second)
 		for f.text.total() < workers && time.Now().Before(deadline) {
 			time.Sleep(time.Millisecond)
@@ -273,7 +247,6 @@ func TestPoolBackPressure(t *testing.T) {
 		t.Errorf("the working directory holds %q", left)
 	}
 
-	// Stopping early: the pool returns once every worker has, its files removed.
 	f, inputs = blockingPool(t, n, workers)
 	close(f.text.release)
 	seen := 0
@@ -292,8 +265,6 @@ func TestPoolBackPressure(t *testing.T) {
 	}
 }
 
-// TestPoolInputs: the inputs are ranged over one at a time as workers free up, and once the loop
-// stops, no more are taken from them.
 func TestPoolInputs(t *testing.T) {
 	f := newFixture(t, map[string]string{}, nil, dispatch.Limits{})
 	all := pooled(t, 50, func(i int) string { return fmt.Sprintf("leaf %d", i) })
@@ -312,7 +283,6 @@ func TestPoolInputs(t *testing.T) {
 		}
 		break
 	}
-	// The input whose event stopped the loop, the other worker's, and one the feeder held.
 	if taken > 3 {
 		t.Errorf("%d inputs taken after the loop stopped at its first event, want at most 3", taken)
 	}

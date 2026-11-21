@@ -1,6 +1,25 @@
 //! The one mapping from MAPI properties to the message model, shared by the .pst and .msg
 //! readers. It reads only what a reader has put in the bags, and returns its notes (lossy
 //! decodings, values it couldn't use) for the caller to warn about with the record's place.
+//!
+//! A message's bodies are read in the order its Markdown is made from them: its stored HTML, the
+//! HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
+//! only when there is no text body and is then the Markdown's, or beside HTML the content rule's
+//! source text; an RTF that encapsulates HTML has none of its own. Each body is still read and
+//! decoded, and one that can't be is passed over with a note. The stored HTML, PidTagHtml or
+//! PidTagBodyHtml in PT_STRING8, the same bytes, is decoded in the code page PidTagInternetCodepage
+//! names, else the one its own `<meta>` declares, else UTF-8 when it is valid UTF-8, else the
+//! message's: Apache POI's ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other strings in 1252 and
+//! its HTML in UTF-8, its internet code page. In PT_UNICODE it is UTF-16.
+//!
+//! An address's SMTP address is read only for an Exchange (`EX`) address type: on any other type
+//! the address is already the one to write to. A .pst stores a PidTagSubject that starts with
+//! U+0001 with a two-character prefix, the marker and the prefix's length (MS-PST 2.5.3.1.1.1),
+//! neither of them part of the subject. A recipient's type is PidTagRecipientType's (MS-OXOMSG
+//! 2.2.3.1), less the MAPI_P1 resend flag; an attachment's method is PidTagAttachMethod's
+//! (MS-OXCMSG 2.2.2.9), and its extension PidTagAttachExtension, stored with or without its dot,
+//! else its filename's. A PT_SYSTIME is written in ISO 8601 UTC, to the second, through Howard
+//! Hinnant's proleptic Gregorian algorithm; one past year 9999 is left out, with a note.
 
 use docproc_envelope::extension_of;
 
@@ -10,7 +29,6 @@ use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::rtf;
 
-/// Recipient types of PidTagRecipientType (MS-OXOMSG 2.2.3.1), less the MAPI_P1 resend flag.
 const MAPI_TO: i64 = 1;
 const MAPI_CC: i64 = 2;
 const MAPI_BCC: i64 = 3;
@@ -88,12 +106,6 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
     (message, bodies, all)
 }
 
-/// The bodies a message's Markdown is made from, the first it holds of: its stored HTML, the
-/// HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
-/// only when there is no text body: it is then the Markdown's, or beside HTML the content rule's
-/// source text. The stored HTML, the text and the RTF are each still read, and
-/// decoded; a body that can't be read is passed over with a note, and the Markdown is made from
-/// the next.
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
     let text = strings.text(props, tag::BODY);
     let html = html(strings, props, code_page);
@@ -112,8 +124,6 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
         html
     });
     let html = html.or(from_rtf);
-    // With no text body, the RTF body's own text is the Markdown's, else, beside HTML, the content
-    // rule's source text; an RTF that encapsulates HTML has none of its own.
     let rtf_text = match text {
         Some(_) => None,
         None => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
@@ -135,12 +145,6 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
     }
 }
 
-/// The stored HTML body. PidTagHtml is PT_BINARY, decoded in the code page
-/// PidTagInternetCodepage names, else the one the HTML's own `<meta>` declares, else UTF-8 when
-/// the bytes are valid UTF-8, else the message's, which is the store's when the message names
-/// none. As PidTagBodyHtml in PT_STRING8 it is the same bytes and decoded the same way, not in
-/// the message's code page: Apache POI's ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other
-/// strings in 1252 and its HTML in UTF-8, its internet code page. In PT_UNICODE it is UTF-16.
 fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {
     let bytes = match props.get(&tag::HTML)? {
         Value::Binary(bytes) | Value::String8(bytes) => bytes,
@@ -173,8 +177,6 @@ pub fn attachment(props: &Bag, content: Option<&[u8]>, code_page: u16) -> Mapped
     let filename = strings
         .text(props, tag::ATTACH_LONG_FILENAME)
         .or_else(|| strings.text(props, tag::ATTACH_FILENAME));
-    // The stored extension is PidTagAttachExtension, stored with or without its dot, else the
-    // filename's.
     let extension = strings
         .text(props, tag::ATTACH_EXTENSION)
         .map(|extension| extension.strip_prefix('.').unwrap_or(&extension).to_owned())
@@ -200,7 +202,6 @@ pub fn attachment(props: &Bag, content: Option<&[u8]>, code_page: u16) -> Mapped
     }
 }
 
-/// PidTagAttachMethod (MS-OXCMSG 2.2.2.9) by name.
 fn method(props: &Bag, notes: &mut Vec<String>) -> Option<&'static str> {
     let value = integer(props, tag::ATTACH_METHOD)?;
     let name = match value {
@@ -238,9 +239,6 @@ pub fn store_name(props: &Bag, code_page: u16) -> (Option<String>, Vec<String>) 
     (name, strings.into_notes())
 }
 
-/// The address `bag` holds under the ids of its name, its address, its address type and its SMTP
-/// address. The SMTP address is read only for an Exchange (`EX`) address: on any other type the
-/// address is already the one to write to.
 fn address(
     strings: &mut Strings,
     bag: &Bag,
@@ -259,8 +257,6 @@ fn address(
     (!address.is_empty()).then_some(address)
 }
 
-/// A .pst stores PidTagSubject with a two-character prefix when its first character is U+0001
-/// (MS-PST 2.5.3.1.1.1): the marker and the prefix's length. Neither is part of the subject.
 fn strip_subject_prefix(subject: String) -> String {
     let mut chars = subject.chars();
     if chars.next() == Some('\u{1}') {
@@ -283,7 +279,6 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-/// An enumerated integer property as its name, when the value is one of `names`.
 fn named(
     bag: &Bag,
     id: u16,
@@ -300,7 +295,6 @@ fn named(
     name.copied()
 }
 
-/// A PT_SYSTIME property in ISO 8601 UTC, to the second.
 fn time(bag: &Bag, id: u16, notes: &mut Vec<String>) -> Option<String> {
     let Some(Value::Time(ticks)) = bag.get(&id) else {
         return None;
@@ -312,10 +306,8 @@ fn time(bag: &Bag, id: u16, notes: &mut Vec<String>) -> Option<String> {
     iso
 }
 
-/// Seconds between 1601-01-01, the FILETIME epoch, and 1970-01-01.
 const FILETIME_TO_UNIX: i64 = 11_644_473_600;
 
-/// A FILETIME as "YYYY-MM-DDTHH:MM:SSZ", or None past year 9999.
 fn iso8601(ticks: i64) -> Option<String> {
     utc(ticks.div_euclid(10_000_000) - FILETIME_TO_UNIX)
 }
@@ -335,7 +327,6 @@ pub fn utc(seconds: i64) -> Option<String> {
     })
 }
 
-/// The proleptic Gregorian date of a day count from 1970-01-01 (Howard Hinnant's algorithm).
 fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
@@ -402,7 +393,6 @@ mod tests {
         Value::Unicode(text.encode_utf16().flat_map(u16::to_le_bytes).collect())
     }
 
-    /// PidTagRtfCompressed holding `rtf` uncompressed, as MS-OXRTFCP's "MELA" form stores it.
     fn mela(rtf: &str) -> Value {
         let mut bytes = Vec::new();
         let size = u32::try_from(rtf.len()).unwrap();
@@ -413,8 +403,6 @@ mod tests {
         Value::Binary(bytes)
     }
 
-    /// The bodies, by the order the Markdown is made from them: stored HTML, the HTML from a
-    /// `\fromhtml1` RTF, the text body, then the RTF's own text, read only when it is the one.
     #[test]
     fn the_markdown_is_made_from_the_first_body_in_order() {
         let bodies = |props: Vec<(u16, Value)>| {

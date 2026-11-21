@@ -26,12 +26,10 @@ Built at `tools/mail/`: its README states the tool, and its CHANGELOG how it dif
 spike-ai-pipeline-mail 0.3.1. What it leaves to later tasks:
 
 - **Shared crate.** The docproc-envelope crate at `tools/envelope` holds the Rust tools' common
-  envelope and the content rule; its `src/lib.rs` lists the parts. It has no lock or toolchain of
-  its own: each Rust tool's check formats, lints, and tests it against that tool's Cargo.lock, and
-  each Rust tool's CI filter takes the `&envelope` anchor, the crate's directory and
-  `tools/notices-rust.txt`, so a change to either runs every Rust tool and no .NET one. Each Rust
-  tool's `upgrade`, through `tools/currency.sh`, raises the crate's requirements with its own and
-  re-locks its own graph. docproc-mail and docproc-onenote both use it.
+  envelope and the content rule, and docproc-mail and docproc-onenote both use it; its `src/lib.rs`
+  lists the parts. [`tool-builds.md`](tool-builds.md), "The Rust tools", gives how each Rust tool
+  checks, lints, and upgrades it, and [`ci.md`](ci.md), "The paths filters", how a change to it
+  runs every Rust tool.
 - **Holds.** A tool's hold list is `HOLDS` in its `mise.toml`'s `[env]`, one
   `<item> <pin>: <reason>` per line, which `upgrade` skips and `currency` reports as held; a hold
   names its pin, so moving the pin by hand ends it. mail's list holds its fixture generator's

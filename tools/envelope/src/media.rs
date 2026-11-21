@@ -19,19 +19,13 @@ use sha2::{Digest, Sha256};
 
 use crate::Fault;
 
-/// The buffer a payload is copied through.
 const BUFFER: usize = 64 * 1024;
 
-/// The longest stored extension a name keeps.
 const EXTENSION_MAX: usize = 8;
 
 pub struct Media {
-    /// The `--media` directory; none without `--media`.
     dir: Option<PathBuf>,
-    /// The names this run has written. A name is its content's hash, so a name written once is
-    /// never written again.
     written: HashSet<String>,
-    /// How many temporary files this run has made, which tells their names apart.
     temporaries: u64,
 }
 
@@ -61,10 +55,11 @@ impl Media {
 
     /// Stores one payload, read from `content`, with the extension it was stored under, and
     /// returns its name. With `--media` it is written unless this run already wrote that name. A
-    /// payload that can't be read or written is a media fault, exit 1.
+    /// payload that can't be read or written is a media fault, exit 1: one that can't be read is
+    /// worded as it is without `--media`, never naming the temporary file it was being copied
+    /// into, and a media file that can't be written is named.
     pub fn store(&mut self, content: impl Read, extension: Option<&str>) -> Result<String, Fault> {
         let Some(dir) = self.dir.clone() else {
-            // io::sink takes every write, so only the read can fail.
             let hash = copy(content, &mut io::sink()).map_err(|failed| {
                 let (Failed::Read(err) | Failed::Write(err)) = failed;
                 unreadable(err)
@@ -111,16 +106,12 @@ pub fn extension_of(stored_name: &str) -> Option<&str> {
         .filter(|extension| !extension.is_empty())
 }
 
-/// Which side of a copy failed: reading the payload, or writing the media file.
 enum Failed {
     Read(io::Error),
     Write(io::Error),
 }
 
 impl Failed {
-    /// The media fault a failed copy into `file` is: a payload that can't be read is worded as it
-    /// is without `--media`, never naming the temporary file it was being copied into; a write
-    /// that fails names the file.
     fn fault(self, file: &Path) -> Fault {
         match self {
             Failed::Read(err) => unreadable(err),
@@ -132,12 +123,10 @@ impl Failed {
     }
 }
 
-/// The media fault of a payload that can't be read, with or without `--media`.
 fn unreadable(err: io::Error) -> Fault {
     Fault::Media(format!("a medium can't be read: {err}"))
 }
 
-/// Copies `content` into `out` through the fixed buffer, hashing it, and returns its SHA-256.
 fn copy(mut content: impl Read, out: &mut impl Write) -> Result<[u8; 32], Failed> {
     let mut hasher = Sha256::new();
     let mut buffer = vec![0; BUFFER];
@@ -154,7 +143,6 @@ fn copy(mut content: impl Read, out: &mut impl Write) -> Result<[u8; 32], Failed
     Ok(hasher.finalize().into())
 }
 
-/// A payload's name: its hash in lowercase hex, then `.` and the extension when it is usable.
 fn name(hash: [u8; 32], extension: Option<&str>) -> String {
     let mut name = String::with_capacity(64 + 1 + EXTENSION_MAX);
     for byte in hash {
@@ -167,14 +155,11 @@ fn name(hash: [u8; 32], extension: Option<&str>) -> String {
     name
 }
 
-/// Whether an extension may end a name: 1 to 8 ASCII letters and digits, which keeps a stored
-/// value from adding a separator, a dot, or anything else to the path.
 fn usable(extension: &str) -> bool {
     (1..=EXTENSION_MAX).contains(&extension.len())
         && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
 }
 
-/// Removes a temporary file after a failure; the failure is what is reported.
 fn remove(path: &Path) {
     let _ = fs::remove_file(path);
 }
@@ -184,8 +169,6 @@ mod tests {
     use super::*;
     use crate::cases;
 
-    /// Each payload and stored name make the table's media name, hashed through the store as a
-    /// run without `--media` hashes it.
     #[test]
     fn a_payload_and_its_stored_name_make_the_tables_name() {
         for case in cases::group("media_names") {
@@ -198,7 +181,6 @@ mod tests {
         }
     }
 
-    /// A payload longer than the buffer is hashed whole.
     #[test]
     fn a_payload_past_the_buffer_is_hashed_whole() {
         let bytes = vec![b'a'; BUFFER * 2 + 1];

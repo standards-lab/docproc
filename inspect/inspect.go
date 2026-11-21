@@ -118,11 +118,6 @@ const (
 	ArchiveEncrypted Check = "archive-encrypted"
 )
 
-// The archive checks' rules are seven, whatever the archive's format: [ArchiveTraversal],
-// [ArchiveAbsolutePath], [ArchiveSymlink], [ArchiveHardlink], [ArchiveDevice], [ArchiveEncrypted],
-// and [ArchiveBomb]. An archive whose directory can't be read is unreadable by its format's own
-// check, as an SVG's or a relationships part's scan is.
-
 // The checks of class [Unsafe].
 const (
 	// ArchiveBomb is an archive, or an entry of one, that expands past the bomb rule its
@@ -142,7 +137,6 @@ const (
 	TarUnreadable Check = "tar-unreadable"
 )
 
-// classes are every check's class.
 var classes = map[Check]Class{
 	SignatureMismatch: Active, Polyglot: Active, Executable: Active,
 	ExecutableExtension: Active, DoubleExtension: Active,
@@ -284,7 +278,7 @@ func Inspect(ctx context.Context, path, name string, opts Options) (Report, erro
 	if err != nil {
 		return Report{}, fmt.Errorf("inspect: %w", err)
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	info, err := f.Stat()
 	if err != nil {
 		return Report{}, fmt.Errorf("inspect: %w", err)
@@ -347,26 +341,20 @@ func Content(ctx context.Context, r io.ReaderAt, size int64, kind route.Kind, op
 	return Report{Kind: kind, Flags: flags, Verdict: opts.Verdict(flags)}, nil
 }
 
-// inspection is one inspection's state: the content, its kind, and the findings so far, by
-// check.
 type inspection struct {
 	file  io.ReaderAt
 	size  int64
 	kind  route.Kind
 	opts  Options
 	found map[Check]*finding
-	// rels is what remains of the package's budget for its relationship parts, once a ZIP's
-	// scan has set it.
-	rels int64
+	rels  int64
 }
 
-// finding is a check's first evidence and how many more findings it had.
 type finding struct {
 	evidence string
 	more     int
 }
 
-// flag records a finding of check c.
 func (in *inspection) flag(c Check, evidence string) {
 	if f, ok := in.found[c]; ok {
 		f.more++
@@ -375,8 +363,6 @@ func (in *inspection) flag(c Check, evidence string) {
 	in.found[c] = &finding{evidence: evidence}
 }
 
-// flags returns the findings as flags, sorted by check, each evidence counting the findings
-// after its first.
 func (in *inspection) flags() []Flag {
 	var flags []Flag
 	for c, f := range in.found {
@@ -390,13 +376,11 @@ func (in *inspection) flags() []Flag {
 	return flags
 }
 
-// executableExtensions are the extensions of programs and scripts a desktop runs when opened.
 var executableExtensions = map[string]bool{
 	".exe": true, ".dll": true, ".js": true, ".vbs": true, ".scr": true, ".bat": true,
 	".cmd": true, ".ps1": true, ".lnk": true, ".hta": true, ".jar": true, ".msi": true,
 }
 
-// executableKinds are route's kinds of executable content.
 var executableKinds = map[route.Kind]bool{
 	route.PE: true, route.ELF: true, route.MachO: true, route.Shebang: true,
 }
@@ -427,11 +411,8 @@ func Name(name string, kind route.Kind) []Flag {
 	return in.flags()
 }
 
-// baseName returns the last element of a name, which may be a path by either separator.
 func baseName(n string) string { return path.Base(strings.ReplaceAll(n, `\`, "/")) }
 
-// plausibleExtension reports whether ext, with its dot, looks like a file extension: one to
-// five letters or digits, as ".pdf" or ".docx" does and ".report" doesn't.
 func plausibleExtension(ext string) bool {
 	if len(ext) < 2 || len(ext) > 6 {
 		return false
@@ -441,8 +422,6 @@ func plausibleExtension(ext string) bool {
 	})
 }
 
-// extensionKinds are the kinds a signature may be for an extension that names a format; an
-// extension not listed, such as .txt, which no signature marks, isn't checked.
 var extensionKinds = map[string][]route.Kind{
 	".pdf": {route.PDF},
 	".png": {route.PNG}, ".jpg": {route.JPEG}, ".jpeg": {route.JPEG}, ".gif": {route.GIF},

@@ -75,67 +75,29 @@ func NewExec(ctx context.Context, spec Spec) (*Tool, error) {
 	return &Tool{name: name, version: version, line: line, timeout: spec.Timeout, idle: spec.Idle, run: execRun(cfg)}, nil
 }
 
-// execVersion checks spec's version, as checkVersion does, through the exec runner under cfg, in
-// the environment a run gets: the fixed environment, then HOME a new empty directory of the
-// check's own, standing in for the working directory each run has, and TMPDIR a new empty
-// directory of the run's own, as every run's is, then spec's Env. The command still works in the
-// process's working directory, and both directories are removed once it has run. So a program
-// that answers only under the host's HOME, such as a version manager's shim, which reads the
-// user's configuration again on every run and refuses it once HOME isn't the user's, is refused
-// here, as every run of it would fail.
 func execVersion(ctx context.Context, name string, spec Spec, minimum Version, cfg execConfig) (Version, string, error) {
 	home, err := os.MkdirTemp("", "docproc-version-")
 	if err != nil {
 		return Version{}, "", fmt.Errorf("tool: %s: the version command's home: %w", name, err)
 	}
-	// Best effort: a directory left behind holds only what the version command wrote, and the
-	// tool's check stands either way.
 	defer func() { _ = os.RemoveAll(home) }()
 	cfg.fixed = slices.Concat(cfg.fixed, []string{"HOME=" + home})
 	return checkVersion(ctx, name, spec, minimum, execRun(cfg))
 }
 
-// execConfig is what the exec runner runs, and how.
 type execConfig struct {
-	// name is the program's name, for errors.
-	name string
-	// path is what is executed: the program, or prlimit leading it.
-	path string
-	// lead are the arguments before the invocation's: prlimit's, ending with the program's path.
-	lead []string
-	// killAfter is the time between SIGTERM and SIGKILL for a run that is ended.
+	name      string
+	path      string
+	lead      []string
 	killAfter time.Duration
-	// lockdown gives the program the fixed environment and env, a TMPDIR of the run's own, and an
-	// oom_score_adj of 1000. The container runner's docker CLI runs without it, with the host's
-	// environment, which holds its daemon's address and its configuration, and the host's
-	// oom_score_adj.
-	lockdown bool
-	// fixed is the fixed environment, without HOME, which each run's Dir gives, and TMPDIR, which
-	// each run makes.
-	fixed []string
-	// env is the spec's Env, which follows the fixed environment.
-	env []string
+	lockdown  bool
+	fixed     []string
+	env       []string
 }
 
-// oomScoreAdj is the oom_score_adj a locked-down program takes: the most, so the OOM killer
-// chooses it first.
 const oomScoreAdj = "1000"
 
-// execRun returns the exec runner's runFunc for cfg, which runs cfg.path with cfg.lead and then
-// the invocation's arguments, and gives a run that ctx ends cfg.killAfter between SIGTERM and
-// SIGKILL.
-//
-// The program leads a process group of its own, so an end reaches everything it started: SIGTERM
-// to the group when ctx ends; SIGKILL to the program once killAfter passes (WaitDelay), or with
-// the SIGTERM when killAfter is zero; and, once the program has exited but before it is reaped,
-// SIGKILL to the group, so no child outlives it.
-//
-// An *os.File stdin passes straight to the program; any other reader goes through a stdinFeed,
-// so a run never waits on a Read of the caller's.
-//
-// With lockdown, the run makes its TMPDIR before the program starts, and removes it as it returns,
-// which is only once startAndWait has sent the group SIGKILL and reaped the program: a run whose
-// caller streams its stdout returns, and so removes it, no earlier than any other.
+// See docs/api.md, "Running the tools".
 func execRun(cfg execConfig) runFunc {
 	name, killAfter := cfg.name, cfg.killAfter
 	return func(ctx context.Context, inv Invocation) error {
@@ -146,9 +108,6 @@ func execRun(cfg execConfig) runFunc {
 			if err != nil {
 				return fmt.Errorf("tool: %s: temporary directory: %w", name, err)
 			}
-			// Best effort, as the run returns: the program is reaped by then and its group sent
-			// SIGKILL, so nothing of the run's writes there any more, and the run's outcome stands
-			// whether the directory goes or not.
 			defer func() { _ = os.RemoveAll(tmp) }()
 			env, err := environ(cfg.fixed, cfg.env, inv.Dir, tmp)
 			if err != nil {
@@ -181,9 +140,6 @@ func execRun(cfg execConfig) runFunc {
 			}
 			return err
 		}
-		// WaitDelay's timer starts when ctx ends, in Start's own goroutine, so it SIGKILLs a
-		// program that outlasts killAfter while awaitExit blocks. Zero leaves the pipes to be read
-		// to their end, which the group's SIGKILL brings once the program has exited.
 		if killAfter > 0 {
 			cmd.WaitDelay = killAfter
 		}
@@ -196,8 +152,6 @@ func execRun(cfg execConfig) runFunc {
 				err = fmt.Errorf("stdin: %w", ferr)
 			}
 		}
-		// The program's exit, when it was reaped: os/exec reports an exit 0 after ctx ended as
-		// ctx's error, so the facts come from the process state, not err.
 		var exit *ExitError
 		if state := cmd.ProcessState; state != nil && err != nil {
 			exit = &ExitError{Program: name, Code: state.ExitCode(), Signal: waitSignal(state), err: err}
@@ -206,7 +160,6 @@ func execRun(cfg execConfig) runFunc {
 			}
 		}
 		if err != nil && ctx.Err() != nil {
-			// ctx ended the run: its error is the cause, whatever the program's exit.
 			return &cancelError{program: name, ctxErr: ctx.Err(), outcome: err, exit: exit}
 		}
 		if _, ok := errors.AsType[*exec.ExitError](err); ok {
@@ -219,11 +172,6 @@ func execRun(cfg execConfig) runFunc {
 	}
 }
 
-// startAndWait starts cmd and waits for it, on an OS thread locked to the run from the start to
-// the reaping, since the parent-death signal is sent when the thread that started the program
-// exits, not the process. A stdin feed, when the run has one, starts its copy once the program
-// has started, and, with lockdown, the program's oom_score_adj is raised then. Once the program
-// has exited, and before it is reaped, its process group is sent SIGKILL.
 func startAndWait(cmd *exec.Cmd, feed *stdinFeed, lockdown bool) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -235,22 +183,14 @@ func startAndWait(cmd *exec.Cmd, feed *stdinFeed, lockdown bool) error {
 		return err
 	}
 	if lockdown {
-		// Best effort: a program that has already exited has no oom_score_adj left to set.
 		_ = os.WriteFile("/proc/"+strconv.Itoa(cmd.Process.Pid)+"/oom_score_adj", []byte(oomScoreAdj), 0)
 	}
-	// The program is exited but unreaped once awaitExit returns: a zombie keeps its pid, and so
-	// the group's ID, from reuse, so the group's SIGKILL reaches only what the program started.
-	// Should waitid fail, which Linux has offered since 2.6.9, the group is left alone rather
-	// than risk a reused ID.
 	if awaitExit(cmd.Process.Pid) == nil {
 		_ = signalGroup(cmd.Process, syscall.SIGKILL)
 	}
 	return cmd.Wait()
 }
 
-// environ returns a run's environment: fixed; then HOME, dir made absolute, when dir isn't empty;
-// then TMPDIR, tmp, the run's own; then env, the spec's Env, last, so os/exec, which keeps a
-// key's last value, gives its keys precedence.
 func environ(fixed, env []string, dir, tmp string) ([]string, error) {
 	var home []string
 	if dir != "" {
@@ -263,8 +203,6 @@ func environ(fixed, env []string, dir, tmp string) ([]string, error) {
 	return slices.Concat(fixed, home, []string{"TMPDIR=" + tmp}, env), nil
 }
 
-// waitSignal returns the name of the signal that ended the program, from its wait status; empty
-// for an exit.
 func waitSignal(state *os.ProcessState) string {
 	status, ok := state.Sys().(syscall.WaitStatus)
 	if !ok || !status.Signaled() {
@@ -273,9 +211,6 @@ func waitSignal(state *os.ProcessState) string {
 	return signalName(int(status.Signal()))
 }
 
-// usage returns the CPU time of a reaped program, from its rusage; zero when state is nil, a
-// program that never started. It leaves out ru_maxrss, which holds the Go parent's resident
-// memory from the vfork-style clone that started the program (see Usage).
 func usage(state *os.ProcessState) Usage {
 	if state == nil {
 		return Usage{}
@@ -290,19 +225,12 @@ func usage(state *os.ProcessState) Usage {
 	}
 }
 
-// stdinFeed is the pipe a run's stdin passes through when the caller's reader isn't an *os.File.
-// os/exec would copy such a reader itself, and, once the program has exited, wait for that copy
-// with no bound, even past WaitDelay: a copy blocked in the caller's Read, on a pipe the caller
-// holds open, would keep Run from ever returning. The feed's copy is execRun's own, so Run decides
-// how long to wait for it.
 type stdinFeed struct {
 	src  io.Reader
 	r, w *os.File
-	// done carries the copy's outcome; nil until start begins the copy.
 	done chan error
 }
 
-// newStdinFeed makes the pipe src is copied into, its read end the program's stdin.
 func newStdinFeed(src io.Reader) (*stdinFeed, error) {
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -311,11 +239,6 @@ func newStdinFeed(src io.Reader) (*stdinFeed, error) {
 	return &stdinFeed{src: src, r: r, w: w}, nil
 }
 
-// start runs once the command's Start has returned, started reporting whether it succeeded. The
-// program holds the read end of its own, so the parent's copy is closed either way: the program,
-// and whatever it starts, are then the pipe's only readers, and a write once they have all exited
-// fails with EPIPE rather than blocking. A program that started gets the copy, which closes the
-// write end when it ends, so the program reads EOF at the end of src; one that didn't, nothing.
 func (f *stdinFeed) start(started bool) {
 	_ = f.r.Close()
 	if !started {
@@ -325,27 +248,14 @@ func (f *stdinFeed) start(started bool) {
 	f.done = make(chan error, 1)
 	go func() {
 		_, err := io.Copy(f.w, f.src)
-		// EPIPE is a program that exited, or closed its stdin, without reading all of src, and
-		// ErrClosed is a write end that finish closed: neither is the copy's failure.
 		if errors.Is(err, syscall.EPIPE) || errors.Is(err, os.ErrClosed) {
 			err = nil
 		}
-		// The outcome is in done before the program can read EOF, so a program that reads to
-		// the end, exits, and is reaped has its copy's outcome waiting for finish.
 		f.done <- err
 		_ = f.w.Close()
 	}()
 }
 
-// finish runs once the program has exited and been reaped, and returns the copy's error, a read
-// of src that failed while the program ran, when the copy has ended. A run that ctx ended doesn't
-// wait for the copy at all, nor does a zero killAfter. Otherwise finish waits for the copy at most killAfter, as WaitDelay bounds the wait for
-// the program's output, and stops early should ctx end: a program that read all of src has its
-// copy already ended, and one that left src unread ends its copy with EPIPE at the next write,
-// but a copy blocked in a Read of src, which the caller holds open, ends only when that Read
-// returns, which no bound here can hasten. When finish stops waiting, it closes the write end, so
-// the copy's next write fails and it ends, and reports nothing: an exited program can read no
-// more of src, and leaving src unread is no error.
 func (f *stdinFeed) finish(ctx context.Context, killAfter time.Duration) error {
 	if f.done == nil {
 		return nil
@@ -369,14 +279,9 @@ func (f *stdinFeed) finish(ctx context.Context, killAfter time.Duration) error {
 	return nil
 }
 
-// pPID is waitid's idtype for a single pid, P_PID, which syscall doesn't define.
 const pPID = 1
 
-// awaitExit blocks until the child pid has exited, without reaping it: waitid with WNOWAIT
-// leaves the child waitable, so the os.Process's own wait, through its pidfd, still reaps it and
-// collects its status. The os package's wait does the same where it has no pidfd.
 func awaitExit(pid int) error {
-	// The kernel writes a siginfo_t, 128 bytes on Linux, which nothing here reads.
 	var info [128]byte
 	for {
 		_, _, errno := syscall.Syscall6(syscall.SYS_WAITID, pPID, uintptr(pid),
@@ -390,8 +295,6 @@ func awaitExit(pid int) error {
 	}
 }
 
-// signalGroup sends sig to the process group p leads, reporting a group already gone as
-// os.ErrProcessDone.
 func signalGroup(p *os.Process, sig syscall.Signal) error {
 	err := syscall.Kill(-p.Pid, sig)
 	if errors.Is(err, syscall.ESRCH) {

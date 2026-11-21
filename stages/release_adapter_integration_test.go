@@ -25,7 +25,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// diskBytes returns the bytes the regular files under dir hold, a hard link's once.
 func diskBytes(t *testing.T, dir string) int64 {
 	t.Helper()
 	seen := map[uint64]bool{}
@@ -62,22 +61,9 @@ func diskBytes(t *testing.T, dir string) int64 {
 	return size
 }
 
-// TestEmailStageReleases dispatches mail stores through the email stage, a sink stage on every
-// other route so that each attachment is recorded, probing the working directory's bytes at
-// every event: no attachment fails or is lost, and a repeated one is seen.
-//
-// The committed stores only log the peak: no one spreads its attachments over messages enough
-// that the peak must fall below their sum, mail writing a small store's ahead of the dispatch.
-// The tika store gives mail no attachment content, and libyal's repeats one message's eleven
-// attachments in a second. The generated mbox, [spreadMbox]'s, does: its lines fill the pipe
-// docproc-mail writes them to about ten messages in, so mail blocks there, and the working
-// directory holds the attachments of the messages in the pipe and the one in flight, not all of
-// them; its peak must fall below their sum. dispatch's TestReleaseBoundsDisk holds that each
-// original is released once it is recorded.
 func TestEmailStageReleases(t *testing.T) {
 	stores := []struct {
-		path string
-		// bounded says the peak must fall below the distinct attachments' sum.
+		path    string
 		bounded bool
 	}{
 		{filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst"), false},
@@ -145,20 +131,12 @@ func TestEmailStageReleases(t *testing.T) {
 	}
 }
 
-// spreadMbox's shape: its message count, each message's attachment's size, and its text body's,
-// which its line's Markdown carries. Each line is some 9 KiB, so the pipe between docproc-mail and
-// the stage, the OS's 64 KiB and the copies' buffers past it, holds about ten, and mail blocks
-// with that many messages' attachments written ahead: some 640 KiB, against the 6.4 MiB all 100
-// hold, which a stage that released none would reach.
 const (
 	spreadMessages   = 100
 	spreadAttachment = 64 << 10
 	spreadBody       = 8 << 10
 )
 
-// spreadMbox writes an mbox of spreadMessages messages into a temporary directory and returns its
-// path: each message a text body of spreadBody bytes and one attachment, base64, of
-// spreadAttachment bytes of its own, distinct from every other's.
 func spreadMbox(t *testing.T) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -209,7 +187,6 @@ func spreadMbox(t *testing.T) string {
 	return path
 }
 
-// sink is a stage that yields one output for each part, so each is recorded.
 type sink struct{}
 
 func (sink) Identity() dispatch.Identity {

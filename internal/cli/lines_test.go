@@ -11,9 +11,6 @@ import (
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
-// TestLineWriter: lines split at either line break, across writes, are passed trimmed, the empty
-// ones skipped; a line past MaxLine is cut there; the last line, without a break, waits for Flush;
-// and once Line errs, nothing more is passed, the last line still kept.
 func TestLineWriter(t *testing.T) {
 	var got []string
 	w := &cli.LineWriter{Line: func(s string) error { got = append(got, s); return nil }}
@@ -46,8 +43,6 @@ func TestLineWriter(t *testing.T) {
 	}
 }
 
-// TestWriteTemp: WriteTemp writes the bytes to a new hidden file in dir, named by the pattern; a
-// directory that isn't one is its error, and leaves nothing.
 func TestWriteTemp(t *testing.T) {
 	dir := t.TempDir()
 	path, err := cli.WriteTemp(dir, ".window-*.wav", []byte("RIFF"))

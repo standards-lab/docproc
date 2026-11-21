@@ -67,17 +67,11 @@ func NewReader(cfg Config) (*Reader, error) {
 	return &Reader{sevenZip: cfg.SevenZip}, nil
 }
 
-// formats are the kinds the package reads, each with the format 7-Zip is told to read it as, its
-// -t switch, so 7-Zip never guesses one from the content or the name.
 var formats = map[route.Kind]string{
-	// A 7z archive.
 	route.SevenZip: "7z",
-	// A zstd stream: one item, its decompressed content, unnamed.
-	route.Zstd: "zstd",
-	// A Microsoft cabinet, the container a OneNote package is.
-	route.MSCF: "cab",
-	// A ZIP, read through 7-Zip for an entry whose method archive/zip doesn't read.
-	route.ZIP: "zip",
+	route.Zstd:     "zstd",
+	route.MSCF:     "cab",
+	route.ZIP:      "zip",
 }
 
 // ListRequest names the archive to list, the kind to read it as, and the bound on its items.
@@ -104,11 +98,8 @@ type ExtractRequest struct {
 	Name string
 }
 
-// common are the switches every run takes: -p, an empty password, so 7zz never prompts for one,
-// an encrypted item or header failing instead; and -sccUTF-8, its console output in UTF-8.
 var common = []string{"-p", "-sccUTF-8"}
 
-// stderrLimit is how much of 7zz's standard error a run keeps for its error.
 const stderrLimit = 16 << 10
 
 // List lists the archive req names, through one 7zz run of its technical listing, -slt, which
@@ -131,7 +122,6 @@ func (r *Reader) List(ctx context.Context, req ListRequest) (Listing, error) {
 	args := append([]string{"l", "-slt", "-t" + format}, common...)
 	args = append(args, "--", path)
 	runErr := r.run(ctx, args, parser, stderr)
-	// The parse's own failure, a bound passed among them, is why 7zz stopped, when it failed.
 	if parser.err == nil && runErr != nil {
 		return Listing{}, fmt.Errorf("sevenzip: list %s: %w", filepath.Base(req.Path), runErr)
 	}
@@ -168,8 +158,6 @@ func (r *Reader) Extract(ctx context.Context, req ExtractRequest, w io.Writer) e
 	stderr := &cli.LimitedBuffer{Limit: stderrLimit}
 	out := &failedWriter{w: w}
 	err = r.run(ctx, args, out, stderr)
-	// The write's own failure is why 7zz stopped, when it failed, as a parse's is List's: os/exec
-	// reports 7zz's exit at the broken pipe in preference to it.
 	if out.err != nil {
 		err = out.err
 	}
@@ -179,7 +167,6 @@ func (r *Reader) Extract(ctx context.Context, req ExtractRequest, w io.Writer) e
 	return nil
 }
 
-// failedWriter writes to w, keeping in err the error of the first write that failed.
 type failedWriter struct {
 	w   io.Writer
 	err error
@@ -193,8 +180,6 @@ func (f *failedWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// check refuses a request with no path or a kind the package doesn't read, and returns the path
-// made absolute, so it never begins with a "-" or "@", and the format 7-Zip is told to read it as.
 func check(path string, kind route.Kind) (string, string, error) {
 	if path == "" {
 		return "", "", fmt.Errorf("sevenzip: %w: no path", ErrRequest)
@@ -210,9 +195,6 @@ func check(path string, kind route.Kind) (string, string, error) {
 	return abs, format, nil
 }
 
-// run runs 7zz with args, its stdout to stdout and its stderr to stderr, and returns its outcome:
-// nil for exit code 0, or 1, a warning; and otherwise an error naming 7zz's message, matching
-// ErrEncrypted or ErrNotArchive when the message says so, and the run's *tool.ExitError.
 func (r *Reader) run(ctx context.Context, args []string, stdout io.Writer, stderr *cli.LimitedBuffer) error {
 	err := r.sevenZip.Run(ctx, tool.Invocation{Args: args, Stdout: stdout, Stderr: stderr})
 	exit, ok := errors.AsType[*tool.ExitError](err)
@@ -236,8 +218,6 @@ func (r *Reader) run(ctx context.Context, args []string, stdout io.Writer, stder
 	return err
 }
 
-// errorLines returns 7zz's stderr lines that say what went wrong, its "ERROR:" lines and those
-// after an "ERRORS:" line, joined by "; ".
 func errorLines(stderr string) string {
 	var lines []string
 	after := false

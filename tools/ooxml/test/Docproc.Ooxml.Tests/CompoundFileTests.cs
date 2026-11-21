@@ -4,17 +4,12 @@ using Docproc.Ooxml.Reading;
 
 namespace Docproc.Ooxml.Tests;
 
-// The compound-file directory reader's seam, independent of the CLI: compound files built here
-// byte by byte from [MS-CFB], never one the reader wrote, valid ones of both versions and
-// malformed ones, each refused as malformed.
 public sealed class CompoundFileTests
 {
     private const uint EndOfChain = 0xFFFFFFFE;
     private const uint FatSector = 0xFFFFFFFD;
     private const uint NoStream = 0xFFFFFFFF;
 
-    // An encrypted package's root, as [MS-OFFCRYPTO] has it: the children come back in the
-    // directory tree's order, through left and right siblings.
     [Theory]
     [InlineData(3)]
     [InlineData(4)]
@@ -32,7 +27,6 @@ public sealed class CompoundFileTests
         Assert.Equal(["EncryptionInfo", "EncryptedPackage", "\u0006DataSpaces"], image.RootChildren());
     }
 
-    // Only the root's own children: a storage's children are its own.
     [Fact]
     public void AStoragesChildrenAreNotTheRoots()
     {
@@ -59,10 +53,6 @@ public sealed class CompoundFileTests
         Assert.Empty(image.RootChildren());
     }
 
-    // A directory of two sectors, the second found through the FAT, and the FAT sector for it
-    // found through the DIFAT's chain past the header's 109: version 3's sectors of 512 bytes,
-    // each FAT sector covering 128 sectors, so the second directory sector sits past sector
-    // 109 * 128.
     [Fact]
     public void TheDirectorysChainIsFollowedThroughTheDifat()
     {
@@ -107,8 +97,6 @@ public sealed class CompoundFileTests
         { "directory entry 1 with a name of 0 bytes", image => image.EntryNameLength(1, 0) },
     };
 
-    // Each malformed file is refused with what is wrong, never read past its end or around a
-    // cycle.
     [Theory]
     [MemberData(nameof(Malformed))]
     public void AMalformedCompoundFileIsRefused(string reason, Action<Image> breakIt)
@@ -125,9 +113,6 @@ public sealed class CompoundFileTests
         Assert.Equal(reason, e.Message);
     }
 
-    // A DIFAT chain that loops, or names a sector past the file, is malformed: the directory's
-    // sector sits where the FAT sector that covers it is the DIFAT chain's second sector's to
-    // name, and the first names itself, or a sector past the end, as the next.
     [Theory]
     [InlineData(110u, "DIFAT sector 110 reached twice")]
     [InlineData(40_000u, "DIFAT sector 40000 past the file's 30209")]
@@ -147,7 +132,6 @@ public sealed class CompoundFileTests
         Assert.Equal(reason, e.Message);
     }
 
-    // A last sector the file cuts short reads as zeros past the end.
     [Fact]
     public void AShortLastSectorReads()
     {
@@ -162,8 +146,6 @@ public sealed class CompoundFileTests
         Assert.Equal(["A"], image.RootChildren());
     }
 
-    /// <summary>A compound file under construction: its header, sectors of the version's size,
-    /// FAT sectors listed in the header's DIFAT or a DIFAT sector, and directory entries.</summary>
     public sealed class Image
     {
         private readonly int sectorSize;
@@ -189,7 +171,6 @@ public sealed class CompoundFileTests
             {
                 Header(76 + i * 4, 0xFFFFFFFF);
             }
-            // Every sector's FAT entry is free until something claims it.
             Array.Fill(bytes, (byte)0xFF, sectorSize, bytes.Length - sectorSize);
         }
 
@@ -199,8 +180,6 @@ public sealed class CompoundFileTests
 
         public void Truncate(int length) => bytes = bytes[..length];
 
-        // The FAT's index-th sector is the given sector, listed in the header's DIFAT, or in the
-        // given DIFAT sector past the header's 109.
         public void Fat(uint index, uint sector, uint? difatSector = null)
         {
             Clear(sector);
@@ -225,7 +204,6 @@ public sealed class CompoundFileTests
             Put(Offset(sector) + (uint)(sectorSize - 4), next);
         }
 
-        // The sectors' chain in the FAT, ending in the last.
         public void Chain(params uint[] sectors)
         {
             for (var i = 0; i < sectors.Length; i++)

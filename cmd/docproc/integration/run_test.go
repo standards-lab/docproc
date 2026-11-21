@@ -20,10 +20,6 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/integration"
 )
 
-// docproc run as a built binary, over the docproc tools built from the checkout and the host's
-// other system tools, writing a run directory that rundir reads back.
-
-// version prints the module's version, one line, to stdout.
 func TestCLI_Version(t *testing.T) {
 	res := integration.Run(t, "version")
 
@@ -39,15 +35,11 @@ func TestCLI_Version(t *testing.T) {
 	}
 }
 
-// runArgs returns docproc run's arguments over inputs into the run directory out, with more
-// flags after them.
 func runArgs(inputs []string, out string, flags ...string) []string {
 	args := append([]string{"run"}, inputs...)
 	return append(append(args, "--out", out), flags...)
 }
 
-// onlyRun opens the run directory out through rundir's reader and returns it and the id of its
-// one run, failing the test unless it holds exactly one.
 func onlyRun(t *testing.T, out string) (*rundir.Dir, string) {
 	t.Helper()
 	d, err := rundir.Open(out)
@@ -61,10 +53,6 @@ func onlyRun(t *testing.T, out string) (*rundir.Dir, string) {
 	return d, ids[0]
 }
 
-// A run over every committed fixture writes a schema "2" run directory that rundir reads: its one
-// run ended, with no error, is the latest, its manifest names every input, and its record decodes
-// whole and accounts for every input, each with its own part line, depth 0, or its error line,
-// exactly once.
 func TestRun_Fixtures(t *testing.T) {
 	fixtures := integration.Fixtures(t)
 	out := filepath.Join(t.TempDir(), "out")
@@ -108,8 +96,6 @@ func TestRun_Fixtures(t *testing.T) {
 	}
 }
 
-// recordLines returns how many whole lines, each ending in a newline, the record file at path
-// holds, 0 when it doesn't exist yet.
 func recordLines(t *testing.T, path string) int {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -122,11 +108,6 @@ func recordLines(t *testing.T, path string) int {
 	return bytes.Count(b, []byte("\n"))
 }
 
-// A run killed by SIGKILL partway through its record, which it can't catch, still reads through
-// Record: every whole line it wrote, a torn last line alone dropped, then ErrNotEnded, since its
-// manifest has no end; Latest passes it over. The kill lands mid-run: the run dispatches every
-// fixture one at a time, which takes seconds, and is killed once its record holds a line. docproc
-// report then renders it by --run, marked not ended, and exits 0.
 func TestRun_Killed(t *testing.T) {
 	fixtures := integration.Fixtures(t)
 	out := filepath.Join(t.TempDir(), "out")
@@ -135,7 +116,7 @@ func TestRun_Killed(t *testing.T) {
 	var record string
 	processtest.WaitFor(t, "the run's first record line", func() bool {
 		if p.Exited() {
-			return true // Kill fails the test: the run ended before its kill
+			return true
 		}
 		paths, err := filepath.Glob(filepath.Join(out, "runs", "*", "record.jsonl"))
 		if err != nil || len(paths) != 1 {
@@ -172,8 +153,6 @@ func TestRun_Killed(t *testing.T) {
 		t.Errorf("Record yielded %d lines, want the record's %d whole lines, at least one", lines, whole)
 	}
 
-	// docproc report renders the killed run, by --run, its index marked not ended, and exits 0,
-	// printing the index's path last.
 	rep := integration.Run(t, "report", out, "--run", id)
 	if rep.Code != process.ExitOK {
 		t.Fatalf("report code = %d, want %d; stderr = %q", rep.Code, process.ExitOK, rep.Stderr)

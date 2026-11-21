@@ -20,9 +20,6 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/apptest"
 )
 
-// reportCmd runs docproc report over args with an unreadable lifecycle configuration and every
-// bound unset, so a run that read any configuration or built any node would fail, and fails the
-// test when the run built a node.
 func reportCmd(t *testing.T, args ...string) result {
 	t.Helper()
 	clearBounds(t)
@@ -35,7 +32,6 @@ func reportCmd(t *testing.T, args ...string) result {
 	return result{code, stdout.String(), stderr.String()}
 }
 
-// reportOK runs docproc report as reportCmd does and fails the test unless it exits 0.
 func reportOK(t *testing.T, args ...string) result {
 	t.Helper()
 	r := reportCmd(t, args...)
@@ -45,7 +41,6 @@ func reportOK(t *testing.T, args ...string) result {
 	return r
 }
 
-// indexOf returns the absolute path of the index page of the run id in the run directory out.
 func indexOf(t *testing.T, out, id string) string {
 	t.Helper()
 	abs, err := filepath.Abs(filepath.Join(out, "runs", id, "report", "index.html"))
@@ -55,7 +50,6 @@ func indexOf(t *testing.T, out, id string) string {
 	return abs
 }
 
-// readPage returns the page at path, failing the test when it can't be read.
 func readPage(t *testing.T, path string) string {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -65,9 +59,6 @@ func readPage(t *testing.T, path string) string {
 	return string(b)
 }
 
-// unendedRun begins a run in the run directory out whose dispatch of in stopped with an error
-// line, and leaves it unended, its record torn after that line, as a killed run leaves it. It
-// returns the run's id.
 func unendedRun(t *testing.T, out, in string) string {
 	t.Helper()
 	d, err := rundir.Create(out)
@@ -92,9 +83,6 @@ func unendedRun(t *testing.T, out, in string) string {
 	return run.ID()
 }
 
-// By default, docproc report renders the latest run that ended, passing over a later one that
-// never ended, prints its index's path, and builds nothing: it reads no configuration and looks
-// up no tool.
 func TestReport_LatestEnded(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -119,7 +107,6 @@ func TestReport_LatestEnded(t *testing.T) {
 	}
 }
 
-// runIDs returns the ids of the runs of the run directory out, in the order they began.
 func runIDs(t *testing.T, out string) []string {
 	t.Helper()
 	d, err := rundir.Open(out)
@@ -133,7 +120,6 @@ func runIDs(t *testing.T, out string) []string {
 	return ids
 }
 
-// --run renders the run it names, whichever run is the latest.
 func TestReport_NamedRun(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -152,8 +138,6 @@ func TestReport_NamedRun(t *testing.T) {
 	}
 }
 
-// A named run that never ended renders its whole lines, its torn last line dropped, marked not
-// ended, and exits 0.
 func TestReport_UnendedRun(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out")
 	id := unendedRun(t, out, "/docs/killed.txt")
@@ -169,7 +153,6 @@ func TestReport_UnendedRun(t *testing.T) {
 	}
 }
 
-// A report replaces the run's earlier pages whole.
 func TestReport_ReplacesPages(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -191,8 +174,6 @@ func TestReport_ReplacesPages(t *testing.T) {
 	}
 }
 
-// A run directory that doesn't exist, a --run that isn't one of its runs, or no --run over a
-// run directory with no run that ended, exits 1, the error naming it, and writes nothing.
 func TestReport_Refusals(t *testing.T) {
 	root := t.TempDir()
 	missing := filepath.Join(root, "missing")
@@ -235,8 +216,6 @@ func TestReport_Refusals(t *testing.T) {
 	}
 }
 
-// A usage error exits 2 with docproc report's usage, and so does its help, which states what
-// each exit status means.
 func TestReportCommand_Usage(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "out")
 	for _, tc := range []struct {
@@ -271,8 +250,6 @@ func TestReportCommand_Usage(t *testing.T) {
 	}
 }
 
-// With --report, once the summary is printed, a run that ended renders its pages, as docproc
-// report would, and prints its index's path last.
 func TestRun_ReportAfterEndedRun(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -290,8 +267,6 @@ func TestRun_ReportAfterEndedRun(t *testing.T) {
 	}
 }
 
-// With --report, a run a failure of the content store stopped still renders its pages, then
-// exits 1 with the store's failure.
 func TestRun_ReportAfterStoreFailure(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root writes a directory of mode 0555, so the store doesn't fail")
@@ -324,7 +299,6 @@ func TestRun_ReportAfterStoreFailure(t *testing.T) {
 	}
 }
 
-// With --report, a canceled run renders nothing.
 func TestRun_ReportAfterCancellation(t *testing.T) {
 	in := write(t, t.TempDir(), "a.txt", "a\n", "b.txt", "b\n")
 	out := filepath.Join(t.TempDir(), "out")
@@ -354,10 +328,6 @@ func TestRun_ReportAfterCancellation(t *testing.T) {
 	}
 }
 
-// With --report, a render that fails after a run that ended exits 1, the error saying docproc
-// report renders the pages again. The stand-in stage makes the run's report directory, during the
-// run, a directory that can't be written, which a render can't move aside: on Linux, moving a
-// directory to another parent needs write permission on it, for its "..".
 func TestRun_ReportRenderFailure(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root moves a directory of mode 0555, so the render doesn't fail")
@@ -397,8 +367,6 @@ func TestRun_ReportRenderFailure(t *testing.T) {
 	}
 }
 
-// The run's help states what --report does after a run that ended, a store's failure, and a
-// cancellation, and that docproc report renders the pages again.
 func TestRun_HelpStatesReport(t *testing.T) {
 	a, stdout, _, _ := newApp(t)
 	if code := a.Run(context.Background(), []string{"run", "--help"}); code != process.ExitUsage {

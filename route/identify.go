@@ -93,8 +93,6 @@ const HeadLen = 4096
 // prefix before eight bytes of it have arrived.
 const PNGSignature = "\x89PNG\r\n\x1a\n"
 
-// The signatures Identify reads. A BMP's two-byte "BM" is checked further by its DIB header's
-// size, and a WMF's standard header by its size as well as its type and version.
 var (
 	pdfSignature  = []byte("%PDF-")
 	peHeader      = []byte("PE\x00\x00")
@@ -112,8 +110,6 @@ var (
 	rtfSignature  = []byte(`{\rtf`)
 	wpSignature   = []byte("\xffWPC")
 	pstMagic      = []byte("!BDN")
-	// The OneStore file type GUIDs, as stored: a section's {7B5C52E4-D88C-4DA7-AEB1-5378D02996D3}
-	// and a table of contents' {43FF2FA1-EFD9-4C76-9EE2-10EA5722765F} ([MS-ONESTORE] 2.3.1).
 	oneSection    = []byte{0xe4, 0x52, 0x5c, 0x7b, 0x8c, 0xd8, 0xa7, 0x4d, 0xae, 0xb1, 0x53, 0x78, 0xd0, 0x29, 0x96, 0xd3}
 	oneTOC        = []byte{0xa1, 0x2f, 0xff, 0x43, 0xd9, 0xef, 0x76, 0x4c, 0x9e, 0xe2, 0x10, 0xea, 0x57, 0x22, 0x76, 0x5f}
 	mscfSignature = []byte("MSCF\x00\x00\x00\x00")
@@ -137,20 +133,14 @@ var (
 	utf16BEBOM    = []byte{0xfe, 0xff}
 )
 
-// machOMagics are a Mach-O file's magics, 32- and 64-bit in either byte order, and a universal
-// binary's.
 var machOMagics = [][]byte{
 	{0xfe, 0xed, 0xfa, 0xce}, {0xfe, 0xed, 0xfa, 0xcf},
 	{0xce, 0xfa, 0xed, 0xfe}, {0xcf, 0xfa, 0xed, 0xfe},
 	{0xca, 0xfe, 0xba, 0xbe},
 }
 
-// bmpHeaderSizes are the sizes of the DIB headers a BMP begins its header with, at offset 14.
 var bmpHeaderSizes = map[uint32]bool{12: true, 40: true, 52: true, 56: true, 64: true, 108: true, 124: true}
 
-// The ISO-BMFF brands Identify tells an ftyp box's file by, as their four bytes with trailing
-// spaces and NULs trimmed. HEIF's structural brands, mif1, msf1, and miaf, are AVIF's too, so a
-// file whose major brand is one of them is AVIF when its compatible brands name AVIF.
 var (
 	avifBrands       = map[string]bool{"avif": true, "avis": true}
 	heicBrands       = map[string]bool{"heic": true, "heix": true, "heim": true, "heis": true, "hevc": true, "hevx": true, "heif": true}
@@ -158,7 +148,6 @@ var (
 	m4aBrands        = map[string]bool{"M4A": true, "M4B": true, "M4P": true, "F4A": true, "F4B": true}
 )
 
-// odfType is the prefix of the OpenDocument media types an ODF package's mimetype entry holds.
 const odfType = "application/vnd.oasis.opendocument."
 
 // Identify names the kind head, a file's first bytes, begins, by its signature; [Unknown] for
@@ -175,9 +164,6 @@ func Identify(head []byte) Kind {
 	return Unknown
 }
 
-// signatures are Identify's checks, in order: email's first, as v0.5.0 ordered them, then the
-// strong ones added since; the weak ones after them, an mbox's "From " line last but the byte
-// order marks.
 var signatures = []func([]byte) Kind{
 	isPDF,
 	prefix(pngSignature, PNG),
@@ -221,7 +207,6 @@ var signatures = []func([]byte) Kind{
 	prefix(utf16BEBOM, UTF16BOM),
 }
 
-// prefix returns a check naming kind for a head that begins with sig.
 func prefix(sig []byte, kind Kind) func([]byte) Kind {
 	return func(head []byte) Kind {
 		if bytes.HasPrefix(head, sig) {
@@ -231,14 +216,8 @@ func prefix(sig []byte, kind Kind) func([]byte) Kind {
 	}
 }
 
-// pdfLead is how far into a file a PDF's header may begin, as PDF readers accept one: within
-// its first 1,024 bytes.
 const pdfLead = 1024
 
-// isPDF names a PDF: its %PDF- header, after nothing but an optional UTF-8 byte order mark and
-// white space, PDF's own NUL among it, and beginning within the first pdfLead bytes. Other bytes
-// before the header, such as another format's signature, make it no PDF here; inspect's polyglot
-// check reads such a header.
 func isPDF(head []byte) Kind {
 	rest := bytes.TrimLeft(bytes.TrimPrefix(head, utf8BOM), " \t\r\n\f\x00")
 	if at := len(head) - len(rest); at < pdfLead && bytes.HasPrefix(rest, pdfSignature) {
@@ -247,8 +226,6 @@ func isPDF(head []byte) Kind {
 	return Unknown
 }
 
-// isPE names a PE executable: "MZ", and the PE signature, "PE\0\0", at the offset the DOS
-// header's e_lfanew field, at 0x3c, gives, within head. "MZ" alone, as text may begin, is none.
 func isPE(head []byte) Kind {
 	if len(head) < 0x40 || !bytes.HasPrefix(head, peSignature) {
 		return Unknown
@@ -260,9 +237,6 @@ func isPE(head []byte) Kind {
 	return Unknown
 }
 
-// isID3 names an MP3 that begins with an ID3v2 tag: "ID3", a major version of 2, 3, or 4, a
-// revision other than 0xFF, a flags byte, and a size of four bytes whose high bits are clear,
-// as ID3v2's synchsafe integer is. "ID3" alone, as text may begin, is none.
 func isID3(head []byte) Kind {
 	if len(head) < 10 || !bytes.HasPrefix(head, id3Signature) {
 		return Unknown
@@ -278,9 +252,6 @@ func isID3(head []byte) Kind {
 	return MP3
 }
 
-// isShebang names a script's "#!" line: "#!", optional spaces or tabs, then the "/" an
-// interpreter's absolute path begins with. "#!" before anything else, as prose or a fragment
-// identifier may be, is none.
 func isShebang(head []byte) Kind {
 	rest, ok := bytes.CutPrefix(head, shebang)
 	if ok && bytes.HasPrefix(bytes.TrimLeft(rest, " \t"), []byte("/")) {
@@ -289,7 +260,6 @@ func isShebang(head []byte) Kind {
 	return Unknown
 }
 
-// isBMP names a BMP: "BM", then a DIB header of a known size at offset 14.
 func isBMP(head []byte) Kind {
 	if len(head) >= 18 && bytes.HasPrefix(head, bmpSignature) &&
 		bmpHeaderSizes[binary.LittleEndian.Uint32(head[14:18])] {
@@ -298,7 +268,6 @@ func isBMP(head []byte) Kind {
 	return Unknown
 }
 
-// isEMF names an EMF: an EMR_HEADER record, type 1, with the " EMF" signature at offset 40.
 func isEMF(head []byte) Kind {
 	if len(head) >= 44 && binary.LittleEndian.Uint32(head) == 1 && bytes.Equal(head[40:44], emfSignature) {
 		return EMF
@@ -306,8 +275,6 @@ func isEMF(head []byte) Kind {
 	return Unknown
 }
 
-// isWMF names a WMF: a placeable header's key, or a standard META_HEADER, its type 1 (memory) or
-// 2 (disk), its size 9 words, and its version 0x0300 or 0x0100.
 func isWMF(head []byte) Kind {
 	if bytes.HasPrefix(head, wmfPlaceable) {
 		return WMF
@@ -324,8 +291,6 @@ func isWMF(head []byte) Kind {
 	return Unknown
 }
 
-// isZIP names a ZIP's local file header, ODF when its first entry is an ODF package's: named
-// mimetype, stored uncompressed, its content an OpenDocument media type.
 func isZIP(head []byte) Kind {
 	if !bytes.HasPrefix(head, zipSignature) {
 		return Unknown
@@ -336,9 +301,6 @@ func isZIP(head []byte) Kind {
 	return ZIP
 }
 
-// odfMimetype returns the media type of the ODF package head begins, the content of its first
-// entry, mimetype, stored uncompressed; "" when head begins no ODF package or is too short to
-// hold the entry.
 func odfMimetype(head []byte) string {
 	const fixed = 30
 	if len(head) < fixed || binary.LittleEndian.Uint16(head[8:]) != 0 {
@@ -358,9 +320,6 @@ func odfMimetype(head []byte) string {
 	return mediaType
 }
 
-// isPST names a PST header by its client magic at offset 8, after the "!BDN" magic: PST for a
-// .pst's, "SM", and OST for an .ost's, "SO". A header of another client, or one too short to hold
-// it, is neither, as mail reads it.
 func isPST(head []byte) Kind {
 	if len(head) < 10 || !bytes.HasPrefix(head, pstMagic) {
 		return Unknown
@@ -374,8 +333,6 @@ func isPST(head []byte) Kind {
 	return Unknown
 }
 
-// isTar names a tar archive by its first header's magic, "ustar" at offset 257: POSIX's
-// "ustar\x00" and GNU's "ustar " alike. A pre-POSIX tar, which has no magic, isn't named.
 func isTar(head []byte) Kind {
 	if len(head) >= 262 && bytes.Equal(head[257:262], tarMagic) {
 		return Tar
@@ -383,7 +340,6 @@ func isTar(head []byte) Kind {
 	return Unknown
 }
 
-// isRIFF names a RIFF file by its form type at offset 8: WAVE, AVI, or WEBP.
 func isRIFF(head []byte) Kind {
 	if len(head) < 12 || !bytes.HasPrefix(head, riff) {
 		return Unknown
@@ -399,8 +355,6 @@ func isRIFF(head []byte) Kind {
 	return Unknown
 }
 
-// isISOBMFF names an ISO base media file by its ftyp box's brands: AVIF or HEIC for an image's,
-// M4A for an audio file's, and MP4 for any other.
 func isISOBMFF(head []byte) Kind {
 	if len(head) < 12 || string(head[4:8]) != "ftyp" {
 		return Unknown
@@ -429,13 +383,10 @@ func isISOBMFF(head []byte) Kind {
 	return MP4
 }
 
-// brand returns an ISO-BMFF brand's four bytes with trailing spaces and NULs trimmed.
 func brand(b []byte) string {
 	return string(bytes.TrimRight(b, " \x00"))
 }
 
-// isEBML names an EBML file by its DocType, WebM for "webm" and Matroska otherwise, read from
-// the DocType element (ID 0x4282) in head when its size is one byte long.
 func isEBML(head []byte) Kind {
 	if !bytes.HasPrefix(head, ebmlSignature) {
 		return Unknown
@@ -449,7 +400,6 @@ func isEBML(head []byte) Kind {
 	return MKV
 }
 
-// isMachO names a Mach-O file by its magic.
 func isMachO(head []byte) Kind {
 	for _, magic := range machOMagics {
 		if bytes.HasPrefix(head, magic) {
@@ -459,10 +409,6 @@ func isMachO(head []byte) Kind {
 	return Unknown
 }
 
-// isMPEGFrame names an MP3 that begins with an MPEG audio frame and no ID3 tag: an 11-bit frame
-// sync, a version other than the reserved one, layer III, a bitrate index other than the invalid
-// 15, and a sample rate index other than the reserved 3. Layer III alone keeps a UTF-16 byte order
-// mark, FF FE, which is a layer I sync, from reading as one.
 func isMPEGFrame(head []byte) Kind {
 	if len(head) < 3 || head[0] != 0xff || head[1]&0xe0 != 0xe0 {
 		return Unknown
@@ -475,10 +421,6 @@ func isMPEGFrame(head []byte) Kind {
 	return Unknown
 }
 
-// isSVG names an SVG: after an optional UTF-8 byte order mark, white space, an XML declaration,
-// comments, processing instructions, and a DOCTYPE, the root element is svg. The prolog must end
-// within head. A head that begins with a UTF-16 byte order mark is decoded from UTF-16 first, so
-// an SVG saved as UTF-16 is one too.
 func isSVG(head []byte) Kind {
 	rest := bytes.TrimPrefix(decodeUTF16(head), utf8BOM)
 	for {
@@ -507,8 +449,6 @@ func isSVG(head []byte) Kind {
 	}
 }
 
-// decodeUTF16 returns head decoded from UTF-16 to UTF-8 when it begins with a UTF-16 byte order
-// mark, little- or big-endian, the mark dropped and an odd last byte with it; else head as it is.
 func decodeUTF16(head []byte) []byte {
 	var order binary.ByteOrder
 	switch {

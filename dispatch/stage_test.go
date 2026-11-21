@@ -18,13 +18,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// container is the test stage, for route.Text: a container whose content is lines, each a
-// directive. "file NAME" finds a part named NAME holding world[NAME]; "copy NAME" finds inspect's
-// fixture NAME; "fail", "noproc", and "encrypted" end the stage with a failure, ErrNoProcessor,
-// or ErrEncrypted; "block" tells entered the part's name and waits for release to close;
-// "remaining" keeps what dispatch.Remaining says on its context, by the part's name; and
-// "limited NAME" finds an unread child named NAME, limited, its reason the stage's own. Before
-// its directives it yields a text output in a file, its content's line count.
 type container struct {
 	world   map[string]string
 	entered chan string
@@ -35,7 +28,6 @@ type container struct {
 	remaining map[string]remaining
 }
 
-// remaining is what dispatch.Remaining said to a Prepare.
 type remaining struct {
 	n  int64
 	ok bool
@@ -45,8 +37,6 @@ func newContainer(world map[string]string) *container {
 	return &container{world: world, calls: map[string]int{}, remaining: map[string]remaining{}}
 }
 
-// remainingOf returns what dispatch.Remaining said to the Prepare of the part named name, and
-// whether its "remaining" directive ran.
 func (c *container) remainingOf(name string) (remaining, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -58,7 +48,6 @@ func (c *container) Identity() dispatch.Identity {
 	return dispatch.Identity{Name: "container", Version: "1", Config: "test"}
 }
 
-// called returns how many times the stage prepared a part named name.
 func (c *container) called(name string) int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -137,8 +126,6 @@ func (c *container) Prepare(ctx context.Context, p dispatch.Part, dir string) it
 	}
 }
 
-// leaf is a stage that yields one inline record output for each part and counts its calls; with
-// err set, it fails with err instead.
 type leaf struct {
 	name string
 	err  error
@@ -173,7 +160,6 @@ func (l *leaf) Prepare(_ context.Context, p dispatch.Part, _ string) iter.Seq2[d
 	}
 }
 
-// fixture is a test's dispatcher, its stages, and its working directory.
 type fixture struct {
 	d       *dispatch.Dispatcher
 	index   dispatch.Index
@@ -183,8 +169,6 @@ type fixture struct {
 	dir     string
 }
 
-// newFixture returns a dispatcher over index, a new MemoryIndex when nil, with the container on
-// route.Text, a leaf on route.Document, and a leaf that fails on route.Archive, under limits.
 func newFixture(t *testing.T, world map[string]string, index dispatch.Index, limits dispatch.Limits) *fixture {
 	t.Helper()
 	if index == nil {
@@ -209,7 +193,6 @@ func newFixture(t *testing.T, world map[string]string, index dispatch.Index, lim
 	return f
 }
 
-// input writes content to a file named name in a directory of its own, returning its path.
 func input(t *testing.T, name, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -219,7 +202,6 @@ func input(t *testing.T, name, content string) string {
 	return path
 }
 
-// step is one event, as the tests compare them: the part's name, its depth, and its outcome.
 type step struct {
 	name    string
 	depth   int
@@ -228,21 +210,15 @@ type step struct {
 
 func (s step) String() string { return fmt.Sprintf("%s@%d:%s", s.name, s.depth, s.outcome) }
 
-// dispatched is a part's own event as the tests compare them, with its outputs, gathered from
-// its output events as the caller's loop body left them.
 type dispatched struct {
 	dispatch.Event
 	Outputs []dispatch.Output
 }
 
-// gatherer gathers each part's output events into its own event, by the part's path, which is
-// unique within one dispatch.
 type gatherer struct {
 	pending map[string][]dispatch.Output
 }
 
-// add takes ev, returning the part's dispatched event and true when ev is a part's own event; it
-// fails the test when a part's event's output count isn't its output events'.
 func (g *gatherer) add(t *testing.T, ev dispatch.Event) (dispatched, bool) {
 	t.Helper()
 	if g.pending == nil {
@@ -260,9 +236,6 @@ func (g *gatherer) add(t *testing.T, ev dispatch.Event) (dispatched, bool) {
 	return dispatched{Event: ev, Outputs: outputs}, true
 }
 
-// collect ranges over seq, calling each, when not nil, in the loop's body for every event, its
-// output events among them, and returns the parts' events, each with its outputs; an error fails
-// the test.
 func collect(t *testing.T, seq iter.Seq2[dispatch.Event, error], each func(*dispatch.Event)) []dispatched {
 	t.Helper()
 	var g gatherer
@@ -281,13 +254,11 @@ func collect(t *testing.T, seq iter.Seq2[dispatch.Event, error], each func(*disp
 	return events
 }
 
-// dispatchAll dispatches path, as collect says.
 func dispatchAll(t *testing.T, d *dispatch.Dispatcher, path string, each func(*dispatch.Event)) []dispatched {
 	t.Helper()
 	return collect(t, d.Dispatch(t.Context(), dispatch.Input{Path: path}), each)
 }
 
-// steps returns events' steps.
 func steps(events []dispatched) []step {
 	out := make([]step, 0, len(events))
 	for _, ev := range events {
@@ -296,7 +267,6 @@ func steps(events []dispatched) []step {
 	return out
 }
 
-// wantSteps fails the test unless events' steps are want.
 func wantSteps(t *testing.T, events []dispatched, want []step) {
 	t.Helper()
 	if got := steps(events); !slices.Equal(got, want) {
@@ -304,12 +274,10 @@ func wantSteps(t *testing.T, events []dispatched, want []step) {
 	}
 }
 
-// hasFlag reports whether flags hold one of check c.
 func hasFlag(flags []inspect.Flag, c inspect.Check) bool {
 	return slices.ContainsFunc(flags, func(f inspect.Flag) bool { return f.Check == c })
 }
 
-// byName returns the first event of the part named name.
 func byName(t *testing.T, events []dispatched, name string) dispatched {
 	t.Helper()
 	for _, ev := range events {
@@ -321,7 +289,6 @@ func byName(t *testing.T, events []dispatched, name string) dispatched {
 	return dispatched{}
 }
 
-// logged reads key's log from index whole.
 func logged(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Recorded {
 	t.Helper()
 	var got []dispatch.Recorded
@@ -334,7 +301,6 @@ func logged(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Rec
 	return got
 }
 
-// children returns the children key's log records, in its order.
 func children(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.Child {
 	t.Helper()
 	var got []dispatch.Child
@@ -346,7 +312,6 @@ func children(t *testing.T, index dispatch.Index, key dispatch.Key) []dispatch.C
 	return got
 }
 
-// files returns every file under dir.
 func files(t *testing.T, dir string) []string {
 	t.Helper()
 	var out []string
@@ -362,7 +327,6 @@ func files(t *testing.T, dir string) []string {
 	return out
 }
 
-// wantEmpty fails the test when work, the dispatcher's working directory, holds any file.
 func wantEmpty(t *testing.T, work string) {
 	t.Helper()
 	if left := files(t, work); len(left) > 0 {

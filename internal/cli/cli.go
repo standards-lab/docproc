@@ -21,7 +21,6 @@ var (
 	ErrFailed = errors.New("failed")
 )
 
-// outcomes maps the exit codes to their errors.
 var outcomes = map[int]error{
 	1: ErrNotWritten,
 	2: ErrUsage,

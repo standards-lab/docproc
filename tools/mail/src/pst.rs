@@ -38,6 +38,17 @@
 //! attachments or warnings are read: [`Walk::message`] returns before its read. Before any
 //! output, the folders are walked once for the cursor's node id in their contents tables, and an
 //! id no folder holds is refused.
+//!
+//! The store is kept by its file's encoding, since outlook-pst opens an attachment only through the
+//! concrete message type, which only the concrete store opens. outlook-pst 1.2.0 gives a table it
+//! can't read, or can't find, as no table at all, and its table reader isn't public, so a lost
+//! table is told from an empty one only by the folder's own count; a folder whose count is wrong
+//! the other way, claiming no items or no subfolders while it has some, still loses them silently.
+//! A column outlook-pst can't read, as the empty PidTagAttachFilename of libyal's store's rows is,
+//! costs only that column. A message opened before the store's last reopen holds the poisoned
+//! store, so it is opened again before its next attachment. A place names a folder by its node id,
+//! never by its path: a display name can hold ": " or a line break, and the folder's line already
+//! joins the id to its path.
 
 use std::collections::HashSet;
 use std::convert::Infallible;
@@ -115,16 +126,12 @@ pub fn read(
     walk.folder(root, None, Vec::new())
 }
 
-/// The store, by its file's encoding: outlook-pst opens an attachment only through the
-/// concrete message type, which only the concrete store opens.
 enum Pst {
     Unicode(Rc<UnicodeStore>),
     Ansi(Rc<AnsiStore>),
 }
 
 impl Pst {
-    /// Opens the file at `path` and reads its header and its store's root; a failure is the
-    /// refusal's reason.
     fn open(path: &Path, encoding: Encoding) -> Result<Self, String> {
         let file = File::open(path).map_err(|err| format!("the input can't be read: {err}"))?;
         let failed = |what: &str| {
@@ -167,7 +174,6 @@ impl Pst {
     }
 }
 
-/// A message open in its store, for its attachments to be opened from.
 enum OpenMessage {
     Unicode(Rc<UnicodeMessage>),
     Ansi(Rc<AnsiMessage>),
@@ -190,8 +196,6 @@ impl OpenMessage {
     }
 }
 
-/// A folder read whole: its properties, the node ids of its messages and subfolders, and the
-/// reason each of its tables that went missing can't be read.
 struct FolderData {
     id: u32,
     props: Bag,
@@ -222,11 +226,6 @@ fn read_folder(store: &dyn Store, entry_id: &EntryId) -> io::Result<FolderData> 
     })
 }
 
-/// The reason a folder's table is lost. outlook-pst 1.2.0 gives a table it can't read, or
-/// can't find, as no table at all, and its table reader isn't public, so the error itself
-/// can't be had: a missing table is told from an empty one only by the folder's own count. A
-/// folder whose count is wrong the other way, claiming no items or no subfolders while it has
-/// some, still loses them silently.
 fn lost(table: &str, count: &str) -> String {
     format!("the {table} table can't be read, though {count} (outlook-pst 1.2.0 gives no reason)")
 }
@@ -237,8 +236,6 @@ fn row_ids(table: Option<&Rc<dyn TableContext>>) -> Vec<u32> {
         .unwrap_or_default()
 }
 
-/// A message read whole but for its attachments: the open message, its properties, its
-/// recipient table's rows, and its attachments' node ids, in its attachment table's order.
 struct MessageData {
     message: OpenMessage,
     props: Bag,
@@ -277,8 +274,6 @@ fn recipients(message: &dyn PstMessage) -> io::Result<Vec<Bag>> {
         .collect()
 }
 
-/// An attachment read whole: its properties, the attachment itself when it was opened rather
-/// than only listed from its attachment table row, and the reader's notes.
 struct AttachmentRead {
     props: Bag,
     opened: Option<Rc<dyn Attachment>>,
@@ -286,9 +281,6 @@ struct AttachmentRead {
 }
 
 impl AttachmentRead {
-    /// The content, as stored, in outlook-pst's own buffer: PidTagAttachDataBinary for
-    /// afByValue, the storage's bytes for afStorage; outlook-pst gives none for the by-reference
-    /// methods.
     fn content(&self) -> Option<&[u8]> {
         match self.opened.as_ref()?.data() {
             Some(AttachmentData::Binary(data)) => Some(data.buffer()),
@@ -297,9 +289,6 @@ impl AttachmentRead {
     }
 }
 
-/// Reads attachment `id` of `message`. Its attachment table row gives the attach method; an
-/// attachment whose row says method 5, or gives none, is never opened (the module's comment
-/// says why) and is read from its row alone.
 fn read_attachment(message: &OpenMessage, id: u32) -> io::Result<AttachmentRead> {
     let table = message
         .message()
@@ -311,8 +300,6 @@ fn read_attachment(message: &OpenMessage, id: u32) -> io::Result<AttachmentRead>
     let mut notes = Vec::new();
     for (column, value) in context.columns().iter().zip(row.columns(context)?) {
         let Some(value) = value else { continue };
-        // A column outlook-pst can't read, as the empty PidTagAttachFilename of libyal's
-        // store's rows is, costs only that column.
         match table.read_column(&value, column.prop_type()) {
             Ok(value) => {
                 props.insert(column.prop_id(), convert(&value));
@@ -330,8 +317,6 @@ fn read_attachment(message: &OpenMessage, id: u32) -> io::Result<AttachmentRead>
             notes,
         });
     }
-    // Opened, the attachment's own properties stand in for its row's, notes and all. Its
-    // content is kept apart from them, in the attachment ([`AttachmentRead::content`]).
     let attachment = message.attachment(id)?;
     let props = attachment
         .properties()
@@ -350,14 +335,9 @@ struct Walk<'a, W: Write> {
     path: PathBuf,
     encoding: Encoding,
     pst: Pst,
-    /// How many times the store has been reopened after a panic. A message opened before the
-    /// last reopen holds the poisoned store, so it is opened again before its next attachment.
     reopened: u32,
     code_page: u16,
-    /// The node id of the message the walk resumes after, until the walk passes it; None once
-    /// it has, or for a whole read.
     after: Option<u32>,
-    /// The node ids of the folders the walk has entered.
     entered: HashSet<u32>,
     out: &'a mut Lines<W>,
     files: &'a mut Media,
@@ -373,8 +353,6 @@ impl<W: Write> Walk<'_, W> {
         self.entered.insert(data.id);
         let (display_name, container_class, notes) = mapping::folder(&data.props, self.code_page);
         path.push(display_name.unwrap_or_default());
-        // A place names the folder by its node id, never by its path: a display name can hold
-        // ": " or a line break, and the folder's line already joins the id to its path.
         let place = format!("folder {}", data.id);
         warn_all(&place, notes);
         self.out
@@ -424,10 +402,6 @@ impl<W: Write> Walk<'_, W> {
         Ok(())
     }
 
-    /// Whether `data`'s folder or a folder below it holds message `id` in its contents table,
-    /// read the way [`Walk::folder`] reads them, depth-first, stopping at the first that does.
-    /// A subfolder that can't be read, or that `entered` names, is passed over here and skipped,
-    /// with its warning, by the walk itself.
     fn holds(&mut self, data: &FolderData, id: u32, entered: &mut HashSet<u32>) -> bool {
         entered.insert(data.id);
         if data.messages.contains(&id) {
@@ -441,7 +415,6 @@ impl<W: Write> Walk<'_, W> {
         })
     }
 
-    /// Reads the subfolder whose node id is `id`.
     fn subfolder(&mut self, id: u32) -> Result<FolderData, String> {
         self.read(|pst| {
             let entry_id = pst.store().properties().make_entry_id(NodeId::from(id))?;
@@ -449,9 +422,6 @@ impl<W: Write> Walk<'_, W> {
         })
     }
 
-    /// Writes one message's line, its attachments' files before it, and after it a skipped line
-    /// for each attachment that couldn't be read. Until the walk passes the `--after` cursor's
-    /// message, a message is passed over unopened.
     fn message(&mut self, folder: u32, id: u32, place: &str) -> Result<(), Fault> {
         if let Some(after) = self.after {
             if id == after {
@@ -554,8 +524,6 @@ impl<W: Write> Walk<'_, W> {
         self.out.flush().map_err(Fault::Output)
     }
 
-    /// Runs one read against the store inside [`guarded`]. A panic may have poisoned the
-    /// store's file mutex, so after one the store is reopened for the reads that follow.
     fn read<T>(&mut self, read: impl FnOnce(&Pst) -> io::Result<T>) -> Result<T, String> {
         let pst = &self.pst;
         guarded(|| read(pst)).map_err(|failure| {
@@ -582,8 +550,6 @@ impl<W: Write> Walk<'_, W> {
         }
     }
 
-    /// Writes the skipped line of a record whose warning is already written. A lost table has
-    /// no id of its own; its folder is the folder whose table it is.
     fn skipped(
         &mut self,
         kind: &'static str,
@@ -603,7 +569,6 @@ impl<W: Write> Walk<'_, W> {
     }
 }
 
-/// The warning for an attachment listed from its table row, never opened.
 fn not_opened(row: &Bag) -> &'static str {
     if integer(row, tag::ATTACH_METHOD) == Some(AF_EMBEDDED_MESSAGE) {
         "an embedded message (attach method 5), listed without its content: \
@@ -618,8 +583,6 @@ fn bag<'a>(props: impl Iterator<Item = (&'a u16, &'a PropertyValue)>) -> Bag {
     props.map(|(id, value)| (*id, convert(value))).collect()
 }
 
-/// A property's value in the readers' form. A multi-valued property, which no field reads, is
-/// [`Value::Other`].
 fn convert(value: &PropertyValue) -> Value {
     match value {
         PropertyValue::Integer16(value) => Value::Integer(i64::from(*value)),

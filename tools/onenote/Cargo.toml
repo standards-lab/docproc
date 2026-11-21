@@ -28,3 +28,4 @@ overflow-checks = true
 
 [lints.clippy]
 allow_attributes_without_reason = "deny"
+undocumented_unsafe_blocks = "deny"

@@ -10,16 +10,7 @@ using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace Docproc.Ooxml.Reading;
 
-/// <summary>Reads an xlsx package: its sheets in workbook order, each a table of the cells that
-/// have a value or a formula, with their stored values typed and nothing evaluated, then its
-/// charts and pictures, then its embedded packages and OLE objects; and the package's
-/// properties.</summary>
-/// <remarks>Each worksheet part is read twice, forward-only, and never held whole
-/// (docs/design-review.md, OX-2). <see cref="Validate"/> reads every sheet once and writes nothing:
-/// it finds whatever would refuse the workbook, and collects what the sheet's lines need before
-/// its rows, its used columns, shared-formula anchors, merges, and hyperlinks, and its drawings,
-/// objects, and their media. <see cref="XlsxWorkbook.Rows"/> reads a sheet a second time, giving its rows as they
-/// are read.</remarks>
+// See docs/tool-contract.md, "docproc-ooxml".
 internal static partial class XlsxReader
 {
     /// <summary>Reads the package whole into the model, each sheet's rows collected; the CLI
@@ -54,9 +45,6 @@ internal static partial class XlsxReader
         var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
         {
-            // A sheet whose reference names no part (an empty or unknown relationship id) is one
-            // invalid reference: it is skipped, with a warning, and the other sheets are read. It
-            // has no sheet line to count, so its place is its ordinal in the workbook's order.
             ordinal++;
             var id = sheet.Id?.Value;
             if (string.IsNullOrEmpty(id) || !workbookPart.TryGetPartById(id, out var part))
@@ -84,9 +72,6 @@ internal static partial class XlsxReader
         public MediaStore Media { get; } = new();
     }
 
-    // A worksheet's cells, then its drawing, then its objects; a chartsheet's drawing alone; any
-    // other kind of sheet (a dialog or macro sheet) holds nothing docproc-ooxml reads. A
-    // worksheet's notes, legacy or threaded, are not read. The index is the sheet's line's, from 0.
     private static XlsxSheet ValidateSheet(XlsxContext context, string name, bool hidden, OpenXmlPart part, int index)
     {
         SheetCells? cells = null;
@@ -120,18 +105,11 @@ internal static partial class XlsxReader
         return new XlsxSheet(name, hidden, cells, blocks);
     }
 
-    // Where a warning about a sheet is: its sheet line, by ordinal.
     private static string Place(int index) => $"sheet {index + 1}";
 
-    // A worksheet's OLE object: its preview picture (its objectPr's), then its embedded package or
-    // OLE object as stored, with its program id. Excel writes the object twice in alternate
-    // content, the preview only in the choice's copy; both name the same relationship. A
-    // streaming reader loads alternate content's children as unknown elements, so they are found
-    // by name.
     private static void ReadObject(XlsxContext context, WorksheetPart part, OpenXmlElement element, int sheet, List<Block> blocks)
     {
         List<OpenXmlElement> objects = [.. new[] { element }.Concat(element.Descendants()).Where(e => e.LocalName == "oleObject")];
-        // Transitional and Strict name the relationships' namespace apart, both ending so.
         string? Relationship(OpenXmlElement e) => e.GetAttributes().FirstOrDefault(a => a.LocalName == "id" && a.NamespaceUri.EndsWith("relationships", StringComparison.Ordinal)).Value;
         if (objects.SelectMany(o => o.ChildElements.Where(c => c.LocalName == "objectPr")).Select(Relationship).FirstOrDefault(id => id is not null) is { } previewId
             && context.Media.Picture(part, previewId, null, null) is { } preview)
@@ -146,10 +124,6 @@ internal static partial class XlsxReader
         }
     }
 
-    // A cell's stored value by its type: a shared or inline string, a formula's string, a
-    // boolean, an error, an ISO date, or a number, a date when its format is a date or time
-    // format. An empty value is none, as openpyxl writes a formula it has not computed, except
-    // a formula's string, which can be empty.
     private static CellValue? Value(XlsxContext context, S.Cell cell)
     {
         var type = cell.DataType?.Value ?? S.CellValues.Number;
@@ -168,7 +142,6 @@ internal static partial class XlsxReader
         }
         if (type == S.CellValues.SharedString)
         {
-            // Excel Online writes an index with a trailing space (<v>2 </v>), which Excel reads.
             return int.TryParse(raw, NumberStyles.AllowLeadingWhite | NumberStyles.AllowTrailingWhite, CultureInfo.InvariantCulture, out var index) && index < context.Strings.Count
                 ? CellValue.OfText(context.Strings[index])
                 : throw new InvalidDataException($"cell {cell.CellReference}'s shared string {raw} is not in the shared strings");
@@ -200,8 +173,6 @@ internal static partial class XlsxReader
             : CellValue.OfNumber(number);
     }
 
-    // A shared or inline string's text: its text, or its rich text's runs, flattened, its escapes
-    // decoded. Phonetic runs (rPh) are a reading aid, not the text, and are left out.
     private static string Text(OpenXmlElement item)
     {
         var text = new StringBuilder();
@@ -222,10 +193,6 @@ internal static partial class XlsxReader
         return Unescape(text.ToString());
     }
 
-    // SpreadsheetML's escapes (ECMA-376 Part 1, 22.9.2.19, ST_Xstring): _xHHHH_ is the UTF-16
-    // code unit of four hexadecimal digits, which is how a character XML can't hold, such as a
-    // control character, is stored. _x005F_ is the escaped underscore, so _x005F_x0041_ is the
-    // text _x0041_: decoded left to right, an escape's own underscore never starts another.
     internal static string Unescape(string text)
     {
         if (!text.Contains("_x", StringComparison.Ordinal))
@@ -250,11 +217,6 @@ internal static partial class XlsxReader
     private static List<string> SharedStrings(S.SharedStringTable? table) =>
         [.. (table?.Elements<S.SharedStringItem>() ?? []).Select(Text)];
 
-    // A drawing's pictures and charts in the order it anchors them, through groups. A picture's
-    // alternative text and title are its own drawing properties'. A chartEx chart, in an
-    // mc:AlternateContent, is its cached data, or with none its fallback's picture, never both;
-    // any other alternate content is read through, as the rest of the drawing is. A shape's text,
-    // a text box's, and a SmartArt diagram are not read.
     private static void ReadDrawing(XlsxContext context, DrawingsPart drawings, int sheet, List<Block> blocks) =>
         ReadDrawing(context, drawings, drawings.WorksheetDrawing, sheet, blocks);
 
@@ -311,7 +273,6 @@ internal static partial class XlsxReader
 
     private static string? NonEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
-    // A1-style references: a column's letters, A to XFD, then the row's number.
     private const int MaxColumn = 16384;
     private const int MaxRow = 1048576;
 
@@ -346,7 +307,6 @@ internal static partial class XlsxReader
         return new Merge(Math.Min(first.Row, last.Row), Math.Min(first.Column, last.Column), Math.Max(first.Row, last.Row), Math.Max(first.Column, last.Column));
     }
 
-    // A merged range by its corners; its anchor is the top-left cell.
     internal sealed record Merge(int Top, int Left, int Bottom, int Right)
     {
         public int Rows => Bottom - Top + 1;
@@ -354,12 +314,6 @@ internal static partial class XlsxReader
         public int Columns => Right - Left + 1;
     }
 
-    // A sheet's merged ranges, looked up by cell. A range is kept as its corners, never cell by
-    // cell, as one can cover the whole sheet. The lookup sweeps down the rows: the ranges that
-    // cover the row asked for are kept by their left column, so a cell's range is found by a
-    // binary search; asking for a row above the last starts the sweep again. Excel refuses a
-    // file whose ranges overlap, so a cell is in one range at most; in a file whose ranges do
-    // overlap, a cell is looked for only in the covering range that starts nearest its left.
     private sealed class MergeIndex
     {
         private readonly Merge[] byTop;
@@ -369,7 +323,6 @@ internal static partial class XlsxReader
 
         public MergeIndex(IEnumerable<Merge> merges)
         {
-            // OrderBy is stable, so ranges starting on one row keep the file's order.
             byTop = [.. merges.OrderBy(m => m.Top)];
         }
 
@@ -383,7 +336,6 @@ internal static partial class XlsxReader
             {
                 Sweep(cellRow);
             }
-            // The last covering range whose left column is at or before the cell's.
             int low = 0, high = covering.Count - 1, found = -1;
             while (low <= high)
             {
@@ -424,7 +376,6 @@ internal static partial class XlsxReader
 
     private static string Reference(int row, int column) => ColumnName(column) + row.ToString(CultureInfo.InvariantCulture);
 
-    // A column's letters, A for 1.
     private static string ColumnName(int column)
     {
         var letters = new StringBuilder();
@@ -435,8 +386,6 @@ internal static partial class XlsxReader
         return letters.ToString();
     }
 
-    // The number formats of the workbook's cell styles, by style index: whether each shows a
-    // date, a time, or both, or neither.
     internal sealed class NumberFormats
     {
         private readonly List<uint> styles = [];
@@ -464,8 +413,6 @@ internal static partial class XlsxReader
             return parts.Date || parts.Time ? parts : null;
         }
 
-        // The built-in date and time formats: 14 to 17 dates, 18 to 21 and 45 to 47 times, 22
-        // both. The others docproc-ooxml leaves raw, the locale-dependent ones among them.
         private static (bool Date, bool Time) BuiltIn(uint id) => id switch
         {
             >= 14 and <= 17 => (true, false),
@@ -476,10 +423,6 @@ internal static partial class XlsxReader
     }
 }
 
-/// <summary>A number format code's date and time parts, from its tokens outside quoted text,
-/// escaped and skipped characters, and brackets (colors, conditions, locales). A format with an
-/// elapsed-time bracket, [h], [m], or [s], has neither: its value is a duration, which can pass a
-/// day, so it stays a number, as stored (docs/design-review.md, OX-17).</summary>
 internal static class DateFormat
 {
     public static (bool Date, bool Time) Parts(string code)
@@ -529,7 +472,6 @@ internal static class DateFormat
                     time = true;
                     break;
                 default:
-                    // An m is minutes after an hour or before a second, and months otherwise.
                     var previous = Previous(tokens, t);
                     var next = Next(tokens, t);
                     if (previous == 'h' || next == 's')
@@ -549,7 +491,6 @@ internal static class DateFormat
     private static bool Matches(string code, int at, string token) =>
         at + token.Length <= code.Length && string.Compare(code, at, token, 0, token.Length, StringComparison.OrdinalIgnoreCase) == 0;
 
-    // The nearest token before or after t that isn't another m of the same run.
     private static char? Previous(List<char> tokens, int t)
     {
         for (var i = t - 1; i >= 0; i--)
@@ -575,9 +516,6 @@ internal static class DateFormat
     }
 }
 
-/// <summary>A spreadsheet serial date in ISO 8601. In the 1900 date system serial 1 is
-/// 1 January 1900 and serial 60 is 29 February 1900, a day that never was, kept from Lotus 1-2-3;
-/// in the 1904 system serial 0 is 1 January 1904. Times are rounded to the millisecond.</summary>
 internal static class SerialDate
 {
     private const long MillisecondsPerDay = 86_400_000;

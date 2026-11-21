@@ -16,15 +16,12 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// Constructed rasters, each its kind's signature followed by filler.
 var (
 	heicData = "\x00\x00\x00\x18ftypheic\x00\x00\x00\x00mif1heic" + "filler"
 	webpData = "RIFF\x10\x00\x00\x00WEBPVP8 " + "filler"
 	avifData = "\x00\x00\x00\x18ftypavif\x00\x00\x00\x00mif1avif" + "filler"
 )
 
-// pageNames returns the names of a TIFF's PNGs, stem, "-page", each page's number from 1 to n,
-// and .png.
 func pageNames(stem string, n int) []string {
 	var names []string
 	for i := range n {
@@ -33,12 +30,6 @@ func pageNames(stem string, n int) []string {
 	return names
 }
 
-// TestConvertPagesTIFF: a TIFF, read as its request's Kind whatever its name, is copied under
-// its stem and .tiff into a directory of its own and converted through one magick run in that
-// directory: every image read as TIFF and each written as a PNG of its own, without the run's
-// time, to a pattern relative to it. Each page's PNG is the working directory's file named by the
-// request's stem, "-page", and its number from 1, returned in page order; a TIFF of one page
-// gives one. The original is kept, and the copy's directory removed.
 func TestConvertPagesTIFF(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -92,8 +83,6 @@ func TestConvertPagesTIFF(t *testing.T) {
 	}
 }
 
-// TestConvertPagesFails: a pages run that fails, writes no PNG, or leaves a gap in its pages is
-// an error naming the TIFF's copy, and leaves nothing in the working directory.
 func TestConvertPagesFails(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -126,10 +115,6 @@ func TestConvertPagesFails(t *testing.T) {
 	}
 }
 
-// TestConvertRaster: a HEIC, WebP, or AVIF, read as its Kind, is copied under its stem and its
-// kind's extension into a directory of its own and converted through one magick run in the
-// working directory: its first image, read through its kind's coder, turned upright by its stored
-// orientation, and written as PNG without the run's time, named by its stem and .png.
 func TestConvertRaster(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -174,17 +159,12 @@ func TestConvertRaster(t *testing.T) {
 	}
 }
 
-// TestConvertNoReader: a HEIC, WebP, or AVIF whose format magick's listing doesn't mark readable,
-// whether listed write-only or left out, is refused with ErrNoReader before anything runs, by
-// ConvertPages and ConvertBatch alike, and the readable kinds still convert. The listing is read
-// once, when the Converter is built.
 func TestConvertNoReader(t *testing.T) {
 	t.Parallel()
 	listing := "   Format  Module    Mode  Description\n" +
 		"     HEIC  HEIC      -w+   High Efficiency Image Format (1.23.6)\n" +
 		"     WEBP* WEBP      rw+   WebP Image Format (libwebp 1.6.0 [0210])\n"
 	c, st := standinConverter(t, picture.Limits{}, func(s *settings) { s.Formats = &listing })
-	// The Converter has read its listing; a listing changed since isn't read again.
 	st.set(func(s *settings) { s.Formats = nil })
 	for _, tc := range []struct {
 		content string
@@ -221,8 +201,6 @@ func TestConvertNoReader(t *testing.T) {
 	}
 }
 
-// TestNewConverterListFails: a format listing that fails is NewConverter's error, with magick's
-// message.
 func TestNewConverterListFails(t *testing.T) {
 	t.Parallel()
 	st := newStandins(t, "7.1.2-34", func(s *settings) { s.ListFail = "magick: unable to open module file\n" })

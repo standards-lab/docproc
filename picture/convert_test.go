@@ -20,7 +20,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// Constructed pictures, each its kind's signature followed by filler.
 var (
 	tiffLE  = "II*\x00\x08\x00\x00\x00filler"
 	tiffBE  = "MM\x00*\x00\x00\x00\x08filler"
@@ -29,7 +28,6 @@ var (
 	pngData = pngSignature + "\x00\x00\x00\rIHDR"
 )
 
-// emfData returns an EMF's first bytes: an EMR_HEADER record, type 1, with " EMF" at offset 40.
 func emfData() string {
 	b := make([]byte, 88)
 	binary.LittleEndian.PutUint32(b, 1)
@@ -38,7 +36,6 @@ func emfData() string {
 	return string(b)
 }
 
-// wmfStandard returns a standard WMF META_HEADER's first bytes: type 1, 9 words, version 0x0300.
 func wmfStandard() string {
 	b := make([]byte, 18)
 	binary.LittleEndian.PutUint16(b, 1)
@@ -47,14 +44,11 @@ func wmfStandard() string {
 	return string(b)
 }
 
-// sha returns the lowercase hex SHA-256 of content.
 func sha(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])
 }
 
-// writePicture writes content into a directory of its own, outside any working directory, as
-// name, and returns its path; a name of "" is the content's SHA-256.
 func writePicture(t *testing.T, content, name string) string {
 	t.Helper()
 	if name == "" {
@@ -67,7 +61,6 @@ func writePicture(t *testing.T, content, name string) string {
 	return path
 }
 
-// unchanged fails the test unless the file at path still holds content.
 func unchanged(t *testing.T, path, content string) {
 	t.Helper()
 	if b, err := os.ReadFile(path); err != nil || string(b) != content {
@@ -75,7 +68,6 @@ func unchanged(t *testing.T, path, content string) {
 	}
 }
 
-// programs returns the programs of runs, in order.
 func programs(runs []standinRun) []string {
 	var out []string
 	for _, r := range runs {
@@ -84,8 +76,6 @@ func programs(runs []standinRun) []string {
 	return out
 }
 
-// matchArgs reports whether args match want, one regular expression per argument, each matched
-// whole.
 func matchArgs(args, want []string) bool {
 	if len(args) != len(want) {
 		return false
@@ -98,25 +88,16 @@ func matchArgs(args, want []string) bool {
 	return true
 }
 
-// drawFilter returns soffice's --convert-to for a page of width by height pixels.
 func drawFilter(width, height int) string {
 	return fmt.Sprintf(`png:draw_png_Export:{"PixelWidth":{"type":"long","value":"%d"},"PixelHeight":{"type":"long","value":"%d"}}`, width, height)
 }
 
-// own matches a picture's directory of its own in the working directory dir.
 func own(dir string) string { return regexp.QuoteMeta(dir) + `/picture-[^/]+/[0-9]+/` }
 
-// lo matches a RunLibreOffice run's directory in the working directory dir.
 func lo(dir string) string { return regexp.QuoteMeta(dir) + `/libreoffice-[^/]+` }
 
-// enGB is the profile registry's item that gives a metafiles' run LibreOffice's en-GB locale.
 const enGB = `<item oor:path="/org.openoffice.Setup/L10N"><prop oor:name="ooSetupSystemLocale" oor:op="fuse"><value>en-GB</value></prop></item>`
 
-// TestConvertSVG: an SVG, read as the Kind its request names whatever its name, is copied under
-// its stem and .svg into a directory of its own, holding nothing else, and rendered through one
-// magick run in the working directory, at the request's Density, 150 dpi when it is zero,
-// through the rsvg coder, flattened onto white, and written as PNG without the run's time. The PNG
-// is the working directory's file named by the request's stem and .png, and the original is kept.
 func TestConvertSVG(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -131,8 +112,6 @@ func TestConvertSVG(t *testing.T) {
 			t.Parallel()
 			c, st := standinConverter(t, picture.Limits{})
 			path := writePicture(t, svgData, tc.name)
-			// A file beside the original, which an SVG's relative reference would name, isn't
-			// copied with it.
 			if err := os.WriteFile(filepath.Join(filepath.Dir(path), "beside.png"), []byte(pngData), 0o600); err != nil {
 				t.Fatal(err)
 			}
@@ -167,12 +146,6 @@ func TestConvertSVG(t *testing.T) {
 	}
 }
 
-// TestConvertMetafile: an EMF or WMF, read as the Kind its request names, is rendered through one
-// soffice run in a libreoffice-* directory of its own in the working directory, read from a copy
-// there under the request's stem and its kind's extension, with the profile's British English
-// locale and the Draw PNG export at the request's scale, and its page trimmed through magick. The
-// PNG is the working directory's file named by the stem and .png, the original is kept, and
-// nothing else is left.
 func TestConvertMetafile(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -232,10 +205,6 @@ func TestConvertMetafile(t *testing.T) {
 	}
 }
 
-// TestConvertRefused: a kind the package doesn't convert, a stem that isn't a plain name, a scale
-// out of range, a negative density, and no working directory are each an error matching
-// ErrRequest before anything runs, and a missing file an error before any converter runs, each
-// leaving the working directory empty.
 func TestConvertRefused(t *testing.T) {
 	t.Parallel()
 	req := func(f func(*picture.Request)) func(dir, path string) picture.Request {
@@ -290,10 +259,6 @@ func TestConvertRefused(t *testing.T) {
 	}
 }
 
-// TestConvertFails: soffice exiting nonzero or writing no page, magick exiting nonzero, and
-// magick writing something that isn't a PNG each fail the conversion with the converter's
-// message or the picture's copied name, its stem and kind, and leave nothing in the working
-// directory and the original as it was.
 func TestConvertFails(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -340,11 +305,6 @@ func TestConvertFails(t *testing.T) {
 	}
 }
 
-// TestConvertBatch: a batch's TIFFs and SVGs go to magick in order, one run each, and its EMFs
-// and WMFs after them to one soffice run, in order, then each page to magick; every picture is
-// read as its Picture's kind, a TIFF's first image alone, from a copy, numbered by its place in
-// the batch, under its PNG's stem; each PNG is written to its Picture's PNG, anywhere the caller
-// names, and only the PNGs are left. The batch's SVGs are rendered at its Density.
 func TestConvertBatch(t *testing.T) {
 	t.Parallel()
 	c, st := standinConverter(t, picture.Limits{})
@@ -359,7 +319,6 @@ func TestConvertBatch(t *testing.T) {
 		{"b2.tif", tiffLE, route.TIFF},
 		{"c3.WMF", wmfKey, route.WMF},
 		{"d4.svg", svgData, route.SVG},
-		// Read as its Picture's kind, whatever its content.
 		{"e5.tiff", "not a tiff", route.TIFF},
 	}
 	var batch []picture.Picture
@@ -417,9 +376,6 @@ func TestConvertBatch(t *testing.T) {
 	}
 }
 
-// TestConvertBatchRefused: a kind the package doesn't convert, a PNG stem that isn't a plain
-// name, two pictures that share a PNG's stem, and a negative density are each an error matching
-// ErrRequest before anything runs; an empty batch runs nothing and succeeds.
 func TestConvertBatchRefused(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()
@@ -476,8 +432,6 @@ func TestConvertBatchRefused(t *testing.T) {
 	})
 }
 
-// TestConvertBatchFailsRemovesPNGs: a batch whose metafile fails after its TIFF's PNG was
-// written removes that PNG too, so a failed batch leaves no PNG of its own.
 func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
 	t.Parallel()
 	c, st := standinConverter(t, picture.Limits{})
@@ -501,10 +455,6 @@ func TestConvertBatchFailsRemovesPNGs(t *testing.T) {
 	}
 }
 
-// TestLimits: the configured limits begin every magick run, as -limit options in a fixed order,
-// the format listing, a TIFF's pages, a batch's TIFF, SVG, and raster, and a metafile's trim
-// alike, a zero limit leaving its option out; soffice's run carries none. Zero Limits pass no
-// -limit at all.
 func TestLimits(t *testing.T) {
 	t.Parallel()
 	limits := picture.Limits{Area: 4000000, Width: 8000, Height: 9000, Memory: 256 << 20, Disk: 1 << 30}
@@ -554,7 +504,6 @@ func TestLimits(t *testing.T) {
 					t.Errorf("magick run %q doesn't begin with the limits %q alone", r.Args, tc.want)
 				}
 			}
-			// The batch's TIFF, SVG, WebP, and EMF's trim, and the pages run.
 			if magick != 5 {
 				t.Errorf("%d magick runs, want 5", magick)
 			}
@@ -562,8 +511,6 @@ func TestLimits(t *testing.T) {
 	}
 }
 
-// TestLimitsNegative: a negative limit is NewConverter's error matching ErrRequest, naming it,
-// before magick's format listing runs.
 func TestLimitsNegative(t *testing.T) {
 	t.Parallel()
 	st := newStandins(t, "7.1.2-34")
@@ -580,11 +527,6 @@ func TestLimitsNegative(t *testing.T) {
 	}
 }
 
-// TestRunLibreOffice: a run copies each input into a libreoffice-* directory of its own under its
-// Name and runs soffice there once, its profile there too, started with the run's Registry and
-// left empty without one, and its output directory there, which the output names; the
-// originals are kept, and Remove removes the run's directory, leaving the working directory
-// empty.
 func TestRunLibreOffice(t *testing.T) {
 	t.Parallel()
 	for _, registry := range []string{"", "<oor:items/>\n"} {
@@ -630,9 +572,6 @@ func TestRunLibreOffice(t *testing.T) {
 	}
 }
 
-// TestRunLibreOfficeRefused: no working directory, no --convert-to, no inputs, a Name that is no
-// file name, and two Names of one stem are each an error matching ErrRequest before anything
-// runs; soffice failing removes the run's directory, its error carrying soffice's message.
 func TestRunLibreOfficeRefused(t *testing.T) {
 	t.Parallel()
 	in := picture.LibreOfficeInput{Name: "a.doc"}
@@ -683,8 +622,6 @@ func TestRunLibreOfficeRefused(t *testing.T) {
 	})
 }
 
-// TestCheckMetafileScale: zero is the default, 3; 1 to 8 are themselves; below zero and above 8
-// are refused with ErrRequest.
 func TestCheckMetafileScale(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[int]int{0: 3, 1: 1, 5: 5, 8: 8} {
@@ -699,8 +636,6 @@ func TestCheckMetafileScale(t *testing.T) {
 	}
 }
 
-// TestNewConverterVersion: NewConverter refuses a magick older than 7.1 and a soffice older than
-// 24.2, whatever their Specs declared, with a *tool.VersionError wrapping ErrTooOld.
 func TestNewConverterVersion(t *testing.T) {
 	t.Parallel()
 	old := newStandins(t, "7.0.11-14", func(s *settings) { s.SofficeVersion = "7.6.4.1" })
@@ -720,8 +655,6 @@ func TestNewConverterVersion(t *testing.T) {
 	}
 }
 
-// TestNewConverterNil: a Config with no Magick or no LibreOffice is the caller's mistake, and
-// panics naming the field.
 func TestNewConverterNil(t *testing.T) {
 	t.Parallel()
 	st := newStandins(t, "7.1.2-34")
@@ -742,8 +675,6 @@ func TestNewConverterNil(t *testing.T) {
 	}
 }
 
-// TestLibreOfficeSpec: LibreOfficeSpec reads soffice's version past the noise its desktop
-// libraries write.
 func TestLibreOfficeSpec(t *testing.T) {
 	t.Parallel()
 	so, err := newStandins(t, "7.1.2-34").tool(picture.LibreOfficeSpec())
