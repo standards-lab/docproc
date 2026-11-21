@@ -8,14 +8,6 @@ import (
 	"testing"
 )
 
-// TestRTFRoundTrip converts each committed RTF through soffice in the default image to docx, then
-// docproc-ooxml. Each result is converted from "rtf", and its Markdown holds the text the RTF
-// holds, as its source reads, each line given here as office's Markdown writes it: memo.rtf's
-// heading, its paragraph with a windows-1252 é and a bold run, which office's Markdown writes
-// plain, its table's rows, and its last paragraph; hidden-entry.rtf's paragraph, one sentence
-// eleven times. The title above that paragraph is a \tc table-of-contents entry, hidden text RTF
-// doesn't display, and the Markdown holds none of it. No golden Markdown is recorded: the asserted
-// lines are the content, not LibreOffice's layout.
 func TestRTFRoundTrip(t *testing.T) {
 	c := containerConverter(t)
 	sentence := "Sluwe Sjaantje sloeg de slome slager."

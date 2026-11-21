@@ -17,7 +17,6 @@ import (
 	"github.com/standards-lab/docproc/picture"
 )
 
-// programs returns the programs of runs, in order.
 func programs(runs []standinRun) []string {
 	var out []string
 	for _, r := range runs {
@@ -26,19 +25,8 @@ func programs(runs []standinRun) []string {
 	return out
 }
 
-// h returns a stem the envelope's media name rule could make: 64 of the hex digit c.
 func h(c string) string { return strings.Repeat(c, 64) }
 
-// TestConvertPictures: with both converters, each picture of a convertible kind, by its stored
-// file's signature, is copied into a directory of its own and each TIFF goes to magick, one run
-// each, reading its first image as TIFF and writing PNG; every EMF and WMF goes to soffice in one
-// run, in document order, with its profile and its output in a directory of its own in the working
-// directory, the profile starting with the British English locale that makes Draw's page A4, and
-// the Draw PNG export rendering that page at the default scale, 3; then each page to magick, one
-// run each, trimmed to the picture, PNG to PNG. Each converted picture's PNG is its stored name's
-// stem and .png, beside the stored file, which stays, and is its medium's Path, Converted; PNG,
-// JPEG, GIF, and BMP, a kind the standard names no converter for, and an embedded package are
-// handed on as stored. Only the media directory is left.
 func TestConvertPictures(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -88,9 +76,6 @@ func TestConvertPictures(t *testing.T) {
 	if got, want := programs(all), []string{"docproc-ooxml", "magick", "magick", "soffice", "magick", "magick", "magick"}; !slices.Equal(got, want) {
 		t.Fatalf("runs: got %q, want %q", got, want)
 	}
-	// Each TIFF is converted from a copy in a directory of its own, numbered by its place in the
-	// picture package's batch, under its stem and its kind's extension, and each metafile from a
-	// copy under the same name in the LibreOffice run's directory, where soffice runs.
 	own := func(i int, name string) string {
 		return regexp.QuoteMeta(dir) + `/picture-[^/]+/` + fmt.Sprint(i) + `/` + regexp.QuoteMeta(name)
 	}
@@ -135,15 +120,10 @@ func TestConvertPictures(t *testing.T) {
 	}
 }
 
-// drawFilter returns soffice's --convert-to for the Draw PNG export of a page width by height
-// pixels.
 func drawFilter(width, height int) string {
 	return fmt.Sprintf(`png:draw_png_Export:{"PixelWidth":{"type":"long","value":"%d"},"PixelHeight":{"type":"long","value":"%d"}}`, width, height)
 }
 
-// TestConvertPicturesScale: a Request's MetafileScale sets the page's pixel size soffice renders
-// a metafile at, the scale times A4 at 96 dpi, 794x1123: the default, 3, when zero, and up to 8.
-// A negative scale, or one above 8, is refused before anything runs.
 func TestConvertPicturesScale(t *testing.T) {
 	t.Parallel()
 	emf := h("1") + ".emf"
@@ -193,10 +173,6 @@ func TestConvertPicturesScale(t *testing.T) {
 	}
 }
 
-// TestConvertPicturesFails: soffice exiting nonzero, soffice writing no PNG for one of its
-// pictures, magick exiting nonzero, and magick writing something that isn't a PNG, in a TIFF's
-// conversion or a metafile's trim, each fail the conversion before the Document is yielded, with
-// the converter's own message or the picture's name, and leave nothing in the working directory.
 func TestConvertPicturesFails(t *testing.T) {
 	t.Parallel()
 	noise := "(process:22): dconf-CRITICAL **: unable to create directory '/.cache/dconf'\nFontconfig error: No writable cache directories\n"
@@ -250,11 +226,6 @@ func TestConvertPicturesFails(t *testing.T) {
 	}
 }
 
-// TestConvertRewritesLinks: every record's Markdown has each occurrence of a converted picture's
-// stored name, a name repeated included, swapped for its PNG's, and a picture handed on as stored
-// keeps its links. A stored .tif and .tiff of one stem, the same bytes under two extensions, are
-// converted once and each swapped whole, the longer name never read as the shorter and a suffix.
-// Each medium keeps docproc-ooxml's name in File.
 func TestConvertRewritesLinks(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)

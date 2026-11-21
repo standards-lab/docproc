@@ -15,7 +15,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// hostQPDF returns a QPDF over this machine's qpdf.
 func hostQPDF(t *testing.T) *document.QPDF {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), document.QPDFSpec())
@@ -29,7 +28,6 @@ func hostQPDF(t *testing.T) *document.QPDF {
 	return q
 }
 
-// hostDetacher returns a Detacher over this machine's pdfdetach.
 func hostDetacher(t *testing.T) *document.Detacher {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), document.PDFDetachSpec())
@@ -43,10 +41,6 @@ func hostDetacher(t *testing.T) *document.Detacher {
 	return d
 }
 
-// encrypted returns PDFs made from clean.pdf by the host's qpdf, in a directory of the test's
-// own, by name: "open-password.pdf", which needs its user password, "open-password-aes128.pdf"
-// likewise under 128-bit AES, and "permissions.pdf", encrypted with an empty user password and
-// restricted only by its permissions, which opens without one.
 func encrypted(t *testing.T) map[string]string {
 	t.Helper()
 	dir := t.TempDir()
@@ -67,9 +61,6 @@ func encrypted(t *testing.T) map[string]string {
 	return paths
 }
 
-// TestFormReal: this machine's qpdf reads the generated acroform.pdf as its generator's fields,
-// exactly as the recorded JSON does; signed.pdf as its one signature field, signed, qpdf's
-// warnings no failure; and clean.pdf, with no AcroForm, as none.
 func TestFormReal(t *testing.T) {
 	q := hostQPDF(t)
 	for name, want := range map[string][]document.FormField{
@@ -92,9 +83,6 @@ func TestFormReal(t *testing.T) {
 	}
 }
 
-// TestRequiresPasswordReal: of the PDFs encrypted from clean.pdf, the two with an open password
-// need one, the one restricted only by its permissions doesn't, and clean.pdf, which isn't
-// encrypted, doesn't.
 func TestRequiresPasswordReal(t *testing.T) {
 	q := hostQPDF(t)
 	pdfs := encrypted(t)
@@ -114,12 +102,8 @@ func TestRequiresPasswordReal(t *testing.T) {
 	}
 }
 
-// attachmentsFixture is the generated attachments.pdf.
 var attachmentsFixture = filepath.Join("testdata", "attachments", "attachments.pdf")
 
-// TestDetacherReal: this machine's pdfdetach lists attachments.pdf's name tree file, notes.txt,
-// and its file attachment annotation's, data.csv, and saves each whole; the Screen annotation's
-// clip.avi isn't listed; and a number past them is ErrNoAttachment.
 func TestDetacherReal(t *testing.T) {
 	d := hostDetacher(t)
 	list, err := d.List(t.Context(), attachmentsFixture)

@@ -18,11 +18,8 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// formFixture returns the path of one of the forms fixtures, under testdata/forms.
 func formFixture(name string) string { return filepath.Join("testdata", "forms", name) }
 
-// acroformFields are the fields of the generated acroform.pdf, as the generator's doc lists
-// them, in the AcroForm's order: what Form reads from qpdf's JSON of it.
 var acroformFields = []document.FormField{
 	{Name: "applicant.name", Type: document.TextField, Value: "Ada Lovelace"},
 	{Name: "applicant.city", Type: document.TextField, Value: "Zürich"},
@@ -39,8 +36,6 @@ var acroformFields = []document.FormField{
 	},
 }
 
-// standinQPDF links the stand-in qpdf at version and builds a QPDF over it, returning the
-// stand-in.
 func standinQPDF(t *testing.T, version string) (*document.QPDF, *standin) {
 	t.Helper()
 	st := newStandin(t, "qpdf", version)
@@ -51,8 +46,6 @@ func standinQPDF(t *testing.T, version string) (*document.QPDF, *standin) {
 	return q, st
 }
 
-// TestFixtureSums holds the forms, attachments, portfolio, and malformed fixtures to the SHA-256
-// the testdata README gives them.
 func TestFixtureSums(t *testing.T) {
 	t.Parallel()
 	readme, err := os.ReadFile(filepath.Join("testdata", "README.md"))
@@ -71,9 +64,6 @@ func TestFixtureSums(t *testing.T) {
 	}
 }
 
-// TestNewQPDF: a nil QPDF panics naming the field, and a qpdf older than 11.0, whatever its
-// Spec's minimum, is refused with a *tool.VersionError wrapping tool.ErrTooOld; qpdf's version
-// line gives its version.
 func TestNewQPDF(t *testing.T) {
 	t.Parallel()
 	wantPanic(t, "document: Config.QPDF is nil", func() { _, _ = document.NewQPDF(document.Config{}) })
@@ -91,10 +81,6 @@ func TestNewQPDF(t *testing.T) {
 	}
 }
 
-// TestRequiresPassword: qpdf --requires-password's exit code is the answer, 0 a password needed,
-// 2 not encrypted and 3 encrypted but opening without one, warnings aside; a run exiting 2 with
-// qpdf's error, as it does for a file it can't open, fails with it, and any other exit fails.
-// The PDF is named by its absolute path, in its own directory.
 func TestRequiresPassword(t *testing.T) {
 	t.Parallel()
 	q, st := standinQPDF(t, "12.4.2")
@@ -130,10 +116,6 @@ func TestRequiresPassword(t *testing.T) {
 	}
 }
 
-// TestForm: qpdf's JSON of the generated acroform.pdf, recorded beside it, reads as the
-// generator's fields exactly, a radio group's two widgets as one field; a run ending in warnings,
-// exit 3, has succeeded; a PDF with no AcroForm has no fields; and a run that fails, or JSON that
-// isn't version 2, fails.
 func TestForm(t *testing.T) {
 	t.Parallel()
 	q, st := standinQPDF(t, "12.4.2")
@@ -176,11 +158,6 @@ func TestForm(t *testing.T) {
 	}
 }
 
-// TestFormValues: qpdf's JSON version 2 encodings read as text: a binary string's bytes, a name's
-// text with its slash or "n:/" taken off; a pushbutton, a signature, and a field of a type none
-// names are typed so; and a field's value never fails the form: a number, a dictionary, a
-// reference, a string of no encoding Form knows, a binary string whose hex doesn't decode, and an
-// array's entries of those are no value, the field kept.
 func TestFormValues(t *testing.T) {
 	t.Parallel()
 	q, st := standinQPDF(t, "12.4.2")
@@ -224,14 +201,10 @@ func TestFormValues(t *testing.T) {
 	}
 }
 
-// signedFields are the fields of signed.pdf, a page of a signed US government PDF: its one
-// signature field, signed, its value the reference "12 0 R" to its signature dictionary.
 var signedFields = []document.FormField{
 	{Name: "USGPOSignature", Type: document.SignatureField, Signed: new(true)},
 }
 
-// TestFormSigned: qpdf's JSON of signed.pdf, recorded beside it verbatim, reads as its one signed
-// signature field, whose value, a reference, fails nothing.
 func TestFormSigned(t *testing.T) {
 	t.Parallel()
 	q, st := standinQPDF(t, "12.4.2")
@@ -242,7 +215,6 @@ func TestFormSigned(t *testing.T) {
 	if !bytes.Contains(b, []byte(`"fieldtype": "/Sig"`)) || !bytes.Contains(b, []byte(`"value": "12 0 R"`)) {
 		t.Fatal("signed.json holds no /Sig field of value 12 0 R")
 	}
-	// qpdf exits 3 on this PDF, its warnings no failure.
 	st.set(func(s *settings) { s.Stdout = new(b) })
 	st.set(func(s *settings) { s.Exit = 3 })
 	f, err := q.Form(t.Context(), filepath.Join(t.TempDir(), "signed.pdf"))

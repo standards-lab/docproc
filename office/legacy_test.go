@@ -14,19 +14,10 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// ole2 begins an OLE2 compound file, as a legacy document and an encrypted OOXML package do.
 const ole2 = "\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
-// rtf begins an RTF document.
 const rtf = `{\rtf1\ansi `
 
-// TestConvertLegacy: a document with the OLE2 signature whose name has a legacy extension, in
-// any case, is copied by the picture package's LibreOffice runner into a libreoffice-* directory
-// of its own in the working directory, as "document" with that extension, lowercased, and
-// converted by soffice to its OOXML format, there, with a fresh profile and its output in that
-// directory; docproc-ooxml then runs once, in the working directory, on the converted document. The Document records the legacy
-// format, and only the media directory is left. An RTF, by its signature, whatever its name says,
-// is copied as .rtf and converted to docx by Writer's filter, as a .doc is, and recorded as "rtf".
 func TestConvertLegacy(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -97,7 +88,6 @@ func TestConvertLegacy(t *testing.T) {
 	}
 }
 
-// matchArgs reports whether each of args matches the anchored pattern of want at its index.
 func matchArgs(args, want []string) bool {
 	if len(args) != len(want) {
 		return false
@@ -110,10 +100,6 @@ func matchArgs(args, want []string) bool {
 	return true
 }
 
-// TestConvertNotLegacy: an OLE2 file whose name has no legacy extension, such as an encrypted
-// OOXML package, a legacy name on a file without the signature, and an .rtf without RTF's
-// signature, go to docproc-ooxml as they are, read in place, and soffice never runs;
-// docproc-ooxml refusing the OLE2 file is its refusal.
 func TestConvertNotLegacy(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)
@@ -153,9 +139,6 @@ func TestConvertNotLegacy(t *testing.T) {
 	}
 }
 
-// TestConvertLegacyFails: soffice exiting nonzero, or exiting zero having written nothing, fails
-// the conversion with soffice's own error line, and docproc-ooxml never runs; docproc-ooxml
-// failing on the converted document is its error. Each leaves nothing in the working directory.
 func TestConvertLegacyFails(t *testing.T) {
 	t.Parallel()
 	c, ins := standinConverter(t)

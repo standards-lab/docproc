@@ -16,8 +16,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// hostGhostscript builds the released renderer over the host's gs through the exec runner,
-// which refuses one older than 10.0.
 func hostGhostscript(t *testing.T) (*document.Ghostscript, *tool.Tool) {
 	t.Helper()
 	gs, err := tool.NewExec(t.Context(), document.GhostscriptSpec())
@@ -36,7 +34,6 @@ func TestGhostscriptVersion(t *testing.T) {
 	t.Logf("%s %s", gs.Name(), gs.Version())
 }
 
-// TestGhostscriptCountHost checks the host's gs counts the fixtures' pages.
 func TestGhostscriptCountHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	for set, want := range map[string]int{"clean": 6, "scanned": 7} {
@@ -47,8 +44,6 @@ func TestGhostscriptCountHost(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderHost checks a page of each fixture renders as a PNG of letter size at
-// 150 dpi, 1275x1650, and that a page past the last is an error that writes nothing.
 func TestGhostscriptRenderHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	for set, page := range map[string]int{"clean": 1, "scanned": 7} {
@@ -76,12 +71,6 @@ func TestGhostscriptRenderHost(t *testing.T) {
 	t.Logf("page past the last: %v", err)
 }
 
-// TestGhostscriptPortfolioHost checks the host's gs gives each page of portfolio.pdf, a PDF
-// portfolio whose catalog's /Collection gs runs its embedded documents' pages for in place of its
-// own, as the cover's own page: Render writes one PNG, letter size at 150 dpi, and Text reads that
-// page's text alone, and Images yields the same, a page's file and text. A page past the last is
-// an error carrying gs's message, from Render and from Text. The PDF's path holds parentheses and
-// a backslash, which the PostScript that opens it escapes.
 func TestGhostscriptPortfolioHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	b, err := os.ReadFile(filepath.Join("testdata", "portfolio", "portfolio.pdf"))
@@ -141,9 +130,6 @@ func TestGhostscriptPortfolioHost(t *testing.T) {
 	}
 }
 
-// TestGhostscriptRenderMessageHost checks the host's gs renders the malformed fixture's page,
-// which it renders with "**** Error: Page drawing error occurred.": the message goes to stderr,
-// and Render writes the page's PNG alone.
 func TestGhostscriptRenderMessageHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	var out bytes.Buffer
@@ -157,10 +143,6 @@ func TestGhostscriptRenderMessageHost(t *testing.T) {
 	t.Logf("compacted-syntax.pdf page 1: %d PNG bytes, %v", out.Len(), img.Bounds())
 }
 
-// TestGhostscriptTextHost checks the host's gs reads clean.pdf's text layer, every page of it
-// having one, and finds none on scanned.pdf's pages, their text an image, and records each clean
-// page's character and word error rates against its ground truth. A page past the last is
-// ErrRequest.
 func TestGhostscriptTextHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
 	pdf := fixtureCopy(t, "clean.pdf")
@@ -178,9 +160,6 @@ func TestGhostscriptTextHost(t *testing.T) {
 		we, wn := wordErrors(truth, text)
 		found := wordsFound(truth, text)
 		edits, chars, wedits, words = edits+e, chars+n, wedits+we, words+wn
-		// txtwrite keeps the page's layout, so two columns read across both, line by line, and a
-		// form's labels and values sit apart: the error rates, which count order, are recorded,
-		// and the words are asserted, whatever their order.
 		if found < 0.95 {
 			t.Errorf("clean.pdf page %d's text layer holds %.4f of its truth's words, want nearly all: %q", i+1, found, text)
 		}
@@ -203,8 +182,6 @@ func TestGhostscriptTextHost(t *testing.T) {
 	}
 }
 
-// wordsFound returns the fraction of truth's words that got holds, whatever their order, each
-// word of got counted once: 1 when got holds every word of truth, as often as truth does.
 func wordsFound(truth, got string) float64 {
 	have := map[string]int{}
 	for _, w := range strings.Fields(got) {
@@ -221,11 +198,8 @@ func wordsFound(truth, got string) float64 {
 	return rate(found, len(want))
 }
 
-// collapse returns s with every run of whitespace made one space, and none at either end.
 func collapse(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// editDistance returns the Levenshtein distance from a to b: the fewest insertions, deletions,
-// and substitutions of one element that turn a into b. It keeps one row of the table.
 func editDistance[T comparable](a, b []T) int {
 	row := make([]int, len(b)+1)
 	for j := range row {
@@ -247,23 +221,16 @@ func editDistance[T comparable](a, b []T) int {
 	return row[len(b)]
 }
 
-// charErrors returns the character edit distance from truth to got and truth's length in
-// characters, both texts collapsed, so line breaks and spacing never count as errors, and
-// compared rune by rune, case counting. Their ratio is the character error rate; summed over
-// pages, the rate of the pages together.
 func charErrors(truth, got string) (edits, length int) {
 	t := []rune(collapse(truth))
 	return editDistance(t, []rune(collapse(got))), len(t)
 }
 
-// wordErrors returns the word edit distance from truth to got and truth's length in words, words
-// being runs of non-whitespace. Their ratio is the word error rate.
 func wordErrors(truth, got string) (edits, length int) {
 	t := strings.Fields(truth)
 	return editDistance(t, strings.Fields(got)), len(t)
 }
 
-// rate returns edits over length, and 0 for a length of 0.
 func rate(edits, length int) float64 {
 	if length == 0 {
 		return 0

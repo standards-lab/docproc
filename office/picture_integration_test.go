@@ -21,9 +21,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// exportPictures are the pictures TestPictureConvertReal extracts from the committed fixtures,
-// one of each converted kind: the TIFF fixture's TIFF, an OLE object's EMF preview, and a sheet's
-// WMF.
 var exportPictures = []struct {
 	fixture, entry string
 }{
@@ -32,14 +29,6 @@ var exportPictures = []struct {
 	{"ooxml/with-drawing.xlsx", "xl/media/image5.wmf"},
 }
 
-// TestPictureConvertReal extracts a TIFF, an EMF, and a WMF from the committed fixtures, writes
-// each as mail names an attachment, its SHA-256 and stored extension, outside the working
-// directory, and converts it through the picture package's ConvertBatch alone with the real
-// soffice in the default image and the host's magick, twice, the second run in a later second
-// than the first ended in. Each gives the working directory's file named by its SHA-256 and .png, which image/png
-// decodes, the same bytes both times and the same bytes as Convert hands the picture on as within
-// its document, since both run the picture package's one code path; the original is kept and
-// nothing else is left.
 func TestPictureConvertReal(t *testing.T) {
 	c, pc := fullConverters(t)
 	for _, p := range exportPictures {
@@ -104,12 +93,8 @@ func TestPictureConvertReal(t *testing.T) {
 	}
 }
 
-// pictureKinds are the kinds of exportPictures' entries, by extension.
 var pictureKinds = map[string]route.Kind{".tiff": route.TIFF, ".emf": route.EMF, ".wmf": route.WMF}
 
-// convertOne converts the picture at path, read as the kind its extension names, through pc's
-// ConvertBatch alone, a TIFF's first image as a document's TIFF is, into dir's PNG named by its
-// SHA-256, its name's stem, at scale, and returns the PNG's path.
 func convertOne(t *testing.T, pc *picture.Converter, dir, path string, scale int) (string, error) {
 	t.Helper()
 	base := filepath.Base(path)
@@ -121,13 +106,11 @@ func convertOne(t *testing.T, pc *picture.Converter, dir, path string, scale int
 	return png, err
 }
 
-// sha returns the lowercase hex SHA-256 of content.
 func sha(content string) string {
 	sum := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(sum[:])
 }
 
-// extract returns the bytes of the entry named entry in the ZIP package at path.
 func extract(t *testing.T, path, entry string) []byte {
 	t.Helper()
 	r, err := zip.OpenReader(path)

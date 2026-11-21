@@ -114,7 +114,6 @@ func (d *Detacher) Save(ctx context.Context, pdf string, number int, w io.Writer
 	return nil
 }
 
-// detachError returns a failed run's error, naming what it did and pdfdetach's message.
 func detachError(what, stderr string, err error) error {
 	if message := strings.Join(strings.Fields(stderr), " "); message != "" {
 		return fmt.Errorf("document: pdfdetach: %s: %s: %w", what, message, err)
@@ -122,14 +121,11 @@ func detachError(what, stderr string, err error) error {
 	return fmt.Errorf("document: pdfdetach: %s: %w", what, err)
 }
 
-// listCount and listEntry match pdfdetach -list's count line and an entry's first line.
 var (
 	listCount = regexp.MustCompile(`^(\d+) embedded files$`)
 	listEntry = regexp.MustCompile(`^(\d+): (.*)$`)
 )
 
-// parseDetachList reads pdfdetach -list's output: "N embedded files", then "i: name" for each, i
-// from 1. A line that isn't the next number's continues the name before it.
 func parseDetachList(out string) ([]Attachment, error) {
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	m := listCount.FindStringSubmatch(lines[0])

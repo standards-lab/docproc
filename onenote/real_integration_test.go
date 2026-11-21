@@ -18,21 +18,10 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// These tests run the real docproc-onenote, built from tools/onenote in this checkout and found on
-// PATH, which the unit tier doesn't provide, so they run in the integration tier.
-
-// fixtures is docproc-onenote's committed inputs, read in place under tools/.
 const fixtures = "onenote/tests/fixtures"
 
-// fileOnly ends the stem of a golden of a table of contents read under --file-only.
 const fileOnly = ".file-only"
 
-// TestRealGoldens runs the real docproc-onenote over the input of every committed golden, with a
-// media directory, and holds its records to the golden as TestReplayGoldens does: one record per
-// line, each written back as its line, and the golden's warnings; a refused input, the encrypted
-// section and the table of contents under --file-only, a *cli.ExitError of exit code 3 classed by
-// its reason. Each medium's file is in the media directory, its content's SHA-256 its name's and
-// its size the record's.
 func TestRealGoldens(t *testing.T) {
 	r := realReader(t)
 	root := tooltest.Tools(t, goldens)
@@ -76,8 +65,6 @@ func TestRealGoldens(t *testing.T) {
 	}
 }
 
-// checkWritten checks that each of p's media with a file was written at its Path, its content's
-// SHA-256 its SHA256 and its size the record's.
 func checkWritten(t *testing.T, p *onenote.Page) {
 	t.Helper()
 	for _, m := range p.Media {
@@ -99,7 +86,6 @@ func checkWritten(t *testing.T, p *onenote.Page) {
 	}
 }
 
-// realReader builds a Reader over the real docproc-onenote on PATH, through the exec runner.
 func realReader(t *testing.T) *onenote.Reader {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), onenote.OneNoteSpec())

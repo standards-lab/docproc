@@ -22,8 +22,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// fixtures are the OOXML fixtures in testdata/ooxml, copied from office v0.1.0, as
-// office/testdata/README.md lists them.
 var fixtures = []string{
 	"media.libreoffice.docx",
 	"notes.libreoffice.docx",
@@ -33,22 +31,14 @@ var fixtures = []string{
 	"slide-objects.libreoffice.pptx",
 }
 
-// mediaLink matches a medium's name, the lowercase hex SHA-256 and an extension, as
-// docproc-ooxml's Markdown links it.
 var mediaLink = regexp.MustCompile(`\]\(([0-9a-f]{64}\.[A-Za-z0-9]+)[) ]`)
 
-// hostLimits are the limits realConverter's picture Converter passes every magick run, far past
-// what the fixtures' pictures need, and hostLimitArgs them as magick's -limit options.
 var (
 	hostLimits    = picture.Limits{Area: 256 << 20, Width: 32768, Height: 32768, Memory: 1 << 30, Disk: 4 << 30}
 	hostLimitArgs = []string{"-limit", "area", "268435456", "-limit", "width", "32768", "-limit", "height", "32768",
 		"-limit", "memory", "1073741824", "-limit", "disk", "4294967296"}
 )
 
-// recordingMagick returns a Spec running the host's magick behind a shell script that appends
-// each run's first arguments, as many as hostLimitArgs holds, NUL-separated, to a log, a line a
-// run, and a function that fails the test unless every run but the version probe began with
-// hostLimitArgs, returning how many there were.
 func recordingMagick(t *testing.T) (tool.Spec, func() int) {
 	t.Helper()
 	magick, err := exec.LookPath("magick")
@@ -85,10 +75,6 @@ func recordingMagick(t *testing.T) (tool.Spec, func() int) {
 	}
 }
 
-// realConverter builds a Converter over the real docproc-ooxml, built from tools/ooxml and found
-// on PATH, and the picture package's Converter over the host's soffice and magick, with
-// hostLimits, all through the exec runner, and logs soffice's and magick's versions. When the test
-// ends it checks that every magick run carried the limits.
 func realConverter(t *testing.T) *office.Converter {
 	t.Helper()
 	tl, err := tool.NewExec(t.Context(), office.OfficeSpec())
@@ -117,8 +103,6 @@ func realConverter(t *testing.T) *office.Converter {
 	return c
 }
 
-// converted is one conversion of a fixture: its Document, its records' Markdown joined, its
-// warnings, and its working directory.
 type converted struct {
 	doc      *office.Document
 	recs     []office.Record
@@ -127,9 +111,6 @@ type converted struct {
 	dir      string
 }
 
-// convertPath converts the document at path, its name its base, in a working directory of its
-// own, failing the test unless it succeeds with a Document first and leaves the media directory
-// alone in the working directory.
 func convertPath(t *testing.T, c *office.Converter, path string) converted {
 	t.Helper()
 	out := converted{dir: t.TempDir()}
@@ -162,13 +143,6 @@ func convertPath(t *testing.T, c *office.Converter, path string) converted {
 	return out
 }
 
-// TestReal runs the real docproc-ooxml over the fixtures. Each yields a schema "2" Document in the
-// fixture's format first, and no record of a kind the package doesn't know. Each medium with a
-// file is resolved in the media directory, its SHA-256 its name's, handed on as stored, but for a
-// TIFF, EMF, or WMF, handed on as its PNG; the names handed on are exactly the Markdown's links
-// to media; a linked picture has a
-// target and no file. Together the fixtures hold a sheet, rows, and pictures of every kind the
-// picture standard converts or hands on.
 func TestReal(t *testing.T) {
 	c := realConverter(t)
 	extensions := map[string]bool{}
@@ -237,8 +211,6 @@ func TestReal(t *testing.T) {
 	}
 }
 
-// TestRealRefused: the real docproc-ooxml refuses a document that isn't an OOXML package with exit
-// code 3, and the error carries its reason without the document's path.
 func TestRealRefused(t *testing.T) {
 	c := realConverter(t)
 	dir := t.TempDir()

@@ -259,6 +259,66 @@ type Request struct { Path, Dir, Name string; MetafileScale int }
 LibreOffice runner, for a legacy document's or an RTF's conversion, and which converts every
 picture.
 
+How `document` runs gs, and why (the measurements behind it are on
+[`acceptance.md`](acceptance.md), "PDF pages in shared gs processes"):
+
+- gs runs a PDF named on its command line through `runpdf`, in `pdf_main.ps`, which, for a
+  catalog holding `/Collection`, runs a portfolio's embedded documents' pages in place of its own,
+  the run's page range applied to each document in turn; gs has no parameter that turns that off.
+  A page's own run opens the PDF in PostScript and runs `runpdf`'s other branch, word for word:
+  `runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend`. A portfolio's page is
+  then its cover's own, and any other PDF's page is byte for byte what the file named on the
+  command line gives, its PNG, its text, and gs's messages, as gs 10.08.0 gives them over every
+  fixture. A shared run names the PDF on its command line, so a portfolio never shares one.
+- The path is a PostScript string, its backslashes and parentheses escaped, and `-dSAFER` is
+  permitted to read that one file. gs splits a permitted path at a colon, so a path holding one
+  can't be read.
+- The renders and the text runs take `-sstdout=%stderr`, since gs otherwise writes its own
+  messages to stdout, even under `-q`, ahead of a page it renders with one, such as `**** Error:
+  Page drawing error occurred.`. The count and the survey print with `=`, which writes to
+  `%stdout` as those messages do, so they don't take it. The survey prints the count, then, only
+  for a count above zero, whether the PDF is a portfolio, then, when asked, each page's size, its
+  page set up by `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the
+  released count run printed.
+- A page's PNG reaches its writer only once stdout begins with PNG's signature, so gs's message for
+  a page past the last, written in place of a PNG, never reaches a page file. A shared render's
+  stdout is split into PNGs by their chunks, through `IEND`, reading no chunk's data and checking
+  no CRC, so gs's PNGs pass through byte for byte; output past the pages asked for, or not a PNG
+  where one begins, is the content's failure, as is a text file missing.
+- The alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default
+  and gs doesn't. gs reads a `%` in `OutputFile` as a format's, so the shared text run's directory
+  has each `%` doubled.
+- `Tool.Run` keeps stderr in its `*tool.ExitError` only when the caller passes no writer for it,
+  so `Render` and `Text`, which read stderr, set the message themselves, from its first 4 KiB.
+- A shared process's failure is the content's when gs exits nonzero, dies by its own fault, passes
+  its bound, or writes output that doesn't hold its pages, and its unhanded pages then run alone;
+  any other failure is the run's, which a page's own process wouldn't change.
+- Each page has a turn, open once the page `Concurrency` before it is taken by the consumer, and
+  a lane starts writing a page only on its turn. That page is the lane's own last, so a lane holds
+  one page at a time and the stream at most `Concurrency`, each outcome buffered so a lane never
+  waits on the consumer to hand one over.
+
+How `document` reads qpdf and pdfdetach, and why:
+
+- qpdf lists a field once for each of its widgets, so a radio group's buttons are one field, at its
+  first button's place. qpdf's JSON version 2 writes a string as `u:` and its text or `b:` and its
+  bytes in hex, and a name as `/` and its text or `n:/` and its text where it isn't UTF-8; a value
+  of any other shape, a reference such as a signature's `12 0 R` among them, is no value. A
+  pushbutton is a button field whose flags hold bit 17, Pushbutton. qpdf's stderr lines that
+  aren't warnings are its error.
+- `pdfdetach -list` prints `N embedded files`, then `i: name` for each from 1; a line that isn't
+  the next number's continues the name before it, so a name holding a line break reads whole.
+
+How `office` converts through LibreOffice, and why:
+
+- A conversion names LibreOffice's export filter, not only the extension, so a template's export
+  doesn't choose a template format. soffice exits zero having written nothing when it can't
+  export what it loaded, so a converted document that isn't there is an error.
+- An SVG is handed on as stored, since an Office application stores a PNG beside the SVG it shows.
+- A converted picture's stored name is swapped for its PNG's longest name first, so a stored
+  `.tif` and `.tiff` of one stem are each swapped whole, and a swapped-in name is never swapped
+  again.
+
 ## Input from a stream, or a path
 
 ```go

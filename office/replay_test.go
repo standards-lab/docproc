@@ -23,17 +23,8 @@ import (
 	"github.com/standards-lab/docproc/office"
 )
 
-// expected is docproc-ooxml's committed expected outputs, read in place: a .jsonl and a .stderr per
-// fixture, and a refused fixture's .exit.
 const expected = "ooxml/test/Docproc.Ooxml.Tests/Expected"
 
-// TestReplayExpected replays every committed expected output of docproc-ooxml through the stand-in
-// and decodes it. A read fixture yields one record per line, each of the line's kind, none
-// unknown, and each record written back as JSON is the line less its kind; each document's
-// properties keep the line's order; the records' Markdown, concatenated, is the lines'; and each
-// stderr line is a Warning record, in order. A refused fixture ends with a *cli.ExitError of its
-// exit code, its message the .stderr's reason and its refusal classed by it, an encrypted package
-// Encrypted.
 func TestReplayExpected(t *testing.T) {
 	t.Parallel()
 	root := tooltest.Tools(t, expected)
@@ -84,8 +75,6 @@ func TestReplayExpected(t *testing.T) {
 	})
 }
 
-// checkRead checks a read fixture's records against its expected output, stem's .jsonl and
-// .stderr, and returns the kinds of its lines.
 func checkRead(t *testing.T, stem string, recs []office.Record) []string {
 	t.Helper()
 	var warnings []office.Warning
@@ -152,7 +141,6 @@ func checkRead(t *testing.T, stem string, recs []office.Record) []string {
 	return kinds
 }
 
-// sameJSON fails the test unless rec, written back as JSON, holds what line holds less its kind.
 func sameJSON(t *testing.T, n int, line []byte, rec office.Record) {
 	t.Helper()
 	var want, got map[string]any
@@ -172,8 +160,6 @@ func sameJSON(t *testing.T, n int, line []byte, rec office.Record) {
 	}
 }
 
-// checkPropertyOrder fails the test unless each of props' lists holds its part's keys in the
-// order line, a document line, stores them.
 func checkPropertyOrder(t *testing.T, line []byte, props office.Properties) {
 	t.Helper()
 	var parts struct {
@@ -193,7 +179,6 @@ func checkPropertyOrder(t *testing.T, line []byte, props office.Properties) {
 	}
 }
 
-// objectKeys returns the member names of obj, a JSON object, in order; none for an empty value.
 func objectKeys(t *testing.T, obj jsontext.Value) []string {
 	t.Helper()
 	if len(obj) == 0 {
@@ -217,8 +202,6 @@ func objectKeys(t *testing.T, obj jsontext.Value) []string {
 	return keys
 }
 
-// checkRefused checks a refused fixture's outcome against its expected output, stem's .stderr and
-// .exit: no record, and a *cli.ExitError of the exit code, its message the error line's reason.
 func checkRefused(t *testing.T, stem string, recs []office.Record, err error) {
 	t.Helper()
 	if len(recs) != 0 {
@@ -251,7 +234,6 @@ func checkRefused(t *testing.T, stem string, recs []office.Record, err error) {
 	}
 }
 
-// readLines returns the lines of the file at path, their line feeds left out.
 func readLines(t *testing.T, path string) [][]byte {
 	t.Helper()
 	f, err := os.Open(path)

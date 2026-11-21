@@ -54,11 +54,8 @@ func NewQPDF(cfg Config) (*QPDF, error) {
 	return &QPDF{qpdf: cfg.QPDF}, nil
 }
 
-// stderrLimit is how much of a tool's standard error a qpdf or pdfdetach run keeps for its error.
 const stderrLimit = 16 << 10
 
-// formLimit is the most JSON a Form run may write: an AcroForm past it fails rather than being
-// held in memory.
 const formLimit = 64 << 20
 
 // RequiresPassword reports whether the PDF at pdf needs a password to open, through qpdf
@@ -122,7 +119,6 @@ func (q *QPDF) Form(ctx context.Context, pdf string) (Form, error) {
 	return f, nil
 }
 
-// qpdfError returns a failed run's error, naming qpdf's message when its stderr holds one.
 func qpdfError(stderr string, err error) error {
 	if message := qpdfMessage(stderr); message != "" {
 		return fmt.Errorf("document: qpdf: %s: %w", message, err)
@@ -130,7 +126,6 @@ func qpdfError(stderr string, err error) error {
 	return fmt.Errorf("document: qpdf: %w", err)
 }
 
-// qpdfMessage returns qpdf's stderr lines that aren't warnings, joined by "; ": its error.
 func qpdfMessage(stderr string) string {
 	var lines []string
 	for line := range strings.Lines(stderr) {
@@ -142,8 +137,6 @@ func qpdfMessage(stderr string) string {
 	return strings.Join(lines, "; ")
 }
 
-// capped is a writer that refuses the write that would take it past limit bytes, so a run whose
-// output is too large stops.
 type capped struct {
 	w     io.Writer
 	n     int
@@ -198,7 +191,6 @@ type FormField struct {
 	Signed   *bool    `json:"signed,omitzero"`
 }
 
-// qpdfForm is the part of qpdf's JSON Form reads.
 type qpdfForm struct {
 	Version  int `json:"version"`
 	AcroForm struct {
@@ -217,12 +209,8 @@ type qpdfForm struct {
 	} `json:"acroform"`
 }
 
-// pushbutton is a button field's Pushbutton flag, bit 17 of its field flags.
 const pushbutton = 1 << 16
 
-// parseForm reads qpdf's JSON, version 2, into a Form. qpdf lists a field once for each of its
-// widgets, so a radio group's buttons, each a widget of the one field, are one field here, at
-// its first button's place. Only JSON that doesn't parse, or isn't version 2, fails it.
 func parseForm(b []byte) (Form, error) {
 	var q qpdfForm
 	if err := json.Unmarshal(b, &q); err != nil {
@@ -272,11 +260,6 @@ func parseForm(b []byte) (Form, error) {
 	return f, nil
 }
 
-// qpdfValues returns a field's value, as qpdf's JSON version 2 gives it, as text: a string or a
-// name as one; an array as each of its strings and names; anything else, null, a reference such
-// as a signature field's "12 0 R", a number, or a dictionary, as none. A string is "u:" and its
-// text, or "b:" and its bytes in hex; a name is "/" and its text, or "n:/" and its text where it
-// isn't UTF-8. An entry qpdfText can't read is left out.
 func qpdfValues(raw json.RawMessage) []string {
 	var one string
 	if err := json.Unmarshal(raw, &one); err == nil {
@@ -302,8 +285,6 @@ func qpdfValues(raw json.RawMessage) []string {
 	return values
 }
 
-// qpdfText returns the text of one string or name in qpdf's JSON version 2, and false for a value
-// that is neither, such as a reference, or a binary string whose hex doesn't decode.
 func qpdfText(s string) (string, bool) {
 	switch {
 	case strings.HasPrefix(s, "u:"):

@@ -176,9 +176,6 @@ func (*Skipped) record()       {}
 func (*Warning) record()       {}
 func (*UnknownRecord) record() {}
 
-// decodeLine decodes one of docproc-onenote's lines, of kind kind, into its Record, every time
-// UTC. The raw JSON is the reader's to keep, as cli.Read yields it, so an UnknownRecord holds it as
-// it is.
 func decodeLine(kind string, raw jsontext.Value) (Record, error) {
 	var rec Record
 	switch kind {

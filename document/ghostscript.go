@@ -45,7 +45,7 @@ func GhostscriptSpec() tool.Spec {
 // directory is the PDF's directory. The container runner mounts a run's working directory at the
 // same absolute path, so the path names the same file through either runner. The Preparer's own
 // runs, its survey and its shared processes, take the working directory it gives them, a scratch
-// directory of its own through the exec runner, as workDir says.
+// directory of its own through the exec runner.
 type Ghostscript struct {
 	gs *tool.Tool
 }
@@ -82,45 +82,25 @@ func (g *Ghostscript) Count(ctx context.Context, pdf string) (int, error) {
 	return n, nil
 }
 
-// pageSize is a page's size in points as gs renders it: its media box, its rotation applied.
 type pageSize struct {
 	width, height float64
 }
 
-// pixels returns how many pixels gs renders the page at dpi: each side's points times dpi over
-// 72, rounded half up, as gs sizes its device, multiplied.
 func (s pageSize) pixels(dpi int) int64 {
 	side := func(points float64) int64 { return int64(math.Floor(points*float64(dpi)/72 + 0.5)) }
 	return side(s.width) * side(s.height)
 }
 
-// fit returns the largest DPI, at most dpi, at which the page renders in at most limit pixels,
-// and false when not even 1 dpi does. A page's pixels never fall as its DPI rises, so the DPIs
-// that fit are the ones below some bound, which fit searches for.
 func (s pageSize) fit(dpi int, limit int64) (int, bool) {
-	// The first DPI from 1 that doesn't fit; every DPI below it does.
 	over := 1 + sort.Search(dpi, func(i int) bool { return s.pixels(i+1) > limit })
 	return over - 1, over > 1
 }
 
-// survey is what the Preparer reads of a PDF before its pages: a size for each page, in page
-// order, zero sizes when it didn't ask for them, and whether the PDF is a portfolio.
 type survey struct {
-	sizes []pageSize
-	// portfolio is whether the PDF's catalog has a /Collection, which gs reads as a portfolio
-	// when the PDF is named on its command line, as a shared run names it, rendering, and reading
-	// the text of, its embedded documents' pages in place of its own: the run's page range applied
-	// to each document in turn, so a shared run's output for a page is every document's page of
-	// that number, none of it the page's alone. A page's own runs read it through ownPages, and
-	// give the page's own.
+	sizes     []pageSize
 	portfolio bool
 }
 
-// survey reads the PDF at pdf in one gs run, in the working directory dir, as workDir says: its
-// page count; whether it is a portfolio, by the test gs's own runpdf makes of it, its PDFInfo
-// holding /Collection; and, with sizes, each page's size, the page set up as rendering does, its
-// media box and rotation applied, and the device's page size printed, so a page's size is the one
-// Render renders. gs runs with -dSAFER, permitted to read that one file.
 func (g *Ghostscript) survey(ctx context.Context, pdf, dir string, sizes bool) (survey, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
@@ -132,7 +112,6 @@ func (g *Ghostscript) survey(ctx context.Context, pdf, dir string, sizes bool) (
 	}
 	sv, err := parseSurvey(out.String(), sizes)
 	if err != nil {
-		// Named as the count and the sizes runs it took the place of named theirs.
 		what := "page count"
 		if sizes {
 			what = "page sizes"
@@ -142,13 +121,6 @@ func (g *Ghostscript) survey(ctx context.Context, pdf, dir string, sizes bool) (
 	return sv, nil
 }
 
-// parseSurvey reads surveyArgs' output: the page count on its own line; then, when it is above
-// zero, true or false, whether the PDF is a portfolio, on its own; then, with sizes, each page's
-// width and height in points, one page a line.
-//
-// Output it can't read is quoted in its error as the released count and sizes runs quoted theirs,
-// the portfolio line left out: a PDF gs can't open prints no portfolio line, its count 0 after
-// gs's message, and a run past the count quotes gs's output without the line surveyArgs added.
 func parseSurvey(out string, sizes bool) (survey, error) {
 	lines := strings.Split(strings.TrimSpace(out), "\n")
 	n, err := strconv.Atoi(strings.TrimSpace(lines[0]))
@@ -161,8 +133,6 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 			return survey{}, fmt.Errorf("gs printed %q", out)
 		}
 		sv.portfolio = lines[1] == "true"
-		// The count's line is the first of out's that isn't blank, so the first "\ntrue\n" or
-		// "\nfalse\n" in out is the portfolio line after it.
 		out = strings.Replace(out, "\n"+lines[1]+"\n", "\n", 1)
 		lines = slices.Delete(lines, 1, 2)
 	}
@@ -191,8 +161,8 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 // Render writes page, 1-based, of the PDF at pdf to w as PNG at dpi, one gs run for the page. It
 // refuses a DPI of zero or less and a page below 1 before gs runs, as CheckRender does. A gs that
 // exits nonzero gives the Tool's error, a *tool.ExitError, and w may hold part of a PNG then. gs
-// reads the PDF through ownPages, so a PDF portfolio's page is its cover's own, one PNG, not its
-// embedded documents' pages.
+// reads the PDF through the non-portfolio branch of its runpdf, so a PDF portfolio's page is its
+// cover's own, one PNG, not its embedded documents' pages.
 //
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone,
 // as it does for Text. gs asked for a page past the last exits zero, writing no PNG and its
@@ -211,14 +181,11 @@ func (g *Ghostscript) Render(ctx context.Context, pdf string, page, dpi int, w i
 	return g.png(ctx, tool.Invocation{Args: renderArgs(abs, page, dpi), Dir: filepath.Dir(abs)}, abs, page, w)
 }
 
-// png runs gs as inv says, its stdout a page's PNG, and writes the PNG to w, holding back a stdout
-// that doesn't begin as a PNG and returning gs's stderr, its message, as the error.
 func (g *Ghostscript) png(ctx context.Context, inv tool.Invocation, pdf string, page int, w io.Writer) error {
 	out := &pngGuard{w: w}
 	stderr := cli.LimitedBuffer{Limit: gsStderrLimit}
 	inv.Stdout, inv.Stderr = out, &stderr
 	if err := g.gs.Run(ctx, inv); err != nil {
-		// Run keeps stderr for its *tool.ExitError only when the caller doesn't take it.
 		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Message == "" {
 			exit.Message = stderr.String()
 		}
@@ -230,19 +197,16 @@ func (g *Ghostscript) png(ctx context.Context, inv tool.Invocation, pdf string, 
 	return nil
 }
 
-// pastLast is the start of the message gs prints for a FirstPage past a PDF's last page.
 const pastLast = "Requested FirstPage is greater than the number of pages"
 
-// gsStderrLimit bounds how much of gs's stderr Render and Text keep, for their messages and their
-// errors.
 const gsStderrLimit = 4 << 10
 
 // Text returns the text of page, 1-based, of the PDF at pdf, as its text layer holds it, one gs
 // run with the txtwrite device: the page's text laid out in lines, gs's own spacing kept. A page
 // with no text layer, such as a scanned page, returns blank text, which HasText reports as none.
 // It refuses a page below 1 before gs runs, as CheckRender does. A gs that exits nonzero gives
-// the Tool's error, a *tool.ExitError carrying gs's stderr. gs reads the PDF through ownPages, so
-// a PDF portfolio's page is its cover's own text alone.
+// the Tool's error, a *tool.ExitError carrying gs's stderr. gs reads the PDF through the
+// non-portfolio branch of its runpdf, so a PDF portfolio's page is its cover's own text alone.
 //
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the text
 // alone. A page past the last prints gs's message there, "Requested FirstPage is greater than
@@ -260,7 +224,6 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 	stderr := cli.LimitedBuffer{Limit: gsStderrLimit}
 	err = g.gs.Run(ctx, tool.Invocation{Args: textArgs(abs, page), Dir: filepath.Dir(abs), Stdout: &out, Stderr: &stderr})
 	if err != nil {
-		// Run keeps stderr for its *tool.ExitError only when the caller doesn't take it.
 		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Message == "" {
 			exit.Message = stderr.String()
 		}
@@ -272,20 +235,8 @@ func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, e
 	return out.String(), nil
 }
 
-// errOutput marks a shared run's output that doesn't hold its pages as asked: a stdout that isn't
-// a stream of whole PNGs, one a page, or a text file missing. It is the content's failure, as
-// output that doesn't parse is, so the run's pages fall back to a process each.
 var errOutput = errors.New("gs's output doesn't hold the pages asked for")
 
-// renderPages renders pages, 1-based and in order, of the PDF at pdf at dpi, in one gs run in the
-// working directory dir, as workDir says, its stdout the pages' PNGs one after another, which it
-// splits by their chunks and hands to sink, a PNG at a time. It returns how many PNGs sink was
-// handed whole, and the run's error: gs's own, the Tool's, or one wrapping errOutput when stdout
-// isn't a PNG a page.
-//
-// The run's bound is the Tool's Timeout read as an idle bound, between gs's writes, rather than a
-// bound on the whole run: a unit's bound is a page's, and one run renders many. Time sink spends
-// blocked, waiting for the consumer, isn't idleness.
 func (g *Ghostscript) renderPages(ctx context.Context, pdf, dir string, pages []int, dpi int, sink pngSink) (int, error) {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
@@ -300,22 +251,11 @@ func (g *Ghostscript) renderPages(ctx context.Context, pdf, dir string, pages []
 	return whole, err
 }
 
-// ownDir reports whether gs's runs may work in a directory other than the PDF's: through the
-// exec runner they may, and the Preparer gives its own runs a scratch directory of its own, where
-// textPages writes its files; the container runner mounts only a run's working directory, the
-// PDF's, so a container's runs work there, and its text is read a page a run, through Text.
 func (g *Ghostscript) ownDir() bool {
 	_, container := g.gs.Image()
 	return !container
 }
 
-// workDir returns the working directory of a run over the PDF at pdf, absolute: dir, the
-// caller's, or the PDF's directory when dir is "". gs keeps its temporary files, a page's band
-// list and a portfolio's documents among them, in its TMPDIR, and removes them as it exits; a gs
-// killed first, its run ended early, leaves them there. Through the exec runner a run's TMPDIR is
-// a directory of the run's own under the process's temporary directory, never its working
-// directory, and the runner removes it once gs is reaped, so a run ended early leaves nothing
-// beside the input.
 func workDir(dir, pdf string) string {
 	if dir != "" {
 		return dir
@@ -323,19 +263,11 @@ func workDir(dir, pdf string) string {
 	return filepath.Dir(pdf)
 }
 
-// textPages writes the text of pages, 1-based and in order, of the PDF at pdf into dir, the
-// caller's, in one gs run with the txtwrite device, dir its working directory too: the run's i-th
-// page, from 1, to textFile(dir, i), as Text reads one page. Every page's file is there once it
-// returns nil; a file missing is an error wrapping errOutput.
-//
-// gs runs without -q, so it writes "Page N" to stderr as each page starts, and the run's bound
-// is the Tool's Timeout read as an idle bound, as renderPages' is.
 func (g *Ghostscript) textPages(ctx context.Context, pdf string, pages []int, dir string) error {
 	abs, err := filepath.Abs(pdf)
 	if err != nil {
 		return fmt.Errorf("document: ghostscript: %w", err)
 	}
-	// gs reads a % in OutputFile as a format's, which %% escapes.
 	out := filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "page-%d.txt")
 	if err := g.gs.Run(ctx, tool.Invocation{Args: sharedTextArgs(abs, pages, out), Dir: dir, Idle: g.gs.Timeout()}); err != nil {
 		return err
@@ -348,13 +280,10 @@ func (g *Ghostscript) textPages(ctx context.Context, pdf string, pages []int, di
 	return nil
 }
 
-// textFile is the file in dir textPages writes a run's i-th page's text to, i from 1.
 func textFile(dir string, i int) string {
 	return filepath.Join(dir, "page-"+strconv.Itoa(i)+".txt")
 }
 
-// pageList returns pages, ascending, as gs's PageList takes them: each run of consecutive pages
-// a range, such as 1-915, and a page alone its number, joined by commas.
 func pageList(pages []int) string {
 	var b strings.Builder
 	for i := 0; i < len(pages); {
@@ -374,94 +303,48 @@ func pageList(pages []int) string {
 	return b.String()
 }
 
-// pageListFlag is the start of a shared run's page-list argument, the list after it.
 const pageListFlag = "-sPageList="
 
-// argLimit is the longest argument gs takes, in bytes: its argument buffer holds 2048 with the
-// terminating NUL, and gs refuses a longer one as "Command too long" and exits 1, as gs 10.08.0
-// does at 2048. A shared run's page list is held to it, as listFits measures it.
 const argLimit = 2047
 
-// listFits reports whether the page-list argument of pages, ascending, with page, past their
-// last, added fits within argLimit, pageListFlag's bytes among it.
 func listFits(pages []int, page int) bool {
 	return len(pageListFlag)+len(pageList(append(slices.Clip(pages), page))) <= argLimit
 }
 
-// sharedRenderArgs returns gs's arguments for pages of the PDF at pdf at dpi, as renderArgs' for
-// one page but for the page list: gs writes each page's PNG to stdout in turn, and its own messages
-// to stderr.
 func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
 	return []string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
 		pageListFlag + pageList(pages), "-sOutputFile=-", pdf}
 }
 
-// sharedTextArgs returns gs's arguments for the text of pages of the PDF at pdf, a file a page at
-// out, whose %d gs numbers from 1 in the run; without -q, gs's messages, a "Page N" as each page
-// starts among them, go to stderr.
 func sharedTextArgs(pdf string, pages []int, out string) []string {
 	return []string{"-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
 		pageListFlag + pageList(pages), "-sOutputFile=" + out, pdf}
 }
 
-// renderArgs returns gs's arguments for page of the PDF at pdf at dpi. png16m is 24-bit RGB; the
-// alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default and
-// gs doesn't. -sOutputFile=- writes the PNG to stdout, and -sstdout=%stderr gs's own messages to
-// stderr, which gs otherwise writes to stdout, even under -q, ahead of a page it renders with a
-// message, such as "**** Error: Page drawing error occurred.". gs reads the PDF as ownPageArgs
-// says, so a portfolio's page is its own.
 func renderArgs(pdf string, page, dpi int) []string {
 	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
 }
 
-// textArgs returns gs's arguments for the text of page of the PDF at pdf: the txtwrite device,
-// its text to stdout, and gs's own messages to stderr. gs reads the PDF as ownPageArgs says.
 func textArgs(pdf string, page int) []string {
 	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
 }
 
-// ownPages is the PostScript that runs an open PDF's pages, the run's FirstPage to its LastPage,
-// as the branch of gs's runpdf, in pdf_main.ps, for a PDF that isn't a portfolio: the whole of
-// that branch, word for word. runpdf, which gs runs for a PDF named on its command line, takes
-// its other branch for a PDF whose catalog has a /Collection, and runs the embedded documents'
-// pages in place of the PDF's own, the run's page range applied to each document in turn; gs has
-// no parameter that turns that off. Through ownPages a portfolio's page is its cover's own, and
-// any other PDF's page is byte for byte what the file named on the command line gives, its PNG,
-// its text, and gs's messages, a page past the last's among them, as gs 10.08.0 gives them over
-// every fixture.
+// See docs/api.md, "Running the tools".
 const ownPages = "runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend"
 
-// ownPageArgs returns the arguments, last of a page's own run, that open the PDF at pdf and run
-// its pages through ownPages. The path is a PostScript string there, escaped as countArgs
-// escapes it, and -dSAFER is permitted to read that one file, as it is for Count; gs splits a
-// permitted path at a colon, so a path holding one can't be read, as Count can't read it.
 func ownPageArgs(pdf string) []string {
 	return []string{"--permit-file-read=" + pdf, "-c", "(" + psString(pdf) + ") (r) file " + ownPages}
 }
 
-// countArgs returns gs's arguments to print the page count of the PDF at pdf. The path is a
-// PostScript string there, whose backslashes and parentheses are escaped.
-//
-// The count, and surveyArgs' output, is printed with =, which writes to %stdout as gs's own
-// messages do, so neither run takes -sstdout=%stderr: it would send the count to stderr too.
 func countArgs(pdf string) []string {
 	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf,
 		"-c", "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount = quit"}
 }
 
-// surveyArgs returns gs's arguments to print the page count of the PDF at pdf; then, when the
-// count is above zero, whether the PDF is a portfolio, true or false, as gs's runpdf tests it,
-// PDFInfo, a dictionary once the PDF opens, holding /Collection; then, with sizes, each page's
-// size: pdfshowpage_setpage sets the device's page size to the page's, as rendering does, which is
-// printed as its width and height. The path is escaped as countArgs escapes it.
-//
-// The portfolio line follows the count, and only a count above zero, so that a PDF gs can't open,
-// which prints gs's message and a count of 0, prints what the released count and sizes runs
-// printed for it, and its error quotes the same output.
 func surveyArgs(pdf string, sizes bool) []string {
 	script := "(" + psString(pdf) + ") (r) file runpdfbegin pdfpagecount dup = " +
 		"dup 0 gt { /PDFInfo where { /PDFInfo get dup type /dicttype eq { /Collection known } { pop false } ifelse } { false } ifelse = } if "
@@ -475,18 +358,13 @@ func surveyArgs(pdf string, sizes bool) []string {
 	return []string{"-q", "-dNODISPLAY", "-dSAFER", "--permit-file-read=" + pdf, "-c", script}
 }
 
-// psString escapes s for a PostScript string: its backslashes and parentheses.
 func psString(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `(`, `\(`, `)`, `\)`).Replace(s)
 }
 
-// pngGuard passes a PNG through to w, and discards a stdout that doesn't begin with the PNG
-// signature, so nothing but a PNG reaches w as a page.
 type pngGuard struct {
-	w io.Writer
-	// head holds stdout until its first eight bytes are known.
-	head []byte
-	// png is whether stdout began with the signature, and decided whether that is known.
+	w            io.Writer
+	head         []byte
 	png, decided bool
 }
 
@@ -507,7 +385,6 @@ func (g *pngGuard) Write(p []byte) (int, error) {
 		return len(p), nil
 	}
 	g.png, g.decided = true, true
-	// head holds all of stdout so far, which is at most the signature plus p.
 	if _, err := g.w.Write(g.head); err != nil {
 		return 0, err
 	}
@@ -515,41 +392,23 @@ func (g *pngGuard) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// pngSink takes the PNGs a pngSplit splits from a shared run's stdout, the i-th from 0, in turn.
 type pngSink interface {
-	// begin starts the i-th PNG and returns the writer its bytes go to, which never fails, a
-	// page's own failure kept by the sink; an error stops the run's stdout, and is for the run's
-	// end alone, its context ended.
 	begin(i int) (io.Writer, error)
-	// end ends the i-th PNG, written whole.
 	end(i int)
-	// abandon ends the i-th PNG unfinished: the run failed or its stdout stopped parsing first.
 	abandon(i int)
 }
 
-// pngSplit splits a stdout of PNGs one after another, as gs writes a page list's, into each PNG
-// by its own structure: the eight-byte signature, then chunks, each a four-byte big-endian length,
-// a four-byte type, that many bytes of data, and a four-byte CRC, through the IEND chunk. It reads
-// no chunk's data and checks no CRC: gs's PNGs are passed through as written, byte for byte.
-//
-// Output past n PNGs, or that isn't a PNG where one begins, stops the split: the rest of stdout is
-// discarded, never written to a page, and finish reports it.
 type pngSplit struct {
-	n    int
-	sink pngSink
-	// i is the PNG being split, or the next, and w its writer, nil between PNGs.
-	i int
-	w io.Writer
-	// head gathers the signature, or a chunk's length and type, until have is eight.
-	head [8]byte
-	have int
-	// inChunk is whether head is a chunk's, the signature read; rest is what is left of a chunk's
-	// data and CRC once its head is read, and iend whether the chunk is IEND.
+	n       int
+	sink    pngSink
+	i       int
+	w       io.Writer
+	head    [8]byte
+	have    int
 	inChunk bool
 	rest    int64
 	iend    bool
-	// err is the reason the split stopped.
-	err error
+	err     error
 }
 
 func (s *pngSplit) Write(p []byte) (int, error) {
@@ -590,16 +449,12 @@ func (s *pngSplit) Write(p []byte) (int, error) {
 			s.inChunk = true
 			continue
 		}
-		// A chunk's length is at most 2^31-1 bytes, so its data and CRC fit an int64.
 		s.rest = int64(binary.BigEndian.Uint32(s.head[:4])) + 4
 		s.iend = string(s.head[4:]) == "IEND"
 	}
 	return total, nil
 }
 
-// finish ends the split once the run has returned: a PNG left unfinished is abandoned. It returns
-// how many PNGs were handed over whole, and why the split stopped, or, for a stdout that ended
-// short of n PNGs, an error saying so; nil when it held n whole PNGs and nothing else.
 func (s *pngSplit) finish() (int, error) {
 	if s.w != nil {
 		s.sink.abandon(s.i)

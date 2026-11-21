@@ -132,8 +132,6 @@ func (r *Reader) Read(ctx context.Context, req Request) iter.Seq2[Record, error]
 	}
 }
 
-// read is Read's sequence: it yields each record and returns the read's error, nil when it
-// succeeded or yield stopped it.
 func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error) bool) error {
 	if req.Input == "" {
 		return fmt.Errorf("onenote: no input: %w", ErrRequest)
@@ -185,9 +183,6 @@ func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error
 	return nil
 }
 
-// resolveMedia resolves the files of p's media by the envelope's media name rule in dir, the
-// read's media directory, "" for none. A File the rule can't have made is an error, so no Path
-// leaves dir.
 func resolveMedia(dir string, p *Page) error {
 	for i := range p.Media {
 		m := &p.Media[i]

@@ -129,14 +129,8 @@ func (p *Preparer) Images(ctx context.Context, path string, req ImagesRequest) i
 	}
 }
 
-// defaultPagesPerProcess is the most pages one gs process renders for a request of zero
-// PagesPerProcess: the smallest count whose median time, on the 915-page CFR volume at
-// cmd/docproc's starting settings, came within 5% of the fastest count's median, 97.6 s against
-// 64's 94.2 s (docs/acceptance.md).
 const defaultPagesPerProcess = 8
 
-// outcome is one page's file, its DPI, and its text, or its error, as its lane hands it to the
-// stream.
 type outcome struct {
 	path string
 	dpi  int
@@ -144,24 +138,9 @@ type outcome struct {
 	err  error
 }
 
-// pages counts the pages of the PDF at path and prepares them, yielding each in page order, req
-// already checked and defaulted. It returns once every page's work has ended.
-//
-// The pages are dealt to req.Concurrency lanes, lane k taking pages k, k+C, k+2C, and so on, C
-// the concurrency, each lane preparing its own in order, one gs process at a time, as lane does.
-// Each page's outcome goes to a channel of its page's own, buffered so a lane never waits on the
-// consumer to hand one over. A page is held from the moment its lane starts writing it until the
-// consumer takes its outcome, and may start only once the page C before it is taken: its turn.
-// That page is its own lane's last, so each lane holds at most one page, and the stream at most C,
-// a later page that finishes first waiting in its channel. Once the consumer stops, the outcomes
-// it never took have their files removed.
 func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yield func(PageImage, error) bool) {
 	var scratch string
 	if p.render.ownDir() {
-		// The run's scratch, the Preparer's own, never the input's directory nor the caller's:
-		// the working directory of the survey and the shared processes, and where the shared
-		// text runs write. It is removed once every page's work has ended, with whatever a gs
-		// ended early left in it.
 		var err error
 		if scratch, err = os.MkdirTemp("", "docproc-gs-*"); err != nil {
 			yield(PageImage{}, fmt.Errorf("document: gs scratch: %w", err))
@@ -214,7 +193,6 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 			}
 		case <-ctx.Done():
 		}
-		// A page that failed because ctx ended is ctx's error, not the page's.
 		if err := ctx.Err(); err != nil {
 			remove(o.path)
 			yield(PageImage{}, err)
@@ -226,13 +204,7 @@ func (p *Preparer) pages(ctx context.Context, path string, req ImagesRequest, yi
 	}
 }
 
-// run is one stream's preparation of the n pages of the PDF at path, their sizes sizes, zero
-// unless req has a MaxPixels, which needs them, under req, already checked: its context, which
-// ends when the stream does, each page's turn, closed once it may start, and each page's outcome
-// channel. portfolio is whether the PDF is a portfolio, as survey reads it, whose pages never
-// share a process. scratch is the run's scratch directory, the shared processes' working
-// directory, where the shared text runs write, "" through the container runner, whose runs work
-// in the PDF's directory and read text a page a run.
+// See docs/api.md, "Running the tools".
 type run struct {
 	p         *Preparer
 	ctx       context.Context
@@ -246,24 +218,6 @@ type run struct {
 	done      []chan outcome
 }
 
-// lane prepares the pages of lane k, from 1: pages k, k+C, k+2C, and so on, C the concurrency, in
-// order. The pages that render at the request's DPI go through shared processes, as shared
-// prepares them, up to the request's PagesPerProcess in each, and no more than gs's page list
-// holds within argLimit, a run of them broken by any page that doesn't; a page MaxPixels renders
-// at a lower DPI, or that fits at none, gets a process of its own, as single prepares it, since gs
-// renders one resolution a run. So does every page of a portfolio, whose shared processes' output
-// gs writes from its documents' pages, a run's PNGs and text files not the run's pages one for
-// one, so a shared process could hand a page over before the output that tells it wrong is
-// written; a page's own processes read the PDF through ownPages, and give the cover's page.
-// survey reads a portfolio before any page runs, so its pages are never shared. A batch of one
-// page is the page's own process too: it is the same work, and, when the page fails, it fails
-// once, where a shared process would fail and then rerun it alone.
-//
-// When a shared process fails as the content's, by contentFailure, the pages it handed over
-// stand, and each page it didn't is prepared by single, alone, so only a page that fails there
-// fails. Any other failure is the run's: each page it didn't hand over fails with it, and the
-// stage above ends on the first. A lane returns once its pages are all handed over, or its context
-// has ended.
 func (r *run) lane(k int) {
 	var batch []int
 	flush := func() bool {
@@ -312,8 +266,6 @@ func (r *run) lane(k int) {
 	flush()
 }
 
-// shares reports whether page may share a process: the PDF isn't a portfolio, and the page
-// renders at the request's DPI, MaxPixels lowering it to none.
 func (r *run) shares(page int) bool {
 	if r.portfolio {
 		return false
@@ -325,7 +277,6 @@ func (r *run) shares(page int) bool {
 	return true
 }
 
-// turn waits for page's turn, and reports false when the run's context ends first.
 func (r *run) turn(page int) bool {
 	select {
 	case <-r.turns[page-1]:
@@ -335,8 +286,6 @@ func (r *run) turn(page int) bool {
 	}
 }
 
-// single prepares page in a process of its own, once it is its turn, as page does, and hands over
-// its outcome. It reports false when the run's context ended first.
 func (r *run) single(page int) bool {
 	if !r.turn(page) {
 		return false
@@ -345,12 +294,6 @@ func (r *run) single(page int) bool {
 	return true
 }
 
-// shared prepares pages, in order and all at the request's DPI, through shared processes: when
-// the request reads text, one gs run writes every page's text, then one gs run renders every page,
-// each PNG, split from its stdout, written to its page's file once it is the page's turn and
-// handed over with the page's text. It returns the pages it didn't hand over, the step that
-// failed, "text" or "render", and its error; nil once every page is handed over. A page whose own
-// file fails, such as one already in the directory, is handed over as failed, as page fails it.
 func (r *run) shared(pages []int) ([]int, string, error) {
 	texts, err := r.texts(pages)
 	if err != nil {
@@ -362,9 +305,6 @@ func (r *run) shared(pages []int) ([]int, string, error) {
 	return pages[whole:], "render", err
 }
 
-// texts reads the text of pages when the request says to: in one shared gs run, its files in a
-// directory of the run's scratch, through the exec runner; a page a run, through Text, through the
-// container runner, whose runs can't write outside the PDF's directory.
 func (r *run) texts(pages []int) (*pageTexts, error) {
 	t := &pageTexts{}
 	switch {
@@ -391,14 +331,11 @@ func (r *run) texts(pages []int) (*pageTexts, error) {
 	return t, nil
 }
 
-// pageTexts are a shared process's pages' texts: in memory, in text; in files, a page each, in
-// dir, as textPages writes them; or none, both empty, for a request without Text.
 type pageTexts struct {
 	text []string
 	dir  string
 }
 
-// read returns the text of the run's i-th page, from 0, removing its file.
 func (t *pageTexts) read(i int) (string, error) {
 	switch {
 	case t.text != nil:
@@ -414,24 +351,19 @@ func (t *pageTexts) read(i int) (string, error) {
 	return string(b), os.Remove(file)
 }
 
-// close removes the texts' directory, with the files of the pages never handed over.
 func (t *pageTexts) close() {
 	if t.dir != "" {
 		_ = os.RemoveAll(t.dir)
 	}
 }
 
-// pageSink writes each PNG of a shared process to its page's file, page-N.png in the request's
-// Dir, once it is the page's turn, and hands the page over with its text once the PNG is whole.
 type pageSink struct {
 	r     *run
 	pages []int
 	texts *pageTexts
-	// f is the page's file, nil when it couldn't be created, file its path, and err the page's
-	// own failure: its file's creation, a write, or its close.
-	f    *os.File
-	file string
-	err  error
+	f     *os.File
+	file  string
+	err   error
 }
 
 func (s *pageSink) begin(i int) (io.Writer, error) {
@@ -444,8 +376,6 @@ func (s *pageSink) begin(i int) (io.Writer, error) {
 	return s, nil
 }
 
-// Write writes p to the page's file until a write fails, keeping the failure, and never fails
-// itself, so one page's failure never stops the process's other pages.
 func (s *pageSink) Write(p []byte) (int, error) {
 	if s.err == nil {
 		_, s.err = s.f.Write(p)
@@ -474,7 +404,6 @@ func (s *pageSink) abandon(int) {
 	s.removeFile()
 }
 
-// close closes the page's file, when it was created, and returns the page's failure.
 func (s *pageSink) close() error {
 	err := s.err
 	if s.f != nil {
@@ -483,19 +412,12 @@ func (s *pageSink) close() error {
 	return err
 }
 
-// removeFile removes the page's file when the sink created it; a file that was already there,
-// failing the page, is the caller's.
 func (s *pageSink) removeFile() {
 	if s.f != nil {
 		remove(s.file)
 	}
 }
 
-// contentFailure reports whether err, a shared process's failure, is the content's, as the stage
-// above classifies a gs run's, so its pages fall back to a process each: gs exiting nonzero,
-// dying by its own fault, or passing its bound, or output that doesn't hold its pages. The rest
-// are the run's, a context ended, a signal docproc didn't send, a program that didn't start, or
-// docproc's own side failing, which a page's own process wouldn't change.
 func contentFailure(err error) bool {
 	if errors.Is(err, errOutput) {
 		return true
@@ -504,10 +426,6 @@ func contentFailure(err error) bool {
 	return ok && (exit.TimedOut || exit.Signal == "" || cli.OwnFault(exit.Signal))
 }
 
-// page prepares page of the n pages of the PDF at path, its size size, req already checked, in
-// processes of its own: it reads the page's text when req says to, and renders the page to its
-// file in req.Dir, at req.DPI or the largest DPI under req.MaxPixels. Its error names the page,
-// and a page that fails leaves no file. Its runs take the Tool's Timeout whole, a unit's.
 func (p *Preparer) page(ctx context.Context, path string, page, n int, size pageSize, req ImagesRequest) outcome {
 	fail := func(step string, err error) outcome {
 		return outcome{err: fmt.Errorf("document: page %d of %d: %s: %w", page, n, step, err)}
@@ -540,16 +458,12 @@ func (p *Preparer) page(ctx context.Context, path string, page, n int, size page
 	return outcome{path: png, dpi: dpi, text: text}
 }
 
-// remove removes the page file at path, when there is one. The file is the stream's own, written
-// in this run, so failing to remove it leaves a file in the caller's directory and nothing else.
 func remove(path string) {
 	if path != "" {
 		_ = os.Remove(path)
 	}
 }
 
-// check refuses a request Images can't run, before anything runs, and sets its defaults: a DPI of
-// DefaultDPI for zero, and a PagesPerProcess of defaultPagesPerProcess for zero.
 func check(req *ImagesRequest) error {
 	switch {
 	case req.Dir == "":
