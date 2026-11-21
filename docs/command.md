@@ -12,9 +12,9 @@ go install github.com/standards-lab/docproc/cmd/docproc@<version>
 ```
 
 - `docproc version` prints the module's version, or `(devel)` for a binary that carries none. It
-  reads no configuration and looks up no tool. A run's manifest names the same version beside the
-  docproc library's, as the build info names it: its replacement's version when it is replaced,
-  and `(devel)` for a replacement by a directory or a build that names no library.
+  reads no configuration and looks up no tool. A run's manifest names the same version and the
+  docproc library's version as the build info records it: a replaced library's replacement
+  version, or `(devel)` when a directory replaces the library or the build names no library.
 - `docproc run <path>... --out <dir>` runs the stages over each file argument and each regular
   file under each directory argument, in lexical order, each file once. A named symbolic link is
   followed; a link under a directory is not. It collects its inputs before it looks up any tool,

@@ -63,7 +63,7 @@ that defines the integration tasks and the harness's environment.
   directory, so the toolchain the tool's mise.toml pins is the one installed; the tool's tasks put
   it ahead of the runner's own dotnet on PATH. A .NET tool's cache holds the packages its lock files
   pin, as downloaded; `bin/` and `obj/` are built fresh. A Rust tool's holds the crates its
-  Cargo.lock and the envelope's pin, as downloaded, and any git sources; `target/` is built fresh.
+  Cargo.lock and the envelope's Cargo.lock pin, as downloaded, and any git sources; `target/` is built fresh.
   The notices a release would pack for the runner are written after the check, so a package the
   script can't give a notice for fails there, not at the tag.
 - The integration job runs the provider modules' live tiers, each against its compose service,

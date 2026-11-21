@@ -126,12 +126,12 @@ every occurrence. A link, a device, and a traversing or absolute name in an arch
 the entry an unread child ("Dispatch") and the others read; a bomb and an unreadable directory
 are unsafe. The bomb rule weighs each entry and the sum of an archive's entries.
 
-`Identify` checks email's signatures first, as v0.5.0 ordered them, then the strong ones added
-since, and the weak ones after them, an mbox's `From ` line last but the byte order marks. A
+`Identify` checks email's signatures first, in v0.5.0's order, then the other strong signatures,
+then the weak ones, ending with an mbox's `From ` line and, after it, the byte order marks. A
 message's header is read as mail reads one: a line past mail's `LINE_MAX` ends the block, and a
 field's name is checked by route itself, not by net/textproto, which refuses the space before the
-colon that mail allows (RFC 5322 4.5.8's obsolete syntax). A OneNote file is told by its OneStore
-file type GUID, a section's or a table of contents' ([MS-ONESTORE] 2.3.1).
+colon that mail allows (RFC 5322 4.5.8's obsolete syntax). A OneNote section or table of contents is
+told by its OneStore file type GUID ([MS-ONESTORE] 2.3.1).
 
 ## Running the tools
 
@@ -960,11 +960,11 @@ How the archive stage reads each kind, and why:
 
 How the stages are built, and why:
 
-- A stage's identity's `Version` is its tools' whole version lines, as each version command printed
-  it, joined by `, ` in the table's order, so a development build and a release of one version
-  differ; an empty one panics, since it would key every tool version's outputs alike. Its `Config`
-  hashes the resolved request with the adapters' own version, which changes whenever an adapter
-  yields otherwise for the same tools and request, so the index prepares the content again.
+- A stage's identity's `Version` joins its tools' version lines, as each version command printed
+  them, with `, ` in the table's order; an empty one panics, since it would key every tool
+  version's outputs alike. The adapters' own version, which `Config` hashes with the resolved
+  request, changes whenever an adapter yields otherwise for the same tools and request, so the
+  index prepares the content again.
 - mail and onenote write each distinct content once, one file by its SHA-256 for every record that
   holds it, and the dispatcher removes a found part's file once its event is done. So a stage yields
   a hard link to the file, a copy where the file system refuses one, in a directory of its own, and

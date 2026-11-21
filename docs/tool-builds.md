@@ -184,8 +184,8 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   upgrade raises the envelope's requirements by the same rules as the tool's, from both graphs,
   and then re-locks the tool's own graph and the envelope's. Run in turn, the second tool finds
   the envelope's requirements already at their latest and only re-locks to them, so no locked
-  check trails the crate. A bump of the envelope's ICU4X crates that moves the
-  Unicode version fails its unit test asserting it, so it stays a reviewed change.
+  check trails the crate. A bump of the envelope's ICU4X crates that moves the Unicode version
+  fails its unit test asserting it, so it stays a reviewed change.
 
 ### The envelope's dependencies
 
