@@ -92,5 +92,4 @@ slices 9/9 committed · standards ✓ · spec ✓ (1 gap: fixture-script See pat
 - go-ai · context/README.md:10 and docs/design.md:19: cite layers.md "go-ai's surface" at docproc
   commit f3633c3.
 - docinfer · (adopt branch) context/README.md:12, context/command.md:16, context/command-api.md:3
-  cite layers.md at docproc commit 673ed3d, which keeps the docinfer sections: no change;
-  docs/no-defaults.md:23's "docproc's layers" → layers.md at f3633c3.
+  cite layers.md at docproc commit 673ed3d, which keeps the docinfer sections: no change.
