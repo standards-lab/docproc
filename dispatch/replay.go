@@ -7,13 +7,6 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 )
 
-// seen replays p, content the index holds under key, e its fresh entry under id, with no file: its
-// verdict taken over the entry's flags and p's name's under the current options, a quarantine
-// replaying nothing; its children resolved one level down, before its first event; then its log,
-// in the order it was prepared, each output and warning an event, each child dispatched as its
-// recorded part at its place under p; then p's own event. A resumed input skips its log through
-// the item whose After is its cursor. A child the index no longer holds is a miss, which seen
-// returns for the nearest part with a file to resolve, before or after events are out.
 func (r *run) seen(p Part, id Identity, key Key, e Entry) result {
 	p.Flags = mergeFlags(e.Flags, p.Flags)
 	if e.Outcome == Quarantined || r.quarantines(p.Flags) {
@@ -85,9 +78,6 @@ func (r *run) seen(p Part, id Identity, key Key, e Entry) result {
 	return res
 }
 
-// resolve reads p's log once, before any of p's events, and reports whether a child it replays
-// misses: one looked up, whose entry under its route's current stage is gone or not fresh. A
-// resumed input's log is read for its cursor too, an error when no item's After is it.
 func (r *run) resolve(p Part, key Key) (bool, error) {
 	cursor := p.After == 0
 	for rec, err := range r.d.cfg.Index.Items(r.ctx, key) {
@@ -112,8 +102,6 @@ func (r *run) resolve(p Part, key Key) (bool, error) {
 	return false, nil
 }
 
-// lookedUp reports whether a child recorded with outcome o replays its own entry's log, looked up
-// under its route's current stage, rather than replaying as recorded.
 func lookedUp(o Outcome) bool {
 	switch o {
 	case Prepared, Encrypted, NoProcessor, Seen, ReadElsewhere:
@@ -122,8 +110,6 @@ func lookedUp(o Outcome) bool {
 	return false
 }
 
-// missing reports whether c, a child of p's log, misses: looked up under its route's stage, now
-// wired, whose entry is gone or no longer fresh.
 func (r *run) missing(c Child, p Part) (bool, error) {
 	if c.Part.SHA256 == "" || !lookedUp(c.Outcome) || c.Part.SHA256 == p.SHA256 || slices.Contains(r.ancestors, c.Part.SHA256) {
 		return false, nil
@@ -139,10 +125,6 @@ func (r *run) missing(c Child, p Part) (bool, error) {
 	return !ok || !r.fresh(e), nil
 }
 
-// replayChild dispatches c, a child of parent's log, as its recorded part, its ID, parent, and
-// depth the replaying walk's: a cycle or past a cap as a found part is; looked up under its
-// route's current stage and seen, or a miss; with no stage, no processor yet, or quarantined by
-// its recorded flags; and any other outcome as recorded.
 func (r *run) replayChild(c Child, parent Part) result {
 	if err := r.ctx.Err(); err != nil {
 		return r.fatal(err)
@@ -151,7 +133,6 @@ func (r *run) replayChild(c Child, parent Part) result {
 	p.Path, p.After = "", 0
 	p.Parent, p.Depth, p.ID = parent.ID, parent.Depth+1, childID(parent.ID, p.Where)
 	if p.SHA256 == "" {
-		// An unread child.
 		return r.emit(Event{Part: p, Outcome: c.Outcome}, "", true, false)
 	}
 	if i := slices.Index(r.ancestors, p.SHA256); i >= 0 {
@@ -169,7 +150,6 @@ func (r *run) replayChild(c Child, parent Part) result {
 	}
 	stage := r.d.cfg.Stages[p.ContentType.Route]
 	if stage == nil {
-		// Its recorded flags are its content's and its name's when it was found.
 		if r.quarantines(p.Flags) {
 			return r.emit(quarantined(p), "", true, false)
 		}

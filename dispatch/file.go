@@ -39,7 +39,6 @@ type FileIndex struct {
 	claims claims[*pendingLog]
 }
 
-// pendingLog is a claim's temporary log, open for appending, and its buffered encoder.
 type pendingLog struct {
 	path string
 	file *os.File
@@ -47,7 +46,6 @@ type pendingLog struct {
 	enc  *json.Encoder
 }
 
-// tmpPrefix begins the name of every temporary file a FileIndex writes, a claim's log among them.
 const tmpPrefix = ".tmp-"
 
 // NewFileIndex returns a FileIndex in dir, making dir when it doesn't exist and removing the
@@ -73,31 +71,25 @@ func NewFileIndex(dir string) (*FileIndex, error) {
 	return f, nil
 }
 
-// keyName returns the name key's files have: the hex SHA-256 of its JSON.
 func keyName(key Key) string {
-	b, _ := json.Marshal(key) // a Key's fields are strings, which always marshal
+	b, _ := json.Marshal(key)
 	sum := sha256.Sum256(b)
 	return hex.EncodeToString(sum[:])
 }
 
-// shard returns the directory a file named name sits in: its first two hex digits.
 func (f *FileIndex) shard(name string) string { return filepath.Join(f.dir, name[:2]) }
 
-// fileEntry is an entry's file: the key it is for, so a reader can tell it is the key's, the
-// entry, and the name of its log, "" when it has none.
 type fileEntry struct {
 	Key   Key    `json:"key"`
 	Entry Entry  `json:"entry"`
 	Log   string `json:"log,omitzero"`
 }
 
-// entryPath returns key's entry file.
 func (f *FileIndex) entryPath(key Key) string {
 	name := keyName(key)
 	return filepath.Join(f.shard(name), name+".json")
 }
 
-// readEntry reads key's entry file.
 func (f *FileIndex) readEntry(ctx context.Context, key Key) (fileEntry, bool, error) {
 	if err := ctx.Err(); err != nil {
 		return fileEntry{}, false, err
@@ -119,7 +111,6 @@ func (f *FileIndex) readEntry(ctx context.Context, key Key) (fileEntry, bool, er
 	return fe, true, nil
 }
 
-// recorded reports whether key has an entry file.
 func (f *FileIndex) recorded(key Key) (bool, error) {
 	_, err := os.Stat(f.entryPath(key))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -158,7 +149,7 @@ func (f *FileIndex) Items(ctx context.Context, key Key) iter.Seq2[Recorded, erro
 			yield(Recorded{}, fmt.Errorf("dispatch: file index: %w", err))
 			return
 		}
-		defer func() { _ = file.Close() }() // read only: a close error loses nothing
+		defer func() { _ = file.Close() }()
 		dec := json.NewDecoder(bufio.NewReader(file))
 		for {
 			if err := ctx.Err(); err != nil {
@@ -260,7 +251,6 @@ func (f *FileIndex) Append(ctx context.Context, key Key, token string, r Recorde
 	return nil
 }
 
-// logName returns the name of the log of key's claim token holds, once recorded.
 func logName(key Key, token string) string { return keyName(key) + "." + token + ".jsonl" }
 
 // Record flushes, syncs, and renames token's claim's temporary log to its log's name, writes key's
@@ -278,31 +268,29 @@ func (f *FileIndex) Record(ctx context.Context, key Key, token string, e Entry) 
 	}
 	old, had, err := f.readEntry(ctx, key)
 	if err != nil {
-		had = false // an entry that can't be read is replaced all the same; only its log stays
+		had = false
 	}
 	fe := fileEntry{Key: key, Entry: e}
 	log := c.log
-	c.log = nil // renamed or removed by recordLog, so the claim's end has none to discard
+	c.log = nil
 	if err := f.recordLog(key, token, log, &fe); err != nil {
 		f.claims.end(key, token)
 		return err
 	}
 	if err := writeJSON(f.entryPath(key), fe); err != nil {
 		if fe.Log != "" {
-			_ = os.Remove(filepath.Join(f.shard(fe.Log), fe.Log)) // named by no entry
+			_ = os.Remove(filepath.Join(f.shard(fe.Log), fe.Log))
 		}
 		f.claims.end(key, token)
 		return err
 	}
 	if had && old.Log != "" && old.Log != fe.Log {
-		_ = os.Remove(filepath.Join(f.shard(old.Log), old.Log)) // a reader that has it open reads on
+		_ = os.Remove(filepath.Join(f.shard(old.Log), old.Log))
 	}
 	f.claims.commit(key, c)
 	return nil
 }
 
-// recordLog flushes, syncs, closes, and renames log, a claim's temporary log, to its log's name,
-// naming it in fe; a claim that appended nothing has no log.
 func (f *FileIndex) recordLog(key Key, token string, log *pendingLog, fe *fileEntry) error {
 	if log == nil {
 		return nil
@@ -326,8 +314,6 @@ func (f *FileIndex) recordLog(key Key, token string, log *pendingLog, fe *fileEn
 	return nil
 }
 
-// discard closes and removes a claim's temporary log, if it has one: a release or a failed
-// record. Nothing in it is kept, so it is neither flushed nor synced.
 func (f *FileIndex) discard(log *pendingLog) {
 	if log == nil {
 		return
@@ -353,7 +339,7 @@ func (f *FileIndex) Drop(ctx context.Context, key Key) error {
 	defer f.mu.Unlock()
 	fe, ok, err := f.readEntry(ctx, key)
 	if err != nil {
-		ok = false // an entry that can't be read is removed all the same; only its log stays
+		ok = false
 	}
 	if err := os.Remove(f.entryPath(key)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("dispatch: file index: drop: %w", err)
@@ -366,8 +352,6 @@ func (f *FileIndex) Drop(ctx context.Context, key Key) error {
 	return nil
 }
 
-// writeJSON writes v's JSON to path atomically: to a temporary file in path's directory, which it
-// makes when it doesn't exist, synced, then renamed over path.
 func writeJSON(path string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil {

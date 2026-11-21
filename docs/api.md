@@ -472,15 +472,17 @@ type StoreError struct { Store string; Err error } // "index" or "content": the 
 ```
 
 A stage's `Prepare` runs on a goroutine of its own: each item is handed to the walk and taken before
-the stage goes on, as a yield is. A tool's stderr warning, the common envelope's `<tool>: warning:
-<where>: <what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an
-output's does, and the index records it, so a seen part replays its warnings. A warning says a unit
-of the part read badly or not at all (a page, a window, the form, a tool's `skipped` item with no
-content to name), its `Where` naming the unit; a stage's own warning names the stage in `Tool`. A
-store's warning is appended where its reader yields it: the order between a warning and a record is
-best effort, since they travel on two pipes, but a warning never precedes its store's first record,
-and a resumed replay and a resumed preparation both carry the warnings read after the cursor. The
-mail stage sets the cursor, `Item.After` and `Event.After`, on each message's last output, so a host
+the stage goes on, as a yield is. A stage's panic is raised again on the walk's goroutine, the
+caller's; when the caller's loop body panics, the stage is told to stop, and its goroutine ends once
+`Prepare` returns. A tool's stderr warning, the common envelope's `<tool>: warning: <where>:
+<what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an output's
+does, and the index records it, so a seen part replays its warnings. A warning says a unit of the
+part read badly or not at all (a page, a window, the form, a tool's `skipped` item with no content
+to name), its `Where` naming the unit; a stage's own warning names the stage in `Tool`. A store's
+warning is appended where its reader yields it: the order between a warning and a record is best
+effort, since they travel on two pipes, but a warning never precedes its store's first record, and a
+resumed replay and a resumed preparation both carry the warnings read after the cursor. The mail
+stage sets the cursor, `Item.After` and `Event.After`, on each message's last output, so a host
 checkpoints a store by the outputs it has handled (docinfer's `job` package doc). `After` is opaque
 and compared by equality alone, never ordered: a `.pst`'s ids are node ids, which don't ascend in
 read order.
@@ -593,20 +595,20 @@ and replayed parts count toward `Limits` as prepared ones do, a replayed part pa
 its entry kept.
 
 A part is seen when its entry's `Stages` each equal the current identity of the stage of that name,
-one check per stage the subtree used; `New` maps each name to its wired stage and refuses two
-stages that share a name with different identities. An entry found but not fresh is dropped, then
-claimed. A replayed child recorded prepared, encrypted, no processor yet, or seen is looked up
-under its route's current stage and replays its own log; a child of any other outcome replays as
-recorded. A part resolves its children one level down before it yields its first event, looking up
-each that needs it without recursing. A miss (a child whose entry is gone or not seen, or a stage
-wired since for a child that had none) is resolved by the nearest part that has a file: a
-replaying part with a file (the input, or a part a stage found in this dispatch) drops its own
-entry, claims it, and is prepared as not seen, its stage finding the children again with files,
-the live ones replaying and the missing one prepared; a replaying part with no file passes the miss
-up to its parent's resolve. A miss met deeper, after events are out, is resolved the same way, and
-the events already replayed repeat as prepared events. A dispatch may therefore repeat a part's
-events: events are at-least-once, so a consumer counts by part ID and cursor, never by event. A
-replay costs a lookup per replayed child, O(parts).
+one check per stage the subtree used; `New` maps each name to its wired stage and refuses two stages
+that share a name with different identities. An entry found but not fresh is dropped, then claimed.
+A replayed child recorded prepared, encrypted, no processor yet, or seen is looked up under its
+route's current stage and replays its own log; a child of any other outcome replays as recorded. A
+part resolves its children one level down before it yields its first event, looking up each that
+needs it without recursing. A miss (a child whose entry is gone or not seen, or a stage wired since
+for a child that had none) is resolved by the nearest part that has a file: a replaying part with a
+file (the input, or a part a stage found in this dispatch) drops its own entry, claims it, and is
+prepared as not seen, its stage finding the children again with files, the live ones replaying and
+the missing one prepared, and what its replay had admitted toward `Limits` taken back; a replaying
+part with no file passes the miss up to its parent's resolve. A miss met deeper, after events are
+out, is resolved the same way, and the events already replayed repeat as prepared events. A dispatch
+may therefore repeat a part's events: events are at-least-once, so a consumer counts by part ID and
+cursor, never by event. A replay costs a lookup per replayed child, O(parts).
 
 Flags have two sources. A part's content flags are recorded in its `Entry`, its stage's flags
 (`Item.Flag`) among them; its name flags come from `inspect.Name` at every occurrence, seen or not.
@@ -631,19 +633,24 @@ onenote, and office stages give it by construction, and the dispatcher keeps the
 for a stage that implements `UntrustedWhere` (the archive stage, and the document stage for its
 attachments), whose siblings `inspect.Options.Entries` bounds. There, a `Where` a sibling already
 has gains ` (n)`, n the smallest from 2 that no sibling's `Where` already takes, repeated until it
-is unique. A part's `ID` is the chain of `Where` from the input: the input's ID is `/`, and a found
-part's is its parent's ID followed by its `Where` as one more path segment, `%` and `/`
-percent-encoded, after a `/` unless the parent's ends in one. So the ID names one occurrence of
-content in the input, stable across runs, where the content's SHA-256 can't.
+is unique; one past 255 bytes with its ` (n)` is cut as any `Where` is, its hash the whole's. A
+part's `ID` is the chain of `Where` from the input: the input's ID is `/`, and a found part's is its
+parent's ID followed by its `Where` as one more path segment, `%` and `/` percent-encoded, after a
+`/` unless the parent's ends in one. So the ID names one occurrence of content in the input, stable
+across runs, where the content's SHA-256 can't.
 
 Every string of the wire shapes leaves the dispatcher under one rule, applied before an event is
 yielded or an item appended: valid UTF-8, no U+0000, no C0 or C1 control but tab and line feed in a
-reason, and a stated cap per field (a name, a `Where`, a reason, a warning's parts, a flag's
-evidence, a Meta value); a string past its cap is cut as a `Where` is. The wire's package is
-`encoding/json` for `dispatch`'s shapes and the index; a record output is the bytes its stage made,
-and its `MediaType` names that shape and its version, so a reader checks what it decodes. Every
-`Meta` key a stage sets (`MetaPage`, `MetaCount`, `MetaWindow`, `MetaSheet`, `MetaDPI`, and the
-rest) and every record output's media type (`MediaAudioPlan`,
+reason, and a stated cap per field: 255 bytes for a part's name and `Where`, an output's name, a
+Meta key, and a string named from a vocabulary rather than the content (a media type, a stored MIME
+type, a route's reason, a warning's tool, an identity's fields); 4096 for an event's or a child's
+reason, the only strings that keep tab and line feed; and 1024 for a warning's where and what, a
+flag's evidence, and a Meta value. A string past its cap is cut as a `Where` is, and of two Meta
+keys the rule makes alike, the later in sorted order keeps its value, the same on every run. The
+wire's package is `encoding/json` for `dispatch`'s shapes and the index; a record output is the
+bytes its stage made, and its `MediaType` names that shape and its version, so a reader checks what
+it decodes. Every `Meta` key a stage sets (`MetaPage`, `MetaCount`, `MetaWindow`, `MetaSheet`,
+`MetaDPI`, and the rest) and every record output's media type (`MediaAudioPlan`,
 `application/vnd.docproc.audio-plan+json; version=1`, and a tool's lines under that tool's media
 type with `schema=2`, such as `MediaMail`) is an exported constant in `dispatch`, beside `Output`
 and `OutputKind`, each documented with the stage that writes it and its format, and versioned by

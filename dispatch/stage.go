@@ -123,8 +123,6 @@ func (e *StoreError) Error() string { return "dispatch: " + e.Store + ": " + e.E
 // Unwrap returns the store's error.
 func (e *StoreError) Unwrap() error { return e.Err }
 
-// storeErr wraps err, the store's, as a [*StoreError], but for a claim lost or the context's end,
-// which aren't the store's failures.
 func storeErr(store string, err error) error {
 	if errors.Is(err, ErrClaimLost) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return err

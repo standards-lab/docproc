@@ -14,8 +14,6 @@ type PoolEvent struct {
 	Event Event
 }
 
-// poolItem is what a worker hands the caller's loop: an input's event or the error that stopped
-// its dispatch, and the channel the loop answers on once its body has returned, true to go on.
 type poolItem struct {
 	ev   PoolEvent
 	err  error
@@ -48,8 +46,6 @@ func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers i
 			yield(PoolEvent{}, fmt.Errorf("dispatch: pool: %d workers, want at least 1: %w", workers, ErrRequest))
 			return
 		}
-		// pctx ends the dispatches when the loop stops early; stop tells the feeder and the
-		// workers to hand over nothing more.
 		pctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		stop := make(chan struct{})
@@ -92,7 +88,6 @@ func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers i
 			goOn := true
 			switch {
 			case it.err != nil && ctx.Err() != nil:
-				// The dispatch stopped because ctx ended: the pool's own error, last, stands for it.
 			case it.err != nil:
 				goOn = yield(PoolEvent{Input: it.ev.Input}, it.err)
 			default:
@@ -112,9 +107,6 @@ func (d *Dispatcher) Pool(ctx context.Context, inputs iter.Seq[Input], workers i
 	}
 }
 
-// poolDispatch dispatches in, handing each event, and the error that stops it, to the pool's
-// loop through items, and waiting for the loop's answer before going on. It returns false once
-// the loop has stopped or stop is closed.
 func (d *Dispatcher) poolDispatch(ctx context.Context, in Input, items chan<- poolItem, stop <-chan struct{}) bool {
 	for ev, err := range d.Dispatch(ctx, in) {
 		it := poolItem{ev: PoolEvent{Input: in, Event: ev}, err: err, done: make(chan bool, 1)}

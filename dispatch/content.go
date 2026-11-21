@@ -41,7 +41,6 @@ func ContentFile(sha256 string) string {
 	return filepath.Join(sha256[:2], sha256)
 }
 
-// isSHA256 reports whether s is a SHA-256 as lowercase hex.
 func isSHA256(s string) bool {
 	if len(s) != 64 {
 		return false
@@ -54,7 +53,6 @@ func isSHA256(s string) bool {
 	return true
 }
 
-// checkSHA256 refuses a content name that isn't a SHA-256 as lowercase hex.
 func checkSHA256(sha256 string) error {
 	if !isSHA256(sha256) {
 		return fmt.Errorf("dispatch: content %q isn't a SHA-256 as lowercase hex: %w", sha256, ErrRequest)
@@ -143,7 +141,6 @@ func (c *FileContent) Open(ctx context.Context, sha256 string) (io.ReadCloser, e
 	return f, nil
 }
 
-// contextReader reads r until ctx ends, so a put of a long stream stops with its context.
 type contextReader struct {
 	ctx context.Context
 	r   io.Reader

@@ -105,7 +105,6 @@ type Child struct {
 	Outcome Outcome `json:"outcome"`
 }
 
-// checkRecorded refuses a log item that doesn't set exactly one of its Output, Warning, and Child.
 func checkRecorded(r Recorded) error {
 	n := 0
 	for _, set := range []bool{r.Output != nil, r.Warning != nil, r.Child != nil} {
@@ -119,26 +118,17 @@ func checkRecorded(r Recorded) error {
 	return nil
 }
 
-// Errors the shipped indexes give.
 var (
-	// errNotClaimed is an index's refusal of a renewal, an append, or a record whose token doesn't
-	// hold the key's claim.
 	errNotClaimed = fmt.Errorf("dispatch: index: the token doesn't hold the key's claim: %w", ErrClaimLost)
-	// errReplaced ends a read of an entry's log that was replaced or dropped while it read.
-	errReplaced = errors.New("dispatch: index: the entry was replaced or dropped while its log was read")
+	errReplaced   = errors.New("dispatch: index: the entry was replaced or dropped while its log was read")
 )
 
-// claims is the in-memory claim table [MemoryIndex] and [FileIndex] share, its lease zero for a
-// claim that never expires. Its caller holds the lock that guards it. A held claim carries its
-// log, P, which the table hands to discard at a takeover or a release.
 type claims[P any] struct {
 	lease   time.Duration
 	discard func(P)
 	held    map[Key]*claim[P]
 }
 
-// claim is a held claim: its token, a channel closed when it ends, when its lease runs out, and
-// its log.
 type claim[P any] struct {
 	token   string
 	done    chan struct{}
@@ -146,18 +136,14 @@ type claim[P any] struct {
 	log     P
 }
 
-// newClaims returns an empty claim table whose claims last lease, and whose discarded logs go to
-// discard.
 func newClaims[P any](lease time.Duration, discard func(P)) claims[P] {
 	return claims[P]{lease: lease, discard: discard, held: map[Key]*claim[P]{}}
 }
 
-// expired reports whether c's lease ran out.
 func (t *claims[P]) expired(c *claim[P]) bool {
 	return t.lease > 0 && !time.Now().Before(c.expires)
 }
 
-// take claims key, taking over a claim whose lease ran out, unless another holds it.
 func (t *claims[P]) take(key Key, log P) (string, bool) {
 	if c, ok := t.held[key]; ok {
 		if !t.expired(c) {
@@ -173,7 +159,6 @@ func (t *claims[P]) take(key Key, log P) (string, bool) {
 	return c.token, true
 }
 
-// holder returns key's claim if token holds it.
 func (t *claims[P]) holder(key Key, token string) (*claim[P], error) {
 	c, ok := t.held[key]
 	if !ok || c.token != token {
@@ -182,7 +167,6 @@ func (t *claims[P]) holder(key Key, token string) (*claim[P], error) {
 	return c, nil
 }
 
-// renew renews token's claim of key for another lease.
 func (t *claims[P]) renew(key Key, token string) error {
 	c, err := t.holder(key, token)
 	if err != nil {
@@ -194,7 +178,6 @@ func (t *claims[P]) renew(key Key, token string) error {
 	return nil
 }
 
-// end ends key's claim if token holds it, discarding its log and waking its waiters.
 func (t *claims[P]) end(key Key, token string) {
 	if c, ok := t.held[key]; ok && c.token == token {
 		delete(t.held, key)
@@ -203,16 +186,11 @@ func (t *claims[P]) end(key Key, token string) {
 	}
 }
 
-// commit ends key's claim, which token holds, without discarding its log, which the caller has
-// recorded, and wakes its waiters.
 func (t *claims[P]) commit(key Key, c *claim[P]) {
 	delete(t.held, key)
 	close(c.done)
 }
 
-// waitOn returns what a waiter on key waits for: the claim's done channel and a timer's channel
-// for its lease, nil for a claim that never expires, or no channel when key is unclaimed or its
-// claim's lease ran out, which the waiter may then take over.
 func (t *claims[P]) waitOn(key Key) (done <-chan struct{}, lease *time.Timer) {
 	c, ok := t.held[key]
 	if !ok || t.expired(c) {
@@ -224,8 +202,6 @@ func (t *claims[P]) waitOn(key Key) (done <-chan struct{}, lease *time.Timer) {
 	return c.done, lease
 }
 
-// wait waits, unlocked, on what waitOn returned, until the claim ends, its lease runs out, or ctx
-// ends.
 func wait(ctx context.Context, done <-chan struct{}, lease *time.Timer) error {
 	var expired <-chan time.Time
 	if lease != nil {

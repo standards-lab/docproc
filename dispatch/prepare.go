@@ -16,44 +16,27 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// prep is the preparation of one part under its claim: a pipeline of the part's outputs and
-// warnings, in the stage's order, each output hashed on the walk's goroutine, its content put on
-// a goroutine of its own, at most Config.Puts in flight, then appended to the part's log and
-// yielded, in order, from the walk's goroutine. The queue drains before a found part is
-// dispatched and before the part's own event.
 type prep struct {
-	r     *run
-	p     *Part
-	id    Identity
-	key   Key
-	token string
-	// record is whether the part's log is appended to and its entry recorded: not for a resumed
-	// read, whose outputs are the read's tail alone.
-	record bool
-	// content are the part's content flags, its inspection's and its stage's, which its entry
-	// records; p.Flags holds them with its name's.
-	content []inspect.Flag
-	// siblings are the Where of the part's found parts, for a stage whose names are untrusted.
+	r        *run
+	p        *Part
+	id       Identity
+	key      Key
+	token    string
+	record   bool
+	content  []inspect.Flag
 	siblings map[string]bool
 
-	queue []*pending
-	// started is set once the stage yielded an output or a part, after which a flag is recorded
-	// but never stops the stage.
+	queue       []*pending
 	started     bool
 	quarantined bool
-	// tooLarge is the content store's refusal of an output past its size, which fails the part,
-	// recorded; fault is the run's own failure, such as an output's file that can't be read,
-	// which fails it unrecorded.
-	tooLarge error
-	fault    error
+	tooLarge    error
+	fault       error
 
 	outputs, children int
 	complete          bool
 	stages            []Identity
 }
 
-// pending is an output or a warning on its way to the part's log and the caller: an output's put,
-// whose result done delivers once its content is in the content store, err once it is taken.
 type pending struct {
 	output   *Output
 	warning  *Warning
@@ -63,7 +46,6 @@ type pending struct {
 	err      error
 }
 
-// wait waits for the put's result, if it has one and it isn't taken yet.
 func (h *pending) wait() error {
 	if h.done != nil && !h.resolved {
 		h.err, h.resolved = <-h.done, true
@@ -71,11 +53,8 @@ func (h *pending) wait() error {
 	return h.err
 }
 
-// ready reports whether h may go out without waiting: a warning, or an output whose put is done.
 func (h *pending) ready() bool { return h.done == nil || h.resolved }
 
-// stageItem is one of a stage's items, as its goroutine hands it to the walk's: the item and its
-// error, or the value the stage panicked with.
 type stageItem struct {
 	item     Item
 	err      error
@@ -83,9 +62,6 @@ type stageItem struct {
 	value    any
 }
 
-// prepare prepares p under its claim of key, token's, whose lease the dispatch's renewer renews
-// until the claim is recorded or released: p's content is inspected, and, unless its verdict
-// quarantines it, its stage runs.
 func (r *run) prepare(p Part, stage Stage, key Key, token string, lease time.Duration) result {
 	r.renew.add(key, token, lease)
 	recorded := false
@@ -125,17 +101,12 @@ func (r *run) prepare(p Part, stage Stage, key Key, token string, lease time.Dur
 		return result{}
 	}
 	if err := r.ctx.Err(); err != nil {
-		// The stage failed, if it did, because the dispatch's context ended: that is no failure
-		// of the part's.
 		_ = os.RemoveAll(dir)
 		return r.fatal(err)
 	}
 	return pr.finish(stageErr, dir, &recorded)
 }
 
-// release ends key's claim, token's, unrecorded: under the dispatch's context, or, once that has
-// ended, under Config.Release's bound. Its failure is dropped, since the claim's lease ends it
-// anyway.
 func (r *run) release(key Key, token string) {
 	r.renew.drop(key)
 	ctx := r.ctx
@@ -150,18 +121,11 @@ func (r *run) release(key Key, token string) {
 	_ = r.d.cfg.Index.Release(ctx, key, token)
 }
 
-// run runs the stage over the part, in dir, through the pipeline, returning the stage's error.
-// The stage runs on a goroutine of its own, which hands each item to the walk's goroutine and
-// waits for it to be taken, as a yield does: while the stage works toward its next item, the walk
-// yields the outputs whose puts are done. Once run returns, the stage has returned and every put
-// it started is done; a stage's panic is the walk's.
 func (pr *prep) run(stage Stage, dir string) error {
 	r := pr.r
 	r.ancestors = append(r.ancestors, pr.p.SHA256)
 	defer func() { r.ancestors = r.ancestors[:len(r.ancestors)-1] }()
 	defer pr.drain()
-	// What the dispatch may still admit, read here, on the walk's goroutine, which alone admits
-	// parts: the stage's goroutine reads the copy on its context, never r.bytes.
 	ctx := r.ctx
 	if limit := r.d.cfg.Limits.Bytes; limit > 0 {
 		ctx = context.WithValue(ctx, remainingKey{}, limit-r.bytes)
@@ -184,8 +148,6 @@ func (pr *prep) run(stage Stage, dir string) error {
 	finished := false
 	defer func() {
 		if !finished {
-			// The walk is unwinding from a panic, the caller's loop body's or the stage's: the
-			// stage is told to stop, and its goroutine ends once it returns.
 			go func() {
 				for {
 					select {
@@ -223,8 +185,6 @@ func (pr *prep) run(stage Stage, dir string) error {
 	return stageErr
 }
 
-// next returns the stage's next item, false once the stage has returned, yielding, while it waits,
-// each output at the queue's head whose put is done.
 func (pr *prep) next(items <-chan stageItem) (stageItem, bool) {
 	for {
 		pr.flushReady()
@@ -241,7 +201,6 @@ func (pr *prep) next(items <-chan stageItem) (stageItem, bool) {
 	}
 }
 
-// take takes one of the stage's items, returning the stage's error, if the item is one.
 func (pr *prep) take(it stageItem) error {
 	if it.err != nil {
 		return it.err
@@ -262,7 +221,6 @@ func (pr *prep) take(it stageItem) error {
 	return nil
 }
 
-// output hashes o, the part's own SHA-256 when its file is the part's, and queues its put.
 func (pr *prep) output(o Output, after uint64) {
 	pr.started = true
 	var r io.Reader
@@ -294,7 +252,6 @@ func (pr *prep) output(o Output, after uint64) {
 		o.SHA256 = hex.EncodeToString(sum[:])
 		r = bytes.NewReader(o.Value)
 	}
-	// The queue holds at most Config.Puts: the oldest goes out before another put starts.
 	if pr.flush(pr.r.d.cfg.Puts - 1); pr.r.stopped || pr.tooLarge != nil {
 		if c, ok := r.(io.Closer); ok {
 			_ = c.Close()
@@ -306,15 +263,13 @@ func (pr *prep) output(o Output, after uint64) {
 	go func() {
 		err := content.Put(ctx, sum, r)
 		if c, ok := r.(io.Closer); ok {
-			_ = c.Close() // read only: a close error loses nothing
+			_ = c.Close()
 		}
 		done <- err
 	}()
 	pr.queue = append(pr.queue, &pending{output: &o, after: after, done: done})
 }
 
-// flush takes the queue's oldest items out, each appended and yielded, until it holds at most
-// keep, or the dispatch stops, or a put fails.
 func (pr *prep) flush(keep int) {
 	for len(pr.queue) > keep {
 		if !pr.out() {
@@ -323,7 +278,6 @@ func (pr *prep) flush(keep int) {
 	}
 }
 
-// flushReady takes the queue's oldest items out while each is ready, as flush does.
 func (pr *prep) flushReady() {
 	for len(pr.queue) > 0 && pr.queue[0].ready() {
 		if !pr.out() {
@@ -332,8 +286,6 @@ func (pr *prep) flushReady() {
 	}
 }
 
-// out takes the queue's oldest item out, once its put is done: appended to the part's log, then
-// yielded. It reports whether the pipeline goes on: not once the dispatch stops or a put fails.
 func (pr *prep) out() bool {
 	r := pr.r
 	if r.stopped || pr.tooLarge != nil {
@@ -365,8 +317,6 @@ func (pr *prep) out() bool {
 	return true
 }
 
-// drain waits for every put left in the queue, discarding it: the dispatch stopped, or a put
-// failed.
 func (pr *prep) drain() {
 	for _, h := range pr.queue {
 		_ = h.wait()
@@ -374,8 +324,6 @@ func (pr *prep) drain() {
 	pr.queue = nil
 }
 
-// flag adds f to the part's content flags; before the stage's first output or part, a verdict to
-// quarantine stops the stage.
 func (pr *prep) flag(f inspect.Flag) {
 	pr.content = mergeFlags(pr.content, []inspect.Flag{f})
 	pr.p.Flags = mergeFlags(pr.p.Flags, []inspect.Flag{f})
@@ -384,9 +332,6 @@ func (pr *prep) flag(f inspect.Flag) {
 	}
 }
 
-// found dispatches f, a part the stage found, once the queue has drained, its Where normalised,
-// and unique among its siblings for a stage whose names are untrusted, then appends it to the
-// part's log as a child.
 func (pr *prep) found(f Found) {
 	pr.started = true
 	r := pr.r
@@ -411,20 +356,15 @@ func (pr *prep) found(f Found) {
 	}
 }
 
-// unique returns where, or, when a sibling already has it, where with " (n)", n the smallest
-// from 2 that no sibling's takes, and holds it among the siblings.
 func (pr *prep) unique(where string) string {
 	w := where
 	for n := 2; pr.siblings[w]; n++ {
-		// Past the cap, the guard cuts it with the hash of the whole, the suffix within it.
 		w = guard(fmt.Sprintf("%s (%d)", where, n), capName, false)
 	}
 	pr.siblings[w] = true
 	return w
 }
 
-// finish classifies the part's outcome from its stage's error, records its entry when its whole
-// subtree is complete and the read whole, before its event, then emits the event, removing dir.
 func (pr *prep) finish(stageErr error, dir string, recorded *bool) result {
 	r := pr.r
 	p := *pr.p
@@ -452,8 +392,6 @@ func (pr *prep) finish(stageErr error, dir string, recorded *bool) result {
 	default:
 		ev.Outcome, ev.Reason, ev.Err, complete = Failed, stageErr.Error(), stageErr, false
 	}
-	// A quarantine is recorded only when the content's flags alone come to it: the name's
-	// differ at another occurrence of the same content.
 	record := complete && pr.record && (!pr.quarantined || r.quarantines(pr.content))
 	if record {
 		r.renew.drop(pr.key)
@@ -476,7 +414,6 @@ func (pr *prep) finish(stageErr error, dir string, recorded *bool) result {
 	return res
 }
 
-// addStages adds to stages each of more it doesn't hold, in more's order.
 func addStages(stages, more []Identity) []Identity {
 	for _, id := range more {
 		if !slices.Contains(stages, id) {
@@ -486,14 +423,12 @@ func addStages(stages, more []Identity) []Identity {
 	return stages
 }
 
-// hashFile returns what the dispatcher takes of the file at path, read whole and streamed: its
-// SHA-256, its size, and its head.
 func hashFile(path string) (*hashed, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("dispatch: %w", err)
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	head := &headWriter{max: route.HeadLen}
 	n, err := io.Copy(io.MultiWriter(h, head), f)
@@ -503,7 +438,6 @@ func hashFile(path string) (*hashed, error) {
 	return &hashed{sum: hex.EncodeToString(h.Sum(nil)), size: n, head: head.b}, nil
 }
 
-// headWriter keeps the first max bytes written to it.
 type headWriter struct {
 	b   []byte
 	max int

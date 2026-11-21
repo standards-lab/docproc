@@ -20,19 +20,10 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// store is a stage shaped like mail reading a store, for route.Text: for each of its records, in
-// order, it writes the record's content into the part's attachments directory once, named by its
-// SHA-256, just before the first record naming it, as mail does, then finds it, as the email
-// stage's stash does: a hard link in a directory of its own, carrying the content's SHA-256 and a
-// release that removes the original; or, once released, a part with no file. Then it yields the
-// record's output. A record whose content is neither there nor released fails the stage: it is
-// lost.
 type store struct {
-	// refs names each record's content, by its key in contents.
 	refs     []string
 	contents map[string][]byte
-	// lie, when set, gives each found part a SHA-256 that isn't its content's.
-	lie bool
+	lie      bool
 
 	mu       sync.Mutex
 	releases int
@@ -103,7 +94,7 @@ func (s *store) Prepare(_ context.Context, _ dispatch.Part, dir string) iter.Seq
 				return
 			}
 			if link != "" {
-				_ = os.Remove(filepath.Dir(link)) // empty once the dispatcher removed the link
+				_ = os.Remove(filepath.Dir(link))
 			}
 			if !yield(dispatch.OutputItem(dispatch.Output{Kind: dispatch.RecordOutput, Name: where}), nil) {
 				return
@@ -112,14 +103,11 @@ func (s *store) Prepare(_ context.Context, _ dispatch.Part, dir string) iter.Seq
 	}
 }
 
-// sha returns b's lowercase hex SHA-256.
 func sha(b []byte) string {
 	s := sha256.Sum256(b)
 	return hex.EncodeToString(s[:])
 }
 
-// picky is a stage that yields one output for each part and fails the parts found at one of
-// fail's places, counting its calls.
 type picky struct {
 	fail map[string]bool
 
@@ -144,14 +132,11 @@ func (p *picky) Prepare(_ context.Context, part dispatch.Part, _ string) iter.Se
 	}
 }
 
-// onDisk returns how many regular files are under dir, and their bytes summed, a hard link
-// counted with each of its names.
 func onDisk(t *testing.T, dir string) (int, int64) {
 	t.Helper()
 	n, size := 0, int64(0)
 	err := filepath.WalkDir(dir, func(_ string, e fs.DirEntry, err error) error {
 		if err != nil {
-			// A directory removed while it is walked is gone, not an error.
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
 			}
@@ -176,8 +161,6 @@ func onDisk(t *testing.T, dir string) (int, int64) {
 	return n, size
 }
 
-// heavyStore returns a store of n records, every every'th naming one shared content and each
-// other a content of its own, each content size bytes.
 func heavyStore(n, every, size int) *store {
 	s := &store{contents: map[string][]byte{}}
 	pad := func(key string) []byte {
@@ -195,8 +178,6 @@ func heavyStore(n, every, size int) *store {
 	return s
 }
 
-// probe is a dispatch of a store consumed with its working directory probed at every event: the
-// peak number and bytes of the files in it, and each found part's outcome by its place.
 type probe struct {
 	peakFiles int
 	peakBytes int64
@@ -205,8 +186,6 @@ type probe struct {
 	last      dispatch.Event
 }
 
-// probeStore dispatches a store input through d, whose working directory is dir, as probe says;
-// each, when not nil, runs in the loop's body for every event.
 func probeStore(t *testing.T, d *dispatch.Dispatcher, dir string, each func(*dispatch.Event)) probe {
 	t.Helper()
 	pr := probe{outcomes: map[string]dispatch.Outcome{}, reasons: map[string]string{}}
@@ -231,8 +210,6 @@ func probeStore(t *testing.T, d *dispatch.Dispatcher, dir string, each func(*dis
 	return pr
 }
 
-// storeDispatcher returns a dispatcher with s on route.Text and leaf on route.Unrouted, which the
-// store's .bin content routes to, over a memory index, and its working directory.
 func storeDispatcher(t *testing.T, s *store, leaf dispatch.Stage) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -246,12 +223,6 @@ func storeDispatcher(t *testing.T, s *store, leaf dispatch.Stage) (*dispatch.Dis
 	return d, dir
 }
 
-// TestReleaseBoundsDisk: a store of 10,000 records, a thousand of them naming the same content
-// and each other a content of its own, written once each as mail writes them, holds a few files
-// in the dispatch's working directory at any event, however many records it has: each content's
-// original is released once the dispatcher has recorded it. Every record's part is dispatched,
-// none failed: each content prepared once, at its first record, and the shared content's later
-// records seen with no file, from the index.
 func TestReleaseBoundsDisk(t *testing.T) {
 	const n, every, size = 10_000, 10, 1024
 	s := heavyStore(n, every, size)
@@ -285,17 +256,12 @@ func TestReleaseBoundsDisk(t *testing.T) {
 	if leaf.calls != distinct || s.released() != distinct {
 		t.Errorf("%d contents prepared and %d released, want each of the %d once", leaf.calls, s.released(), distinct)
 	}
-	// At most a record's original, its link, and the store's input's working files: a bound of
-	// its own, whatever n is; holding every original would take n-n/every+1 files.
 	if pr.peakFiles > 3 || pr.peakBytes > 3*size {
 		t.Errorf("the working directory held up to %d files, %d bytes", pr.peakFiles, pr.peakBytes)
 	}
 	t.Logf("peak %d files, %d bytes, of %d contents, %d bytes", pr.peakFiles, pr.peakBytes, distinct, distinct*size)
 }
 
-// TestReleaseKeepsUnrecorded: when the first record of the shared content fails, nothing is
-// recorded of it, so its original is kept: the next record naming it is dispatched from that
-// file, prepared, and released, and the later ones are seen. No record's content is lost.
 func TestReleaseKeepsUnrecorded(t *testing.T) {
 	const n, every, size = 1000, 10, 64
 	s := heavyStore(n, every, size)
@@ -323,9 +289,6 @@ func TestReleaseKeepsUnrecorded(t *testing.T) {
 	}
 }
 
-// TestReleaseRefused: a found part whose claimed SHA-256 isn't its content's fails, matching
-// ErrSHA256, and no original is released, so the store isn't recorded; and a part with no file
-// whose SHA-256 the dispatch released nothing of fails.
 func TestReleaseRefused(t *testing.T) {
 	t.Run("a lying SHA-256", func(t *testing.T) {
 		s := heavyStore(30, 10, 64)
@@ -353,7 +316,6 @@ func TestReleaseRefused(t *testing.T) {
 	})
 }
 
-// ghost is a stage that finds a part with no file, of content no dispatch released.
 type ghost struct{}
 
 func (ghost) Identity() dispatch.Identity {
@@ -366,8 +328,6 @@ func (ghost) Prepare(context.Context, dispatch.Part, string) iter.Seq2[dispatch.
 	}
 }
 
-// unstagedDispatcher returns a dispatcher with s on route.Text alone, so the store's .bin
-// content, route.Unrouted, has no stage, over index, and its working directory.
 func unstagedDispatcher(t *testing.T, s *store, index dispatch.Index) (*dispatch.Dispatcher, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -378,13 +338,6 @@ func unstagedDispatcher(t *testing.T, s *store, index dispatch.Index) (*dispatch
 	return d, dir
 }
 
-// TestReleaseUnstaged: a store of 10,000 records whose content routes to no stage, a thousand
-// naming the same content and each other a content of its own, as an enterprise mailbox's
-// attachments with no task yet are, holds a few files at any event: each original is released
-// once the caller's loop has moved past its part's event without keeping it. Every record's part
-// is no processor yet, a later record of the shared content with no file, its flags and reason
-// the first's; and a dispatch with a stage registered for the route later prepares the content,
-// the index holding nothing of it under any stage.
 func TestReleaseUnstaged(t *testing.T) {
 	const n, every, size = 10_000, 10, 1024
 	s := heavyStore(n, every, size)
@@ -426,7 +379,6 @@ func TestReleaseUnstaged(t *testing.T) {
 	}
 	t.Logf("peak %d files, %d bytes", pr.peakFiles, pr.peakBytes)
 
-	// The route's stage registered later: the shared content is prepared, not seen.
 	leaf := &picky{}
 	later, err := dispatch.New(dispatch.Config{
 		Content: dispatch.NewMemoryContent(), Puts: 2,

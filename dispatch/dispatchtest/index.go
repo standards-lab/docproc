@@ -19,8 +19,10 @@ import (
 // Index runs the index contract against the indexes newIndex makes, a new, empty one for each
 // case. A store whose claims have a lease, a positive one from Claim, is also held to the lease's
 // contract: a renewal keeps the claim, and a claim not renewed within its lease is taken over, its
-// token's renewals, appends, and record failing and its appends discarded; the cases wait out the
-// lease, so newIndex should make one of a fraction of a second.
+// token's renewals, appends, and record failing and its appends discarded, an append to a log
+// buffered until Record failing at the record instead. The cases wait out the lease, and each holds
+// its claim across its steps unrenewed, so newIndex should make one of about a second: a shorter
+// one lets a pause on a loaded machine end a claim a case still holds.
 func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 	t.Helper()
 	ctx := context.Background()
@@ -322,7 +324,6 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 		}
 		append1(t, idx, k, token, warning("taken over"))
 
-		// Renewed at a third of its lease, the claim outlasts two leases.
 		for end := time.Now().Add(2 * lease); time.Now().Before(end); {
 			time.Sleep(lease / 3)
 			if err := idx.Renew(ctx, k, token); err != nil {
@@ -333,7 +334,6 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 			}
 		}
 
-		// Not renewed, it is taken over once its lease runs out, and a waiter returns.
 		if _, ok, err := idx.Wait(ctx, k); err != nil || ok {
 			t.Errorf("wait on a claim not renewed: %v, %v, want no entry once its lease ran out", ok, err)
 		}
@@ -352,7 +352,6 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 			t.Errorf("the old token's renewal after a takeover: %v, want ErrClaimLost", err)
 		}
 		if err := idx.Append(ctx, k, token, warning("late")); err == nil {
-			// A buffered log may refuse it at the record instead.
 			if err := idx.Record(ctx, k, token, entry()); err == nil {
 				t.Error("the old token's append and record after a takeover: no error")
 			}
@@ -369,12 +368,10 @@ func Index(t *testing.T, newIndex func(t *testing.T) dispatch.Index) {
 	})
 }
 
-// key returns a key for a case: name's SHA-256 under the fixture stage's identity.
 func key(name string) dispatch.Key {
 	return dispatch.Key{SHA256: hash([]byte(name)), Stage: dispatch.Identity{Name: "fixture", Version: "1", Config: "fixture"}}
 }
 
-// claim claims k in idx, failing the test unless it is claimed.
 func claim(t *testing.T, idx dispatch.Index, k dispatch.Key) string {
 	t.Helper()
 	token, _, ok, err := idx.Claim(context.Background(), k)
@@ -384,7 +381,6 @@ func claim(t *testing.T, idx dispatch.Index, k dispatch.Key) string {
 	return token
 }
 
-// append1 appends r to the log of the claim token holds.
 func append1(t *testing.T, idx dispatch.Index, k dispatch.Key, token string, r dispatch.Recorded) {
 	t.Helper()
 	if err := idx.Append(context.Background(), k, token, r); err != nil {
@@ -392,7 +388,6 @@ func append1(t *testing.T, idx dispatch.Index, k dispatch.Key, token string, r d
 	}
 }
 
-// items reads k's log whole.
 func items(t *testing.T, idx dispatch.Index, k dispatch.Key) []dispatch.Recorded {
 	t.Helper()
 	var got []dispatch.Recorded
@@ -405,12 +400,10 @@ func items(t *testing.T, idx dispatch.Index, k dispatch.Key) []dispatch.Recorded
 	return got
 }
 
-// warning returns a log item holding a warning where where.
 func warning(where string) dispatch.Recorded {
 	return dispatch.Recorded{Warning: &dispatch.Warning{Tool: "fixture", Where: where, What: "unreadable"}}
 }
 
-// entry returns an entry with every field set.
 func entry() dispatch.Entry {
 	return dispatch.Entry{
 		Outcome: dispatch.Prepared, Reason: "why", Outputs: 1, Children: 1,
@@ -421,8 +414,6 @@ func entry() dispatch.Entry {
 	}
 }
 
-// log returns a log of one item of each kind, every field set, the local ones among them, and a
-// limited unread child, which has no size or SHA-256.
 func log() []dispatch.Recorded {
 	return []dispatch.Recorded{
 		{Output: &dispatch.Output{
@@ -439,14 +430,12 @@ func log() []dispatch.Recorded {
 			Flags:  []inspect.Flag{{Check: inspect.PDFJavaScript, Class: inspect.Active, Evidence: "/JavaScript"}},
 			Parent: "/", Depth: 1, Where: "line 1", Path: "/local/a.pdf", After: 9,
 		}, Outcome: dispatch.Prepared}},
-		// An unread child, stopped at the bytes cap: no size and no SHA-256.
 		{Child: &dispatch.Child{Part: dispatch.Part{
 			ID: "/line 2", Name: "big.bin", Parent: "/", Depth: 1, Where: "line 2",
 		}, Outcome: dispatch.Limited}},
 	}
 }
 
-// recorded returns log as an index gives it back: its local fields left out.
 func recorded(log []dispatch.Recorded) []dispatch.Recorded {
 	out := make([]dispatch.Recorded, len(log))
 	for i, r := range log {
@@ -465,7 +454,6 @@ func recorded(log []dispatch.Recorded) []dispatch.Recorded {
 	return out
 }
 
-// show returns log for a failure's message.
 func show(log []dispatch.Recorded) string {
 	var s strings.Builder
 	for _, r := range log {
