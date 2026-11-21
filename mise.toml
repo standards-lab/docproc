@@ -25,7 +25,7 @@ HOLDS = '''
 '''
 
 [tasks.check]
-description = "Lint the scripts and workflows; check every Go module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
+description = "Lint the scripts and workflows, test the tag routing, and run lint-context and lint-references; check every Go module; then run each tool's check and write its third-party notices to nowhere; writes nothing outside the tools' build output"
 run = '''
 set -eu
 mise -C "$MISE_PROJECT_ROOT" run lint
@@ -66,13 +66,25 @@ go tool sqlint .
 '''
 
 [tasks.lint]
-description = "Shellcheck every committed shell script, lint the GitHub Actions workflows with actionlint, and test the release workflow's tag routing; reads no network, writes only a temporary tree"
+description = "Shellcheck every committed shell script, lint the GitHub Actions workflows with actionlint, test the release workflow's tag routing, then run lint-context and lint-references, running every one before failing if any failed; reads no network, writes only a temporary tree"
 dir = "{{config_root}}"
 run = '''
-set -eu
-git ls-files -z '*.sh' | xargs -0 -r shellcheck
-actionlint
-scripts/release-tag-test.sh
+set -u
+fail=0
+run_lint() {
+  if ! command -v "$1" >/dev/null; then
+    echo "FAIL: $1 is not on PATH; run mise install" >&2
+    fail=1
+  elif ! "$@"; then
+    fail=1
+  fi
+}
+run_lint shellcheck $(git ls-files '*.sh')
+run_lint actionlint
+scripts/release-tag-test.sh || fail=1
+run_lint lint-context
+run_lint lint-references
+exit "$fail"
 '''
 
 [tasks."test:integration"]

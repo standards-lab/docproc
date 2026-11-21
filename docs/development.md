@@ -1,16 +1,16 @@
 # Development
 
-The toolchain, Go, golangci-lint, actionlint, shellcheck, jq, and the integration tier's 7zz, is
-pinned in [`mise.toml`](../mise.toml); each tool under `tools/` pins its own. Tasks run from the
-repository root, `mise run <task>`:
+The toolchain, Go, golangci-lint, actionlint, shellcheck, jq, marathon's lint-context and
+lint-references, and the integration tier's 7zz, is pinned in [`mise.toml`](../mise.toml); each
+tool under `tools/` pins its own. Tasks run from the repository root, `mise run <task>`:
 
-- `check`: shellchecks the scripts, lints the workflows, and tests the release workflow's tag
-  routing; builds, vets, format-checks, fixes, tidies, tests under the race detector, and lints
-  every Go module, the base, both providers, and cmd/docproc, each with the workspace off, then
-  sqlints the postgres module's SQL; then runs each tool's check. It is the unit tier: each
-  package over its own testdata and a stand-in tool, the readers replaying the tools' committed
-  goldens in place. It reads no network and runs no real tool but util-linux's `prlimit`, which
-  the memory-bound tests need on PATH.
+- `check`: shellchecks the scripts, lints the workflows, tests the release workflow's tag
+  routing, and runs lint-context and lint-references; builds, vets, format-checks, fixes, tidies,
+  tests under the race detector, and lints every Go module, the base, both providers, and
+  cmd/docproc, each with the workspace off, then sqlints the postgres module's SQL; then runs each
+  tool's check. It is the unit tier: each package over its own testdata and a stand-in tool, the
+  readers replaying the tools' committed goldens in place. It reads no network and runs no real
+  tool but util-linux's `prlimit`, which the memory-bound tests need on PATH.
 - `test:integration`: the integration tier, under the `integration` build tag. It builds
   docproc-ooxml, docproc-mail, and docproc-onenote from this checkout through their publish tasks
   and puts those three ahead of everything else on PATH, so no installed release stands in for
@@ -64,7 +64,7 @@ Its environment:
 
 Its tasks:
 
-- `check` is the one check: read-only and deterministic, stopping at the first failure. It runs
+- `check` is the one check: read-only and deterministic, stopping at the first failing part. It runs
   the lint, then `check:go`, then each tool's check, so CI's lint, Go, and tool jobs run its three
   parts apart. After each tool's check it writes the notices a release would pack for this
   machine to nowhere, so a package the notices script can't give a notice for fails there, not at
@@ -73,9 +73,12 @@ Its tasks:
   nearest it, outside any go.work, so each resolves its own pins as a consumer does; then it runs
   sqlint over the postgres module's statements and migrations. sqlint is the postgres module's
   tool, and resolves the engine `sqlint.toml` names through the module's own requirements.
-- `lint`: actionlint shellchecks each workflow's `run:` blocks too, with the shellcheck pinned in
-  mise.toml. The release workflow's tag routing is a script, so its test runs here, beside the
-  workflow it routes. CI's lint job runs this task; the check runs it first.
+- `lint`: shellcheck, actionlint, the tag-routing test, then lint-context and lint-references,
+  each run before the task fails if any failed. A lint missing from PATH fails the task with
+  `FAIL: <lint> is not on PATH; run mise install`. actionlint shellchecks each workflow's `run:`
+  blocks too, with the shellcheck pinned in mise.toml. The release workflow's tag routing is a
+  script, so its test runs here, beside the workflow it routes. CI's lint job runs this task; the
+  check runs it first.
 - `test:integration`: each docproc tool is built from this checkout through its own publish task,
   and the three binaries alone are linked into a directory put ahead of everything else on PATH.
   Packages run in parallel, as the unit tier's do: each container test watches only the containers

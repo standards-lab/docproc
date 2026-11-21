@@ -12,14 +12,15 @@ through mise-action or a task's auto-install.
 CI runs on every pull request into main, every push to main, and on demand. A newer run on the
 same ref cancels the one it supersedes.
 
-- **changes** decides which of the other jobs run, through one paths filter each.
+- **changes** decides which of the tool, go, and integration jobs run, through one paths filter
+  each.
 - **tool**: each system tool's check runs once per runner, natively on x64 and arm64, followed by
   its third-party notices, but only when the tool's directory or the wiring every tool shares
   changed.
 - **go**: the root's `check:go` on both runners, only when what the Go modules build or read
   changed.
-- **lint**: the root's `lint`, shellcheck and actionlint and the release workflow's tag-routing
-  test, only when a script, a workflow, or the root mise.toml changed.
+- **lint**: the root's `lint`, shellcheck and actionlint, the release workflow's tag-routing test,
+  and lint-context and lint-references, on every run, since a lint reads the whole tree.
 - **integration**: the provider modules' live tiers against the compose harness, on a push to main
   when what they build or run against changed and on demand, never on a pull request.
 - **ci** always runs last and is the one check docproc's `main` ruleset requires: it fails when
@@ -52,8 +53,8 @@ that defines the integration tasks and the harness's environment.
 
 ### The jobs' toolchains and caches
 
-- The lint job needs only the root's shellcheck and actionlint, not its Go toolchain; the routing
-  test needs bash alone.
+- The lint job needs only the root's shellcheck, actionlint, and marathon pin, which provides
+  lint-context and lint-references, not its Go toolchain; the routing test needs bash alone.
 - `check:go` needs only the root's Go toolchain and golangci-lint. Its cache holds the modules
   go.sum pins, as downloaded, and the build cache; both are keyed on go.sum, the build cache being
   only a speedup the go command checks entry by entry.

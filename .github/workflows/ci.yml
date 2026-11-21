@@ -28,7 +28,6 @@ jobs:
     outputs:
       tools: ${{ steps.tools.outputs.changes }}
       go: ${{ steps.go.outputs.go }}
-      lint: ${{ steps.lint.outputs.lint }}
       integration: ${{ steps.integration.outputs.integration }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -87,25 +86,14 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'mise.toml'
 
-      - id: lint
-        uses: dorny/paths-filter@v4.0.3
-        with:
-          filters: |
-            lint:
-              - '.github/workflows/**'
-              - '**/*.sh'
-              - 'mise.toml'
-
   lint:
-    needs: changes
-    if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
 
       - uses: jdx/mise-action@v5.2.10
         with:
-          install_args: actionlint shellcheck
+          install_args: actionlint shellcheck github:standards-lab/claude-plugins
 
       - name: mise run lint
         run: mise run lint
