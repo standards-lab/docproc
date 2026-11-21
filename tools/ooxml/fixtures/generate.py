@@ -94,11 +94,39 @@ VARIANT_TYPES = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsV
 MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
 RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
-EMU = 457200  # A drawing's side, half an inch.
+DRAWING_SIDE_EMU = 457200
 
 
 class Fixture:
-    """A python-docx document and its ground truth, built side by side."""
+    """A python-docx document and its ground truth, built side by side.
+
+    Blocks are written to target, the body or a header or footer, in section, the index of the
+    section they are in. sections holds each section's headers and footers in the ground truth,
+    when the fixture declares them. libreoffice, when the LibreOffice re-save's ground truth
+    differs, is a function that adjusts a copy of the truth, written as
+    <name>.libreoffice.truth.json. plain_comments holds the comments python-docx writes itself,
+    with their ground truth.
+
+    A paragraph of segments is written as raw XML. A segment is (kind, value):
+
+    - "text", "ins", "del", "moveFrom", "moveTo": text, tracked or not (one move per fixture,
+      named move1); the accepted text keeps "text", "ins", and "moveTo";
+    - "footnote", "endnote": the key of a note this fixture defines, referenced here;
+      "delNote": (kind, key), a reference inside a deletion, so the note is never referenced;
+    - "commentStart", "commentEnd": the key of a comment this fixture defines, whose anchored
+      range (and its replies') starts or ends here;
+    - "picture", "delPicture": a Picture, in a drawing of its own, or inside a deletion;
+    - "chart": a Chart, in a drawing of its own;
+    - "link": (text, URL), the text in an external hyperlink; "anchor": (text, bookmark), the
+      text in an internal one, to a bookmark; both are text of the paragraph;
+    - "bookmark": a bookmark's name, the start and end of an empty bookmark;
+    - "raw": a run's XML as it is, which adds no text, such as a text box or an equation.
+
+    References, pictures, and charts add no text; a reference marks its offset in the text, and
+    a picture or chart is a block of its own after its paragraph. A paragraph's ground truth is
+    the paragraph unless it holds no text and no reference (then it is spacing), then the blocks
+    after it.
+    """
 
     writer, extension, filter = "python-docx", "docx", "docx:MS Word 2007 XML"
 
@@ -110,21 +138,15 @@ class Fixture:
         self.once: list[str] = []
         self._ids = 100
         self._numbering_ready = False
-        # The story blocks are written to (the body, or a header or footer) and the section index
-        # the blocks are in.
         self.target = self.doc
         self.section = 0
-        # Each section's headers and footers in the ground truth, when the fixture declares them.
         self.sections: list[dict] | None = None
         self.notes: dict[str, dict] = {"footnote": {}, "endnote": {}}
         self._note_order: dict[str, list[str]] = {"footnote": [], "endnote": []}
         self.note_truth: dict[str, list[dict]] = {"footnote": [], "endnote": []}
         self.comments: dict[str, dict] = {}
         self.comments_extended = True
-        # How the LibreOffice re-save's ground truth differs, when it does: a function that
-        # adjusts a copy of the truth, written as <name>.libreoffice.truth.json.
         self.libreoffice = None
-        # Comments python-docx writes itself, with their ground truth.
         self.plain_comments: list[dict] = []
         self._raw_parts: dict[str, ImagePart] = {}
         self._charts = 0
@@ -132,8 +154,6 @@ class Fixture:
     def next_id(self) -> int:
         self._ids += 1
         return self._ids
-
-    # Plain blocks.
 
     def heading(self, text: str, level: int) -> None:
         self.doc.add_heading(text, level)
@@ -155,8 +175,6 @@ class Fixture:
         run.add_break()
         p.add_run(second)
         self.elements.append({"kind": "paragraph", "text": f"{first}\n{second}"})
-
-    # Lists, numbered through definitions this script adds to the numbering part.
 
     def _numbering(self) -> None:
         if self._numbering_ready:
@@ -181,12 +199,10 @@ class Fixture:
             f'<w:num {W} w:numId="10"><w:abstractNumId w:val="10"/></w:num>',
             f'<w:num {W} w:numId="11"><w:abstractNumId w:val="11"/></w:num>',
         ] + [
-            # Instances of one abstract definition share its count unless they restart it.
             f'<w:num {W} w:numId="{num_id}"><w:abstractNumId w:val="11"/>'
             f'<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>'
             for num_id in (12, 13, 14)
         ]
-        # The schema orders every w:abstractNum before every w:num.
         first_num = numbering.find(f"{{{numbering.nsmap['w']}}}num")
         for xml in abstracts:
             el = parse_xml(xml)
@@ -205,9 +221,6 @@ class Fixture:
         num_pr.get_or_add_numId().val = num_id
 
     def _list_item(self, text: str, level: int, ordered: bool, new_list: bool) -> None:
-        """The ground truth of a list item. It starts a list when it follows anything but a
-        list item, when it is deeper than the item before it, or when the definition says it
-        starts a new list at its level (new_list)."""
         previous = self.elements[-1] if self.elements else None
         start = new_list or previous is None or previous["kind"] != "listItem" or previous["level"] < level
         self.elements.append(
@@ -215,13 +228,21 @@ class Fixture:
         )
 
     def item(self, text: str, num_id: int, level: int, ordered: bool, new_list: bool = False) -> None:
+        """A list item, numbered through the definitions this script adds to the numbering part,
+        every w:abstractNum before every w:num, as the schema orders them: num_id 10 is bullets,
+        11 mixed (decimal, bullet, lower letter), and 12 to 14 instances of 11 that restart its
+        count, since instances of one abstract definition share its count unless they restart
+        it. Its truth starts a list when it follows anything but a list item, when it is deeper
+        than the item before it, or when the definition says it starts a new list at its level
+        (new_list)."""
         p = self.target.add_paragraph(text, style="List Paragraph")
         self._number(p, num_id, level)
         self._list_item(text, level, ordered, new_list)
 
-    # Tables. Each cell is (text, colSpan, rowSpan); None marks a covered grid position.
-
     def table(self, grid: list[list[tuple[str, int, int] | None]]) -> None:
+        """A table of the grid's cells, each (text, colSpan, rowSpan), None marking a covered grid
+        position. A header's or footer's table is six inches wide, as it needs a width; the
+        body's takes the page's."""
         rows, cols = len(grid), len(grid[0])
         table = self._add_table(rows, cols)
         table.style = "Table Grid"
@@ -243,29 +264,11 @@ class Fixture:
             truth_rows.append(truth_row)
         self.elements.append({"kind": "table", "rows": truth_rows})
 
-    # Segments, as raw XML. A segment is (kind, value):
-    # - "text", "ins", "del", "moveFrom", "moveTo": text, tracked or not (one move per fixture,
-    #   named move1); the accepted text keeps "text", "ins", and "moveTo";
-    # - "footnote", "endnote": the key of a note this fixture defines, referenced here;
-    #   "delNote": (kind, key), a reference inside a deletion, so the note is never referenced;
-    # - "commentStart", "commentEnd": the key of a comment this fixture defines, whose anchored
-    #   range (and its replies') starts or ends here;
-    # - "picture", "delPicture": a Picture, in a drawing of its own, or inside a deletion;
-    # - "chart": a Chart, in a drawing of its own;
-    # - "link": (text, URL), the text in an external hyperlink; "anchor": (text, bookmark), the
-    #   text in an internal one, to a bookmark; both are text of the paragraph;
-    # - "bookmark": a bookmark's name, the start and end of an empty bookmark;
-    # - "raw": a run's XML as it is, which adds no text, such as a text box or an equation.
-    # References, pictures, and charts add no text; a reference marks its offset in the text, and
-    # a picture or chart is a block of its own after its paragraph.
-
     def _run(self, text: str, deleted: bool = False) -> str:
         tag = "w:delText" if deleted else "w:t"
         return f'<w:r><{tag} xml:space="preserve">{escape(text)}</{tag}></w:r>'
 
     def _segments(self, segments: list[tuple[str, object]], part) -> tuple[str, list[dict], list[dict]]:
-        """The XML of segments in the given story part, the marks of the references they hold,
-        and the blocks (media and charts) that follow their paragraph."""
         attrs = f'w:author="{AUTHOR}" w:date="{DATE}"'
         xml, marks, after = [], [], []
         offset = 0
@@ -339,15 +342,12 @@ class Fixture:
         )
 
     def _fill(self, p, segments) -> tuple[list[dict], list[dict]]:
-        """Appends segments to a python-docx paragraph; returns their marks and the blocks after."""
         xml, marks, after = self._segments(segments, p.part)
         for el in parse_xml(f"<w:body {NS}>{xml}</w:body>"):
             p._p.append(el)
         return marks, after
 
     def _tracked_paragraph(self, segments, mark: str | None = None, style: str | None = None):
-        """A paragraph of segments; mark "del" or "ins" tracks its paragraph mark. Returns the
-        paragraph, the marks of its references, and the blocks after it."""
         p = self.target.add_paragraph(style=style)
         marks, after = self._fill(p, segments)
         if mark is not None:
@@ -359,8 +359,6 @@ class Fixture:
         return p, marks, after
 
     def _paragraph_truth(self, text: str, marks: list[dict], after: list[dict]) -> None:
-        """A paragraph's ground truth: the paragraph unless it holds no text and no reference
-        (then it is spacing), then the blocks after it."""
         if text.strip() or marks:
             element = {"kind": "paragraph", "text": text}
             if marks:
@@ -369,7 +367,7 @@ class Fixture:
         self.elements.extend(after)
 
     def tracked(self, segments, mark: str | None = None) -> None:
-        """A paragraph of segments, its mark tracked or not."""
+        """A paragraph of segments, its mark tracked ("del" or "ins") or not."""
         _, marks, after = self._tracked_paragraph(segments, mark)
         if mark != "del":
             self._paragraph_truth(self.accepted(segments), marks, after)
@@ -411,17 +409,14 @@ class Fixture:
         self.elements.append({"kind": "table", "rows": [row]})
 
     def _add_table(self, rows: int, cols: int):
-        # A header's or footer's table needs a width; the body's takes the page's.
         if self.target is self.doc:
             return self.doc.add_table(rows=rows, cols=cols)
         return self.target.add_table(rows, cols, Inches(6))
 
-    # Stories other than the body: headers and footers, by python-docx; the section index their
-    # media are placed in is the section they are read for.
-
     @contextmanager
     def story(self, container, section: int):
-        """Builds into a header or footer; yields the ground truth of its blocks."""
+        """Builds into a header or footer, by python-docx, its media placed in section, the
+        section it is read for; yields the ground truth of its blocks."""
         saved = self.target, self.elements, self.section
         self.target, self.elements, self.section = container, [], section
         try:
@@ -434,13 +429,10 @@ class Fixture:
         self.section += 1
         return self.doc.add_section(WD_SECTION.NEW_PAGE)
 
-    # Pictures and charts, in drawings written as raw XML.
-
     def _picture_rid(self, pic: "Picture", part) -> str:
         if pic.link is not None:
             return part.relate_to(pic.link, RT.IMAGE, is_external=True)
         if pic.part is not None:
-            # A part of its own, so two parts can hold the same bytes; python-docx would share one.
             if pic.part not in self._raw_parts:
                 self._raw_parts[pic.part] = ImagePart(PackURI(pic.part), pic.content_type, pic.data)
             return part.relate_to(self._raw_parts[pic.part], RT.IMAGE)
@@ -456,7 +448,7 @@ class Fixture:
             f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">'
             f'<pic:pic><pic:nvPicPr><pic:cNvPr id="{shape_id}" name="Picture {shape_id}"/><pic:cNvPicPr/></pic:nvPicPr>'
             f"<pic:blipFill><a:blip {blip}/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>"
-            f'<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{EMU}" cy="{EMU}"/></a:xfrm>'
+            f'<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{DRAWING_SIDE_EMU}" cy="{DRAWING_SIDE_EMU}"/></a:xfrm>'
             f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic>'
             f"</a:graphicData></a:graphic></wp:inline></w:drawing>"
         )
@@ -478,16 +470,16 @@ class Fixture:
     def _inline_open(shape_id: int, descr: str, title: str) -> str:
         alt = (f' descr="{escape(descr)}"' if descr else "") + (f' title="{escape(title)}"' if title else "")
         return (
-            f'<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{EMU}" cy="{EMU}"/>'
+            f'<wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="{DRAWING_SIDE_EMU}" cy="{DRAWING_SIDE_EMU}"/>'
             f'<wp:docPr id="{shape_id}" name="Drawing {shape_id}"{alt}/>'
             f'<wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr>'
         )
 
-    # Footnotes and endnotes, written as raw parts with Word's separator and continuation notes.
-    # A note's ground truth is listed in the order the body first references it.
-
     def note(self, kind: str, key: str, paragraphs: list[str]) -> None:
-        """Defines a footnote or endnote, its ids numbered in definition order."""
+        """Defines a footnote or endnote, its ids numbered in definition order. The notes are
+        written as raw parts with Word's separator and continuation notes. A note's ground truth
+        is listed in the order the body first references it, its first paragraph starting with
+        the reference mark and Word's space after it."""
         notes = self.notes[kind]
         notes[key] = {"id": len(notes) + 1, "paragraphs": paragraphs}
 
@@ -501,7 +493,6 @@ class Fixture:
         order = self._note_order[kind]
         if key not in order:
             order.append(key)
-            # The first paragraph starts with the reference mark and Word's space after it.
             paragraphs = self.notes[kind][key]["paragraphs"]
             texts = [" " + paragraphs[0]] + paragraphs[1:]
             self.note_truth[kind].append({"elements": [{"kind": "paragraph", "text": t} for t in texts]})
@@ -529,12 +520,12 @@ class Fixture:
         part = Part(PackURI(f"/word/{kind}s.xml"), content_type, xml.encode(), self.doc.part.package)
         self.doc.part.relate_to(part, reltype)
 
-    # Comments, written as a raw comments part and, unless the fixture leaves it out, a
-    # commentsExtended part giving each reply its parent and each thread its resolved state. A
-    # thread's root and replies share its anchored range, as Word writes them.
-
     def comment(self, key: str, author: str, paragraphs: list[str], anchor: str, resolved: bool = False,
                 replies: list[tuple[str, list[str]]] = ()) -> None:
+        """Defines a comment thread. Comments are written as a raw comments part and, unless the
+        fixture leaves it out (comments_extended), a commentsExtended part giving each reply its
+        parent and each thread its resolved state. A thread's root and replies share its
+        anchored range, as Word writes them."""
         start = sum(len(t["ids"]) for t in self.comments.values())
         self.comments[key] = {
             "ids": list(range(start, start + 1 + len(replies))),
@@ -648,7 +639,8 @@ class Fixture:
 @dataclass
 class Picture:
     """A picture: embedded, through python-docx's image parts (one per distinct content) or a
-    part of its own, or linked to an external target, with no part."""
+    part of its own, so two parts can hold the same bytes, or linked to an external target, with
+    no part."""
 
     descr: str
     title: str = ""
@@ -749,15 +741,19 @@ def png(rgb: tuple[int, int, int]) -> bytes:
 
 
 def emf() -> bytes:
-    """The smallest EMF: a header record and an end-of-file record, 1 mm square."""
+    """The smallest EMF: a header record and an end-of-file record, 1 mm square. The header
+    record's fields: EMR_HEADER and its size; the bounds, in device units; the frame, in 0.01 mm;
+    the " EMF" signature, the version, the file size, and the record count; the handles,
+    reserved, no description, and no palette; and the reference device in pixels and in
+    millimeters."""
     header = struct.pack(
         "<II4i4iIIIIHHIII4i",
-        1, 88,  # EMR_HEADER, its size
-        0, 0, 10, 10,  # bounds, device units
-        0, 0, 100, 100,  # frame, 0.01 mm
-        0x464D4520, 0x10000, 108, 2,  # " EMF", version, file size, records
-        1, 0, 0, 0, 0,  # handles, reserved, no description, no palette
-        1024, 768, 320, 240,  # reference device, pixels and millimeters
+        1, 88,
+        0, 0, 10, 10,
+        0, 0, 100, 100,
+        0x464D4520, 0x10000, 108, 2,
+        1, 0, 0, 0, 0,
+        1024, 768, 320, 240,
     )
     eof = struct.pack("<IIIII", 14, 20, 0, 16, 20)
     return header + eof
@@ -865,14 +861,14 @@ def tracked_changes() -> Fixture:
 
 def libreoffice_alt(truth: dict) -> None:
     """LibreOffice writes a picture's title and description as one description, the title's line
-    first, and no title."""
+    first, and no title. The truth's keys keep the python-docx truth's order, alt before
+    section."""
 
     def walk(node) -> None:
         if isinstance(node, dict):
             if node.get("kind") == "media" and "title" in node:
                 title = node.pop("title")
                 node["alt"] = f"{title}\n{node['alt']}" if "alt" in node else title
-                # Keep the key order of the python-docx truth: alt before section.
                 node["section"] = node.pop("section")
             for value in node.values():
                 walk(value)
@@ -906,7 +902,13 @@ def sections() -> Fixture:
     first-page, and even-page headers and footers and a title page; the second its own default
     and first-page headers, no title page (so its first-page header doesn't count), and inherits
     the rest; the third has a title page and inherits everything, the first-page header the
-    second section's."""
+    second section's.
+
+    The tracked change is in a header no other section inherits: LibreOffice writes an inherited
+    header's copies with its deletions as plain text. The second section's headers are unlinked,
+    as python-docx writes a linked header's content into the section it inherits from.
+    LibreOffice gives the third section the default header and footer as its first-page ones: it
+    drops the first-page variants the second section, with no title page, passes on."""
     f = Fixture("sections")
     f.doc.settings.odd_and_even_pages_header_footer = True
     logo = Picture("Header logo", "Logo", png((200, 30, 30)))
@@ -915,8 +917,6 @@ def sections() -> Fixture:
     s0.different_first_page_header_footer = True
     with f.story(s0.header, 0) as h0_default:
         f.paragraph("Default header one")
-    # The tracked change is in a header no other section inherits: LibreOffice writes an
-    # inherited header's copies with its deletions as plain text.
     with f.story(s0.first_page_header, 0) as h0_first:
         f.tracked([("text", "First header "), ("ins", "one"), ("del", " withdrawn")])
     with f.story(s0.even_page_header, 0) as h0_even:
@@ -932,7 +932,6 @@ def sections() -> Fixture:
 
     s1 = f.new_section()
     s1.different_first_page_header_footer = False
-    # python-docx writes a linked header's content into the section it inherits from.
     s1.header.is_linked_to_previous = False
     s1.first_page_header.is_linked_to_previous = False
     with f.story(s1.header, 1) as h1_default:
@@ -965,8 +964,6 @@ def sections() -> Fixture:
     f.absent = ["withdrawn"]
 
     def libreoffice(truth: dict) -> None:
-        # LibreOffice gives the third section the default header and footer as its first-page
-        # ones: it drops the first-page variants the second section, with no title page, passes on.
         libreoffice_alt(truth)
         for story in ("headers", "footers"):
             kinds = {s["kind"]: s for s in truth["sections"][2][story]}
@@ -995,7 +992,9 @@ def headers_even_off() -> Fixture:
 
 def notes() -> Fixture:
     """Footnotes and endnotes, referenced out of their id order, one note of two paragraphs, a
-    reference in a list item, and a footnote whose only reference was deleted."""
+    reference in a list item, and a footnote whose only reference was deleted. LibreOffice pairs
+    footnotes with their references by their order in the notes part, not by id, so in its
+    re-save the first reference shows the first-defined note."""
     f = Fixture("notes")
     f.note("footnote", "basis", ["Figures are unaudited."])
     f.note("footnote", "method", ["The method has two parts.", "Its second part is a second paragraph."])
@@ -1016,8 +1015,6 @@ def notes() -> Fixture:
     f.absent = ["A withdrawn footnote"]
 
     def libreoffice(truth: dict) -> None:
-        # LibreOffice pairs footnotes with their references by their order in the notes part, not
-        # by id, so in its re-save the first reference shows the first-defined note.
         method, basis = truth["footnotes"]
         truth["footnotes"] = [basis, method]
 
@@ -1184,8 +1181,6 @@ def links() -> Fixture:
     return f
 
 
-# The unread kinds: a text box (VML), an equation (Office Math), and a SmartArt diagram, whose
-# parts are as small as the package allows.
 TEXT_BOX_RUN = (
     f'<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" style="width:120pt;height:40pt">'
     f"<v:textbox><w:txbxContent><w:p><w:r><w:t>Text in a box</w:t></w:r></w:p></w:txbxContent></v:textbox>"
@@ -1207,8 +1202,9 @@ DIAGRAM_PARTS = [
 
 
 def unread() -> Fixture:
-    """The kinds docproc-ooxml doesn't read, each warned of once: two text boxes, an equation,
-    and a SmartArt diagram, among paragraphs that are read."""
+    """The kinds docproc-ooxml doesn't read, each warned of once: two text boxes (VML), an
+    equation (Office Math), and a SmartArt diagram, whose parts are as small as the package
+    allows, among paragraphs that are read."""
     f = Fixture("unread")
     f.heading("Unread", 1)
     f.tracked([("text", "A text box follows."), ("raw", TEXT_BOX_RUN)])
@@ -1234,8 +1230,6 @@ def unread() -> Fixture:
 FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, unread]
 
 
-# xlsx: workbooks written by openpyxl and re-saved by LibreOffice.
-
 CT_PNG = "image/png"
 
 
@@ -1259,7 +1253,15 @@ class Workbook:
     """An openpyxl workbook and its ground truth, built side by side. A cell's truth is kept per
     writer, as each leaves it: LibreOffice computes the formulas openpyxl leaves uncached, writes
     constant booleans and errors as formulas, and expands shared formulas into their cells'
-    own."""
+    own.
+
+    absent holds the strings that must appear nowhere in docproc-ooxml's output. patches holds
+    raw XML for what openpyxl can't write: (part, the XML openpyxl writes, the XML instead).
+    parts holds the parts openpyxl can't write, added to the package as they are: (name, bytes,
+    content type), and relationships the relationships to them, by the part that holds them:
+    (id, type, target). ole_sheets holds the sheets holding objects, and the namespaces their
+    objects' XML needs.
+    """
 
     writer, extension, filter = "openpyxl", "xlsx", "xlsx:Calc MS Excel 2007 XML"
 
@@ -1270,15 +1272,10 @@ class Workbook:
         if date1904:
             self.book.epoch = CALENDAR_MAC_1904
         self.sheets: list[Sheet] = []
-        # The strings that must appear nowhere in docproc-ooxml's output.
         self.absent: list[str] = []
-        # Raw XML for what openpyxl can't write: (part, the XML openpyxl writes, the XML instead).
         self.patches: list[tuple[str, str, str]] = []
-        # Parts openpyxl can't write, added to the package as they are: (name, bytes, content
-        # type), and the relationships to them, by the part that holds them: (id, type, target).
         self.parts: list[tuple[str, bytes, str]] = []
         self.relationships: dict[str, list[tuple[str, str, str]]] = {}
-        # The sheets holding objects, and the namespaces their objects' XML needs.
         self.ole_sheets: list[tuple["Sheet", str]] = []
 
     def sheet(self, title: str, state: str = "visible") -> "Sheet":
@@ -1289,8 +1286,10 @@ class Workbook:
         return sheet
 
     def save(self, path: pathlib.Path) -> None:
-        # openpyxl numbers a drawing part for each sheet that has charts or pictures, in sheet
-        # order, and in each names its charts and then its pictures by their count from 1.
+        """Saves the workbook through openpyxl, then patches in what it can't write. A picture's
+        alternative text is patched by the names openpyxl gives: a drawing part for each sheet
+        that has charts or pictures, numbered in sheet order, and in each its charts and then its
+        pictures, numbered from 1."""
         drawing = 0
         for sheet in self.sheets:
             if not sheet.charts and not sheet.pictures:
@@ -1391,7 +1390,8 @@ def payload_truth(kind: str, data: bytes, ext: str, content_type: str, prog_id: 
 
 class Sheet:
     """A worksheet and its truth: its cells by reference, each writer's truth of each (None where
-    the writer leaves the cell out), then its charts, its pictures, and its objects."""
+    the writer leaves the cell out), then its charts, its pictures, and its objects, each
+    object's truth its preview's then its payload's, by writer."""
 
     def __init__(self, book: Workbook, ws, index: int):
         self.book = book
@@ -1400,7 +1400,6 @@ class Sheet:
         self.cells: dict[str, dict[str, dict | None]] = {}
         self.charts: list[dict[str, dict]] = []
         self.pictures: list[tuple[dict, str]] = []
-        # Each object's truth, its preview's then its payload's, by writer.
         self.objects: list[dict[str, list[dict]]] = []
 
     @property
@@ -1530,7 +1529,9 @@ class Sheet:
     def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
         """An object openpyxl can't write, added as raw XML and parts: an embedded package
         (kind "embedded") or OLE object ("ole") with its preview picture, in Excel's alternate
-        content (its choice's copy holding the preview) or not."""
+        content (its choice's copy holding the preview) or not. LibreOffice drops an object with
+        no VML shape of its own, which the fixture doesn't write, so its re-save holds neither
+        payload."""
         n = len(self.objects) + 1
         payload = f"xl/embeddings/{self.ws.title.lower()}{n}.{ext}"
         image = f"xl/media/{self.ws.title.lower()}-preview{n}.png"
@@ -1555,8 +1556,6 @@ class Sheet:
         self.ole_xml.append(element)
         picture = {"kind": "media", "name": hashlib.sha256(preview).hexdigest() + ".png", "contentType": CT_PNG, "sheet": self.index}
         truth = [picture, {**payload_truth(kind, data, ext, content_type, prog_id), "sheet": self.index}]
-        # LibreOffice drops an object with no VML shape of its own, which the fixture doesn't
-        # write, so its re-save holds neither payload.
         self.objects.append({"openpyxl": truth, "libreoffice": []})
 
     @property
@@ -1600,7 +1599,11 @@ def cells() -> Workbook:
     """Constants of each type, through each writer's strings (openpyxl writes them inline,
     LibreOffice shared), rich text, date, datetime, and time numbers by built-in and custom
     formats, numbers in formats that only look like dates, ISO dates stored as such, a styled
-    cell with no value, and a sparse corner."""
+    cell with no value, and a sparse corner. The dates either side of the 1900 system's phantom
+    29 February are among them; LibreOffice stores an ISO date as its serial number, in the
+    General format. SpreadsheetML's _xHHHH_ escapes, which openpyxl writes as they are, give a
+    tab, and an escaped underscore before what would otherwise be an escape. A duration past a
+    day in an elapsed format stays a number."""
     f = Workbook("cells")
     s = f.sheet("Cells")
     labels = [
@@ -1633,20 +1636,15 @@ def cells() -> Workbook:
     s.value("B16", 42, "number", number_format='0 "days"')
     s.value("B17", 7, "number", number_format="[Red]0;[Blue]-0")
     s.value("B18", 5, "number", number_format="0\\h")
-    # Either side of the 1900 system's phantom 29 February.
     s.value("B19", datetime.date(1900, 2, 28), "date", expected="1900-02-28")
     s.value("C19", datetime.date(1900, 3, 1), "date", expected="1900-03-01")
     s.raw(
         "B20",
         '<c r="B20" t="d"><v>2026-01-15T10:30:00</v></c>',
         {"type": "date", "value": "2026-01-15T10:30:00"},
-        # LibreOffice stores it as the serial number, in the General format.
         {"type": "number", "value": 46037.4375},
     )
-    # SpreadsheetML's _xHHHH_ escapes, which openpyxl writes as they are: a tab, and the escaped
-    # underscore before what would otherwise be an escape.
     s.value("B21", "Tab_x0009_here, _x005F_x0041_ kept", "text", expected="Tab\there, _x0041_ kept")
-    # A duration past a day in an elapsed format stays a number.
     s.value("B22", 1.5, "number", number_format="[h]:mm")
     s.styled("C22", "0.00")
     s.value("E23", "far corner", "text")
@@ -1776,12 +1774,8 @@ def sheet_embeddings() -> Workbook:
 XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings]
 
 
-# pptx: presentations written by python-pptx and re-saved by LibreOffice.
-
 TITLE_SLIDE, TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 0, 1, 5, 6
 A = nsdecls("a")
-# The prompt texts of python-pptx's default layouts and master, which no slide holds, and the
-# slide-number field LibreOffice writes in each notes page's slide-number placeholder.
 ABSENT_ON_SLIDES = ["Click to edit Master title style", "Click to edit Master text styles", "Click to edit Master subtitle style", "<number>"]
 
 
@@ -1802,16 +1796,16 @@ def list_truth(items: list[tuple[str, int, str]], listed) -> list[dict]:
     others are list items, nested by level, a new list starting where the one before is of the
     other kind at the same level or a paragraph came between. Levels never skip, so an item's
     nesting is its level."""
-    elements, open_lists = [], []  # open_lists: each open level's ordered flag
+    elements, ordered_by_open_level = [], []
     for text, level, kind in items:
         ordered = {"number": True, "char": False, "none": None, "inherit": listed(level)}[kind]
         if ordered is None:
-            open_lists = []
+            ordered_by_open_level = []
             elements.append({"kind": "paragraph", "text": text})
             continue
-        del open_lists[level + 1 :]
-        start = len(open_lists) <= level or open_lists[level] != ordered
-        open_lists[level:] = [ordered]
+        del ordered_by_open_level[level + 1 :]
+        start = len(ordered_by_open_level) <= level or ordered_by_open_level[level] != ordered
+        ordered_by_open_level[level:] = [ordered]
         elements.append({"kind": "listItem", "level": level, "ordered": ordered, "start": start, "text": text})
     return elements
 
@@ -1827,7 +1821,12 @@ def layout_none(level: int) -> bool | None:
 
 
 class Deck:
-    """A python-pptx presentation and its ground truth, built side by side."""
+    """A python-pptx presentation and its ground truth, built side by side. absent starts with
+    the prompt texts of python-pptx's default layouts and master, which no slide holds, and the
+    slide-number field LibreOffice writes in each notes page's slide-number placeholder.
+    libreoffice is how the LibreOffice re-save's ground truth differs, when it does.
+    comment_authors is the comment authors' part, made with the first comment; comments and
+    payloads count the comments and payloads made so far, which number their parts."""
 
     writer, extension, filter = "python-pptx", "pptx", "pptx:Impress MS PowerPoint 2007 XML"
 
@@ -1838,10 +1837,7 @@ class Deck:
         self.order: list[int] | None = None
         self.absent: list[str] = list(ABSENT_ON_SLIDES)
         self.once: list[str] = []
-        # How the LibreOffice re-save's ground truth differs, when it does.
         self.libreoffice = None
-        # The comment authors' part, made with the first comment, and the comments and
-        # payloads made so far, which number their parts.
         self.comment_authors = None
         self.comments = 0
         self.payloads = 0
@@ -1888,13 +1884,14 @@ class Deck:
 
 
 class DeckSlide:
-    """A slide and its truth: its elements in shape-tree order, and its notes."""
+    """A slide and its truth: its elements in shape-tree order, each its truth or, for media, a
+    callable of the slide's index giving it, and its notes."""
 
     def __init__(self, deck: Deck, slide, hidden: bool):
         self.deck = deck
         self.slide = slide
         self.hidden = hidden
-        self.elements: list = []  # truth, or a callable of the slide's index for media
+        self.elements: list = []
         self.notes: list[dict] = []
 
     def title(self, text: str) -> None:
@@ -2108,7 +2105,8 @@ def libreoffice_no_picture_title(truth: dict) -> None:
 def slides() -> Deck:
     """Slides presented in an order that isn't their parts', a hidden one, notes on some, a title
     slide's subtitle (its layout turns the master's bullets off), a text box, and a content
-    placeholder left empty, whose layout prompt must not appear."""
+    placeholder left empty, whose layout prompt must not appear. The slides are created welcome,
+    agenda, internal, empty, closing, and presented welcome, internal, agenda, closing, empty."""
     f = Deck("slides")
     welcome = f.slide(TITLE_SLIDE)
     welcome.title("Quarterly Review")
@@ -2122,12 +2120,11 @@ def slides() -> Deck:
     internal.placeholder_text(1, [("Not for the board", 0, "inherit")], master_bullets)
     internal.notes_text(["Skip this slide when presenting."])
     empty = f.slide(TITLE_AND_CONTENT)
-    empty.title("Questions")  # Its content placeholder is left empty.
+    empty.title("Questions")
     closing = f.slide(TITLE_ONLY)
     closing.title("Thank you")
     closing.textbox([("Contact the operations team.", 0, "inherit")])
     closing.notes_text(["Close on time."])
-    # Created welcome, agenda, internal, empty, closing; presented welcome, internal, agenda, closing, empty.
     f.reorder([0, 2, 1, 4, 3])
     return f
 
@@ -2136,7 +2133,8 @@ def bullets() -> Deck:
     """Bullets: a content placeholder's master bullets nested three levels and back, a paragraph
     whose own bullet is none between lists, a numbered list (its own auto-numbers) with a bullet
     nested in it, a bullet list straight after it at the same level, and a text box's own
-    bullets and numbers beside its plain paragraphs and an empty one."""
+    bullets and numbers beside its plain paragraphs and an empty one, which is spacing, not text:
+    it is written and leaves no element."""
     f = Deck("bullets")
     s = f.slide(TITLE_AND_CONTENT)
     s.title("Plan")
@@ -2159,7 +2157,6 @@ def bullets() -> Deck:
     )
     boxes = f.slide(BLANK)
     boxes.textbox([("A text box's plain paragraph.", 0, "inherit"), ("Its own bullet", 0, "char"), ("Nested under it", 1, "char"), ("Its own number", 0, "number")])
-    # An empty paragraph is spacing, not text: it is written and leaves no element.
     box = boxes.slide.shapes[-1].text_frame
     box.add_paragraph().text = ""
     box.add_paragraph().text = "After the empty paragraph."
@@ -2239,7 +2236,8 @@ def slide_links() -> Deck:
 def slide_embeddings() -> Deck:
     """An OLE object (a Word 97-2003 document) in PowerPoint's alternate content and an
     embedded package (a docx), each with its preview picture, on the second slide, beside a
-    chart whose source workbook python-pptx embeds and which is never media."""
+    chart whose source workbook python-pptx embeds and which is never media. LibreOffice stores
+    the OLE object's compound file, as it is, as a Word 97-2003 document part."""
     f = Deck("slide-embeddings")
     first = f.slide(TITLE_ONLY)
     first.title("Embeddings")
@@ -2249,8 +2247,6 @@ def slide_embeddings() -> Deck:
     s.ole_object("embedded", package_payload(), "docx", CT_DOCX, "Word.Document.12", png((120, 40, 200)), alternate=False)
 
     def libreoffice(truth: dict) -> None:
-        # LibreOffice stores the OLE object's compound file, as it is, as a Word 97-2003
-        # document part.
         for element in truth["elements"][1]["elements"]:
             if element["kind"] == "ole":
                 element["name"] = element["name"].rsplit(".", 1)[0] + ".doc"
@@ -2263,18 +2259,19 @@ def slide_embeddings() -> Deck:
 PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings]
 
 
-# The refused set: documents docproc-ooxml refuses, each a python-docx document that LibreOffice
-# stores in another form. Their goldens pin the refusal's reason and exit code; they have no truth.
 REFUSED = GENERATED / "refused"
-
-# The password the encrypted fixture is stored with, so a person can open it.
 PASSWORD = "docproc"
 
 
 @dataclass
 class Refused:
-    """A refused fixture: its name, extension, the LibreOffice filter that stores it, and the
-    password it is encrypted with, if any."""
+    """A refused fixture: a document docproc-ooxml refuses, a python-docx document that
+    LibreOffice stores in another form, given by its name, extension, the LibreOffice filter that
+    stores it, and the password it is encrypted with, if any, PASSWORD, so a person can open it.
+    Its goldens pin the refusal's reason and exit code; it has no truth. The encrypted fixture
+    is an OOXML package encrypted with a password: an OLE compound file whose root holds the
+    EncryptionInfo and EncryptedPackage streams ([MS-OFFCRYPTO] 2.3.4.4). The legacy fixture is
+    a Word 97-2003 document: an OLE compound file with no EncryptedPackage stream."""
 
     name: str
     extension: str
@@ -2287,10 +2284,7 @@ class Refused:
 
 
 REFUSED_FIXTURES = [
-    # An OOXML package encrypted with a password: an OLE compound file whose root holds the
-    # EncryptionInfo and EncryptedPackage streams ([MS-OFFCRYPTO] 2.3.4.4).
     Refused("encrypted", "docx", "MS Word 2007 XML", PASSWORD),
-    # A legacy Word 97-2003 document: an OLE compound file with no EncryptedPackage stream.
     Refused("legacy", "doc", "MS Word 97"),
 ]
 
@@ -2302,9 +2296,6 @@ def refused_source(path: pathlib.Path, name: str) -> None:
     doc.save(path)
 
 
-# A Python macro LibreOffice runs in its own interpreter: it opens FIXTURE_SOURCE hidden and
-# stores it as FIXTURE_TARGET through FIXTURE_FILTER, with FIXTURE_PASSWORD when set, then ends
-# LibreOffice. It reads its arguments from the environment, since a script URL passes none.
 STORE_MACRO = """\
 import os
 
@@ -2334,15 +2325,18 @@ def store(*args):
 
 def store(source: pathlib.Path, target: pathlib.Path, filter: str, password: str | None) -> None:
     """Store source as target through LibreOffice headless, in a throwaway profile holding the
-    store macro, with the filter and password given."""
+    store macro, with the filter and password given. The macro, STORE_MACRO, runs in
+    LibreOffice's own Python interpreter: it opens FIXTURE_SOURCE hidden and stores it as
+    FIXTURE_TARGET through FIXTURE_FILTER, with FIXTURE_PASSWORD when set, then ends
+    LibreOffice. It reads its arguments from the environment, since a script URL passes none.
+    LibreOffice crashes when the interpreter of the virtual environment uv runs this script in
+    comes first on PATH, so that directory is left out of LibreOffice's PATH."""
     with tempfile.TemporaryDirectory() as tmp:
         tmpdir = pathlib.Path(tmp)
         scripts = tmpdir / "profile" / "user" / "Scripts" / "python"
         scripts.mkdir(parents=True)
         (scripts / "store.py").write_text(STORE_MACRO)
         stored = tmpdir / target.name
-        # LibreOffice runs its own Python, and crashes when the interpreter of the virtual
-        # environment uv runs this script in comes first on PATH, so that directory is left out.
         env = dict(os.environ)
         if venv := os.environ.get("VIRTUAL_ENV"):
             path = env.get("PATH", "").split(os.pathsep)
@@ -2420,10 +2414,12 @@ def update_readme(version: str, files: list[pathlib.Path]) -> None:
 
 
 def main(names: list[str]) -> int:
+    """Writes the named fixtures, or every fixture, each built once first to learn its name and
+    its writer, then rewrites the README's checksums of every fixture's files, regenerated now or
+    not."""
     if shutil.which("soffice") is None:
         print("generate: soffice (LibreOffice) is not on PATH", file=sys.stderr)
         return 1
-    # Each fixture is built once here to learn its name and its writer.
     builds, kinds = {}, {}
     for build in FIXTURES + XLSX_FIXTURES + PPTX_FIXTURES:
         fixture = build()
@@ -2456,7 +2452,6 @@ def main(names: list[str]) -> int:
         else:
             variant.write_text(json.dumps(adjusted, indent=2, ensure_ascii=False) + "\n")
             written.append(variant)
-    # The checksums cover every fixture's files, regenerated now or not.
     files = []
     for name, (writer, extension) in kinds.items():
         suffixes = (f"{writer}.{extension}", f"libreoffice.{extension}", "truth.json", "libreoffice.truth.json")

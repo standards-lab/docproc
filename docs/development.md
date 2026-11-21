@@ -87,6 +87,47 @@ Its tasks:
 - `currency` is read-only and development-time: it reads the network, so CI never runs it.
   `upgrade` is development-time too.
 
+## Currency and upgrade
+
+[`scripts/currency.sh`](../scripts/currency.sh) is both tasks. `report` prints one line for each
+pin behind its latest, a held one with its hold's reason, and exits 1 when any it reports is not
+held; it reads the network and writes nothing but the tools' `obj/`. `upgrade` moves every pin
+`report` shows trailing to its latest, but a held one, so a report after it shows none of them but
+the held. Run it, review the diff, and run the check.
+
+- **Captures fail currency.** Each scan captures its command's output in a variable before
+  reading it, and each capture ends in `|| return`, so a scan command that fails (a go list
+  missing a go.sum entry, a registry crane can't reach) fails currency instead of reporting
+  nothing: a command substitution runs with `set -e` off.
+- **Go modules.** A module's direct requirements, its tool modules, and its go directive, each
+  read in the module's directory. A tool's module is an indirect requirement, which the direct
+  scan leaves out; one the module also requires directly is reported there, so it is skipped
+  among the tool modules. Only go list's standard output names modules: its standard error
+  carries the warning when no tool directive matches and any download's progress, so it is shown
+  only when go list fails. A go directive trails when its minor trails the current Go minor.
+- **The root mise tools.** Those the root mise.toml pins; the tools' mise files are their own.
+  `--no-global` reads and writes the root mise.toml alone, never the global config, and a held
+  tool is excluded from the upgrade by name.
+- **Images.** An image's latest is its highest semver tag carrying the pin's variant suffix
+  (18.7-alpine, -alpine); a tag needs at least one dot to count, so a bare build number never
+  sorts above every release. A service that builds from `compose/<service>/Dockerfile` has its
+  one pin in that file's FROM line.
+- **Each tool's own.** Each tool's currency reports its packages, advisories, and toolchain, each
+  line prefixed with the tool's directory. A tool reporting anything exits non-zero, which marks
+  the whole report stale without stopping the other scans.
+- **The upgrade's order.** It bumps the root mise pins first, so the Go modules then move under
+  the Go just pinned: a go directive raised to a Go minor the old toolchain predates would
+  otherwise send the go command to fetch a toolchain. Its `go` runs the pinned Go in a new mise
+  process, so it is the Go just pinned, not the one the task started with. Then each Go module:
+  its go directive, when its minor trails, to the current Go minor with no toolchain line (a
+  directive whose minor is current is left as written, patch and all), then each direct
+  requirement and tool module with a newer version to its latest, then `go mod tidy`. Then the
+  action pins, then the image pins, then each tool's upgrade last, so a tool's pins move after
+  the root's.
+- **Rewriting a pin.** An action's or image's pin is matched with its regex characters escaped,
+  under a `#` delimiter, and only up to a space or the line's end, so v1 never matches inside
+  v1.2 and 18.7 never inside 18.70. Every use of a trailing action is rewritten.
+
 ## Lint configuration
 
 Each Go module has its own [`.golangci.yml`](../.golangci.yml): golangci-lint takes the

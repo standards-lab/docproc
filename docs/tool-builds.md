@@ -27,6 +27,11 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   as currency names it: a crate, a mise tool, or, for docproc-mail, a generator package. A hold
   names its pin, so a pin moved by hand is no longer held.
 
+- **Notices.** `tools/notices.sh` writes a release binary's third-party notices for one runtime
+  identifier. A tool with a committed supplement, `tools/<format>/notices.txt`, has it appended
+  last, verbatim: the notices cargo-about or the NuGet packages can't give, such as code ported
+  into the tool or where an MPL-2.0 crate's source is.
+
 ## docproc-ooxml
 
 - **NativeAOT and glibc.** `GLIBC_FLOOR` is the newest glibc symbol version the published binary
@@ -68,6 +73,18 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   through a library lookup at run time. The model, the reader, the renderer, and the line writer
   are internal: the binary's process contract is its interface. The tests reach them in process.
   The Open XML SDK is the CLI's only package; the command line is parsed by hand.
+- **Notices.** The notices give every NuGet package the binary links and the .NET runtime
+  NativeAOT compiles into it, with the runtime's license, followed once each by the third-party
+  notices those packages bundle: each distinct text once, by its SHA-256, naming the packages that
+  bundle it in first-seen order. The release binary is built from the projects under `src/`; the
+  tests' packages are never linked. The packages are read from each lock file's framework-wide
+  section and its section for the runtime identifier, less the NativeAOT toolchain's: the compiler
+  and the trimmer run at build time and link nothing of their own, and what the binary links of
+  .NET is the NativeAOT runtime pack's, given as the runtime's entry, at the one version the
+  restore downloaded. The script carries one license text, MIT's, given under a package's
+  copyright when the package ships no license file, and refuses a package under any other license:
+  a new license is a reviewed change to the script. It reads the tool's restored package graph and
+  the NuGet packages folder, so it runs after the tool's check or publish has restored.
 - **Ignored.** `.state/` is untracked state: the check's NativeAOT publish.
 
 ## The Rust tools
@@ -88,7 +105,7 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
 - **Currency and upgrade.** `tools/currency.sh` reports the crates, their RustSec advisories, and
   the mise tools, as it does for every Rust tool, and moves every mise tool and every crate,
   raising the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking
-  the tool's graph.
+  the tool's graph; [Rust tools' currency](#rust-tools-currency) gives the detail.
 - **cargo-about** is not in mise's registry, so it comes from its GitHub release. `tools/notices.sh`
   runs it, in the tool's environment, for the release's third-party notices and their license
   check, under the tool's `about.toml`. Each crate's notice is given under licenses from the
@@ -102,10 +119,67 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   the binary links (unicode-ident, reached at build time through proc-macro2, needs it too), and
   BSD-3-Clause encoding_rs's WHATWG data's. A license outside the shared list is accepted for the
   one crate that needs it, so no other crate can bring it in unreviewed.
+- **Notices.** A Rust tool's notices give every crate cargo-about walks in the tool's locked graph
+  for the runtime identifier's musl target, then each license text once with the crates it
+  covers, then `tools/notices-rust.txt`: the notices of the Rust standard library and musl libc,
+  which every Rust tool's binary links, the tool's pinned Rust version and the target written into
+  it. cargo-about runs in the tool's mise environment, its pinned Rust's cargo ahead of a host
+  cargo, as the tool's own tasks run it. Its `cargo metadata` reads every crate in Cargo.lock, on
+  every platform, so `cargo fetch --locked` first downloads any the tool's build didn't (a no-op
+  once they're in the cache); `--frozen` then keeps Cargo.lock as it is and reads no network, and
+  `--fail` fails on a license it can't read or the accepted list can't satisfy. Each crate's
+  chosen licenses are the texts that name it. A license text cargo-about made up from the
+  license's template, for a crate that ships none, is given once per crate, under its authors'
+  copyright in place of the template's placeholder.
 - **cargo-deny** is read by `currency`, which runs `cargo deny check advisories` alone; the license
   policy is cargo-about's. An unmaintained crate anywhere in the locked graph is reported, a
   transitive one too, not only a workspace member's direct dependency: cargo-deny 0.22.0 narrowed
   this default to `workspace`, so each `deny.toml` sets it to `all`.
+
+### Rust tools' currency
+
+`tools/currency.sh` is each Rust tool's `currency` and `upgrade`. A tool's pins of its own beyond
+the crates and mise tools, such as docproc-mail's fixture generator's, stay in its tasks; the
+workflows' action pins are docproc's root currency's. A report writes only cargo-deny's advisory
+database. After an upgrade, a report shows none of the pins it moved but the held, and an advisory
+only a newer release of a crate can clear. Run it, review the diff, and run each Rust tool's check.
+
+- **cargo.** Each cargo call runs the tool's pinned cargo, in its directory, rustup's proxies in
+  mise's `CARGO_HOME` ahead of a host cargo on PATH; mise's `RUSTUP_TOOLCHAIN` picks the
+  toolchain. Each call is a new mise process, so after the upgrade has rewritten the mise files
+  it runs the toolchain just pinned.
+- **The mise tools.** Every environment's mise file is loaded, so `mise.<env>.toml`'s tools, such
+  as docproc-mail's fixture generator's SDK, are read with `mise.toml`'s; the root's are its own.
+  The upgrade rewrites each in place, its version alone, as `mise use` would write rust's table
+  as a bare version. A backend-qualified name, such as `github:EmbarkStudios/cargo-about`, is a
+  quoted key holding a `/`, so the name is matched with its quotes optional and its regex
+  characters escaped, under a `|` delimiter.
+- **The crates.** Direct and indirect: updates within each requirement (cargo's `Updating`) and
+  newer releases beyond it (`Unchanged ... (available: ...)`), read from a `--dry-run` that leaves
+  Cargo.lock as it is. Each scan is captured before it is read, and each capture ends in
+  `|| return`, so a command that fails fails the script instead of reporting nothing.
+- **Advisories.** Crates in the locked graph with a RustSec advisory: a vulnerability, an
+  unmaintained or unsound crate, or a yanked release. cargo-deny fetches the advisory database
+  first, and reads it in currency, never in the check, so a newly published advisory fails no
+  build.
+- **Raising requirements.** A direct dependency with a release beyond its requirement gets that
+  release as its requirement, an exact pin (`=`) kept exact, in each manifest that requires it:
+  the tool's own and that of each crate it requires by path, the shared envelope crate's among
+  them, a crate both require (serde) in both, a dependency listed again under
+  `[dev-dependencies]` in both its lines. An indirect one beyond its requirement moves only when
+  the crate that requires it does; a path crate has no release to move to. The manifests are read
+  without resolving the graph (`--no-deps`), so a lock another tool's upgrade left trailing the
+  envelope's requirements is read as it stands and re-locked.
+- **Re-locking.** Then every crate within its requirement moves to its latest, held ones left at
+  their pins; a requirement raised above, the tool's or the envelope's by another tool's upgrade,
+  is within now, so this re-locks the tool's graph to it. An update can move other crates with
+  the one it names, as re-locking regex moves regex-automata, so a crate whose pin an earlier
+  update already moved is no longer locked at that pin, and is passed over.
+- **The envelope.** It has no lock of its own, so each Rust tool's upgrade raises its requirements
+  by the same rules as the tool's and then re-locks the tool's own graph. Run in turn, the second
+  tool finds the envelope's requirements already at their latest and only re-locks to them, so no
+  tool's locked check trails the crate. A bump of the envelope's ICU4X crates that moves the
+  Unicode version fails its unit test asserting it, so it stays a reviewed change.
 
 ### The envelope's dependencies
 
