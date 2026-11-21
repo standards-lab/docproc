@@ -121,8 +121,8 @@ From spike-ai-pipeline-mail 0.3.1 (`src/model.rs`, README "Schema \"1\"", golden
 `tests/golden/{msg,pst,generated}/`; `.eml` and mbox scored against
 `tests/fixtures/mime/truth.json`). Lines `skipped` and `store` keep their schema "1" fields, the
 store's `display_name`, a .pst's name and a label, among them; `folder` keeps them less
-`display_name`, which duplicates its `path`'s last name (58 of 58 folders in the run below). A
-message changes:
+`display_name`, which duplicates its `path`'s last name (58 of 58 folders in the run
+[`payload-measurement.md`](payload-measurement.md) measures). A message changes:
 
 ```text
 message   line, id?, folder?, class?, subject?, sender?, to?, cc?, bcc?, submit_time?,
@@ -136,19 +136,20 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
 ```
 
 - `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
-  `rtf`, and `derived.html` are cut (measured below). The Markdown is made from the first of
-  these the message holds: its stored HTML, the HTML recovered from an RTF that encapsulates it
-  (`\fromhtml`), its text body, then the RTF's text, read as below and made Markdown as a text
-  body is. An HTML nested deeper than 512 open elements gives way to the text body, else to the
-  HTML's text with its tags stripped, with a warning. When the Markdown is made from HTML, stored
-  or recovered from the RTF, the tool appends the sentences of the message's source text that
-  the Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text
-  body's Markdown is. The source text is the text body; a message with an RTF body and no text
-  body has the RTF's text, read by the RTF specification: the body decompressed, control words
-  and ignorable groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as
-  line breaks, `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and
-  `\'hh` decoded in the `\ansicpg` code page; nothing separates a table's cells. An RTF that
-  encapsulates HTML (`\fromhtml`) has that HTML's text.
+  `rtf`, and `derived.html` are cut (measured in
+  [`payload-measurement.md`](payload-measurement.md)). The Markdown is made from the first of these
+  the message holds: its stored HTML, the HTML recovered from an RTF that encapsulates it
+  (`\fromhtml`), its text body, then the RTF's text, read as below and made Markdown as a text body
+  is. An HTML nested deeper than 512 open elements gives way to the text body, else to the HTML's
+  text with its tags stripped, with a warning. When the Markdown is made from HTML, stored or
+  recovered from the RTF, the tool appends the sentences of the message's source text that the
+  Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text body's
+  Markdown is. The source text is the text body; a message with an RTF body and no text body has the
+  RTF's text, read by the RTF specification: the body decompressed, control words and ignorable
+  groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as line breaks,
+  `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and `\'hh` decoded in
+  the `\ansicpg` code page; nothing separates a table's cells. An RTF that encapsulates HTML
+  (`\fromhtml`) has that HTML's text.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
   its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6

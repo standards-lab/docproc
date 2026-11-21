@@ -170,10 +170,10 @@ docproc/cmd/docproc    [docproc]   built from cmd/docproc and internal/docproc/{
                                    one <sha256>.html per distinct input content, written into
                                    the run's report directory, runs/<run>/report/, which
                                    rundir's package doc places in the run directory's layout and
-                                   Dir.ReportDir names; Render over rundir's handle, its golden pages over a
-                                   committed run directory; the base module tagged v0.3.0 for
-                                   ReportDir, then cmd/docproc/v0.1.0; internal/report's package
-                                   doc states the pages
+                                   Dir.ReportDir names; Render over rundir's handle, its golden
+                                   pages over a committed run directory; the base module tagged
+                                   v0.3.0 for ReportDir, then cmd/docproc/v0.1.0;
+                                   internal/report's package doc states the pages
                        [acceptance] built: DOCPROC_AUDIO_LIMIT, stages.Options.Audio's Limit,
                                    starting 30s; a value of 4 s or less, not over twice the 2 s
                                    overlap, or one that doesn't parse, fails the run before any
@@ -182,14 +182,15 @@ docproc/cmd/docproc    [docproc]   built from cmd/docproc and internal/docproc/{
                                    model's request size, docproc's own default staying 30 s
 ```
 
-`cmd/docproc`'s `main.go` sits at its module's root, so
-`go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs it, and its packages
-sit under `internal/`: `app` and `apptest`, the composition root and its fixtures, and `run` and
-`report`, its command packages. Its one package outside `internal/` is `integration`, the
-built-binary tier's harness, as go-cli-sdk-template's template/v0.3.0 places it. The module's one public surface is the command, and the logic an integrator calls is the
-library's, so it is an exception to Go Elemental's command packages at a module's root level,
-which `STANDARDS.md` states; go-web-service's `tools/slab` layout would make the install path
-`cmd/docproc/cmd/docproc` and `run.Commands` API under its tags.
+`cmd/docproc`'s `main.go` sits at its module's root, so `go install
+github.com/standards-lab/docproc/cmd/docproc@<version>` installs it, and its packages sit under
+`internal/`: `app` and `apptest`, the composition root and its fixtures, and `run` and `report`, its
+command packages. Its one package outside `internal/` is `integration`, the built-binary tier's
+harness, as go-cli-sdk-template's template/v0.3.0 places it. The module's one public surface is the
+command, and the logic an integrator calls is the library's, so it is an exception to Go Elemental's
+command packages at a module's root level, which `STANDARDS.md` states; go-web-service's
+`tools/slab` layout would make the install path `cmd/docproc/cmd/docproc` and `run.Commands` API
+under its tags.
 
 `rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
 of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory
@@ -246,9 +247,9 @@ it.
 
 The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
 input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch
-yields; "1"'s `warning`, a string the command wrote on a part line when no record held a seen
-part's children, is gone with the copy that wrote it, since the dispatcher replays children. A reader
-may tell the first three kinds by which of `output` and `warning` is set.
+yields; "1"'s `warning`, a string the command wrote on a part line when no record held a seen part's
+children, is gone with the copy that wrote it, since the dispatcher replays children. A reader may
+tell the first three kinds by which of `output` and `warning` is set.
 
 ```go
 package schema

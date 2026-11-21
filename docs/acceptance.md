@@ -1,7 +1,7 @@
 # acceptance
 
 Measured 2026-11-19 on an Intel Core Ultra 9 185H, 16 cores and 22 threads, with gs 10.08.0.
-This note holds the results of v1.ai.processing's acceptance task, a section for each
+This page holds the results of v1.ai.processing's acceptance task, a section for each
 measurement.
 
 ## PDF pages in shared gs processes

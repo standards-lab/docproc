@@ -163,8 +163,8 @@ dimensions.
 
 ## Open questions
 
-- **Live sources.** processing's `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it
-  arrives, a surface that stays in the spike until an owner is named
+- **Live sources.** spike-ai-pipeline-processing's `media.Streamer` reads a URL source (srt, rtmp,
+  http, udp) as it arrives, a surface that stays in the spike until an owner is named
   ([`docs/design-review.md`](../docs/design-review.md), decision 14). Whether a live source is a
   job, and through which Command, is the `protocol` task's.
 - **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose

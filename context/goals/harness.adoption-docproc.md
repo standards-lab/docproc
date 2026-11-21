@@ -70,26 +70,27 @@ Two-way: no release.
 
 ## Progress
 
-slices 0/9 committed · standards — · spec — · editor —
+slices 9/9 committed · standards ✓ · spec ✓ (1 gap: fixture-script See paths) · editor ✓
 
 ## Decisions
 
-- docproc: layers.md's sections on docinfer's and go-ai's built work are deleted now; citations
-  point at the last docproc commit that has them. (P1)
 - docproc: C# suppression reasons stay reviewer judgement; .NET has no stock rule. (P5)
 
 ## Pending edits
 
-- coordinator · context/system-tools.md:63 → the tool contract page.
-- coordinator · context/ai-strategy.md:61, :93 and docs/ai-strategy.md:129, :222, :225 → the
-  commit-pinned layers.md or the new page.
-- coordinator · context/ai-strategy.md:108 and docs/ai-strategy.md:422 → the acceptance page.
-- coordinator · context/data-intelligence.md:27, :85, :96, :99 and docs/data-intelligence.md:5,
-  :46 → the Cerebro note or the commit-pinned layers.md.
-- coordinator · docs/messaging.md:50 and roadmap/capstone.data-intelligence.toml:94 → the Cerebro
-  note.
+- coordinator · context/system-tools.md:63 → docs/tool-contract.md, "Versioning".
+- coordinator · context/ai-strategy.md:61, :93 and docs/ai-strategy.md:222, :225 → layers.md at
+  docproc commit f3633c3; docs/ai-strategy.md:129 → docs/changes.md, "The nested modules".
+- coordinator · context/ai-strategy.md:108 and docs/ai-strategy.md:422 → docs/acceptance.md.
+- coordinator · context/data-intelligence.md:27, :99 → docs/changes.md; :85, :96 and
+  docs/data-intelligence.md:46 → layers.md at docproc commit f3633c3; docs/data-intelligence.md:5
+  → context/cerebro.md.
+- coordinator · docs/messaging.md:50 and roadmap/capstone.data-intelligence.toml:94 →
+  context/cerebro.md, "State and subjects".
 - coordinator · roadmap/v1.ai.inference.toml: summary :9 and :26; drop context entry :19.
-- coordinator · roadmap/v1.ai.processing.toml:170 and :192: `final` writes to the acceptance page.
-- go-ai · context/README.md:10 and docs/design.md (successor of design.md:20): cite layers.md "go-ai's
-  surface" at the pinned commit.
-- docinfer · README:11 and its design notes' docproc citations keep the commit-pinned form.
+- coordinator · roadmap/v1.ai.processing.toml:170 and :192: `final` writes to docs/acceptance.md.
+- go-ai · context/README.md:10 and docs/design.md:19: cite layers.md "go-ai's surface" at docproc
+  commit f3633c3.
+- docinfer · (adopt branch) context/README.md:12, context/command.md:16, context/command-api.md:3
+  cite layers.md at docproc commit 673ed3d, which keeps the docinfer sections: no change;
+  docs/no-defaults.md:23's "docproc's layers" → layers.md at f3633c3.

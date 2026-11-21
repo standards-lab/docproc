@@ -76,22 +76,21 @@ at 6096000x3810000 EMU.
 ## Legacy, generated
 
 `legacy/generated/` holds every `*.libreoffice.*` file in `ooxml/` saved by LibreOffice as `.doc`,
-`.xls`, or `.ppt`, its name kept with the legacy extension: seven docx files as `.doc`
-(`charts`, `comments`, `lists`, `media`, `notes`, `sections`, `tables`), four xlsx as `.xls`
-(`cells`, `drawings`, `formulas`, `merges`), and three pptx as `.ppt` (`bullets`, `slide-objects`,
-`slides`). `legacy/generate.sh` wrote them, running soffice as the office package runs it: in the
-picture package's default image at the time, `picture.LibreOfficeImage`
+`.xls`, or `.ppt`, its name kept with the legacy extension: seven docx files as `.doc` (`charts`,
+`comments`, `lists`, `media`, `notes`, `sections`, `tables`), four xlsx as `.xls` (`cells`,
+`drawings`, `formulas`, `merges`), and three pptx as `.ppt` (`bullets`, `slide-objects`, `slides`).
+`legacy/generate.sh` wrote them, running soffice as the office package runs it: in the picture
+package's default image at the time, `picture.LibreOfficeImage`
 (`gotenberg/gotenberg:8.39.0-libreoffice@sha256:4c0eb92ef22e5d5fb0a49eac924b63d85d0b0334ea3365a1f5ca428f367b3054`),
-LibreOffice 26.8.1.1, under the container runner's lockdown (no network, the caller's uid:gid,
-every capability dropped), each file with a user profile of its own in the mounted working
-directory, with the filters `MS Word 97`, `MS Excel 97`, and `MS PowerPoint 97`. The script reads
-the image's reference from the Go literal `picture/spec.go` declares, its two halves joined, and
-pulls the image when it isn't present; it needs docker. The script writes
-`legacy/generated/MANIFEST`, which records the image, soffice's `--version` line, and each file's
-SHA-256. LibreOffice's binary
-formats carry the time they were saved, so a regeneration's sums differ from the committed
-files'; the manifest is the committed files' record. They are office's fixtures re-saved, under
-office's license, Apache-2.0.
+LibreOffice 26.8.1.1, under the container runner's lockdown (no network, the caller's uid:gid, every
+capability dropped), each file with a user profile of its own in the mounted working directory, with
+the filters `MS Word 97`, `MS Excel 97`, and `MS PowerPoint 97`. The script reads the image's
+reference from the Go literal `picture/spec.go` declares, its two halves joined, and pulls the image
+when it isn't present; it needs docker. The script writes `legacy/generated/MANIFEST`, which records
+the image, soffice's `--version` line, and each file's SHA-256. LibreOffice's binary formats carry
+the time they were saved, so a regeneration's sums differ from the committed files'; the manifest is
+the committed files' record. They are office's fixtures re-saved, under office's license,
+Apache-2.0.
 
 ## Legacy, real
 

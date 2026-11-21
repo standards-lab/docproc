@@ -4,8 +4,8 @@
 `cmd/docproc/vX.Y.Z` tags, with its own [`CHANGELOG.md`](../cmd/docproc/CHANGELOG.md). It wires
 `stages.Build` over the host's tools and writes what it prepares to a run directory through
 `rundir`, then renders a run's report from that directory. Running it needs Linux and the system
-tools below, each for the stages that run it; rendering a report needs neither the tools nor the
-configuration below.
+tools the [README](../README.md#the-system-tools) lists, each for the stages that run it;
+rendering a report needs neither the tools nor the configuration below.
 
 ```sh
 go install github.com/standards-lab/docproc/cmd/docproc@<version>

@@ -62,8 +62,8 @@ alternatives the code can't state, and what the build leaves to later tasks is i
   on native x64 and arm64 runners, since a NativeAOT publish can't cross-link, and a Go job, which
   library adds with the Go module releases. Rejected: a Go-only root check; library building the
   CI.
-- **OX-11 · Hyperlink targets unread; unread content left no trace.** Each unread kind a document holds gets one warning;
-  reading those kinds stays backlog.
+- **OX-11 · Hyperlink targets unread; unread content left no trace.** Each unread kind a document
+  holds gets one warning; reading those kinds stays backlog.
 - **OX-12 · The baseline harness isn't promoted.** `bench/`, its tests, `baseline.sh`, and
   `docs/findings/` stay in the spike as its evidence, and Markdig with them; the acceptance rerun
   over ~/docs is the measurement from then on.
@@ -661,9 +661,9 @@ form. An entry is carried by docproc unless it names another task; the command's
 - **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
   library (the shapes) and docproc (the manifest), in the form the follow-up settled, which
   supersedes round 5's: the stage table's shapes are declared once in `dispatch`, versioned by
-  `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so
-  `schema` imports no docproc package but `dispatch` and `inspect` (`api.md`, "Dispatch";
-  `changes.md`, "The nested modules"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
+  `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so `schema`
+  imports no docproc package but `dispatch` and `inspect` (`api.md`, "Dispatch"; `changes.md`, "The
+  nested modules"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
   unversioned package and has `schema`, and so `cmd/docinfer`, compile `stages` and every format
   package beneath it; `schema` keeping its own copies, the standards review's interim form, which
   leaves two definitions of one shape to drift.
@@ -710,11 +710,11 @@ goal's parts are pending edits in the goal record.
 - **SH-3 · The envelope's cases were tested three times.** Accepted → ooxml (writes the table and
   its `tools/` wiring), mail (the shared crate reads it), library (`internal/cli` reads it). The
   warning escape, the split of a stderr line into `where` and `what`, the media name a payload's
-  bytes and stored name make, the exit codes' meanings, and the literal-text escape were stated
-  once in prose and tested in C#, Rust, and Go, each over its own cases; ML-9's drifts came from
-  copies of this kind. One committed table, `tools/envelope/cases.json`, is read in place by all
-  three, and `internal/cli` exports the schema constant and the version pattern once for the
-  readers' specs (`tool-contract.md`, "Common envelope"). Rejected: each language keeping its own cases.
+  bytes and stored name make, the exit codes' meanings, and the literal-text escape were stated once
+  in prose and tested in C#, Rust, and Go, each over its own cases; ML-9's drifts came from copies
+  of this kind. One committed table, `tools/envelope/cases.json`, is read in place by all three, and
+  `internal/cli` exports the schema constant and the version pattern once for the readers' specs
+  (`tool-contract.md`, "Common envelope"). Rejected: each language keeping its own cases.
 - **SH-4 · The found-part hash check read a name as a hash.** Accepted → library. The dispatcher
   checked a found part whose name was a SHA-256, so the envelope's media name rule had a second
   home in `dispatch` beside `internal/cli`, and a part named like a hash was checked while one

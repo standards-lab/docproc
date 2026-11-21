@@ -181,16 +181,17 @@ and `schema` (one `ErrSchema`), yields each line's kind and raw JSON, parses std
 into a warning's `where` and `what`, maps exit codes 1 to 4 and a signal to one `ExitError`, and
 resolves a media name in the media directory by the envelope's name rule. It exports the schema
 constant (`"2"`) and the version pattern, which requires `--version`'s schema line, once, so each
-reader's `Spec` takes them, and holds the one mapping of a refusal's reason ("Common envelope"): a
-reason beginning `encrypted` to `dispatch.ErrEncrypted`, and, beside it, onenote's table-of-contents
-reason to `dispatch.ErrReadElsewhere`. A reader keeps its request, its arguments, and its line
-types, decodes its tool's schema "2" line by line (the contracts above), and keeps an unknown kind
-as an `Unknown*` value. The readers' types follow the contracts: `office.Document` is the
-`document` line, `office.Sheet` the `sheet` line and `office.Rows` a `rows` line, `email.Message`
-carries `Markdown`, `Address.SMTPAddress`, and `Media`, and `onenote.Page` carries `Markdown`,
-`Media`, and `InkAlternatives`. Each reader streams its tool's lines as records, office's included,
-so no reader holds a whole sheet, and returns the sequence itself, so no `Stream` type holds a
-context.
+reader's `Spec` takes them, and holds the one mapping of a refusal's reason
+([`tool-contract.md`](tool-contract.md), "Common envelope"): a reason beginning `encrypted` to
+`dispatch.ErrEncrypted`, and, beside it, onenote's table-of-contents reason to
+`dispatch.ErrReadElsewhere`. A reader keeps its request, its arguments, and its line types, decodes
+its tool's schema "2" line by line (the contracts on [`tool-contract.md`](tool-contract.md)), and
+keeps an unknown kind as an `Unknown*` value. The readers' types follow the contracts:
+`office.Document` is the `document` line, `office.Sheet` the `sheet` line and `office.Rows` a `rows`
+line, `email.Message` carries `Markdown`, `Address.SMTPAddress`, and `Media`, and `onenote.Page`
+carries `Markdown`, `Media`, and `InkAlternatives`. Each reader streams its tool's lines as records,
+office's included, so no reader holds a whole sheet, and returns the sequence itself, so no `Stream`
+type holds a context.
 
 ```go
 package email // onenote has the same shape, its Request taking FileOnly in place of After
@@ -291,8 +292,8 @@ type StoreError struct { Store string; Err error } // "index" or "content": the 
 ```
 
 A stage's `Prepare` runs on a goroutine of its own: each item is handed to the walk and taken before
-the stage goes on, as a yield is. A tool's stderr warning, the common envelope's
-`<tool>: warning: <where>: <what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an
+the stage goes on, as a yield is. A tool's stderr warning, the common envelope's `<tool>: warning:
+<where>: <what>`, parses to a typed `Warning`. A warning's event carries its part and stage, as an
 output's does, and the index records it, so a seen part replays its warnings. A warning says a unit
 of the part read badly or not at all (a page, a window, the form, a tool's `skipped` item with no
 content to name), its `Where` naming the unit; a stage's own warning names the stage in `Tool`. A
@@ -300,9 +301,9 @@ store's warning is appended where its reader yields it: the order between a warn
 best effort, since they travel on two pipes, but a warning never precedes its store's first record,
 and a resumed replay and a resumed preparation both carry the warnings read after the cursor. The
 mail stage sets the cursor, `Item.After` and `Event.After`, on each message's last output, so a host
-checkpoints a store by the outputs it has handled (docinfer's `job` package doc). `After` is
-opaque and compared by equality alone, never ordered: a `.pst`'s ids are node ids, which don't
-ascend in read order.
+checkpoints a store by the outputs it has handled (docinfer's `job` package doc). `After` is opaque
+and compared by equality alone, never ordered: a `.pst`'s ids are node ids, which don't ascend in
+read order.
 
 `Item.Flag` is how a stage raises a flag about its own part, the document stage qpdf's findings
 and the archive stage its listing's. A flag yielded before the part's first output is weighed,
@@ -313,10 +314,10 @@ A found part (`Found`) names an occurrence. It may carry no file and instead an 
 (quarantined, encrypted, no processor yet, failed, limited), a reason, and flags: an unread child,
 such as an archive's link or encrypted entry, an entry past the bomb rule, an entry the bytes cap
 stopped, a reader's medium or attachment with no content, or a `skipped` line naming a section or
-message. The dispatcher yields its own event and records it as a `Child`, its `Part` with a name
-and `Where` and no SHA-256 or size, so counts by outcome are true. A part has three ways to say what it didn't read: a flag, a warning,
-or a child; no Meta key and no record output says it. An archive entry whose flags come to
-quarantine is such a child, never extracted.
+message. The dispatcher yields its own event and records it as a `Child`, its `Part` with a name and
+`Where` and no SHA-256 or size, so counts by outcome are true. A part has three ways to say what it
+didn't read: a flag, a warning, or a child; no Meta key and no record output says it. An archive
+entry whose flags come to quarantine is such a child, never extracted.
 
 `Limits.Bytes` bounds what a stage writes, not only what the dispatcher admits.
 `dispatch.Remaining(ctx)` returns the bytes the dispatch may still admit: the cap less the sizes of

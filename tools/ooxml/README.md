@@ -78,8 +78,8 @@ Markdown fragments are the whole rendering.
 
 A field with no value is left out, never `null`. The same input gives byte-identical stdout and
 media. The contract, field by field, is docproc's:
-[`docs/tool-contract.md`](../../docs/tool-contract.md), the tool contract, and its "docproc-ooxml"
-section. From schema `"2"` on, it grows by addition only; any other change moves the schema, and
+[`docs/tool-contract.md`](../../docs/tool-contract.md), its "docproc-ooxml" section. From schema
+`"2"` on, it grows by addition only; any other change moves the schema, and
 [`CHANGELOG.md`](CHANGELOG.md) records it.
 
 ## Exit codes and stderr
@@ -132,10 +132,10 @@ The envelope these follow, its cases stated once for every tool, is
 
 ## Building and testing
 
-The toolchain (the .NET SDK, jq, uv) is pinned in [`mise.toml`](mise.toml) alone. Its tasks run
-from this directory, `mise run <task>`, or from the repository root, `mise -C tools/ooxml run
-<task>`; docproc's own `mise run check` runs this tool's check. The reasoning behind
-its configuration is on [`docs/tool-builds.md`](../../docs/tool-builds.md).
+The toolchain (the .NET SDK, jq, uv) is pinned in [`mise.toml`](mise.toml) alone. Its tasks run from
+this directory, `mise run <task>`, or from the repository root, `mise -C tools/ooxml run <task>`;
+docproc's own `mise run check` runs this tool's check. The reasoning behind its configuration is on
+[`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: restores the locked package graph, verifies formatting, builds with warnings as
   errors, publishes the NativeAOT binary, and runs the tests, which compare the published

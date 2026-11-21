@@ -9,19 +9,15 @@ a mature implementation lives in another language sit beside it under `tools/`, 
 toolchain and tagged `tools/<format>/v<version>`, so a tool's contract changes with its decoder in
 one pull request.
 
-Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`,
-v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc, and
-spike-ai-pipeline-office, -mail, and -onenote. [`docs/layers.md`](../docs/layers.md) and the pages
-it lists state docproc's boundaries with the system tools and its callers as signatures and schemas,
-the tool contract on its own page, and what each promotion changes from its spike;
-[`cerebro.md`](cerebro.md) holds Cerebro's planned boundary over docproc and docinfer;
-[`docs/design-review.md`](../docs/design-review.md) holds the design review of all five promoted
-artifacts: how it changes the goal's tasks, the settled design and disposition of every finding, the
-one home of each shape and vocabulary the artifacts share, and each artifact's tags and the task
-that releases each. [`docs/acceptance.md`](../docs/acceptance.md), dated 2026-11-19, holds the
-acceptance task's results: the bench reruns, the ~/docs run and its failures by class, each tool's
-peak memory, the bombs, and the shared gs processes' timing. The built base module is stated by the
-repository's [README](../README.md) and each package's documentation.
+Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`, v1.ai.processing).
+It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc, and
+spike-ai-pipeline-office, -mail, and -onenote. The repository's [README](../README.md) and each
+package's documentation state the built base module. [`docs/layers.md`](../docs/layers.md) and the
+pages it lists state docproc's boundaries with the system tools and its callers as signatures and
+schemas, and what each promotion changes from its spike.
+[`docs/design-review.md`](../docs/design-review.md) holds the design review of the five promoted
+artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance task's results.
+[`cerebro.md`](cerebro.md) holds Cerebro's planned boundary over docproc and docinfer.
 
 ## Capability map
 

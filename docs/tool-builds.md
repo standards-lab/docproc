@@ -26,7 +26,6 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   `currency` reports as held, not trailing: one line each, `<item> <pin>: <reason>`, the item named
   as currency names it: a crate, a mise tool, or, for docproc-mail, a generator package. A hold
   names its pin, so a pin moved by hand is no longer held.
-
 - **Notices.** `tools/notices.sh` writes a release binary's third-party notices for one runtime
   identifier. A tool with a committed supplement, `tools/<format>/notices.txt`, has it appended
   last, verbatim: the notices cargo-about or the NuGet packages can't give, such as code ported
