@@ -37,6 +37,6 @@ promoted artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the accept
 - **Run directory** (built): [rundir/doc.go](../rundir/doc.go),
   [rundir/schema/doc.go](../rundir/schema/doc.go).
 - **Command** (built): [cmd/docproc/main.go](../cmd/docproc/main.go).
-- **The tools' open items** (planned): [tool-gaps.md](tool-gaps.md).
+- **Tool coverage** (planned): [tool-gaps.md](tool-gaps.md).
 - **Cerebro** (planned): [cerebro.md](cerebro.md).
 - **Releases** (built): [.github/workflows/release.yml](../.github/workflows/release.yml).
