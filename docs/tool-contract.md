@@ -181,11 +181,11 @@ an xlsx's notes) are warned of once each, where the document first holds one
   as it is reached, naming the story and the number from 1 of the first paragraph at or after it.
 - **docx: drawings and objects.** A DrawingML drawing's pictures and charts are read in document
   order with the drawing's description and title, a picture's blip embedding a part or linking a
-  target. A VML picture's title is its alternative text, VML having no other. A VML object's
-  payload is its `o:OLEObject`'s, or a Word 2010 `w:objectEmbed`'s, relationship. A chartEx chart, in an
-  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never
-  both; any other alternate content is not read. A text box's text, a SmartArt diagram, and an
-  equation are not read, wherever they are.
+  target. A VML picture's title is its alternative text, VML having no other. A VML object's payload
+  is its `o:OLEObject`'s, or a Word 2010 `w:objectEmbed`'s, relationship. A chartEx chart, in an
+  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never both;
+  any other alternate content is not read. A text box's text, a SmartArt diagram, and an equation
+  are not read, wherever they are.
 - **docx: sections, notes, and comments.** A section is a paragraph's `w:sectPr`, the body's own
   the last. Each section's headers and footers are those its pages show: its own, or the previous
   section's where it has none of a kind; a first-page one counts only with a title page and an
@@ -241,26 +241,25 @@ an xlsx's notes) are warned of once each, where the document first holds one
   its preview picture (its `objectPr`'s), then its payload: Excel writes the object twice in
   alternate content, the preview only in the choice's copy, both naming one relationship.
 - **pptx.** Slides are read in presentation order, hidden ones included and marked, each slide's
-  shapes in its shape tree's order, back to front, never re-sorted by position, a group in place.
-  A title placeholder's text is the slide's heading, its paragraphs its lines; other shapes'
-  paragraphs are paragraphs and lists. A placeholder holds only the slide's own text, so an
-  empty one is left out and its layout's prompt never read. A placeholder with no type is a
-  content placeholder. A slide's placeholder takes after its layout's, and that one after its
-  master's, of the same index, or else the first of its type, a centered title matching a title;
-  a layout placeholder's kind on the master is title, date, footer, slide number, or header, or
-  else body. A paragraph's bullet is its own or else the first its list styles give for its
-  level, nearest first: the shape's own; for a placeholder its layout's and master's
-  placeholders' and the master's title, body, or other text style by its type; for any other
-  shape the master's other text style; and last the presentation's default. A character, picture, or auto-number bullet
-  makes a list item, an auto-number ordered from its `startAt` (1 by default); none, or `buNone`,
-  makes a paragraph. Empty paragraphs are left out. Lists group as a docx's do by level and
-  orderedness, and a paragraph ends every list. A run's own `a:hlinkClick` links its text; a link
-  to a slide or an action stays text. Content in `mc:AlternateContent` is not read but for a
-  chartEx chart's, read as in a docx; an OLE object's frame is its preview picture, then its
-  payload, PowerPoint writing the object twice with the preview only in the fallback's copy. A
-  notes page's text is its body placeholders' paragraphs, never the slide image, number, header,
-  footer, or date, their bullets from their own list style and the notes master's. A slide's
-  comments, legacy or modern, are not read.
+  shapes in its shape tree's order, back to front, never re-sorted by position, a group in place. A
+  title placeholder's text is the slide's heading, its paragraphs its lines; other shapes'
+  paragraphs are paragraphs and lists. A placeholder holds only the slide's own text, so an empty
+  one is left out and its layout's prompt never read. A placeholder with no type is a content
+  placeholder. A slide's placeholder takes after its layout's, and that one after its master's, of
+  the same index, or else the first of its type, a centered title matching a title; a layout
+  placeholder's kind on the master is title, date, footer, slide number, or header, or else body. A
+  paragraph's bullet is its own or else the first its list styles give for its level, nearest first:
+  the shape's own; for a placeholder its layout's and master's placeholders' and the master's title,
+  body, or other text style by its type; for any other shape the master's other text style; and last
+  the presentation's default. A character, picture, or auto-number bullet makes a list item, an
+  auto-number ordered from its `startAt` (1 by default); none, or `buNone`, makes a paragraph. Empty
+  paragraphs are left out. Lists group as a docx's do by level and orderedness, and a paragraph ends
+  every list. A run's own `a:hlinkClick` links its text; a link to a slide or an action stays text.
+  Content in `mc:AlternateContent` is not read but for a chartEx chart's, read as in a docx; an OLE
+  object's frame is its preview picture, then its payload, PowerPoint writing the object twice with
+  the preview only in the fallback's copy. A notes page's text is its body placeholders' paragraphs,
+  never the slide image, number, header, footer, or date, their bullets from their own list style
+  and the notes master's. A slide's comments, legacy or modern, are not read.
 - **Charts.** A chart is its part's cached data, never its rendering or its embedded workbook. A
   DrawingML chart, Transitional or ISO 29500 Strict (its namespaces renamed to Transitional's),
   takes its type from its first plot's kind; a chartEx chart, which Word and PowerPoint refer to

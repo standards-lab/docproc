@@ -66,15 +66,15 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   It runs in `mise run currency` instead.
 - **The CLI's project.** The CLI publishes as one NativeAOT binary per runtime identifier, with no
   .NET runtime needed on the host. The binary is docproc-ooxml; the project and its namespaces keep
-  .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT packages
-  of both, and a publish for either restores nothing the lock doesn't pin. libc's `write` and
-  `statx` (`Native.cs`) bind directly into the binary, which links libc anyway, rather than
-  through a library lookup at run time; in process, as the tests run it, .NET resolves libc
-  itself. stdout and stderr are the raw descriptors written through `write`, with no encoding
-  and no buffer, so the locale can't change a byte and every error, a broken pipe among them,
-  is reported; .NET's console streams report none. The model, the reader, the renderer, and the line writer
-  are internal: the binary's process contract is its interface. The tests reach them in process.
-  The Open XML SDK is the CLI's only package; the command line is parsed by hand.
+  .NET's naming. The runtime identifiers are listed so the lock file holds the NativeAOT packages of
+  both, and a publish for either restores nothing the lock doesn't pin. libc's `write` and `statx`
+  (`Native.cs`) bind directly into the binary, which links libc anyway, rather than through a
+  library lookup at run time; in process, as the tests run it, .NET resolves libc itself. stdout and
+  stderr are the raw descriptors written through `write`, with no encoding and no buffer, so the
+  locale can't change a byte and every error, a broken pipe among them, is reported; .NET's console
+  streams report none. The model, the reader, the renderer, and the line writer are internal: the
+  binary's process contract is its interface. The tests reach them in process. The Open XML SDK is
+  the CLI's only package; the command line is parsed by hand.
 - **Notices.** The notices give every NuGet package the binary links and the .NET runtime
   NativeAOT compiles into it, with the runtime's license, followed once each by the third-party
   notices those packages bundle: each distinct text once, by its SHA-256, naming the packages that
@@ -96,20 +96,20 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   (`overflow-checks` in each Cargo.toml's release profile): an overflow panics, a fault the CLI
   reports, instead of wrapping silently into a wrong offset or length. Every test runs the
   release musl binary, so no debug build is made.
-- **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and
-  unpublished, with no toolchain of its own: each Rust tool depends on it by path, and each Rust
-  tool's check formats and tests it with the tool's toolchain, against the tool's Cargo.lock, so
-  it is tested in every graph that links it (docproc-onenote's without its `markdown` feature),
-  and docproc's root check reaches it through `TOOLS`. clippy lints only a workspace member, which
-  the envelope is in no tool's graph, so each Rust tool's check also lints it by its own manifest,
-  with every feature and warnings denied, against its own `tools/envelope/Cargo.lock`. Its
-  manifest is formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the
-  build output of a cargo run in its directory. Its features: `markdown`, the content rule's
-  Markdown-to-plain reader, which docproc-mail enables.
+- **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and unpublished,
+  with no toolchain of its own: each Rust tool depends on it by path, and each Rust tool's check
+  formats and tests it with the tool's toolchain, against the tool's Cargo.lock, so it is tested in
+  every graph that links it (docproc-onenote's without its `markdown` feature), and docproc's root
+  check reaches it through `TOOLS`. clippy lints only a workspace member, and the envelope is a
+  member of no tool's graph, so each Rust tool's check also lints it by its own manifest, with every
+  feature and warnings denied, against its own `tools/envelope/Cargo.lock`. Its manifest is
+  formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the build output
+  of a cargo run in its directory. Its features: `markdown`, the content rule's Markdown-to-plain
+  reader, which docproc-mail enables.
 - **Currency and upgrade.** `tools/currency.sh` reports the crates, their RustSec advisories, and
-  the mise tools, as it does for every Rust tool, and moves every mise tool and every crate,
-  raising the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking
-  the tool's graph and the envelope's; [Rust tools' currency](#rust-tools-currency) gives the detail.
+  the mise tools, as it does for every Rust tool, and moves every mise tool and every crate, raising
+  the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking the tool's
+  graph and the envelope's; [Rust tools' currency](#rust-tools-currency) gives the detail.
 - **cargo-about** is not in mise's registry, so it comes from its GitHub release. `tools/notices.sh`
   runs it, in the tool's environment, for the release's third-party notices and their license
   check, under the tool's `about.toml`. Each crate's notice is given under licenses from the

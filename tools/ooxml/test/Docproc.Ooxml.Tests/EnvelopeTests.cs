@@ -151,7 +151,7 @@ public sealed class EnvelopeTests
             {
                 'n' => '\n',
                 'r' => '\r',
-                var c => c, // \\ is a backslash, and `\ ` after a colon a space.
+                var c => c,
             });
         }
         return plain.ToString();
