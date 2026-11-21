@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/jackc/pgx/v5 v5.13.0
-	github.com/standards-lab/docproc v0.4.0
+	github.com/standards-lab/docproc v0.4.1
 	github.com/standards-lab/sqlate v0.7.0
 	github.com/standards-lab/sqlate/postgres v0.8.0
 )

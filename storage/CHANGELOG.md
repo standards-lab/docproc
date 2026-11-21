@@ -10,6 +10,11 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+### Changed
+
+- The module requires the docproc base module at v0.4.1, from v0.4.0, and passes its
+  `dispatchtest.Content` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+
 ## [v0.1.0] - 2026-11-17
 
 The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
