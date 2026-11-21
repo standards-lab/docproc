@@ -3,7 +3,7 @@
 # checked against its SHA-256, packed byte for byte into the smallest WordprocessingML package that
 # shows it, so a regeneration writes the same bytes. It needs curl and zip, laptop prerequisites
 # that the check never runs.
-# See ../README.md
+# See office/testdata/README.md
 set -euo pipefail
 cd "$(dirname "$0")"
 

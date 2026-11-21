@@ -4,7 +4,7 @@
 # named as its original with the legacy extension, with LibreOffice run as the office package runs
 # it. It writes generated/MANIFEST: the image, soffice's --version line, and each file's SHA-256.
 # It needs docker, a laptop prerequisite that the check never runs.
-# See ../README.md
+# See office/testdata/README.md
 set -euo pipefail
 cd "$(dirname "$0")"
 
