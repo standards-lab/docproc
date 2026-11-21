@@ -14,22 +14,6 @@ import (
 	"github.com/standards-lab/docproc/internal/tooltest"
 )
 
-// These tests run the real docproc-mail, which the unit tier doesn't provide, so they run in the
-// integration tier.
-
-// TestRealThreads runs the real docproc-mail over Tika's two stores and threads them, against
-// realThreads. One store is threaded through a Threader fed while reading, the other through
-// Threads.
-//
-// testPST.pst: Re: Feature Generators (2097188) refers to Feature Generators (2097252). The two
-// JIRA mails (2097284, 2097316) and FW: First email (2097380) refer to messages the store doesn't
-// hold, each placeholder with one child, so each is a root. The base subjects are all different,
-// "[WEBINAR] " and "[jira] [Resolved] " removed as subj-blobs, so no roots are gathered. By date:
-// WEBINAR 02-24, Feature Generators 02-25 10:17, init tokenizer 02-25 21:20, TIKA-1250 02-26
-// 12:12, TIKA-1249 02-26 12:20, FW: First email 2020.
-//
-// testPST_variousBodyTypes.pst: the three FW: original email (2097220, 2097252, 2097284) each
-// refer to original email (2097188), and are its children by date.
 func TestRealThreads(t *testing.T) {
 	r := realReader(t)
 	root := mailFixture(t, "pst/tika")
@@ -61,13 +45,6 @@ func TestRealThreads(t *testing.T) {
 	})
 }
 
-// TestRealThreadsIndex threads Tika's two stores by their conversation indexes alone: each
-// message's Message-ID, In-Reply-To, References, and subject cleared as it is read. By the
-// indexes in tika-threading.json: in testPST.pst, Re: Feature Generators' is Feature Generators'
-// and one child block, and FW: First email's names a parent the store doesn't hold, a placeholder
-// with one child, so a root; the others are 22-byte headers. In testPST_variousBodyTypes.pst, each
-// FW: original email's is original email's and one child block. The trees are those the headers
-// give, realThreads'.
 func TestRealThreadsIndex(t *testing.T) {
 	r := realReader(t)
 	root := mailFixture(t, "pst/tika")
@@ -93,10 +70,6 @@ func TestRealThreadsIndex(t *testing.T) {
 	}
 }
 
-// TestRealThreadsGenerated: the generated store carries no threading fields, so its messages
-// thread by subject alone. None shares a base subject with another: "Re: Notes on the engine à la
-// française" and "Fwd: Notes on the engine (draft)" are not "Notes on the engine". Each of its 8
-// messages is a root, by date.
 func TestRealThreadsGenerated(t *testing.T) {
 	r := realReader(t)
 	path := mailFixture(t, "generated/pst/mailbox.pst")
@@ -110,10 +83,6 @@ func TestRealThreadsGenerated(t *testing.T) {
 	}
 }
 
-// TestRealThreadsMIME runs the real docproc-mail over every MIME input and threads it, against
-// mimeThreads. Each is threaded twice, through Threads and through a Threader fed while reading,
-// and the two agree. Each root is a message, never a placeholder, and nine.mboxrd's first root is
-// Notes on the engine, <notes-1@example.org>.
 func TestRealThreadsMIME(t *testing.T) {
 	r := realReader(t)
 	inputs := mimeInputs(t)
@@ -155,35 +124,12 @@ func TestRealThreadsMIME(t *testing.T) {
 	}
 }
 
-// realThreads is the threads of docproc-mail's stores that have a hand truth, each by its path
-// under its tests/fixtures, rendered: Tika's two, derived by hand from the stored fields tika-threading.json holds
-// and the dates mail's goldens give, and the generated store's, by subject alone. TestRealThreads,
-// TestRealThreadsIndex, and TestRealThreadsGenerated check them; the findings tier that stays in
-// spike-ai-pipeline-processing at v0.9.0 scored against them.
 var realThreads = map[string]string{
 	"pst/tika/testPST.pst":                  "2097348 2097252[2097188] 2097220 2097316 2097284 2097380",
 	"pst/tika/testPST_variousBodyTypes.pst": "2097188[2097220 2097252 2097284]",
 	"generated/pst/mailbox.pst":             "2097156 2097188 2097220 2097252 2097284 2097316 2097348 2097380",
 }
 
-// mimeThreads is the threads of the MIME inputs, each by its path under docproc-mail's
-// tests/fixtures, the built .msg's source by builtEML, rendered: derived by hand from each input's Message-ID, In-Reply-To, References,
-// subject, and Date headers. An mbox message's id is its ordinal; an .eml's message has none, so
-// each .eml is one root, 0. TestRealThreadsMIME checks them.
-//
-// nine.mboxrd, by REFERENCES: The reply (2) refers to Notes on the engine (1), and the threading
-// message (9) to <notes-1> then <table-1>, which the file doesn't hold: <table-1>'s placeholder,
-// under 1 with one child, is pruned and 9 promoted to 1's child. The forward (8) refers to
-// <notes-0>, the message it carries attached, which is no message of the file: its placeholder,
-// a root with one child, is pruned, and 8 is a root. No base subjects match: "Notes on the engine
-// à la française", "Notes on the engine (draft)", and "Note G — the table" are not "Notes on the
-// engine". By date, UTC: 1 01-12 14:15, its children 2 01-12 18:02 and 9 01-13 09:29; 3 02-03,
-// 4 03-18, 5 04-09, 6 04-26, 7 05-04, 8 05-05.
-//
-// mbox.rlug: 4 refers to 1, the ZAPP question, and is its reply. 2 refers to four messages the
-// file doesn't hold, a chain of placeholders each with one child, pruned to 2 as a root. 3 and 5
-// refer to nothing, and no root shares a base subject with another. By date, UTC: 1 02-07 16:35,
-// 2 02-07 17:21, 3 02-07 17:36, 5 02-07 23:58.
 var mimeThreads = map[string]string{
 	"generated/eml/01-plain.eml":                    "0",
 	"generated/eml/02-reply-latin1.eml":             "0",
@@ -204,11 +150,8 @@ var mimeThreads = map[string]string{
 	builtEML:                                        "0",
 }
 
-// builtEML is the built .msg's .eml source, under testdata/.
 const builtEML = "built/eml/office-attachments.eml"
 
-// mimeInputs returns the MIME inputs, each a path under docproc-mail's tests/fixtures: its .eml, the
-// nine-message mboxrd, mbox.rlug and its five splits; and builtEML.
 func mimeInputs(t *testing.T) []string {
 	t.Helper()
 	root := tooltest.Tools(t, fixtures)

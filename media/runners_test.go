@@ -10,9 +10,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// runners build ffmpeg and ffprobe through one runner each: the host's through the exec runner,
-// and audio.FFmpegImage's through the container runner, which pulls the image first when it isn't
-// present.
 var runners = map[string]func(t *testing.T) media.Config{
 	"exec": func(t *testing.T) media.Config {
 		return tools(t, func(spec tool.Spec) (*tool.Tool, error) { return tool.NewExec(t.Context(), spec) })
@@ -24,7 +21,6 @@ var runners = map[string]func(t *testing.T) media.Config{
 	},
 }
 
-// tools builds ffmpeg and ffprobe through build, logging their versions.
 func tools(t *testing.T, build func(tool.Spec) (*tool.Tool, error)) media.Config {
 	t.Helper()
 	ffmpeg, err := build(audio.FFmpegSpec())
@@ -39,7 +35,6 @@ func tools(t *testing.T, build func(tool.Spec) (*tool.Tool, error)) media.Config
 	return media.Config{FFmpeg: ffmpeg, FFprobe: ffprobe}
 }
 
-// streamer builds a Streamer over cfg.
 func streamer(t *testing.T, cfg media.Config) *media.Streamer {
 	t.Helper()
 	s, err := media.NewStreamer(cfg)

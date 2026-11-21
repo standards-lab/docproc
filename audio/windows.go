@@ -19,8 +19,6 @@ import (
 // Every window is mono 16-bit PCM at this rate, whatever the source's rate, channels, and format.
 const SampleRate = 16000
 
-// wavHeader is the length of a window's WAV header, the canonical 44 bytes: a RIFF chunk holding
-// a 16-byte fmt chunk and the data chunk, and nothing else.
 const wavHeader = 44
 
 // WindowFile is one window of a source, written to the media directory as WAV: 16 kHz,
@@ -108,8 +106,6 @@ func (s *Splitter) Windows(ctx context.Context, path string, req Request) iter.S
 	}
 }
 
-// check validates path and req, returning path made absolute and a Cutter of req's fields. An
-// invalid one is an error wrapping ErrRequest.
 func (req Request) check(path string) (string, *Cutter, error) {
 	switch {
 	case path == "":
@@ -137,24 +133,13 @@ func (req Request) check(path string) (string, *Cutter, error) {
 	return abs, cutter, nil
 }
 
-// cut is one window as the decode hands it to the stream: the WindowFile, its Path empty, and the
-// temporary file holding the WAV.
 type cut struct {
 	file WindowFile
 	tmp  string
 }
 
-// windows decodes the source at path, its audio stream src's, through one ffmpeg run, cutting it
-// with cutter and yielding each window in plan order, and then the run's error, if any. It returns
-// once the run has ended and every window it didn't yield is removed.
-//
-// The run's goroutine runs ffmpeg, its stdout a cutting that feeds cutter and writes each window
-// it cuts to a temporary file, holding one of req.Concurrency slots, and hands it to the stream
-// on a channel. The stream renames it into place and yields it, and frees its slot once the loop
-// body returns; a cutting waiting for a slot holds ffmpeg's stdout, and so the decode, back.
 func (s *Splitter) windows(ctx context.Context, path string, req Request, src Source, cutter *Cutter, yield func(WindowFile, error) bool) {
 	work, cancel := context.WithCancel(ctx)
-	// The slots bound the cuts on their way, so a cut never waits on the channel.
 	cuts := make(chan cut, req.Concurrency)
 	c := &cutting{work: work, cancel: cancel, cuts: cuts, slots: make(chan struct{}, req.Concurrency), dir: req.Dir, cutter: cutter}
 	go func() {
@@ -184,8 +169,6 @@ func (s *Splitter) windows(ctx context.Context, path string, req Request, src So
 	}()
 	defer func() {
 		cancel()
-		// The run's goroutine hands every cut over or removes it once work has ended, and closes
-		// the channel once the run has ended; a cut still on its way is removed here.
 		for w := range cuts {
 			removeTemp(w.tmp)
 		}
@@ -219,23 +202,18 @@ func (s *Splitter) windows(ctx context.Context, path string, req Request, src So
 		}
 		<-c.slots
 	}
-	// The channel closed after the run's goroutine set its failure.
 	if c.failure != nil {
 		yield(WindowFile{}, c.failure)
 	}
 }
 
-// cutting is ffmpeg's stdout in a Splitter's run: it feeds the stream to its Cutter and hands each
-// window cut to the stream. Its writes never fail; a window it can't write ends the run.
 type cutting struct {
-	work   context.Context
-	cancel context.CancelFunc
-	cuts   chan<- cut
-	slots  chan struct{}
-	dir    string
-	cutter *Cutter
-	// failure is the run's error, set by its goroutine alone before it closes cuts; done is set
-	// once the cutting has stopped, after a failure or once the run has ended.
+	work    context.Context
+	cancel  context.CancelFunc
+	cuts    chan<- cut
+	slots   chan struct{}
+	dir     string
+	cutter  *Cutter
 	failure error
 	done    bool
 }
@@ -253,15 +231,12 @@ func (c *cutting) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// stop ends the run with err, stopping ffmpeg.
 func (c *cutting) stop(err error) {
 	c.done = true
 	c.failure = err
 	c.cancel()
 }
 
-// hand writes each piece's WAV to a temporary file and hands it to the stream, each holding a slot,
-// the last window, cut at the end, carrying plan.
 func (c *cutting) hand(pieces []Piece, plan *Plan) {
 	for _, p := range pieces {
 		if c.done {
@@ -297,8 +272,6 @@ func (c *cutting) hand(pieces []Piece, plan *Plan) {
 	}
 }
 
-// removeTemp removes a window's temporary file, if it has one. The file is the package's own, in
-// the caller's directory, so a failure to remove it leaves a hidden file and nothing else.
 func removeTemp(path string) {
 	if path != "" {
 		_ = os.Remove(path)
@@ -319,6 +292,7 @@ func Sample(d time.Duration) int64 {
 // whichever package cut them.
 func WAV(pcm []byte) []byte {
 	const (
+		formatPCM  = 1
 		channels   = 1
 		bits       = 16
 		blockAlign = channels * bits / 8
@@ -328,7 +302,7 @@ func WAV(pcm []byte) []byte {
 	b = binary.LittleEndian.AppendUint32(b, uint32(wavHeader-8+len(pcm)))
 	b = append(b, "WAVEfmt "...)
 	b = binary.LittleEndian.AppendUint32(b, 16)
-	b = binary.LittleEndian.AppendUint16(b, 1) // PCM
+	b = binary.LittleEndian.AppendUint16(b, formatPCM)
 	b = binary.LittleEndian.AppendUint16(b, channels)
 	b = binary.LittleEndian.AppendUint32(b, SampleRate)
 	b = binary.LittleEndian.AppendUint32(b, SampleRate*blockAlign)

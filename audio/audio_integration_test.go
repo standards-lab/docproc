@@ -11,15 +11,10 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// speechGaps returns the fixture's inserted gaps, in order, and its duration.
 func speechGaps() (gaps []audio.Span, duration time.Duration) {
 	return speechLayout(speechUtterances, 1)
 }
 
-// TestSpeech cuts the speech fixture's windows through both runners, one decode each, and checks
-// that the runners agree on the plan, that every inserted gap lies within a silence the tracker
-// found, that the plan's one cut lies in the last gap before 30 s, and that a second cut's plan
-// is the first.
 func TestSpeech(t *testing.T) {
 	path, err := filepath.Abs(filepath.Join("testdata", "speech.flac"))
 	if err != nil {
@@ -68,8 +63,6 @@ func TestSpeech(t *testing.T) {
 	}
 }
 
-// TestSpeechFixedThreshold cuts the fixture at a fixed threshold through the exec runner: every
-// inserted gap, digital silence, is below -60 dB.
 func TestSpeechFixedThreshold(t *testing.T) {
 	s := speechRunners["exec"](t)
 	gaps, _ := speechGaps()
@@ -90,7 +83,6 @@ func TestSpeechFixedThreshold(t *testing.T) {
 	}
 }
 
-// logPlan logs plan's windows and seams.
 func logPlan(t *testing.T, plan audio.Plan) {
 	t.Helper()
 	t.Logf("recorded: plan of %v, limit %v, overlap %v: %d windows", plan.Duration, plan.Limit, plan.Overlap, len(plan.Windows))

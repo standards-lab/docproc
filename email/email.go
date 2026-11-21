@@ -146,8 +146,6 @@ func (r *Reader) Read(ctx context.Context, req Request) iter.Seq2[Record, error]
 	}
 }
 
-// read is Read's sequence: it yields each record and returns the read's error, nil when it
-// succeeded or yield stopped it.
 func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error) bool) error {
 	if req.Input == "" {
 		return fmt.Errorf("email: no input: %w", ErrRequest)
@@ -219,28 +217,18 @@ func (r *Reader) read(ctx context.Context, req Request, yield func(Record, error
 	return nil
 }
 
-// warnings are a read's warnings on their way to its caller, each naming a .pst folder by its
-// path. docproc-mail writes a folder's line before reading what the folder holds, but writes a
-// warning about the folder's own properties before it, and its stdout is buffered while its stderr
-// isn't, so a warning naming a folder by its node id can come before the folder's line. Such a
-// warning is held until that line comes, and each warning after it with it, so their order is
-// kept; whatever a read leaves held at its end is yielded then, its id kept.
+// See docs/api.md, "Running the tools".
 type warnings struct {
-	// folders are the paths of the folders read so far, by id, display names joined by "/".
 	folders map[uint64]string
 	held    []Warning
 	yield   func(Record, error) bool
 }
 
-// add yields w, rewritten, unless it names a folder whose line hasn't come, or a warning is held
-// before it; then it holds it. It returns false once yield has stopped the read.
 func (ws *warnings) add(w Warning) bool {
 	ws.held = append(ws.held, w)
 	return ws.release()
 }
 
-// release yields the held warnings, in order, up to the first that names a folder whose line
-// hasn't come. It returns false once yield has stopped the read.
 func (ws *warnings) release() bool {
 	for len(ws.held) > 0 {
 		where, ok := folderPath(ws.held[0].Where, ws.folders)
@@ -258,8 +246,6 @@ func (ws *warnings) release() bool {
 	return true
 }
 
-// flush yields every held warning, in order, each folder named by its path where its line has
-// come. It returns false once yield has stopped the read.
 func (ws *warnings) flush() bool {
 	for _, w := range ws.held {
 		w.Where, _ = folderPath(w.Where, ws.folders)
@@ -271,10 +257,6 @@ func (ws *warnings) flush() bool {
 	return true
 }
 
-// folderPath returns where, a warning's place, with its leading "folder <id>" naming the folder
-// by its path from folders, and true: "folder 32898, message 2097188" becomes "folder Top of
-// Personal Folders/Inbox, message 2097188". A where that names a folder folders doesn't hold is
-// returned as it is, with false; any other where as it is, with true.
 func folderPath(where string, folders map[uint64]string) (string, bool) {
 	rest, ok := strings.CutPrefix(where, "folder ")
 	if !ok {
@@ -295,9 +277,6 @@ func folderPath(where string, folders map[uint64]string) (string, bool) {
 	return "folder " + path, true
 }
 
-// resolveMessage resolves the files of m's attachments and media, and its nested messages', by the
-// envelope's media name rule in dir, the read's media directory, "" for none. A File the rule
-// can't have made is an error, so no Path leaves dir.
 func resolveMessage(dir string, m *Message) error {
 	for i := range m.Attachments {
 		a := &m.Attachments[i]

@@ -84,23 +84,15 @@ func (s *Streamer) Events(ctx context.Context, path string, req Request) iter.Se
 	}
 }
 
-// framePattern is the name the image2 muxer gives each frame in the run's directory, numbered from
-// 0 in the order the frames are taken.
 const framePattern = "frame-%08d.png"
 
-// args returns ffmpeg's arguments for a run over the file of c with the streams st, writing its
-// frames into scratch: one input, allowed only the file protocol, and an output for each stream st
-// takes, the audio's PCM to stdout and the video's frames to PNG files.
+// See docs/api.md, "Running the tools".
 func args(c checked, st streams, scratch string) []string {
-	// The audio decodes in one thread, which is cheap, and threads change no output. Bit-exact
-	// decoding, so the same file gives the same samples and pixels whatever the build's CPU paths,
-	// through either runner.
 	a := []string{
 		"-nostdin", "-hide_banner", "-nostats", "-loglevel", "info", "-threads:a", "1",
 		"-flags:a", "+bitexact", "-flags:v", "+bitexact", "-protocol_whitelist", fileProtocols, "-i", c.path,
 	}
 	if st.audio != "" {
-		// audio's Splitter decodes with these arguments, so the windows are its windows.
 		a = append(a,
 			"-map", st.audio,
 			"-af", fmt.Sprintf("aresample=%d", audio.SampleRate),
@@ -112,8 +104,6 @@ func args(c checked, st streams, scratch string) []string {
 		a = append(a,
 			"-map", st.video,
 			"-vf", videoFilter(c),
-			// One encoder thread: with frame threads, the PNG encoder holds a frame until the
-			// frames after it fill its threads.
 			"-fps_mode", "passthrough", "-c:v", "png", "-threads:v", "1", "-flags:v", "+bitexact", "-fflags", "+bitexact",
 			"-f", "image2", "-start_number", "0", "-atomic_writing", "1",
 			filepath.Join(scratch, framePattern),
@@ -122,11 +112,6 @@ func args(c checked, st streams, scratch string) []string {
 	return a
 }
 
-// videoFilter returns the run's video filter chain. select takes the first frame, each whose scene
-// score is past the threshold, and each the gap or more after the last it took; settb puts the
-// frames' timestamps in microseconds, so the report's pts is the frame's time exactly; metadata
-// prints each taken frame's pts and scene score to stderr; scale fits the frame to the maximum
-// side, never enlarging it, bit-exact, and format makes it RGB for the PNG.
 func videoFilter(c checked) string {
 	sel := fmt.Sprintf("select='eq(n,0)+gt(scene,%s)+gte(t-prev_selected_t,%s)'",
 		strconv.FormatFloat(c.scene, 'f', -1, 64), strconv.FormatFloat(c.gap.Seconds(), 'f', -1, 64))
@@ -139,26 +124,11 @@ func videoFilter(c checked) string {
 	return sel + ",settb=AVTB,metadata=mode=print:key=lavfi.scene_score," + scale + ",format=rgb24"
 }
 
-// item is one event the run hands the stream: the event, its Path empty, and the temporary file in
-// the media directory holding its window or frame.
 type item struct {
 	event Event
 	tmp   string
 }
 
-// run reads the file of c, its streams st, through one ffmpeg run, yielding each event as it
-// completes and then the run's error, if any. It returns once the run and its goroutines have
-// ended, and every file it didn't yield is removed.
-//
-// The run's goroutine runs ffmpeg; the PCM on its stdout is cut into windows by a cutWriter, over
-// audio's stream cutter, as it is written, and the frames reported on its stderr are announced to
-// a frameWatcher, whose goroutine waits for each frame's PNG and writes it into the media
-// directory. Each hands its items to one channel, which the stream reads; a writer that waits on
-// it holds ffmpeg back, so a slow consumer paces the run.
-//
-// The run works in the file's directory, which the container runner mounts, and makes its
-// directory of frames there, since ffmpeg reads the file by its path and the runner mounts one
-// directory.
 func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Event, error) bool) {
 	dir := filepath.Dir(c.path)
 	scratch, err := os.MkdirTemp(dir, ".media-*")
@@ -172,7 +142,6 @@ func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Ev
 	r := &runner{work: work, cancel: cancel, items: items, dir: c.dir}
 	var cw *cutWriter
 	if st.audio != "" {
-		// The request was checked: the cutter doesn't refuse it.
 		cutter, _ := audio.NewCutter(c.audio)
 		cw = &cutWriter{r: r, cutter: cutter}
 	}
@@ -181,7 +150,6 @@ func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Ev
 	if st.video != "" {
 		wg.Go(fw.watch)
 	} else {
-		// No video, no frames to watch for.
 		close(fw.ended)
 	}
 	go func() {
@@ -193,8 +161,6 @@ func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Ev
 		}
 		switch {
 		case err != nil:
-			// ffmpeg's refusal of a protocol the run doesn't allow comes lines before its last,
-			// which says only that the input failed.
 			if refused := fw.refused; refused != "" {
 				err = fmt.Errorf("%w: %s", err, refused)
 			}
@@ -212,8 +178,6 @@ func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Ev
 	}()
 	defer func() {
 		cancel()
-		// Every goroutine sends its items or removes them once work has ended, and the channel
-		// closes once they have all ended; an item still on its way is removed here.
 		for it := range items {
 			removeTemp(it.tmp)
 		}
@@ -248,8 +212,6 @@ func (s *Streamer) run(ctx context.Context, c checked, st streams, yield func(Ev
 	}
 }
 
-// runner is what a run's writers share: the run's context, ended by a failure or the stream's end,
-// the channel they hand items to, the media directory, and the run's first failure.
 type runner struct {
 	work   context.Context
 	cancel context.CancelFunc
@@ -260,7 +222,6 @@ type runner struct {
 	failure error
 }
 
-// send hands it to the stream, or removes its file and reports false once the run has ended.
 func (r *runner) send(it item) bool {
 	select {
 	case r.items <- it:
@@ -271,14 +232,11 @@ func (r *runner) send(it item) bool {
 	}
 }
 
-// fail records the run's first failure and ends the run, stopping ffmpeg.
 func (r *runner) fail(err error) {
 	r.note(err)
 	r.cancel()
 }
 
-// note records the run's first failure once ffmpeg has exited, without ending the run, so the
-// frames whose PNG is whole are still handed to the stream before its error.
 func (r *runner) note(err error) {
 	r.mu.Lock()
 	if r.failure == nil {
@@ -287,15 +245,12 @@ func (r *runner) note(err error) {
 	r.mu.Unlock()
 }
 
-// err returns the run's first failure.
 func (r *runner) err() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.failure
 }
 
-// publish renames the item's temporary file to its SHA-256 name in the media directory and sets
-// its event's Path.
 func (r *runner) publish(it *item) error {
 	var path *string
 	var name string
@@ -314,25 +269,18 @@ func (r *runner) publish(it *item) error {
 	return nil
 }
 
-// removeTemp removes a temporary file, if there is one. The file is the package's own, so a
-// failure to remove it leaves a hidden file and nothing else.
 func removeTemp(path string) {
 	if path != "" {
 		_ = os.Remove(path)
 	}
 }
 
-// cutWriter cuts the PCM ffmpeg writes to its stdout into windows as it comes, through audio's
-// stream cutter, and writes each window the cutter cuts. Its writes never fail; a window it can't
-// write fails the run.
 type cutWriter struct {
 	r      *runner
 	cutter *audio.Cutter
 	done   bool
 }
 
-// writer returns w as ffmpeg's stdout; nil, discarding it, when w is nil, as for a file with no
-// audio.
 func (w *cutWriter) writer() io.Writer {
 	if w == nil {
 		return nil
@@ -353,14 +301,11 @@ func (w *cutWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// stop fails the run with err and takes nothing more.
 func (w *cutWriter) stop(err error) {
 	w.done = true
 	w.r.fail(fmt.Errorf("media: %w", err))
 }
 
-// end ends the stream once ffmpeg has exited: the cutter's last windows. A stream with no samples
-// is an error, since its audio stream gave none.
 func (w *cutWriter) end() {
 	if w.done {
 		return
@@ -374,7 +319,6 @@ func (w *cutWriter) end() {
 	w.done = true
 }
 
-// send writes pieces, in order, and hands each to the stream as a window.
 func (w *cutWriter) send(pieces []audio.Piece) {
 	for _, p := range pieces {
 		if w.done {
@@ -398,25 +342,18 @@ func (w *cutWriter) send(pieces []audio.Piece) {
 	}
 }
 
-// announced is a frame ffmpeg reported on its stderr, its PNG not yet seen whole.
 type announced struct {
 	index  int
 	reason Reason
 	time   time.Duration
 }
 
-// frameReport and sceneScore match the metadata filter's report of a frame: its line of the
-// frame's count and pts, in microseconds after settb, and then its line of the scene score.
 var (
-	frameReport = regexp.MustCompile(`^\[Parsed_metadata_\d+ @ [^\]]*\] frame:\s*\d+\s+pts:\s*(-?\d+)\s`)
-	sceneScore  = regexp.MustCompile(`^\[Parsed_metadata_\d+ @ [^\]]*\] lavfi\.scene_score=(\S+)$`)
-	// refusedProtocol matches ffmpeg's refusal of a protocol its -protocol_whitelist doesn't hold.
+	frameReport     = regexp.MustCompile(`^\[Parsed_metadata_\d+ @ [^\]]*\] frame:\s*\d+\s+pts:\s*(-?\d+)\s`)
+	sceneScore      = regexp.MustCompile(`^\[Parsed_metadata_\d+ @ [^\]]*\] lavfi\.scene_score=(\S+)$`)
 	refusedProtocol = regexp.MustCompile(`Protocol '[^']*' not on whitelist '[^']*'`)
 )
 
-// frameWatcher reads ffmpeg's stderr for the frames it takes, and waits for each one's PNG in the
-// run's directory, scratch, writing it into the media directory and handing it to the stream in
-// the order taken.
 type frameWatcher struct {
 	r       *runner
 	scratch string
@@ -424,10 +361,6 @@ type frameWatcher struct {
 	gap     time.Duration
 	lines   cli.LineWriter
 
-	// pts is the pts of the frame whose score line is next, -1 when none; count the frames
-	// announced, and previous the last one's time; and refused ffmpeg's first refusal of a
-	// protocol the run doesn't allow, such as a playlist's, empty when none. They are the stderr
-	// goroutine's alone until ffmpeg has exited.
 	pts      int64
 	count    int
 	previous time.Duration
@@ -440,15 +373,12 @@ type frameWatcher struct {
 	ended   chan struct{}
 }
 
-// stderr returns the writer ffmpeg's stderr goes to, which reads the frames' reports.
 func (f *frameWatcher) stderr() *cli.LineWriter {
 	f.pts = -1
 	f.lines.Line = f.line
 	return &f.lines
 }
 
-// line reads one line of ffmpeg's stderr: a frame's pts, or its score, which announces it; or its
-// refusal of a protocol.
 func (f *frameWatcher) line(s string) error {
 	if m := refusedProtocol.FindString(s); m != "" && f.refused == "" {
 		f.refused = m
@@ -481,7 +411,6 @@ func (f *frameWatcher) line(s string) error {
 	case t-f.previous >= f.gap:
 		a.reason = ReasonInterval
 	default:
-		// select took it past the threshold, which the score's six printed decimals round away.
 		a.reason = ReasonScene
 	}
 	f.count++
@@ -496,9 +425,6 @@ func (f *frameWatcher) line(s string) error {
 	return nil
 }
 
-// end tells the watcher ffmpeg has exited, ok when it succeeded: every frame it announced has its
-// PNG, and one that hasn't is an error. After a failed run, the frames whose PNG is whole are
-// still yielded, and the rest dropped.
 func (f *frameWatcher) end(ok bool) {
 	f.mu.Lock()
 	f.ok = ok
@@ -506,11 +432,8 @@ func (f *frameWatcher) end(ok bool) {
 	close(f.ended)
 }
 
-// pollInterval is how often the watcher looks for a frame's PNG while ffmpeg writes it.
 const pollInterval = 10 * time.Millisecond
 
-// watch waits for each announced frame's PNG in turn and hands it to the stream, until ffmpeg has
-// exited and every frame is handed over, or the run ends.
 func (f *frameWatcher) watch() {
 	for {
 		f.mu.Lock()
@@ -570,8 +493,6 @@ func (f *frameWatcher) watch() {
 	}
 }
 
-// handOver writes a's PNG, b, into the media directory and hands it to the stream; false when the
-// run has ended.
 func (f *frameWatcher) handOver(a announced, b []byte) bool {
 	width, height, err := pngSize(b)
 	if err != nil {
@@ -588,7 +509,6 @@ func (f *frameWatcher) handOver(a announced, b []byte) bool {
 	return f.r.send(item{event: Event{Frame: fr, Time: a.time}, tmp: tmp})
 }
 
-// pngSize returns a PNG's width and height, from its IHDR chunk, which follows its signature.
 func pngSize(b []byte) (width, height int, err error) {
 	if len(b) < 24 || string(b[:8]) != route.PNGSignature || string(b[12:16]) != "IHDR" {
 		return 0, 0, errors.New("ffmpeg's frame isn't a PNG")

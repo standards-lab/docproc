@@ -74,8 +74,6 @@ func NewStreamer(cfg Config) (*Streamer, error) {
 	return &Streamer{ffmpeg: cfg.FFmpeg, ffprobe: cfg.FFprobe}, nil
 }
 
-// fileProtocols are the protocols a run allows, ffmpeg's -protocol_whitelist: files alone, so a
-// file that is a playlist opens nothing but itself.
 const fileProtocols = "file"
 
 // Request is how one file's windows and frames are taken.
@@ -117,7 +115,6 @@ type Request struct {
 	MaxSide int
 }
 
-// audio returns req's windowing fields as audio's request, which audio's Cutter reads.
 func (req Request) audio() audio.Request {
 	return audio.Request{
 		Limit: req.Limit, Overlap: req.Overlap, MinSilence: req.MinSilence, Threshold: req.Threshold,
@@ -125,9 +122,7 @@ func (req Request) audio() audio.Request {
 	}
 }
 
-// checked is a request validated, its defaults applied.
 type checked struct {
-	// path is the file's absolute path.
 	path    string
 	dir     string
 	audio   audio.Request
@@ -136,8 +131,6 @@ type checked struct {
 	maxSide int
 }
 
-// check validates path and req and applies req's defaults; an invalid field is an error wrapping
-// ErrRequest. It runs nothing.
 func (req Request) check(path string) (checked, error) {
 	if path == "" {
 		return checked{}, fmt.Errorf("media: no source path: %w", ErrRequest)
@@ -149,7 +142,6 @@ func (req Request) check(path string) (checked, error) {
 		gap:     cmp.Or(req.MaxGap, DefaultMaxGap),
 		maxSide: req.MaxSide,
 	}
-	// audio validates its own fields, each refusal wrapping ErrRequest, audio's.
 	if _, err := audio.NewCutter(c.audio); err != nil {
 		return checked{}, fmt.Errorf("media: %w", err)
 	}
@@ -178,15 +170,10 @@ func (req Request) check(path string) (checked, error) {
 	return c, nil
 }
 
-// streams are the streams a run takes, each as ffmpeg's -map names it, by the index the file's
-// probe found, empty when the file has none.
 type streams struct {
 	audio, video string
 }
 
-// probe finds the audio and video streams of the file at path, absolute, through ffprobe. A video
-// stream that is an attached picture, such as an album's cover art, isn't video. A file with
-// neither is an error wrapping ErrNoMedia; one ffprobe can't read is its *tool.ExitError, wrapped.
 func (s *Streamer) probe(ctx context.Context, path string) (streams, error) {
 	var stdout bytes.Buffer
 	err := s.ffprobe.Run(ctx, tool.Invocation{

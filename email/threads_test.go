@@ -13,9 +13,6 @@ import (
 	"github.com/standards-lab/docproc/email"
 )
 
-// render writes threads as text, the form the tests' expected trees are written in: roots
-// separated by spaces, each a message's store id or a placeholder's "*" and the Message-ID it
-// stands for, its children after it in brackets.
 func render(threads []*email.Thread) string {
 	var b strings.Builder
 	var write func([]*email.Thread)
@@ -40,12 +37,8 @@ func render(threads []*email.Thread) string {
 	return b.String()
 }
 
-// day is the date the constructed messages are sent on, each a minute after it per its store id
-// unless a test says otherwise.
 var day = time.Date(2026, 1, 12, 9, 0, 0, 0, time.UTC)
 
-// msg returns a message with store id id, sent id minutes after day, and the threading fields
-// given: its Message-ID, In-Reply-To, and References.
 func msg(id uint64, messageID, inReplyTo, references string) *email.Message {
 	return &email.Message{
 		ID:         id,
@@ -56,23 +49,18 @@ func msg(id uint64, messageID, inReplyTo, references string) *email.Message {
 	}
 }
 
-// subj returns a message with store id id, sent id minutes after day, with subject and no
-// threading fields.
 func subj(id uint64, subject string) *email.Message {
 	m := msg(id, "", "", "")
 	m.Subject = subject
 	return m
 }
 
-// indexed returns a message with store id id, sent id minutes after day, whose conversation index
-// is index, and no other threading field.
 func indexed(id uint64, index string) *email.Message {
 	m := msg(id, "", "", "")
 	m.ConversationIndex = index
 	return m
 }
 
-// threadOf returns the rendered threads of msgs, added in order to a Threader.
 func threadOf(msgs ...*email.Message) string {
 	var t email.Threader
 	for _, m := range msgs {
@@ -81,11 +69,6 @@ func threadOf(msgs ...*email.Message) string {
 	return render(t.Threads())
 }
 
-// TestThreadsReferences: RFC 5256's links by Message-ID. References chain their IDs parent to
-// child, the last the message's parent; without References, In-Reply-To's first valid ID is the
-// parent. A Message-ID no message has is a placeholder, kept only where it holds several roots
-// together; one a later message also has belongs to the first; a message without a valid one is
-// linked by its references alone.
 func TestThreadsReferences(t *testing.T) {
 	cases := []struct {
 		name string
@@ -102,8 +85,6 @@ func TestThreadsReferences(t *testing.T) {
 			want: "1[2[3]]",
 		},
 		{
-			// The References chain links a to b even though b's own message names no parent; b
-			// is read before c, so c's chain gives it its parent.
 			name: "chain links earlier messages",
 			msgs: []*email.Message{
 				msg(1, "<a@x>", "", ""),
@@ -113,8 +94,6 @@ func TestThreadsReferences(t *testing.T) {
 			want: "1[2[3]]",
 		},
 		{
-			// A message with no references has no parent, whatever an earlier message's
-			// References gave it (step 1.B).
 			name: "no references breaks a link",
 			msgs: []*email.Message{
 				msg(3, "<c@x>", "", "<a@x> <b@x>"),
@@ -218,8 +197,6 @@ func TestThreadsReferences(t *testing.T) {
 	}
 }
 
-// TestThreadsLoops: a link that would make a loop isn't made, whether two messages refer to each
-// other, a References field repeats an ID, or a message refers to itself.
 func TestThreadsLoops(t *testing.T) {
 	cases := []struct {
 		name string
@@ -227,7 +204,6 @@ func TestThreadsLoops(t *testing.T) {
 		want string
 	}{
 		{
-			// 1 is made 2's child; 2's reference to 1 would close the loop.
 			name: "each other",
 			msgs: []*email.Message{
 				msg(1, "<a@x>", "", "<b@x>"),
@@ -236,7 +212,6 @@ func TestThreadsLoops(t *testing.T) {
 			want: "2[1]",
 		},
 		{
-			// a is b's parent; b to a would loop, so 3 sits under a.
 			name: "repeated reference",
 			msgs: []*email.Message{
 				msg(1, "<a@x>", "", ""),
@@ -271,11 +246,6 @@ func TestThreadsLoops(t *testing.T) {
 	}
 }
 
-// TestThreadsSubjects: roots whose base subjects match are gathered, RFC 5256's step 5, the base
-// subject as its section 2.1 extracts it, compared with ASCII letters' case folded. A reply or
-// forward goes under the message it shares a subject with; two messages that aren't, or two that
-// are, go under a placeholder; a placeholder takes in the others. An empty base subject gathers
-// nothing.
 func TestThreadsSubjects(t *testing.T) {
 	cases := []struct {
 		name string
@@ -341,9 +311,6 @@ func TestThreadsSubjects(t *testing.T) {
 	}
 }
 
-// TestThreadsBaseSubject: each subject is gathered with "Notes", sent before it, by RFC 5256's
-// base subject extraction: under it when the extraction removed a reply or forward marker, under
-// a placeholder with it otherwise. A subject whose base differs isn't gathered.
 func TestThreadsBaseSubject(t *testing.T) {
 	const reply, alike, apart = "1[2]", "*[1 2]", "1 2"
 	cases := []struct {
@@ -386,13 +353,11 @@ func TestThreadsBaseSubject(t *testing.T) {
 			}
 		})
 	}
-	// A subject that is a subj-blob alone keeps it as its base.
 	if got := threadOf(subj(1, "[PATCH]"), subj(2, "Re: [PATCH]")); got != reply {
 		t.Errorf("[PATCH]: threads %s, want %s", got, reply)
 	}
 }
 
-// The conversation indexes of TestThreadsIndex: a 22-byte header, then 5-byte child blocks.
 const (
 	header  = "01d321c5c2dc64ee4b2f50da41d68f42001487a4d229"
 	block1  = "0000049f70"
@@ -400,11 +365,6 @@ const (
 	header2 = "01d6c441ee0a7d408d320c2c40f6ac88aae17faebcda"
 )
 
-// TestThreadsIndex: a message whose headers name no parent takes as parent the message whose
-// conversation index is its own less its last 5-byte child block. A parent the store doesn't
-// hold is a placeholder, as a missing Message-ID is, kept only where it holds several roots
-// together. An index shorter than its 22-byte header, or not a header and whole child blocks,
-// or not hex, is ignored. Headers that name a parent take precedence.
 func TestThreadsIndex(t *testing.T) {
 	cases := []struct {
 		name string
@@ -516,10 +476,6 @@ func TestThreadsIndex(t *testing.T) {
 	}
 }
 
-// TestThreadsOrder: roots and siblings are ordered by sent date, the submit time, else the
-// delivery time, else none, first; then by store id; then by order in the read. A placeholder
-// sorts by its first child. Building again, or from the same messages again, gives the same
-// threads.
 func TestThreadsOrder(t *testing.T) {
 	at := func(m *email.Message, submit, delivery time.Time) *email.Message {
 		m.SubmitTime, m.DeliveryTime = submit, delivery
@@ -554,8 +510,6 @@ func TestThreadsOrder(t *testing.T) {
 	}
 }
 
-// TestThreadsRecords: Threads takes a read's records, ignoring all but messages, the messages
-// nested under attachment records, and a message of a conversation class, and returns the error that ends them, with no threads.
 func TestThreadsRecords(t *testing.T) {
 	nested := msg(3, "<n@x>", "", "<a@x>")
 	recs := []email.Record{
@@ -601,7 +555,6 @@ func TestThreadsRecords(t *testing.T) {
 	}
 }
 
-// TestThreadsStandin: Threads takes a read's records whole.
 func TestThreadsStandin(t *testing.T) {
 	t.Parallel()
 	r, mail := standinReader(t)

@@ -23,23 +23,16 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// hostLimits are the limits the integration tier's Converter passes every magick run: far past
-// what its fixtures need, so each converts under them.
 var hostLimits = picture.Limits{Area: 64 << 20, Width: 16384, Height: 16384, Memory: 512 << 20, Map: 1 << 30, Disk: 2 << 30}
 
-// hostLimitArgs are hostLimits as magick's -limit options, in the order every run carries them.
 var hostLimitArgs = []string{"-limit", "area", "67108864", "-limit", "width", "16384", "-limit", "height", "16384",
 	"-limit", "memory", "536870912", "-limit", "map", "1073741824", "-limit", "disk", "2147483648"}
 
-// recorder is the host's magick behind a shell script that appends each run's arguments to a log,
-// one line each, NUL-separated, then runs magick, so a test reads what every real run was given.
 type recorder struct {
 	t   *testing.T
 	log string
 }
 
-// newRecorder writes the recording script into a directory of its own and returns it with the
-// Spec that runs it as magick.
 func newRecorder(t *testing.T) (*recorder, tool.Spec) {
 	t.Helper()
 	magick, err := exec.LookPath("magick")
@@ -58,7 +51,6 @@ func newRecorder(t *testing.T) (*recorder, tool.Spec) {
 	return r, spec
 }
 
-// runs returns every recorded run's arguments, in order, the version probe left out.
 func (r *recorder) runs() [][]string {
 	r.t.Helper()
 	b, err := os.ReadFile(r.log)
@@ -76,8 +68,6 @@ func (r *recorder) runs() [][]string {
 	return runs
 }
 
-// limited fails the test unless every recorded magick run, the format listing included, began
-// with hostLimitArgs, and returns how many there were.
 func (r *recorder) limited() int {
 	r.t.Helper()
 	runs := r.runs()
@@ -89,9 +79,6 @@ func (r *recorder) limited() int {
 	return len(runs)
 }
 
-// hostConverter builds a Converter over the host's magick, behind a recorder, and soffice, both
-// through the exec runner, with hostLimits, and checks when the test ends that every magick run
-// carried them.
 func hostConverter(t *testing.T) *picture.Converter {
 	t.Helper()
 	r, spec := newRecorder(t)
@@ -114,10 +101,6 @@ func hostConverter(t *testing.T) *picture.Converter {
 	return c
 }
 
-// convertHost copies the SVG data into a directory of its own as name, converts it through c at
-// density into a working directory of its own, twice, the second run in a later second than the
-// first ended in, and returns the PNG decoded, failing unless both runs gave the same bytes, the
-// working directory holds the PNG alone, and the original is kept.
 func convertHost(t *testing.T, c *picture.Converter, name string, data []byte, density int) image.Image {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -158,8 +141,6 @@ func convertHost(t *testing.T, c *picture.Converter, name string, data []byte, d
 	return img
 }
 
-// census counts img's pixels: opaque white, dark (each channel below a quarter), and red (red
-// high, green and blue low), and the pixels that aren't opaque.
 func census(img image.Image) (white, dark, red, translucent int) {
 	b := img.Bounds()
 	for y := b.Min.Y; y < b.Max.Y; y++ {
@@ -180,10 +161,6 @@ func census(img image.Image) (white, dark, red, translucent int) {
 	return white, dark, red, translucent
 }
 
-// TestConvertSVGHost converts the package's own SVG fixtures, shapes and text and an ink-like
-// drawing, on the host's magick, under the configured limits: each is rendered at the default
-// density, 150 dpi, and at a set one, 300 dpi, its size in CSS pixels or millimetres scaled to it,
-// flattened onto opaque white with print on it, and the same bytes converted twice.
 func TestConvertSVGHost(t *testing.T) {
 	c := hostConverter(t)
 	for _, tc := range []struct {
@@ -213,12 +190,6 @@ func TestConvertSVGHost(t *testing.T) {
 	}
 }
 
-// TestConvertSVGScriptHost converts ~/docs' script-bearing.svg, committed as testdata: an SVG with
-// an onload handler, an inline script, and an image whose href is http://example.invalid. It
-// converts, at 150 dpi, to a PNG of its text alone: librsvg, the rsvg coder the conversion names,
-// has no script engine, so neither the handler nor the script runs, and its resolver loads no
-// URL but a data: URL or a file beside the SVG, the copy alone in its directory here, so the
-// image is never fetched and renders as nothing.
 func TestConvertSVGScriptHost(t *testing.T) {
 	c := hostConverter(t)
 	data, err := os.ReadFile(filepath.Join("testdata", "script-bearing.svg"))
@@ -234,9 +205,6 @@ func TestConvertSVGScriptHost(t *testing.T) {
 	}
 }
 
-// TestConvertSVGReferencesHost: an SVG whose images name a file beside it, a file by its
-// absolute path, and a URL on a listener of this test's own converts to a PNG that draws none
-// of them, and nothing connects to the listener. The pictures are red, so one drawn would show.
 func TestConvertSVGReferencesHost(t *testing.T) {
 	c := hostConverter(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -296,7 +264,6 @@ func TestConvertSVGReferencesHost(t *testing.T) {
 	}
 }
 
-// redPNG returns a 32x32 PNG of opaque red.
 func redPNG(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewNRGBA(image.Rect(0, 0, 32, 32))
@@ -310,9 +277,6 @@ func redPNG(t *testing.T) []byte {
 	return b.Bytes()
 }
 
-// TestLimitsHost: a limit the picture passes fails the conversion on the host's magick with its
-// own message, so the configured limits reach magick: shapes.svg at 150 dpi is 500 pixels wide,
-// past a width limit of 400, and leaves nothing in the working directory.
 func TestLimitsHost(t *testing.T) {
 	r, spec := newRecorder(t)
 	mg, err := tool.NewExec(t.Context(), spec)

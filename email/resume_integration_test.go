@@ -10,16 +10,6 @@ import (
 	"github.com/standards-lab/docproc/email"
 )
 
-// These tests run the real docproc-mail, which the unit tier doesn't provide, so they run in the
-// integration tier.
-
-// TestRealResume runs the real docproc-mail over the generated .pst, Tika's testPST.pst, which
-// threads by its headers, and nine.mboxrd. Each is read whole and threaded; then, for its first
-// message, one in the middle, its next to last, and its last, read up to and including that
-// message, K, a Threader fed its records, as a caller rebuilds one from the records it persisted,
-// and the read resumed with After K into the same Threader. The resumed read's records are the
-// whole read's store, folders, and the records after K's, in order, warnings aside, and the
-// Threader's threads are the whole read's.
 func TestRealResume(t *testing.T) {
 	r := realReader(t)
 	for _, rel := range []string{"generated/pst/mailbox.pst", "pst/tika/testPST.pst", "mime/nine.mboxrd"} {
@@ -70,8 +60,6 @@ func TestRealResume(t *testing.T) {
 	}
 }
 
-// tail returns what a read resumed after message k gives of whole, a whole read's records: its
-// store, folders, and folders' skipped records, then every record after k's message.
 func tail(whole []email.Record, k uint64) []email.Record {
 	var out []email.Record
 	past := false
@@ -95,7 +83,6 @@ func tail(whole []email.Record, k uint64) []email.Record {
 	return out
 }
 
-// describeAll returns describe of each of recs, its warnings left out.
 func describeAll(recs []email.Record) []string {
 	var out []string
 	for _, rec := range recs {

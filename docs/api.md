@@ -319,6 +319,82 @@ How `office` converts through LibreOffice, and why:
   `.tif` and `.tiff` of one stem are each swapped whole, and a swapped-in name is never swapped
   again.
 
+How `picture` runs magick and soffice, and why:
+
+- An output stem is ASCII letters, digits, `.`, `-`, and `_`, beginning with a letter or digit, so
+  magick reads no part of a name made from it as a format prefix, a frame suffix, or a pattern.
+- Every magick run that writes a converted PNG defines `png:exclude-chunks=date,time` before its
+  output, which leaves out the `date:create`, `date:modify`, and `date:timestamp` text chunks and
+  the `tIME` chunk magick otherwise writes with the time of the run.
+- Each picture is read through its kind's coder, named as a prefix, whatever its content: a TIFF
+  as TIFF, so a multi-image TIFF gives one PNG, its first image; a HEIC, WebP, or AVIF through the
+  coder its kind names. A page conversion has magick write each image of the TIFF to a PNG of its
+  own with `+adjoin` and a `%d` pattern after the stem, which holds no `%`, in a run whose working
+  directory is the copy's, so the pattern is relative and nothing in the caller's path is read as
+  one; the pages written must be PNGs numbered from 0 without a gap, and no other file.
+- magick's format listing, `-list format`, marks each coder's modes, `r` when it reads the format.
+  It writes to the `null:` output, without which magick refuses the `-limit` options before it, and
+  a Converter reads at most 1 MiB of it, some fifty times what ImageMagick 7.1.2 prints.
+- A conversion has written its PNG when the path is a regular file beginning with PNG's signature,
+  as `route.Identify` tells it. A failed magick run's error carries the first line of its output
+  that isn't blank, from at most 64 KiB of it; a failed soffice run's, the first line
+  beginning `Error`, or else the last that isn't blank.
+- A metafile run names Draw's PNG export filter, not only the extension, with the page's pixel size
+  as its options, so a file soffice doesn't open as a picture, such as text named `.emf`, fails
+  rather than being exported as a text document's page. The page is A4 in pixels at 96 dpi, the
+  picture at its own size at its center, so rendering the page at a scale renders the picture at
+  that scale; a page of another shape than the pixel size would stretch it. `-trim` then crops to
+  what differs from the corners' color and `+repage` drops the crop's offset, PNG in and out.
+
+How `audio` and `media` run ffmpeg, and why:
+
+- The decode is bit-exact, `+bitexact` on the codec and the format, so the same source is the
+  same samples, and so the same windows, whatever the build's CPU paths and through either runner.
+  Its arguments are v0.9.0's tracker decode, and media's run decodes its audio with the same ones,
+  so its windows are audio's Splitter's; media's decodes audio in one thread, which is cheap, since
+  threads change no output.
+- The tracker measures a frame's energy in integer centibels, hundredths of a dB, relative to full
+  scale, from -120 dB, where it puts digital silence and anything quieter, to 0 dB, so its
+  percentile and its comparisons are exact. The rolling window's energies are counted in a Fenwick
+  tree over those values, whose descent finds the percentile.
+- A Cutter keeps each threshold the tracker decided a whole frame against, and gives the planner a
+  silence still open, so a window whose limit falls inside it is fixed as the stream passes the
+  limit, ending where it will once the silence closes.
+- A window or frame on its way is a hidden temporary file in the media directory, the package's
+  own, so a failure to remove one leaves that hidden file and nothing else.
+- media's PNG encoder runs in one thread, since with frame threads it holds a frame until the
+  frames after it fill its threads. Its filter chain is `select`, then `settb` to microseconds, so
+  the reported pts is the frame's time exactly, then `metadata` printing each taken frame's pts and
+  scene score, then `scale`, bit-exact and never enlarging, then `format` to RGB. A taken frame that
+  is neither the first nor past the gap is a scene change, though its score as printed, to six
+  decimals, may round to the threshold. The watcher polls for each announced frame's PNG every
+  10 ms. ffmpeg's refusal of a protocol the whitelist doesn't hold comes lines before its last,
+  which says only that the input failed, so the run keeps the first refusal for its error. An
+  audio stream that decodes to no samples is an error.
+
+How `email` reads docproc-mail, and why:
+
+- docproc-mail writes a folder's line before reading what the folder holds, but a warning about
+  the folder's own properties before it, and its stdout is buffered while its stderr isn't, so a
+  warning naming a folder by its node id can come before the folder's line. The reader holds such
+  a warning until that line comes, and each warning after it with it, so their order is kept;
+  whatever is held at the read's end is yielded then, its node id kept.
+- A sender's address from the transport headers is the first `From` field's, unfolded, and of a
+  list the first address. A line that isn't a field, such as the `Microsoft Mail Internet Headers
+  Version 2.0` line Exchange may begin a block with, is passed over, and the block ends at its
+  first empty line.
+- `Threader.Threads` follows RFC 5256, section 2.2: step 1 links each message's references, its
+  References' valid Message-IDs, else In-Reply-To's first, each the parent of the next unless that
+  would make a loop, the last the message's parent; the first message with a Message-ID keeps it
+  and another is linked by its references alone. A message with no reference takes the parent its
+  conversation index names, a valid index being a 22-byte header and whole 5-byte child blocks
+  (MS-OXOMSG 2.2.1.3). Step 2 takes the roots, step 3 prunes the dummies, steps 4 and 6 sort, the
+  deepest siblings first, and step 5 gathers by base subject, one root per subject, preferring a
+  dummy, then a message that isn't a reply or forward. A valid Message-ID holds an `@`, as RFC
+  5322's msg-id does, and a field with no angle bracket is read as IDs separated by white space,
+  as some writers store them. Base subjects follow section 2.1's steps and its section 5 grammar,
+  compared under the `i;ascii-casemap` folding.
+
 ## Input from a stream, or a path
 
 ```go

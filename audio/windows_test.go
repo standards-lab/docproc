@@ -21,23 +21,17 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// gainProbe is ffprobe's report of speech-gain.wav: 75.23 s of 16 kHz mono 16-bit PCM.
 const gainProbe = `{"streams":[` +
 	`{"index":0,"codec_name":"pcm_s16le","codec_type":"audio","sample_rate":"16000","channels":1,"duration":"75.230000"}],` +
 	`"format":{"duration":"75.230000"}}`
 
-// gainDuration is speech-gain.wav's duration, its samples at 16 kHz.
 const gainDuration = 75230 * time.Millisecond
 
-// probeOf returns ffprobe's report of a source of 16 kHz mono 16-bit PCM d long, its audio the
-// first stream.
 func probeOf(d time.Duration) string {
 	return fmt.Sprintf(`{"streams":[{"index":0,"codec_name":"pcm_s16le","codec_type":"audio","sample_rate":"16000","channels":1}],"format":{"duration":"%.6f"}}`,
 		d.Seconds())
 }
 
-// windows ranges over the windows of the source at path, returning those yielded and the error
-// that ended the stream, if any; a window yielded with an error fails the test.
 func windows(s *audio.Splitter, ctx context.Context, path string, req audio.Request) ([]audio.WindowFile, error) {
 	var out []audio.WindowFile
 	for w, err := range s.Windows(ctx, path, req) {
@@ -49,7 +43,6 @@ func windows(s *audio.Splitter, ctx context.Context, path string, req audio.Requ
 	return out, nil
 }
 
-// collect is windows, failing the test on an error.
 func collect(t *testing.T, s *audio.Splitter, ctx context.Context, path string, req audio.Request) []audio.WindowFile {
 	t.Helper()
 	ws, err := windows(s, ctx, path, req)
@@ -59,7 +52,6 @@ func collect(t *testing.T, s *audio.Splitter, ctx context.Context, path string, 
 	return ws
 }
 
-// checkFile checks that w's file is pcm, as WAV, named by its SHA-256 in dir.
 func checkFile(t *testing.T, w audio.WindowFile, pcm []byte, dir string) {
 	t.Helper()
 	b, err := os.ReadFile(w.Path)
@@ -76,7 +68,6 @@ func checkFile(t *testing.T, w audio.WindowFile, pcm []byte, dir string) {
 	checkWAV(t, b, pcm)
 }
 
-// checkWAV checks that b is pcm, 16 kHz mono 16-bit, under the canonical 44-byte WAV header.
 func checkWAV(t *testing.T, b, pcm []byte) {
 	t.Helper()
 	header := []byte("RIFF")
@@ -95,7 +86,6 @@ func checkWAV(t *testing.T, b, pcm []byte) {
 	}
 }
 
-// files returns the names in dir, sorted.
 func files(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -109,7 +99,6 @@ func files(t *testing.T, dir string) []string {
 	return names
 }
 
-// names returns the base names of ws' files, sorted.
 func names(ws []audio.WindowFile) []string {
 	var out []string
 	for _, w := range ws {
@@ -119,13 +108,10 @@ func names(ws []audio.WindowFile) []string {
 	return out
 }
 
-// windowPCM returns the samples of the window w of pcm, the stream's from Sample of its start up to
-// but not including its end's.
 func windowPCM(pcm []byte, w audio.Window) []byte {
 	return pcm[2*audio.Sample(w.Start) : 2*audio.Sample(w.End)]
 }
 
-// synthPCM returns the stand-in's synthetic source of n samples.
 func synthPCM(n int) []byte {
 	var out []byte
 	for i := range n {
@@ -134,11 +120,6 @@ func synthPCM(n int) []byte {
 	return out
 }
 
-// TestWindows decodes speech-gain.wav once, the stand-in ffmpeg writing its samples in uneven
-// chunks, under several requests: the windows are the incremental path's over the same samples,
-// a Tracker and a Planner fed them as a stream, and PlanWindows' of the tracker's silences; each is
-// its span's samples, as WAV, named by its SHA-256; and the last carries the plan, which ends at
-// the decoded samples, ffprobe's duration matching them.
 func TestWindows(t *testing.T) {
 	t.Parallel()
 	decode, err := filepath.Abs(filepath.Join("testdata", "speech-gain.wav"))
@@ -217,9 +198,6 @@ func TestWindows(t *testing.T) {
 	}
 }
 
-// TestWindowsProbed: a plan ends at the decoded samples, whatever ffprobe estimated, with
-// ffprobe's duration beside it as Probed when the two differ by more than a frame, as a truncated
-// file's do; within a frame, Probed is zero.
 func TestWindowsProbed(t *testing.T) {
 	t.Parallel()
 	decode, err := filepath.Abs(filepath.Join("testdata", "speech-gain.wav"))
@@ -251,10 +229,6 @@ func TestWindowsProbed(t *testing.T) {
 	}
 }
 
-// TestWindowsHeld: the decode waits while Concurrency windows are held, from each one's cut until
-// the loop body returns from it, so the media directory never holds more than that many while the
-// consumer holds the first; and it reaches that many. The windows are the synthetic source's, each
-// cut at the limit under a fixed threshold no sample is under.
 func TestWindowsHeld(t *testing.T) {
 	t.Parallel()
 	for _, concurrency := range []int{1, 3} {
@@ -274,8 +248,6 @@ func TestWindowsHeld(t *testing.T) {
 				if w.Index != 0 {
 					continue
 				}
-				// Held in the loop body: the decode cuts until concurrency windows are held, and no
-				// further.
 				deadline := time.Now().Add(10 * time.Second)
 				for len(files(t, dir)) < concurrency && time.Now().Before(deadline) {
 					time.Sleep(10 * time.Millisecond)
@@ -299,8 +271,6 @@ func TestWindowsHeld(t *testing.T) {
 	}
 }
 
-// TestWindowsEarlyStop: breaking out of the range after the first window stops the decode, and
-// the media directory keeps that window alone.
 func TestWindowsEarlyStop(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -316,8 +286,6 @@ func TestWindowsEarlyStop(t *testing.T) {
 		ws = append(ws, w)
 		break
 	}
-	// The paced stand-in takes 20 s to write the whole source, and 2 s to write the first window:
-	// the bound sits between them, wide of both on a loaded machine.
 	if d := time.Since(start); d > 10*time.Second {
 		t.Errorf("the loop returned after %v, not stopping the decode", d)
 	}
@@ -326,8 +294,6 @@ func TestWindowsEarlyStop(t *testing.T) {
 	}
 }
 
-// TestWindowsCancel: a context that ends while the decode runs is yielded once, after the windows
-// already cut, and the media directory keeps only those yielded.
 func TestWindowsCancel(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -354,7 +320,6 @@ func TestWindowsCancel(t *testing.T) {
 	}
 }
 
-// TestWindowsCancelledBeforeRuns: a context ended before the stream is ranged over runs nothing.
 func TestWindowsCancelledBeforeRuns(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -368,8 +333,6 @@ func TestWindowsCancelledBeforeRuns(t *testing.T) {
 	}
 }
 
-// TestWindowsFailsMidStream: a decode that fails partway yields the windows cut before it, then
-// its error, carrying ffmpeg's last line; the media directory keeps the windows yielded.
 func TestWindowsFailsMidStream(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -383,7 +346,6 @@ func TestWindowsFailsMidStream(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Cannot allocate memory") {
 		t.Errorf("err %v, want ffmpeg's", err)
 	}
-	// 25 s of the source fixes the windows whose limit it passes: 0-10 s and 9-19 s.
 	if len(ws) != 2 {
 		t.Errorf("%d windows before the error, want 2", len(ws))
 	}
@@ -392,7 +354,6 @@ func TestWindowsFailsMidStream(t *testing.T) {
 	}
 }
 
-// TestWindowsNoSamples: a decode that writes no sample is an error, with no window.
 func TestWindowsNoSamples(t *testing.T) {
 	t.Parallel()
 	s, st := standinSplitter(t)
@@ -404,8 +365,6 @@ func TestWindowsNoSamples(t *testing.T) {
 	}
 }
 
-// cutAll cuts pcm with a Cutter of req, fed in chunks next(rest) bytes long, rest the bytes left,
-// returning each piece, its PCM copied, and the plan.
 func cutAll(t *testing.T, pcm []byte, req audio.Request, next func(rest int) int) ([]audio.Piece, audio.Plan) {
 	t.Helper()
 	c, err := audio.NewCutter(req)
@@ -432,9 +391,6 @@ func cutAll(t *testing.T, pcm []byte, req audio.Request, next func(rest int) int
 	return out, c.Plan()
 }
 
-// TestCutterChunking: a Cutter's pieces are the same however the stream is chunked, each its
-// window's samples, and its plan is PlanWindows' of the stream's length and the tracker's
-// silences.
 func TestCutterChunking(t *testing.T) {
 	t.Parallel()
 	pcm := samplesOf(t, "speech-noise.wav")
@@ -476,8 +432,6 @@ func TestCutterChunking(t *testing.T) {
 	}
 }
 
-// TestCutterRefuses: a Cutter refuses its request's windowing and tracker fields, and an End after
-// End, or of a stream with no whole sample.
 func TestCutterRefuses(t *testing.T) {
 	t.Parallel()
 	for name, req := range map[string]audio.Request{
@@ -510,8 +464,6 @@ func TestCutterRefuses(t *testing.T) {
 	}
 }
 
-// TestPlanRecord: a plan's record holds its times in seconds, its silences with their thresholds,
-// and its windows by index and cut, ProbedDuration left out when it is zero.
 func TestPlanRecord(t *testing.T) {
 	t.Parallel()
 	plan := audio.Plan{
@@ -544,15 +496,12 @@ func TestPlanRecord(t *testing.T) {
 	}
 }
 
-// v090Window is one line of testdata/windows-v0.9.0.txt: a window v0.9.0 cut under
-// DetectorTracker.
 type v090Window struct {
 	window  audio.Window
 	samples int
 	sha256  string
 }
 
-// v090Windows returns testdata/windows-v0.9.0.txt's windows by fixture.
 func v090Windows(t *testing.T) map[string][]v090Window {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", "windows-v0.9.0.txt"))
@@ -582,7 +531,6 @@ func v090Windows(t *testing.T) map[string][]v090Window {
 	return out
 }
 
-// checkV090 checks that ws are v0.9.0's windows want, byte for byte.
 func checkV090(t *testing.T, ws []audio.WindowFile, want []v090Window) {
 	t.Helper()
 	if len(ws) != len(want) {
@@ -596,9 +544,6 @@ func checkV090(t *testing.T, ws []audio.WindowFile, want []v090Window) {
 	}
 }
 
-// TestWindowsMatchV090: one decode of each 16 kHz mono WAV fixture, which the stand-in decodes to
-// its own samples as ffmpeg does, cuts v0.9.0's windows under DetectorTracker, byte for byte. The
-// integration tier holds speech.flac, through the real ffmpeg, to them too.
 func TestWindowsMatchV090(t *testing.T) {
 	t.Parallel()
 	golden := v090Windows(t)

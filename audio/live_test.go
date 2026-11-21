@@ -14,8 +14,6 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// cycle is one cycle of the test signal's 500 Hz sine at full scale, 32 samples at SampleRate:
-// pcmOf's samples, by a table, for streams minutes long.
 var cycle = func() [32]float64 {
 	var c [32]float64
 	for i := range c {
@@ -24,13 +22,10 @@ var cycle = func() [32]float64 {
 	return c
 }()
 
-// signal builds a test signal of tones, each a whole number of frames, so every frame of a tone
-// has the same energy.
 type signal struct {
 	pcm []byte
 }
 
-// add appends d of the sine at amplitude amp.
 func (s *signal) add(d time.Duration, amp float64) {
 	for range int(d * audio.SampleRate / time.Second) {
 		i := len(s.pcm) / 2
@@ -39,8 +34,6 @@ func (s *signal) add(d time.Duration, amp float64) {
 	}
 }
 
-// speech appends n of speechLike's 2.05 s blocks: loud bursts with floor between them, none a
-// silence's minimum.
 func (s *signal) speech(n int) {
 	for range n {
 		for _, tn := range speechLike() {
@@ -49,13 +42,10 @@ func (s *signal) speech(n int) {
 	}
 }
 
-// at returns the signal's length.
 func (s *signal) at() time.Duration {
 	return time.Duration(len(s.pcm)/2) * time.Second / audio.SampleRate
 }
 
-// speechTo appends speech up to at, whole blocks and then a loud burst for the rest, so a pause
-// that follows begins at at, after a loud frame.
 func (s *signal) speechTo(at time.Duration) {
 	block := 2050 * time.Millisecond
 	if n := int((at - s.at()) / block); n > 0 {
@@ -66,9 +56,6 @@ func (s *signal) speechTo(at time.Duration) {
 	}
 }
 
-// randomSignal returns a test signal from r about a minute to five long: speech broken by pauses
-// at the floor, short ones near MinSilence, some a few seconds, and some longer than a window,
-// 31 to 75 s, which cross one or two limits, each followed by speech.
 func randomSignal(r *rand.Rand) []byte {
 	var s signal
 	end := time.Minute + time.Duration(r.Int64N(int64(4*time.Minute)))
@@ -88,8 +75,6 @@ func randomSignal(r *rand.Rand) []byte {
 	return s.pcm
 }
 
-// randomChunks returns chunk sizes from r: a few bytes, odd ones among them so samples split, a
-// few frames, or many.
 func randomChunks(r *rand.Rand) func(int) int {
 	return func(int) int {
 		switch r.IntN(3) {
@@ -102,8 +87,6 @@ func randomChunks(r *rand.Rand) func(int) int {
 	}
 }
 
-// checkLatency checks that each window but the last of l was returned once the stream had passed
-// its limit, and by the chunk that carried the stream to bound past it.
 func checkLatency(t *testing.T, l live, bound time.Duration) {
 	t.Helper()
 	for i, w := range l.windows[:len(l.windows)-1] {
@@ -117,13 +100,6 @@ func checkLatency(t *testing.T, l live, bound time.Duration) {
 	}
 }
 
-// TestLivePlanMatchesPlanWindows plans random test signals, from a fixed seed, as streams fed in
-// random chunks: a Tracker and a Planner given its open silence or its Position after each chunk.
-// The signals' pauses include ones longer than a window, which cross one or two limits, and ones
-// near MinSilence, some of which open at a limit. The windows are PlanWindows' over the silences
-// the tracker found, exactly; and each is returned once the stream passes its limit, and by the
-// chunk that carries it MinSilence past: a run of silent frames open across the limit, shorter so
-// far, may yet be a silence that ends the window, and is known either way by then.
 func TestLivePlanMatchesPlanWindows(t *testing.T) {
 	r := rand.New(rand.NewPCG(9, 10))
 	long, crossings := 0, 0
@@ -155,17 +131,11 @@ func TestLivePlanMatchesPlanWindows(t *testing.T) {
 			}
 		}
 	}
-	// The generator's cases are the ones the test is for.
 	if long < 10 || crossings < 20 {
 		t.Errorf("%d silences longer than a window, %d crossing a limit; want 10 and 20 at least", long, crossings)
 	}
 }
 
-// TestLivePlanLongSilence plans 25 s of speech, 70 s of floor across two limits, and 20 s of
-// speech, fed a frame at a time and in half seconds: each window whose limit is inside the
-// silence is returned with the frame or chunk that carries the stream past the limit, not when
-// the silence ends; the first ends at the silence's middle up to its limit, and the next two,
-// whose start is inside the silence, at their limits. The windows are PlanWindows'.
 func TestLivePlanLongSilence(t *testing.T) {
 	var s signal
 	s.speechTo(25 * time.Second)
@@ -198,12 +168,6 @@ func TestLivePlanLongSilence(t *testing.T) {
 	}
 }
 
-// TestLivePlanMinSilenceAtLimit plans speech with one pause near MinSilence that opens at or just
-// before the first window's limit, 30 s, fed a frame at a time. The pause is a silence when it
-// lasts MinSilence, though most of it is past the limit: the window ends at its middle up to the
-// limit, as PlanWindows says. The window is returned as soon as that is known, with the frame
-// that passes the limit, or, while the run of silent frames open across it is shorter than
-// MinSilence, once it reaches MinSilence or ends.
 func TestLivePlanMinSilenceAtLimit(t *testing.T) {
 	const limit = audio.DefaultWindowLimit
 	for _, early := range []time.Duration{0, 10, 100, 200, 290, 300, 310, 500} {
@@ -230,8 +194,6 @@ func TestLivePlanMinSilenceAtLimit(t *testing.T) {
 			if got.windows[0] != first {
 				t.Errorf("pause of %v from %v: first window %v, want %v", length, start, got.windows[0], first)
 			}
-			// The window is known with the frame past the limit, or once the run open there
-			// reaches MinSilence or its first frame of speech is decided.
 			known := max(limit+audio.FrameLength, min(start+length+audio.FrameLength, start+audio.DefaultMinSilence))
 			if got.after[0] != known {
 				t.Errorf("pause of %v from %v: first window returned at %v, want %v", length, start, got.after[0], known)

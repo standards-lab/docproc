@@ -19,8 +19,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// standinLines is the stand-in docproc-mail's output when its settings give no Stdout: a .msg's
-// store line and its message.
 const standinLines = `{"line":"store","schema":"2","format":"msg"}
 {"line":"message","class":"IPM.Note","subject":"Hello"}
 `
@@ -32,34 +30,17 @@ func TestMain(m *testing.M) {
 	})
 }
 
-// mailSettings are the stand-in docproc-mail's settings, which its link names.
 type mailSettings struct {
-	// Version is what its --version prints on its first line.
-	Version string `json:"version"`
-	// Schema, when set, is the schema its --version prints in place of 2.
-	Schema string `json:"schema"`
-	// Stdout, when not nil, is what a run writes to stdout in place of standinLines.
-	Stdout *string `json:"stdout"`
-	// Stderr is what a run writes to stderr, after its stdout.
-	Stderr string `json:"stderr"`
-	// Exit is a run's exit code.
-	Exit int `json:"exit"`
-	// Sleep makes a run sleep a minute after writing its stdout, for a test to cancel it or stop
-	// reading.
-	Sleep bool `json:"sleep"`
-	// Media names files a run writes into its --media directory, each holding its own name.
-	Media []string `json:"media"`
-	// Replay, when set, is a golden of docproc-mail's, a .jsonl file: a run writes it to stdout
-	// and the .stderr beside it to stderr, and exits with the code the .exit beside it holds, 0
-	// without one, as docproc-mail did over the fixture.
-	Replay string `json:"replay"`
+	Version string   `json:"version"`
+	Schema  string   `json:"schema"`
+	Stdout  *string  `json:"stdout"`
+	Stderr  string   `json:"stderr"`
+	Exit    int      `json:"exit"`
+	Sleep   bool     `json:"sleep"`
+	Media   []string `json:"media"`
+	Replay  string   `json:"replay"`
 }
 
-// standin is the stand-in docproc-mail. With --version alone it prints its settings' version, then
-// `schema 2`, or their Schema, as docproc-mail does. Otherwise it writes their Media into the
-// directory after --media, if any; then replays their Replay when it is set; or else writes their
-// Stdout, or standinLines, to stdout, sleeps when they say to, writes their Stderr to stderr, and
-// exits with their Exit. It reads no input.
 func standin(r tooltest.Run) int {
 	var s mailSettings
 	if err := r.Settings(&s); err != nil {
@@ -113,8 +94,6 @@ func standin(r tooltest.Run) int {
 	return s.Exit
 }
 
-// replayRun writes the golden jsonl to stdout and the .stderr beside it to stderr, and returns
-// the exit code the .exit beside it holds, 0 when there is none.
 func replayRun(jsonl string) int {
 	stem := strings.TrimSuffix(jsonl, ".jsonl")
 	stdout, err := os.ReadFile(jsonl)
@@ -144,8 +123,6 @@ func replayRun(jsonl string) int {
 	return code
 }
 
-// dockerStandin is a stand-in docker CLI enough to build a container Tool: its daemon's version,
-// every image present, and a run that prints a docproc-mail version.
 func dockerStandin(r tooltest.Run) int {
 	switch args := r.Args; {
 	case len(args) > 0 && args[0] == "version":
@@ -156,14 +133,12 @@ func dockerStandin(r tooltest.Run) int {
 	return 0
 }
 
-// mailStandin is a test's stand-in docproc-mail: its link and the settings last written to it.
 type mailStandin struct {
 	t        testing.TB
 	link     string
 	settings mailSettings
 }
 
-// installStandin links the stand-in as docproc-mail in a directory of its own, reporting version.
 func installStandin(t testing.TB, version string) *mailStandin {
 	t.Helper()
 	m := &mailStandin{t: t, settings: mailSettings{Version: version}}
@@ -171,34 +146,26 @@ func installStandin(t testing.TB, version string) *mailStandin {
 	return m
 }
 
-// spec returns MailSpec with the stand-in's link as its program.
 func (m *mailStandin) spec() tool.Spec {
 	spec := email.MailSpec()
 	spec.Program = m.link
 	return spec
 }
 
-// set changes the stand-in's settings through f.
 func (m *mailStandin) set(f func(*mailSettings)) {
 	m.t.Helper()
 	f(&m.settings)
 	tooltest.Set(m.t, m.link, m.settings)
 }
 
-// stdout sets what a run writes to stdout.
 func (m *mailStandin) stdout(s string) { m.set(func(ms *mailSettings) { ms.Stdout = &s }) }
 
-// stderr sets what a run writes to stderr.
 func (m *mailStandin) stderr(s string) { m.set(func(ms *mailSettings) { ms.Stderr = s }) }
 
-// exit sets a run's exit code.
 func (m *mailStandin) exit(code int) { m.set(func(ms *mailSettings) { ms.Exit = code }) }
 
-// sleep makes a run sleep a minute after its stdout.
 func (m *mailStandin) sleep() { m.set(func(ms *mailSettings) { ms.Sleep = true }) }
 
-// runs returns the arguments of every run of the stand-in, in order, the version commands left
-// out.
 func (m *mailStandin) runs() [][]string {
 	m.t.Helper()
 	var runs [][]string
@@ -211,8 +178,6 @@ func (m *mailStandin) runs() [][]string {
 	return runs
 }
 
-// standinReader builds a Reader over the stand-in docproc-mail at MailMinimum, built from
-// MailSpec through the exec runner, and returns it with the stand-in.
 func standinReader(t testing.TB) (*email.Reader, *mailStandin) {
 	t.Helper()
 	m := installStandin(t, email.MailMinimum)
@@ -227,8 +192,6 @@ func standinReader(t testing.TB) (*email.Reader, *mailStandin) {
 	return r, m
 }
 
-// collect ranges over seq, returning the records yielded and the error, if any, that ended
-// them.
 func collect(seq iter.Seq2[email.Record, error]) ([]email.Record, error) {
 	var recs []email.Record
 	for rec, err := range seq {

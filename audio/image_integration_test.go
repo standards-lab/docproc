@@ -11,11 +11,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestImageCapabilities checks that FFmpegImage's ffmpeg has what media asks of it: the filters
-// scdet, select, and showinfo, listed and run together over a lavfi test source, and the filters
-// of media's run, settb, metadata, scale, format, and aresample beside select, listed and the
-// frames' chain run as media runs it. The protocols and devices a live source needs are the live
-// sources' own, which stay in spike-ai-pipeline-processing at v0.9.0.
 func TestImageCapabilities(t *testing.T) {
 	ffmpeg, err := tool.NewContainer(t.Context(), "", tool.Image{Ref: audio.FFmpegImage}, audio.FFmpegSpec())
 	if err != nil {
@@ -33,7 +28,6 @@ func TestImageCapabilities(t *testing.T) {
 	}
 
 	t.Run("filters", func(t *testing.T) {
-		// A line of -filters is its flags, the filter's name, its pads, and its description.
 		have := map[string]bool{}
 		for line := range strings.Lines(list(t, "-filters")) {
 			if f := strings.Fields(line); len(f) > 1 {
@@ -45,8 +39,6 @@ func TestImageCapabilities(t *testing.T) {
 				t.Errorf("the image's ffmpeg has no %s filter", name)
 			}
 		}
-		// Ten frames of a test source through the three filters: showinfo logs each frame select
-		// passes, and select passes every frame whose scene score is at least zero.
 		var stderr bytes.Buffer
 		err := ffmpeg.Run(t.Context(), tool.Invocation{
 			Args: []string{
@@ -61,8 +53,6 @@ func TestImageCapabilities(t *testing.T) {
 		if n := strings.Count(stderr.String(), " pts_time:"); n != 10 {
 			t.Errorf("showinfo logged %d frames, want 10", n)
 		}
-		// The same ten frames through media's chain of frame filters, scaled to fit 80 pixels:
-		// metadata reports each frame select passes.
 		stderr.Reset()
 		err = ffmpeg.Run(t.Context(), tool.Invocation{
 			Args: []string{

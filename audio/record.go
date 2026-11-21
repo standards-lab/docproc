@@ -71,5 +71,4 @@ func (p Plan) Record() PlanRecord {
 	return out
 }
 
-// record returns the span in seconds.
 func (s Span) record() SpanRecord { return SpanRecord{Start: s.Start.Seconds(), End: s.End.Seconds()} }

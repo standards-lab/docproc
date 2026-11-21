@@ -50,14 +50,12 @@ type LibreOfficeOutput struct {
 	// last line that isn't blank, for an error the caller finds in the output: soffice exits zero
 	// having written nothing for an input it can't export.
 	Message string
-	// work is the run's own directory, which Remove removes.
-	work string
+	work    string
 }
 
 // Remove removes the run's directory, the output with it.
 func (o *LibreOfficeOutput) Remove() error { return os.RemoveAll(o.work) }
 
-// sofficeOutputLimit is the most of soffice's output a run keeps, for its message.
 const sofficeOutputLimit = 64 << 10
 
 // RunLibreOffice runs the Converter's soffice once, converting run's inputs as run.ConvertTo
@@ -111,8 +109,6 @@ func (c *Converter) RunLibreOffice(ctx context.Context, run LibreOfficeRun) (*Li
 	return o, nil
 }
 
-// sofficeRun copies run's inputs into o's directory, writes its profile's registry, and runs
-// soffice there, setting o's message.
 func (c *Converter) sofficeRun(ctx context.Context, run LibreOfficeRun, o *LibreOfficeOutput) error {
 	in := filepath.Join(o.work, "in")
 	if err := os.Mkdir(in, 0o700); err != nil {
@@ -152,7 +148,6 @@ func (c *Converter) sofficeRun(ctx context.Context, run LibreOfficeRun, o *Libre
 	return nil
 }
 
-// copyFile copies the file at from to a new file at to.
 func copyFile(from, to string) error {
 	in, err := os.Open(from)
 	if err != nil {
@@ -167,8 +162,6 @@ func copyFile(from, to string) error {
 	return errors.Join(err, out.Close())
 }
 
-// writeRegistry writes registry as the registrymodifications.xcu of the soffice user profile at
-// profile, before soffice first runs on it.
 func writeRegistry(profile, registry string) error {
 	user := filepath.Join(profile, "user")
 	if err := os.MkdirAll(user, 0o700); err != nil {
@@ -177,7 +170,6 @@ func writeRegistry(profile, registry string) error {
 	return os.WriteFile(filepath.Join(user, "registrymodifications.xcu"), []byte(registry), 0o600)
 }
 
-// sofficeError returns err as soffice's error, with soffice's message, msg, when it has one.
 func sofficeError(err error, msg string) error {
 	err = fmt.Errorf("picture: libreoffice: %w", err)
 	if msg != "" {
@@ -186,8 +178,6 @@ func sofficeError(err error, msg string) error {
 	return err
 }
 
-// sofficeMessage returns soffice's message in its output: the first line beginning "Error", or
-// else the last line that isn't blank.
 func sofficeMessage(out string) string {
 	last := ""
 	for line := range strings.Lines(out) {

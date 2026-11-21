@@ -16,11 +16,6 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// TestSpeechWindows cuts the speech fixtures through both runners, one decode each, and holds
-// them to v0.9.0's windows under DetectorTracker, byte for byte: speech.flac, which v0.9.0 decoded
-// once to plan and once more for each window, and the two 16 kHz WAVs. It checks each window's
-// WAV too: 16 kHz mono s16 PCM as ffprobe reads it, and its samples the source's own over its
-// span, as one decode of the whole source gives them; and that the runners write the same bytes.
 func TestSpeechWindows(t *testing.T) {
 	golden := v090Windows(t)
 	host := hostTools(t)
@@ -60,9 +55,6 @@ func TestSpeechWindows(t *testing.T) {
 	}
 }
 
-// TestTruncatedMP3 cuts speech-truncated.mp3, whose Info header counts 12 s and whose frames
-// decode to 94,511 samples: the plan ends at the samples, ffprobe's 12 s beside it as Probed, and
-// the last window ends there too, its samples the decode's last.
 func TestTruncatedMP3(t *testing.T) {
 	path, err := filepath.Abs(filepath.Join("testdata", "speech-truncated.mp3"))
 	if err != nil {
@@ -87,9 +79,6 @@ func TestTruncatedMP3(t *testing.T) {
 	}
 }
 
-// TestWindowsResample cuts a 40 s 44.1 kHz stereo AAC source, which ffmpeg makes, through the
-// exec runner, and checks that its windows are 16 kHz mono s16 PCM, each its plan's span long at
-// 16 kHz to the sample.
 func TestWindowsResample(t *testing.T) {
 	host := hostTools(t)
 	dir := t.TempDir()
@@ -121,13 +110,10 @@ func TestWindowsResample(t *testing.T) {
 	}
 }
 
-// hostFFmpeg is the host's ffmpeg and ffprobe, through the exec runner, for the tests' own
-// decoding and probing.
 type hostFFmpeg struct {
 	ffmpeg, ffprobe *tool.Tool
 }
 
-// hostTools builds the host's ffmpeg and ffprobe.
 func hostTools(t *testing.T) hostFFmpeg {
 	t.Helper()
 	ffmpeg, err := tool.NewExec(t.Context(), audio.FFmpegSpec())
@@ -141,7 +127,6 @@ func hostTools(t *testing.T) hostFFmpeg {
 	return hostFFmpeg{ffmpeg: ffmpeg, ffprobe: ffprobe}
 }
 
-// decode returns the whole of the source at path as 16 kHz mono 16-bit PCM, through ffmpeg.
 func decode(t *testing.T, ffmpeg *tool.Tool, path string) []byte {
 	t.Helper()
 	var pcm bytes.Buffer
@@ -156,7 +141,6 @@ func decode(t *testing.T, ffmpeg *tool.Tool, path string) []byte {
 	return pcm.Bytes()
 }
 
-// checkFormat checks, through ffprobe, that the WAV at path is one stream of 16 kHz mono s16 PCM.
 func checkFormat(t *testing.T, ffprobe *tool.Tool, path string) {
 	t.Helper()
 	var out bytes.Buffer

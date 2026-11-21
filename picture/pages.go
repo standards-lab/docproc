@@ -13,10 +13,6 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
-// tiffPages converts req's picture, a TIFF, to one PNG per page in dir, req's working directory,
-// as ConvertPages says: its copy is staged in a picture-* directory in dir, as ConvertBatch stages
-// a picture, which is removed however the conversion ends, and the pages written are removed when
-// it fails.
 func (c *Converter) tiffPages(ctx context.Context, dir string, req Request) ([]string, error) {
 	work, err := os.MkdirTemp(dir, "picture-*")
 	if err != nil {
@@ -36,10 +32,6 @@ func (c *Converter) tiffPages(ctx context.Context, dir string, req Request) ([]s
 	return written, nil
 }
 
-// convertPages copies req's TIFF into a directory of its own in work, has magick write each of
-// its images there as the PNG pagePattern names, in a run whose working directory is that
-// directory, so the pattern is relative and nothing in dir's path is read as one, and moves each
-// page's PNG to dir's PNG pageName names, appending each moved PNG to written.
 func (c *Converter) convertPages(ctx context.Context, dir, work string, req Request, written *[]string) error {
 	stem := req.Stem
 	s, err := stage(work, 0, Picture{Path: req.Path, Kind: route.TIFF, PNG: filepath.Join(dir, stem+".png")})
@@ -64,34 +56,21 @@ func (c *Converter) convertPages(ctx context.Context, dir, work string, req Requ
 	return nil
 }
 
-// pageArgs are magick's arguments for s, a TIFF whose PNGs' stem is stem, converted page by
-// page: every image it holds, read as TIFF whatever its content, each written to a PNG of its
-// own, named by pagePattern, which +adjoin and the pattern's %d, the image's index from 0, ask
-// for.
 func pageArgs(s staged, stem string) []string {
 	return slices.Concat([]string{"tiff:" + s.copied, "+adjoin"}, reproducible, []string{"png:" + stem + pagePattern})
 }
 
-// pagePattern follows a TIFF's stem in the name magick writes each of its pages to, in the
-// directory of the TIFF's copy: magick puts the image's index from 0 for %d. A stem holds no %,
-// so the pattern's is the only one.
+// See docs/api.md, "Running the tools".
 const pagePattern = "-%d.png"
 
-// pageOutput returns the name magick writes the page at index, from 0, of the TIFF whose stem is
-// stem to, as pagePattern says.
 func pageOutput(stem string, index int) string {
 	return stem + "-" + strconv.Itoa(index) + ".png"
 }
 
-// pageName returns the name of the PNG of page, from 1, of the TIFF whose stem is stem: the stem,
-// "-page", the page's number, and .png.
 func pageName(stem string, page int) string {
 	return stem + "-page" + strconv.Itoa(page) + ".png"
 }
 
-// countPages returns how many pages magick wrote into own, the directory of the TIFF's copy,
-// named copied, whose stem is stem: each a PNG named by pageOutput, their indexes running from 0
-// without a gap. A file of any other name, a gap, or a page that isn't a PNG is an error.
 func countPages(own, copied, stem string) (int, error) {
 	list, err := os.ReadDir(own)
 	if err != nil {

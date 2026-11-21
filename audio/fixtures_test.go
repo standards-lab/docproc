@@ -22,18 +22,13 @@ import (
 	"github.com/standards-lab/docproc/audio"
 )
 
-// The streams fixtures' truth files, which scripts/fixtures-streams.sh writes beside the fixtures
-// in testdata.
 const (
 	scenesTruth = "speech-scenes.truth.json"
 	levelsTruth = "speech-levels.truth.json"
 )
 
-// fixtureRow matches a row of the testdata README's table: the file, its bytes, and its SHA-256.
 var fixtureRow = regexp.MustCompile("^\\| `([^`]+)` \\|.*\\| (\\d+) \\| `([0-9a-f]{64})` \\|$")
 
-// TestFixtureSums holds testdata to its README's table: each file listed has the bytes and the
-// SHA-256 the table records, and every file but the README is listed.
 func TestFixtureSums(t *testing.T) {
 	readme, err := os.ReadFile(filepath.Join("testdata", "README.md"))
 	if err != nil {
@@ -75,26 +70,20 @@ func TestFixtureSums(t *testing.T) {
 	}
 }
 
-// gapTruth is an inserted gap of digital silence in a truth file, in milliseconds.
 type gapTruth struct {
 	StartMS int `json:"start_ms"`
 	EndMS   int `json:"end_ms"`
 }
 
-// span is g as an audio.Span.
 func (g gapTruth) span() audio.Span {
 	return audio.Span{Start: ms(g.StartMS), End: ms(g.EndMS)}
 }
 
-// frameTruth is a frame the sampler takes under its default policy: its reason, first, scene, or
-// interval, and its source time.
 type frameTruth struct {
 	Reason string `json:"reason"`
 	TimeMS int    `json:"time_ms"`
 }
 
-// scenesFixture is speech-scenes.truth.json: speech-scenes.mkv's video, a generated pattern, and
-// its audio, speech.flac's stream.
 type scenesFixture struct {
 	File  string `json:"file"`
 	Video struct {
@@ -123,19 +112,15 @@ type scenesFixture struct {
 	} `json:"audio"`
 }
 
-// levelsFixture is speech-levels.truth.json: the level-change variants, the same speech changed
-// at ChangeMS, and the threshold fixed from the speech before it.
 type levelsFixture struct {
-	Source        string     `json:"source"`
-	SampleRate    int        `json:"sample_rate"`
-	DurationMS    int        `json:"duration_ms"`
-	AttenuationDB float64    `json:"attenuation_db"`
-	Floor         noise      `json:"floor"`
-	Gaps          []gapTruth `json:"gaps"`
-	Transcript    []string   `json:"transcript"`
-	ChangeMS      int        `json:"change_ms"`
-	// FirstMeanVolumeDB is volumedetect's mean volume of the speech before the change, and
-	// FixedThresholdDB that less 15 dB, v0.9.0's silencedetect default.
+	Source            string     `json:"source"`
+	SampleRate        int        `json:"sample_rate"`
+	DurationMS        int        `json:"duration_ms"`
+	AttenuationDB     float64    `json:"attenuation_db"`
+	Floor             noise      `json:"floor"`
+	Gaps              []gapTruth `json:"gaps"`
+	Transcript        []string   `json:"transcript"`
+	ChangeMS          int        `json:"change_ms"`
 	FirstMeanVolumeDB float64    `json:"first_mean_volume_db"`
 	FixedThresholdDB  float64    `json:"fixed_threshold_db"`
 	MinSilenceMS      int        `json:"min_silence_ms"`
@@ -148,17 +133,14 @@ type levelsFixture struct {
 	} `json:"variants"`
 }
 
-// noise is a seeded anoisesrc in a truth file.
 type noise struct {
 	Color     string  `json:"color"`
 	Amplitude float64 `json:"amplitude"`
 	Seed      int     `json:"seed"`
 }
 
-// ms is n milliseconds.
 func ms(n int) time.Duration { return time.Duration(n) * time.Millisecond }
 
-// readTruth decodes the truth file name in testdata into v, refusing a member v doesn't name.
 func readTruth(t *testing.T, name string, v any) {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))
@@ -170,7 +152,6 @@ func readTruth(t *testing.T, name string, v any) {
 	}
 }
 
-// speechTranscript is speech.truth.txt's lines, one an utterance in speech.flac's order.
 func speechTranscript(t *testing.T) []string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", "speech.truth.txt"))
@@ -180,9 +161,6 @@ func speechTranscript(t *testing.T) []string {
 	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 }
 
-// TestScenesTruth: the scenes truth parses; its cuts are its segments' starts; its frames are the
-// sampler's default policy over those cuts, taken again here; and its audio is speech.flac's
-// gaps and transcript.
 func TestScenesTruth(t *testing.T) {
 	var f scenesFixture
 	readTruth(t, scenesTruth, &f)
@@ -205,8 +183,6 @@ func TestScenesTruth(t *testing.T) {
 		t.Errorf("cuts %v ms, segments starting at %v", v.CutsMS, starts)
 	}
 
-	// The default policy: the first frame; a frame at each cut; and the first frame at least
-	// MaxGapMS after the last one taken. A frame lasts 1000/FrameRate ms.
 	var want []frameTruth
 	step := 1000 / v.FrameRate
 	last := 0
@@ -247,16 +223,11 @@ func TestScenesTruth(t *testing.T) {
 	}
 }
 
-// speechUtterances are the durations of the speech fixture's utterances, LibriSpeech dev-clean
-// 2277-149896-0000 to 0003, in milliseconds, read twice; speechGap is the digital silence after
-// each but the last.
 var (
 	speechUtterances = []time.Duration{6590, 7145, 4835, 2840, 6590, 7145, 4835, 2840}
 	speechGap        = time.Second
 )
 
-// speechLayout returns the inserted gaps, in order, and the duration of utterances, in
-// milliseconds, read rounds times with speechGap after each but the last.
 func speechLayout(utterances []time.Duration, rounds int) (gaps []audio.Span, duration time.Duration) {
 	for r := range rounds {
 		for i, d := range utterances {
@@ -270,7 +241,6 @@ func speechLayout(utterances []time.Duration, rounds int) (gaps []audio.Span, du
 	return gaps, duration
 }
 
-// spans is gaps as a []audio.Span.
 func spans(gaps []gapTruth) []audio.Span {
 	out := make([]audio.Span, len(gaps))
 	for i, g := range gaps {
@@ -279,10 +249,6 @@ func spans(gaps []gapTruth) []audio.Span {
 	return out
 }
 
-// TestLevelsTruth: the levels truth parses; its gaps and transcript are speech.flac's first four
-// utterances read three times; its gaps after the change are those that start after it; its
-// threshold is its mean volume less 15 dB, v0.9.0's silencedetect default; and each variant is a
-// canonical 44-byte 16 kHz mono 16-bit PCM WAV of its duration.
 func TestLevelsTruth(t *testing.T) {
 	var f levelsFixture
 	readTruth(t, levelsTruth, &f)
@@ -297,7 +263,6 @@ func TestLevelsTruth(t *testing.T) {
 	if want := slices.Concat(round, round, round); !slices.Equal(f.Transcript, want) {
 		t.Errorf("transcript %q, want %q", f.Transcript, want)
 	}
-	// The threshold is fixed from the first 30 s, so the change comes at 30 s or after.
 	if f.ChangeMS < 30000 || f.ChangeMS >= f.DurationMS {
 		t.Errorf("the change at %d ms, before 30 s or past the end", f.ChangeMS)
 	}
@@ -310,7 +275,6 @@ func TestLevelsTruth(t *testing.T) {
 	if len(after) == 0 || !slices.Equal(f.GapsAfterChange, after) {
 		t.Errorf("gaps after the change %v, want %v, at least one", f.GapsAfterChange, after)
 	}
-	// The fixed threshold is v0.9.0's silencedetect default, 15 dB under the mean volume.
 	if want := f.FirstMeanVolumeDB - 15; f.FixedThresholdDB != want || f.MinSilenceMS != int(audio.DefaultMinSilence/time.Millisecond) {
 		t.Errorf("threshold %v dB, minimum silence %d ms; want %v dB, %v", f.FixedThresholdDB, f.MinSilenceMS, want, audio.DefaultMinSilence)
 	}
@@ -340,8 +304,6 @@ func TestLevelsTruth(t *testing.T) {
 	}
 }
 
-// canonicalWAV returns an error unless data is a canonical 44-byte header, PCM, mono, 16-bit, at
-// rate, before samples samples and nothing else.
 func canonicalWAV(data []byte, rate, samples int) error {
 	if len(data) < 44 {
 		return errors.New("shorter than its header")
@@ -362,8 +324,6 @@ func canonicalWAV(data []byte, rate, samples int) error {
 	return nil
 }
 
-// within reports whether s lies within one of silences, to the tracker's frame: its silences fall
-// on its 10 ms frames, and a frame that holds an utterance's first or last sample isn't silent.
 func within(s audio.Span, silences []audio.Span) bool {
 	for _, x := range silences {
 		if x.Start <= s.Start+audio.FrameLength && s.End <= x.End+audio.FrameLength {
