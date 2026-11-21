@@ -6,7 +6,7 @@ using Docproc.Ooxml.Writing;
 namespace Docproc.Ooxml;
 
 /// <summary>The CLI: one document in, its lines on stdout. Its exit codes are the envelope's
-/// (context/layers.md, "Common envelope"; tools/envelope/cases.json), and stdout and stderr take
+/// (docs/tool-contract.md, "Common envelope"; tools/envelope/cases.json), and stdout and stderr take
 /// bytes, never text, so the locale can't change them.</summary>
 internal static class Cli
 {

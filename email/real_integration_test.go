@@ -166,7 +166,7 @@ type builtSource struct {
 	filename, path, member string
 }
 
-// builtSources are the built .msg's attachments, in order, as testdata/README.md gives them.
+// builtSources are the built .msg's attachments, in order, as email/testdata/README.md gives them.
 var builtSources = []builtSource{
 	{"minutes.docx", "../office/testdata/ooxml/tables.libreoffice.docx", ""},
 	{"budget.xls", "../office/testdata/legacy/generated/formulas.libreoffice.xls", ""},

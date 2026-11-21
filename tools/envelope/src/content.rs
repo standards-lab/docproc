@@ -1,4 +1,4 @@
-//! The content rule (context/layers.md, schema "2", "The content rule"): which sentences of a
+//! The content rule (docs/tool-contract.md, schema "2", "The content rule"): which sentences of a
 //! source text a target text lacks, compared by standards alone, so that no fixture tunes it.
 //! docproc-mail compares a message's text body with the Markdown made from its HTML, and
 //! docproc-onenote an image's OCR text with its alt text; both take the rule from here, its one

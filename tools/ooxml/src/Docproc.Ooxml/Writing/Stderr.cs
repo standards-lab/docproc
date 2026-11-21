@@ -7,7 +7,7 @@ namespace Docproc.Ooxml.Writing;
 /// path.</summary>
 internal sealed record Warning(string Where, string What);
 
-/// <summary>The one stderr writer, by the envelope (context/layers.md, "Common envelope"): one
+/// <summary>The one stderr writer, by the envelope (docs/tool-contract.md, "Common envelope"): one
 /// line each, <c>docproc-ooxml: warning: &lt;where&gt;: &lt;what&gt;</c> and, for exit codes 1 to
 /// 4, <c>docproc-ooxml: error: &lt;reason&gt;</c>, written as UTF-8 whatever the locale. Its cases
 /// are tools/envelope/cases.json's.</summary>

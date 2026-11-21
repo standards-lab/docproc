@@ -47,7 +47,7 @@ internal sealed record Document(SourceFormat Format, IReadOnlyList<Block> Blocks
     public Properties? Properties { get; init; }
 }
 
-/// <summary>A package's properties, read from its three parts as XML (context/layers.md,
+/// <summary>A package's properties, read from its three parts as XML (docs/tool-contract.md,
 /// "docproc-ooxml"): each map in its part's stored order, a map with no values null.</summary>
 /// <param name="Core">The core properties (docProps/core.xml), by element name.</param>
 /// <param name="App">The extended properties (docProps/app.xml), by element name.</param>

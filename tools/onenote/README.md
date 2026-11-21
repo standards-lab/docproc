@@ -123,10 +123,10 @@ every line but the notebook line.
   gives it; its `reason`; and `encrypted: true` for a password-protected section.
 
 Ids are lowercase hyphenated GUIDs, colours `"#rrggbb"`, and times ISO 8601 UTC to the second, a
-fraction cut, not rounded. A field with no value is left out, never `null`, and so is an empty
-list. The same input gives byte-identical stdout and media, but at the three edges
-[Limits](#limits) names. The contract, field by field, is docproc's:
-[`context/layers.md`](../../context/layers.md), "The tool contract" and its "docproc-onenote"
+fraction cut, not rounded. A field with no value is left out, never `null`, and so is an empty list.
+The same input gives byte-identical stdout and media, but at the three edges [Limits](#limits)
+names. The contract, field by field, is docproc's:
+[`docs/tool-contract.md`](../../docs/tool-contract.md), the tool contract, and its "docproc-onenote"
 section. From schema `"2"` on, it grows by addition only; any other change moves the schema, and
 [`CHANGELOG.md`](CHANGELOG.md) records it.
 

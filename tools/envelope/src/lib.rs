@@ -1,4 +1,4 @@
-//! docproc-envelope: the common envelope of docproc's Rust system tools (context/layers.md,
+//! docproc-envelope: the common envelope of docproc's Rust system tools (docs/tool-contract.md,
 //! "Common envelope"), written once for every one of them.
 //!
 //! - [`Fault`] and [`run`]: why a run stopped short of exit 0, its exit code from 1 to 4, and the

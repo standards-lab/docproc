@@ -6,7 +6,7 @@ using Docproc.Ooxml.Model;
 
 namespace Docproc.Ooxml.Writing;
 
-/// <summary>docproc-ooxml's output contract, schema "2" (context/layers.md, "docproc-ooxml"): JSON
+/// <summary>docproc-ooxml's output contract, schema "2" (docs/tool-contract.md, "docproc-ooxml"): JSON
 /// Lines, one compact object per line, each line's fields spelled out in order, in snake_case, a
 /// field with no value left out. The lines come in the order they are written: the
 /// <c>document</c> line first, then for each xlsx sheet its <c>sheet</c> line and its
@@ -244,7 +244,7 @@ internal sealed class LineWriter(Stream output)
     // A medium: its kind, its file or a linked picture's target, its content type, part, and
     // program id, and its placement, the one of section, sheet, or slide its format has: the docx
     // section's index, the ordinal of the xlsx sheet's sheet line, or the pptx slide's index
-    // (context/layers.md, "docproc-ooxml").
+    // (docs/tool-contract.md, "docproc-ooxml").
     private static void WriteMedium(Utf8JsonWriter json, Media medium)
     {
         json.WriteStartObject();

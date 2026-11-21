@@ -78,7 +78,7 @@ Markdown fragments are the whole rendering.
 
 A field with no value is left out, never `null`. The same input gives byte-identical stdout and
 media. The contract, field by field, is docproc's:
-[`context/layers.md`](../../context/layers.md), "The tool contract" and its "docproc-ooxml"
+[`docs/tool-contract.md`](../../docs/tool-contract.md), the tool contract, and its "docproc-ooxml"
 section. From schema `"2"` on, it grows by addition only; any other change moves the schema, and
 [`CHANGELOG.md`](CHANGELOG.md) records it.
 

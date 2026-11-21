@@ -13,6 +13,10 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 - [`postgres/README.md`](postgres/README.md): docproc/postgres, the index over sqlate on
   PostgreSQL, a nested module on its own tags.
 - [`context/README.md`](context/README.md): the working context.
+- [`docs/layers.md`](docs/layers.md): docproc's boundaries as signatures and schemas and the pages
+  holding its built work's reasoning, the tool contract
+  ([`docs/tool-contract.md`](docs/tool-contract.md)) and the design review
+  ([`docs/design-review.md`](docs/design-review.md)) among them.
 - [`STANDARDS.md`](STANDARDS.md): the judgement calls the standards-reviewer applies.
 - [`tools/ooxml/README.md`](tools/ooxml/README.md): docproc-ooxml, its tasks run from
   `tools/ooxml`.

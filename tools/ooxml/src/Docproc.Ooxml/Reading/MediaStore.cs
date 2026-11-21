@@ -35,7 +35,7 @@ internal sealed class MediaStore
         return parts[part.Uri] = (name, part.ContentType);
     }
 
-    /// <summary>A payload's media name, by the envelope (context/layers.md, "Common envelope"):
+    /// <summary>A payload's media name, by the envelope (docs/tool-contract.md, "Common envelope"):
     /// the lowercase hex SHA-256 of its bytes, then <c>.</c> and the stored name's extension, as
     /// stored, when that is 1 to 8 ASCII letters and digits. Its cases are
     /// tools/envelope/cases.json's.</summary>
@@ -79,7 +79,7 @@ internal sealed class MediaStore
     /// by id, its bytes added as stored, with no location, which the caller gives; null when the
     /// relationship is neither, a linked object's among them, which has no part to write. Only the
     /// part's own embedded-package and embedded-object relationships are followed, so a chart's
-    /// source workbook, its chart part's, is never one (context/design.md, OX-5).</summary>
+    /// source workbook, its chart part's, is never one (docs/design-review.md, OX-5).</summary>
     public Media? Payload(OpenXmlPart part, string relationshipId, string? progId)
     {
         if (!part.TryGetPartById(relationshipId, out var target))

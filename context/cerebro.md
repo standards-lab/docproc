@@ -54,9 +54,10 @@ The `Client` has one method per Command and Query, each taking a `context.Contex
   the job queued; a larger one goes through the upload, any replica taking any chunk, `GetUpload`
   giving the offset to resume from. Either way the input is durable past the work queue's
   `MaxDeliver` deliveries: `dispatch.Input`'s `Reader` is blob storage's and its `SHA256` the
-  declared one, checked once by the dispatcher's spool (`layers.md`, "Input from a stream, or a
-  path"); a mismatch fails the job at once. `Submit`'s `ID` makes a retried Submit return the first
-  one's job. The upload's shape graduates to go-web-sdk (`chunked-upload-graduation`).
+  declared one, checked once by the dispatcher's spool ([`docs/api.md`](../docs/api.md), "Input from
+  a stream, or a path"); a mismatch fails the job at once. `Submit`'s `ID` makes a retried Submit
+  return the first one's job. The upload's shape graduates to go-web-sdk
+  (`chunked-upload-graduation`).
 - **A job** is one input, the unit of retry (data-intelligence.md, "Distribution"), its ID a UUIDv7.
   The replica running it extends its work-queue delivery while it runs, runs `job.Runner.Run` with
   `docinfer.Options.Final` set on the last delivery, and on a redelivery resumes a store from its
@@ -93,19 +94,20 @@ JetStream        CEREBRO_WORK                cerebro.work: work-queue retention,
                                              stream
 ```
 
-The host sweeps content by age (`layers.md`, "Content"). Each job's events go on one subject of its
-own, so the job has a gap-free sequence the sequence check guards; the subjects share one stream, so
-~/docs' 592 jobs make no streams to reap. `standards-lab/context/messaging.md`'s conventions govern
-committed mutations, not a job's progress stream. The browser never subscribes: Athena relays its
-own stream (data-intelligence.md, "Browser"). The names and retentions are the `state` task's.
+The host sweeps content by age ([`docs/api.md`](../docs/api.md), "Content"). Each job's events go on
+one subject of its own, so the job has a gap-free sequence the sequence check guards; the subjects
+share one stream, so ~/docs' 592 jobs make no streams to reap.
+`standards-lab/context/messaging.md`'s conventions govern committed mutations, not a job's progress
+stream. The browser never subscribes: Athena relays its own stream (data-intelligence.md,
+"Browser"). The names and retentions are the `state` task's.
 
 ## Events
 
 Each event is a CloudEvents 1.0 event in binary mode: `source` is `cerebro`, `id` a UUIDv7,
 `subject` the job's ID, and `Nats-Msg-Id` de-duplicates a retried append; consumers de-duplicate on
 `source` and `id`. Cerebro's `messaging.go` defines each type with go-core's `event.Define[T]`
-(`layers.md`, "Event shapes"); `dataschema` names the payload's producing package's `Version`, its
-exact form the `events` task's.
+([`docs/api.md`](../docs/api.md), "Event shapes"); `dataschema` names the payload's producing
+package's `Version`, its exact form the `events` task's.
 
 ```text
 type                            data                                          whose
@@ -162,8 +164,9 @@ dimensions.
 ## Open questions
 
 - **Live sources.** processing's `media.Streamer` reads a URL source (srt, rtmp, http, udp) as it
-  arrives, a surface that stays in the spike until an owner is named (`design.md`, decision 14).
-  Whether a live source is a job, and through which Command, is the `protocol` task's.
+  arrives, a surface that stays in the spike until an owner is named
+  ([`docs/design-review.md`](../docs/design-review.md), decision 14). Whether a live source is a
+  job, and through which Command, is the `protocol` task's.
 - **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
   default the `protocol` task picks.
 - **A dead last delivery**: whether a `MaxDeliver` advisory's handler or a sweep of running jobs

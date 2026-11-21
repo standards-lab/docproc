@@ -29,8 +29,8 @@ the tools part to the system tools under `tools/`.
   module pins no tier; `storage` sits above go-storage's, and `postgres`, over sqlate, above none.
 - `architecture/principles/independent-releases.md`: the base module, `storage`, `postgres`,
   `cmd/docproc`, and each tool release on their own tags, with no umbrella version.
-- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and, while in
-  flight, `context/layers.md` and `context/design.md` are the homes, each contract stated once, on
+- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and the `docs/`
+  pages are the homes, the tool contract on `docs/tool-contract.md`, each contract stated once, on
   its symbol.
 - `architecture/standards/go-elemental/principles/dependencies.md`: the bottom-up line and no
   provider in a base, across the base, `storage`, `postgres`, and `cmd/docproc` `go.mod` files.

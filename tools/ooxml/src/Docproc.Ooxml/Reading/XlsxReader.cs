@@ -15,7 +15,7 @@ namespace Docproc.Ooxml.Reading;
 /// charts and pictures, then its embedded packages and OLE objects; and the package's
 /// properties.</summary>
 /// <remarks>Each worksheet part is read twice, forward-only, and never held whole
-/// (context/design.md, OX-2). <see cref="Validate"/> reads every sheet once and writes nothing:
+/// (docs/design-review.md, OX-2). <see cref="Validate"/> reads every sheet once and writes nothing:
 /// it finds whatever would refuse the workbook, and collects what the sheet's lines need before
 /// its rows, its used columns, shared-formula anchors, merges, and hyperlinks, and its drawings,
 /// objects, and their media. <see cref="XlsxWorkbook.Rows"/> reads a sheet a second time, giving its rows as they
@@ -479,7 +479,7 @@ internal static partial class XlsxReader
 /// <summary>A number format code's date and time parts, from its tokens outside quoted text,
 /// escaped and skipped characters, and brackets (colors, conditions, locales). A format with an
 /// elapsed-time bracket, [h], [m], or [s], has neither: its value is a duration, which can pass a
-/// day, so it stays a number, as stored (context/design.md, OX-17).</summary>
+/// day, so it stays a number, as stored (docs/design-review.md, OX-17).</summary>
 internal static class DateFormat
 {
     public static (bool Date, bool Time) Parts(string code)

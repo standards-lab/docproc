@@ -4,7 +4,7 @@ using Docproc.Ooxml.Writing;
 namespace Docproc.Ooxml.Reading;
 
 /// <summary>The kinds of content docproc-ooxml doesn't read, each warned of once, where the
-/// document first holds one (context/design.md, OX-11): text boxes, equations, SmartArt, pptx
+/// document first holds one (docs/design-review.md, OX-11): text boxes, equations, SmartArt, pptx
 /// comments, and xlsx notes, such as <c>slide 4: comments not read</c>. Reading them is
 /// backlog.</summary>
 internal sealed class UnreadKinds(List<Warning> warnings)
