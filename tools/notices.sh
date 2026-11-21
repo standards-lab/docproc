@@ -1,33 +1,15 @@
 #!/usr/bin/env bash
 # notices writes the third-party notices for one system tool's release binary, for one runtime
 # identifier, to stdout: every package the binary is built from, at the version the tool's lock
-# file pins, with its license. pack.sh writes it into each release archive, and docproc's root
-# check runs it for every tool so a package it can't give a notice for fails the check, not the
-# release. It reads no network and writes nothing.
-#
-# A .NET tool (a .slnx) gets every NuGet package the binary links and the .NET runtime NativeAOT
-# compiles into it, with the runtime's license, followed once each by the third-party notices
-# those packages bundle. This script carries one license text for it, MIT's, and refuses a package
-# under any other license: a new license is a reviewed change to this script. It reads the tool's
-# restored package graph and the NuGet packages folder, so it runs after the tool's check or
-# publish has restored.
-#
-# A Rust tool (a Cargo.toml) gets every crate cargo-about, pinned in the tool's mise.toml, walks
-# in the tool's locked graph for the runtime identifier's musl target, followed by each license
-# text once with the crates it covers. cargo-about checks each crate's license against the
-# accepted list in the tool's about.toml, and a license outside it fails the script: a new license
-# is a reviewed change to that file. It reads the crates from Cargo's registry cache, offline, so
-# it runs after the tool's check or publish has fetched them. tools/notices-rust.txt follows: the
-# notices of the Rust standard library and musl libc, which every Rust tool's binary links, the
-# tool's pinned Rust version and the target written into it.
-#
-# A tool with a committed supplement, tools/<format>/notices.txt, has it appended last, verbatim:
-# the notices cargo-about or the NuGet packages can't give, such as code ported into the tool or
-# where an MPL-2.0 crate's source is.
+# file pins, with its license, then the tool's committed supplement, tools/<format>/notices.txt,
+# when it has one. It fails on a package it can't give a notice for. pack.sh writes it into each
+# release archive, and docproc's root check runs it for every tool. It reads no network and writes
+# nothing; it runs after the tool's check or publish has restored its packages.
 #
 # usage: tools/notices.sh <format> <rid>
 #   format  the tool's directory under tools/, such as ooxml
 #   rid     linux-x64 or linux-arm64
+# See docs/tool-builds.md
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -64,7 +46,6 @@ rule() {
 	printf '%80s\n' '' | tr ' ' '='
 }
 
-# supplement prints the tool's committed supplement, when it has one, after a blank line.
 supplement() {
 	if [ -f "$tool/notices.txt" ]; then
 		echo
@@ -72,44 +53,33 @@ supplement() {
 	fi
 }
 
-if [ "$kind" = cargo ]; then
+musl_target() {
 	case "$rid" in
-		linux-x64) target=x86_64-unknown-linux-musl ;;
-		linux-arm64) target=aarch64-unknown-linux-musl ;;
+		linux-x64) echo x86_64-unknown-linux-musl ;;
+		linux-arm64) echo aarch64-unknown-linux-musl ;;
 	esac
-	# cargo-about runs in the tool's mise environment, its pinned Rust's cargo ahead of a host
-	# cargo, as the tool's own tasks run it. Its `cargo metadata` reads every crate in Cargo.lock,
-	# on every platform, so `cargo fetch --locked` first downloads any the tool's build didn't (a
-	# no-op once they're in the cache, as cargo test is). --frozen then keeps Cargo.lock as it is
-	# and reads no network, and --fail fails on a license it can't read or the accepted list can't
-	# satisfy. The inner script is single-quoted so that $CARGO_HOME expands in mise's environment,
-	# not this one.
-	# shellcheck disable=SC2016
-	about=$(mise -C "$tool" exec -- bash -c '
+}
+
+cargo_about_report() {
+	# shellcheck disable=SC2016 # $CARGO_HOME expands in mise's environment, not this one
+	mise -C "$tool" exec -- bash -c '
 		export PATH="$CARGO_HOME/bin:$PATH"
 		cargo fetch --locked --quiet >&2 &&
 			cargo-about --color never generate --format json --frozen --fail --target "$1"
-	' bash "$target") || fail "cargo-about refused $tool's crates for $target"
-	# The pinned Rust's version, the one the release binary is built by, its std and musl linked.
-	# shellcheck disable=SC2016
-	rust=$(mise -C "$tool" exec -- bash -c '
+	' bash "$1"
+}
+
+pinned_rust_version() {
+	local version
+	# shellcheck disable=SC2016 # $CARGO_HOME expands in mise's environment, not this one
+	version=$(mise -C "$tool" exec -- bash -c '
 		export PATH="$CARGO_HOME/bin:$PATH"
 		rustc --version
-	') || fail "$tool's pinned rustc did not run"
-	rust=$(cut -d' ' -f2 <<<"$rust")
+	') || return
+	cut -d' ' -f2 <<<"$version"
+}
 
-	echo "Third-party notices for $binary, $rid"
-	echo
-	echo "$binary is built from the crates below, at the versions its Cargo.lock pins: the normal"
-	echo "dependency graph for $target, proc macros and their dependencies included,"
-	echo "though they run only at build time. Each entry gives the licenses its notice is given"
-	echo "under, chosen from the crate's license expression; the license texts follow, each with"
-	echo "the crates it covers. The notices of the Rust standard library and musl libc, which the"
-	echo "binary also links, follow them."
-	echo
-	# Each crate's chosen licenses are the texts that name it. A license text cargo-about made up
-	# from the license's template, for a crate that ships none, is given once per crate, under
-	# its authors' copyright in place of the template's placeholder.
+crates_and_licenses() {
 	jq -r '
 		def crate: "\(.name) \(.version)";
 		def rule: "=" * 80;
@@ -129,40 +99,44 @@ if [ "$kind" = cargo ]; then
 				($text | sub("Copyright \\(c\\) <year> <copyright holders>";
 					"Copyright (c) \($owner)"))
 			end)
-	' <<<"$about" || fail "cargo-about's report for $tool could not be read"
+	'
+}
+
+rust_notices() {
+	local target about rust
+	target=$(musl_target)
+	about=$(cargo_about_report "$target") || fail "cargo-about refused $tool's crates for $target"
+	rust=$(pinned_rust_version) || fail "$tool's pinned rustc did not run"
+
+	echo "Third-party notices for $binary, $rid"
+	echo
+	echo "$binary is built from the crates below, at the versions its Cargo.lock pins: the normal"
+	echo "dependency graph for $target, proc macros and their dependencies included,"
+	echo "though they run only at build time. Each entry gives the licenses its notice is given"
+	echo "under, chosen from the crate's license expression; the license texts follow, each with"
+	echo "the crates it covers. The notices of the Rust standard library and musl libc, which the"
+	echo "binary also links, follow them."
+	echo
+	crates_and_licenses <<<"$about" || fail "cargo-about's report for $tool could not be read"
 	echo
 	sed -e "s/@RUST_VERSION@/$rust/g" -e "s/@TARGET@/$target/g" tools/notices-rust.txt
 	supplement
-	exit 0
-fi
+}
 
-# The release binary is built from the projects under src/; the tests' packages are never linked.
-locks=("$tool"/src/*/packages.lock.json)
-assets=("$tool"/src/*/obj/project.assets.json)
-[ -e "${locks[0]}" ] || fail "$tool/src has no packages.lock.json"
-[ -e "${assets[0]}" ] || fail "$tool is not restored: run its check or publish first"
+linked_packages() {
+	jq -r --arg rid "$rid" --arg ilc "runtime.$rid.Microsoft.DotNet.ILCompiler" '
+		["Microsoft.DotNet.ILCompiler", "Microsoft.NET.ILLink.Tasks", $ilc] as $toolchain |
+		.dependencies | to_entries[] |
+		select((.key | test("^net[0-9.]+$")) or (.key | endswith("/" + $rid))) | .value |
+		to_entries[] | select(.key as $id | $toolchain | index($id) | not) |
+		"\(.key) \(.value.resolved)"' "${locks[@]}" | sort -u
+}
 
-# Each linked package as "<id> <version>", from the lock file's framework-wide section and its
-# section for this runtime identifier. The NativeAOT toolchain's packages are left out: the
-# compiler and the trimmer run at build time and link nothing of their own, and what the binary
-# links of .NET is the NativeAOT runtime pack's, given below as the runtime's entry.
-packages=$(jq -r --arg rid "$rid" --arg ilc "runtime.$rid.Microsoft.DotNet.ILCompiler" '
-	["Microsoft.DotNet.ILCompiler", "Microsoft.NET.ILLink.Tasks", $ilc] as $toolchain |
-	.dependencies | to_entries[] |
-	select((.key | test("^net[0-9.]+$")) or (.key | endswith("/" + $rid))) | .value |
-	to_entries[] | select(.key as $id | $toolchain | index($id) | not) |
-	"\(.key) \(.value.resolved)"' "${locks[@]}" | sort -u)
+runtime_pack_version() {
+	jq -r --arg id "$runtime_id" '.project.frameworks[].downloadDependencies[] |
+		select(.name == $id) | .version | ltrimstr("[") | split(",")[0]' "${assets[@]}" | sort -u
+}
 
-# The NativeAOT runtime pack the restore downloaded for this runtime identifier, one version.
-runtime_id=Microsoft.NETCore.App.Runtime.NativeAOT.$rid
-runtime_version=$(jq -r --arg id "$runtime_id" '.project.frameworks[].downloadDependencies[] |
-	select(.name == $id) | .version | ltrimstr("[") | split(",")[0]' "${assets[@]}" | sort -u)
-[ -n "$runtime_version" ] || fail "$tool's restore downloaded no $runtime_id"
-[ "$(wc -l <<<"$runtime_version")" -eq 1 ] || fail "$tool's projects restore more than one $runtime_id"
-
-folder=$(jq -r '.packageFolders | keys[0]' "${assets[0]}")
-
-# package_dir prints a restored package's directory in the packages folder.
 package_dir() {
 	local dir
 	dir="$folder/${1,,}/${2,,}"
@@ -170,7 +144,6 @@ package_dir() {
 	echo "$dir"
 }
 
-# nuspec prints one element's text from a package's nuspec, its XML entities decoded.
 nuspec() {
 	local dir=$1 id=$2 element=$3
 	sed -n "s|.*<${element}[^>]*>\\([^<]*\\)</${element}>.*|\\1|p" "$dir/${id,,}.nuspec" | head -n 1 |
@@ -199,21 +172,33 @@ SOFTWARE.
 EOF
 }
 
-# The bundled third-party notices, each distinct text once: its file, by SHA-256, and the packages
-# that bundle it, in first-seen order.
 declare -A bundled_file bundled_by
 bundled_order=()
 
-# entry prints one package's notice: its name, version, license, project, and copyright, then its
-# own license file, or MIT's text under its copyright when the package ships none. It records the
-# third-party notices the package bundles for the end.
+record_bundled_notices() {
+	local dir=$1 id=$2 version=$3 file sum
+	while read -r file; do
+		if [ -z "$file" ]; then
+			continue
+		fi
+		sum=$(sha256sum "$file" | cut -d' ' -f1) || return
+		if [ -z "${bundled_file[$sum]:-}" ]; then
+			bundled_file[$sum]=$file
+			bundled_by[$sum]="$id $version"
+			bundled_order+=("$sum")
+		else
+			bundled_by[$sum]+=", $id $version"
+		fi
+	done < <(find "$dir" -maxdepth 1 -type f -iname 'third-party-notices*' | sort)
+}
+
 entry() {
-	local title=$1 id=$2 version=$3 dir license project copyright file sum
-	dir=$(package_dir "$id" "$version")
-	license=$(nuspec "$dir" "$id" license)
+	local title=$1 id=$2 version=$3 dir license project copyright file
+	dir=$(package_dir "$id" "$version") || return
+	license=$(nuspec "$dir" "$id" license) || return
 	[ "$license" = MIT ] || fail "$id $version is licensed '${license:-by a file}', not MIT"
-	project=$(nuspec "$dir" "$id" projectUrl)
-	copyright=$(nuspec "$dir" "$id" copyright)
+	project=$(nuspec "$dir" "$id" projectUrl) || return
+	copyright=$(nuspec "$dir" "$id" copyright) || return
 
 	rule
 	echo "$title"
@@ -221,7 +206,7 @@ entry() {
 	[ -z "$project" ] || echo "Project: $project"
 	[ -z "$copyright" ] || echo "Copyright: $copyright"
 	echo
-	file=$(find "$dir" -maxdepth 1 -type f -iname 'license*' | sort | head -n 1)
+	file=$(find "$dir" -maxdepth 1 -type f -iname 'license*' | sort | head -n 1) || return
 	if [ -n "$file" ]; then
 		cat "$file"
 	else
@@ -233,37 +218,47 @@ entry() {
 	fi
 	echo
 
-	while read -r file; do
-		[ -n "$file" ] || continue
-		sum=$(sha256sum "$file" | cut -d' ' -f1)
-		if [ -z "${bundled_file[$sum]:-}" ]; then
-			bundled_file[$sum]=$file
-			bundled_by[$sum]="$id $version"
-			bundled_order+=("$sum")
-		else
-			bundled_by[$sum]+=", $id $version"
-		fi
-	done < <(find "$dir" -maxdepth 1 -type f -iname 'third-party-notices*' | sort)
+	record_bundled_notices "$dir" "$id" "$version"
 }
 
-echo "Third-party notices for $binary, $rid"
-echo
-echo "$binary links the NuGet packages below, at the versions its lock file pins, and the .NET"
-echo "runtime NativeAOT compiles into it. Each entry gives its license; the third-party notices"
-echo "those packages bundle follow the entries."
-echo
-while read -r id version; do
-	[ -n "$id" ] || continue
-	entry "$id $version" "$id" "$version"
-done <<<"$packages"
-entry ".NET runtime $runtime_version (the NativeAOT runtime pack, $runtime_id)" \
-	"$runtime_id" "$runtime_version"
+dotnet_notices() {
+	local packages runtime_version id version sum
+	locks=("$tool"/src/*/packages.lock.json)
+	assets=("$tool"/src/*/obj/project.assets.json)
+	[ -e "${locks[0]}" ] || fail "$tool/src has no packages.lock.json"
+	[ -e "${assets[0]}" ] || fail "$tool is not restored: run its check or publish first"
 
-for sum in "${bundled_order[@]}"; do
-	rule
-	echo "Third-party notices bundled with ${bundled_by[$sum]}"
+	packages=$(linked_packages) || return
+	runtime_id=Microsoft.NETCore.App.Runtime.NativeAOT.$rid
+	runtime_version=$(runtime_pack_version) || return
+	[ -n "$runtime_version" ] || fail "$tool's restore downloaded no $runtime_id"
+	[ "$(wc -l <<<"$runtime_version")" -eq 1 ] || fail "$tool's projects restore more than one $runtime_id"
+	folder=$(jq -r '.packageFolders | keys[0]' "${assets[0]}") || return
+
+	echo "Third-party notices for $binary, $rid"
 	echo
-	cat "${bundled_file[$sum]}"
+	echo "$binary links the NuGet packages below, at the versions its lock file pins, and the .NET"
+	echo "runtime NativeAOT compiles into it. Each entry gives its license; the third-party notices"
+	echo "those packages bundle follow the entries."
 	echo
-done
-supplement
+	while read -r id version; do
+		if [ -n "$id" ]; then entry "$id $version" "$id" "$version"; fi
+	done <<<"$packages"
+	entry ".NET runtime $runtime_version (the NativeAOT runtime pack, $runtime_id)" \
+		"$runtime_id" "$runtime_version"
+
+	for sum in "${bundled_order[@]}"; do
+		rule
+		echo "Third-party notices bundled with ${bundled_by[$sum]}"
+		echo
+		cat "${bundled_file[$sum]}"
+		echo
+	done
+	supplement
+}
+
+if [ "$kind" = cargo ]; then
+	rust_notices
+else
+	dotnet_notices
+fi

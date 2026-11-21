@@ -1,6 +1,5 @@
-# The generated fixtures' tools, loaded only with MISE_ENV=fixtures, so neither the check nor CI
-# installs .NET: `MISE_ENV=fixtures mise run fixtures` regenerates tests/fixtures/generated/ from
-# its .eml and item sources. The check never runs it; it reads the committed outputs.
+# docproc-mail's fixture generator's toolchain, loaded only with MISE_ENV=fixtures.
+# See docs/tool-builds.md
 [tools]
 dotnet = "11.0.100"
 
@@ -10,8 +9,6 @@ DOTNET_NOLOGO = "1"
 
 [tasks.fixtures]
 description = "Regenerate the generated .pst and .msg fixtures and their manifest from the .eml and item sources, reporting any drift from the committed ones; the check never runs it"
-# From generator/, so its global.json pins the SDK. A task's shell keeps the caller's PATH order, so
-# the pinned SDK's directory, mise's DOTNET_ROOT, goes first, ahead of any host dotnet.
 dir = "{{config_root}}/generator"
 run = '''
 set -eu

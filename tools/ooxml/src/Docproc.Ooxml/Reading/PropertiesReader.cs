@@ -8,7 +8,7 @@ using Docproc.Ooxml.Writing;
 namespace Docproc.Ooxml.Reading;
 
 /// <summary>Reads a package's core, extended, and custom properties by the reading rule
-/// (context/layers.md, "docproc-ooxml"; context/design.md, OX-13): each part as XML, never
+/// (docs/tool-contract.md, "docproc-ooxml"; docs/design-review.md, OX-13): each part as XML, never
 /// through the SDK's typed properties, which parse core dates and hide the stored text. A core
 /// value is a string as stored, dates included; an extended value is a number when it is all
 /// digits, else a string; a custom value takes its variant's type, a file time as its stored

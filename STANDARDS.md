@@ -29,9 +29,17 @@ the tools part to the system tools under `tools/`.
   module pins no tier; `storage` sits above go-storage's, and `postgres`, over sqlate, above none.
 - `architecture/principles/independent-releases.md`: the base module, `storage`, `postgres`,
   `cmd/docproc`, and each tool release on their own tags, with no umbrella version.
-- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and, while in
-  flight, `context/layers.md` and `context/design.md` are the homes, each contract stated once, on
-  its symbol.
+- `architecture/principles/context-architecture.md`: the README, each `doc.go`, and the `docs/`
+  pages are the homes, the tool contract on `docs/tool-contract.md`, each contract stated once, on
+  its symbol; the configuration's reasoning lives on `docs/development.md`, `docs/ci.md`, and
+  `docs/tool-builds.md`.
+- `architecture/principles/comments.md`: every comment is one of the five kinds, in source, tests,
+  scripts, SQL, and every configuration file (TOML, YAML, `.gitignore`, `.gitattributes`,
+  Dockerfiles, compose, MSBuild, `go.mod`, `go.work`); a configuration file's header is at most a
+  short description plus `See` lines. A doc comment on an unexported identifier or a test function
+  is not package documentation. A SQL file's header is its package documentation, and in sqlate's
+  format also its template metadata. Each `.golangci.yml` enables nolintlint with
+  `require-explanation` and `require-specific`.
 - `architecture/standards/go-elemental/principles/dependencies.md`: the bottom-up line and no
   provider in a base, across the base, `storage`, `postgres`, and `cmd/docproc` `go.mod` files.
 - `architecture/standards/go-elemental/principles/baseline-standards.md`: the library ships no
@@ -87,7 +95,9 @@ the tools part to the system tools under `tools/`.
   and current, a hold or an exact pin carrying a comment naming why.
 - A tool is used like any system tool: its contract, schema "2"'s lines and the Markdown inside
   them, is versioned with its tags, and a change to it is a CHANGELOG entry.
-- Nothing is suppressed to quiet a NativeAOT or trim warning, and no clippy lint is allowed,
-  without a comment naming why it is safe.
+- `architecture/principles/comments.md`: each Rust crate denies clippy's
+  `allow_attributes_without_reason`, so no clippy lint is allowed without a reason naming why it is
+  safe; in C#, nothing is suppressed to quiet a NativeAOT or trim warning without a comment naming
+  why it is safe, which the reviewer judges.
 - A gap in a dependency is filled in our own code, owned and tested; an upstream repository is
   never engaged unless something is legitimately broken, and then only to report it.

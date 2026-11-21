@@ -3,7 +3,7 @@ using Docproc.Ooxml.Reading;
 namespace Docproc.Ooxml.Tests;
 
 // The xlsx reader's text and number formats, independent of a package: SpreadsheetML's _xHHHH_
-// escapes and the elapsed-time formats (context/design.md, OX-17 and OX-18).
+// escapes and the elapsed-time formats (docs/design-review.md, OX-17 and OX-18).
 public sealed class XlsxStringTests
 {
     [Theory]

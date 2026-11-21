@@ -1,44 +1,27 @@
-# golangci-lint v2 configuration, run per module by `mise run check`.
+# golangci-lint v2 configuration for the base module, run by `mise run check`.
+# See docs/development.md
+# See architecture/principles/comments.md
 version: "2"
 
-# The integration tier's files, under the integration build tag, are linted with the unit tier's:
-# a file of either tier builds under the tag, so one run covers both.
 run:
   build-tags:
     - integration
 
 linters:
-  # The standard set (errcheck, govet, ineffassign, staticcheck, unused),
-  # plus depguard, which holds the module to its allowed imports, and
-  # testpackage, which keeps tests black-box. Its skip regexp is
-  # narrowed to export_test.go: tests live in <pkg>_test and drive the
-  # exported API, and the one white-box file allowed is export_test.go.
-  # allow-packages is narrowed from its default, main, so a command's tests
-  # are black-box too, in main_test. It names only the empty package name,
-  # which no package has: an empty list leaves the default, main, in force.
   default: standard
   enable:
     - depguard
+    - nolintlint
     - testpackage
   settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     testpackage:
       skip-regexp: export_test\.go
       allow-packages: [""]
     depguard:
       rules:
-        # The module depends on nothing but the standard library (unsafe
-        # among it, which waitid in tool/exec.go uses) and golang.org/x/text's
-        # packages, which the text stage decodes through (stages/text.go),
-        # so no package imports a model client. The rule covers
-        # every Go file, tests included: they drive the API with the same
-        # imports plus the module itself. Allow entries match by prefix
-        # unless they end in `$`, so the module's entries are anchored: the
-        # module as itself or a package under it (not a sibling like
-        # docproc-extra). The longest match wins, so the deny entries keep
-        # the storage, postgres, and cmd/docproc modules, which require the
-        # base, out of it despite its prefix; each carries its own
-        # .golangci.yml, which golangci-lint takes as the nearest to the
-        # directory it runs in.
         module:
           list-mode: strict
           files:

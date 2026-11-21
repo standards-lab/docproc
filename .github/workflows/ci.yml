@@ -1,16 +1,5 @@
-# CI runs on every pull request into main, every push to main, and on demand. Each system tool's
-# check runs once per runner, natively on x64 and arm64, followed by its third-party notices, but
-# only when the tool's directory or the wiring every tool shares changed; the Go job runs the
-# root's check:go on both runners only when what the Go modules build or read changed; the lint
-# job runs the root's lint, shellcheck and actionlint and the release workflow's tag-routing test,
-# only when a script, a workflow, or the root mise.toml changed; the integration job runs the
-# provider modules' live tiers against the compose harness, on a push to main when what they build
-# or run against changed and on demand, never on a pull request. The `ci` job always runs last and
-# is the one check docproc's `main` ruleset requires: it fails when any job it needs failed or was
-# cancelled, and passes when they succeeded or were skipped, by their paths or, the integration
-# job, by a pull request, so a skipped job never blocks a merge. Actions are pinned by their exact
-# release tag, which `mise run currency` compares with each action's latest release. A newer run
-# on the same ref cancels the one it supersedes.
+# CI: each system tool's check, the Go modules' check:go, the lint, and the providers' live tiers.
+# See docs/ci.md
 name: CI
 
 on:
@@ -27,8 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-# The root mise.toml's 7zz is the integration tier's, which runs on the developer's machine alone,
-# so no job installs it, through mise-action or a task's auto-install.
 env:
   MISE_DISABLE_TOOLS: github:ip7z/7zip
 
@@ -41,18 +28,10 @@ jobs:
     outputs:
       tools: ${{ steps.tools.outputs.changes }}
       go: ${{ steps.go.outputs.go }}
-      lint: ${{ steps.lint.outputs.lint }}
       integration: ${{ steps.integration.outputs.integration }}
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # One filter per tool, named as its directory under tools/, so the filters that match are
-      # the matrix's tools. Each begins with the wiring every tool shares, anchored on the first:
-      # this workflow, the root mise.toml its check loads, and tools/'s scripts and envelope table.
-      # A Rust tool's adds the Rust tools' shared files, anchored on the first Rust tool: the shared
-      # envelope crate's directory, which each Rust tool's check tests against its own lock, and
-      # the standard library's and musl's notices every Rust tool's notices end with. So a change
-      # to either runs every Rust tool, and no .NET one.
       - id: tools
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -69,13 +48,6 @@ jobs:
               - *envelope
               - 'tools/onenote/**'
 
-      # What the Go modules build or read: their sources, go.mod and go.sum files (the storage,
-      # postgres, and cmd/docproc modules', and tools/go.mod, the boundary that keeps the tools out
-      # of the base module, among them), any testdata, each module's lint config, the postgres
-      # module's SQL and the sqlint.toml check:go lints it under, this workflow, and the root
-      # mise.toml check:go runs from; and, in the tools' trees, only what the Go tests read in
-      # place: the shared envelope cases and each tool's committed goldens and expected outputs. A
-      # change to a tool's code alone doesn't run it.
       - id: go
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -95,11 +67,6 @@ jobs:
               - 'tools/onenote/tests/golden/**'
               - 'tools/ooxml/test/**/Expected/**'
 
-      # What the provider modules' live tiers build or run against: the storage and postgres
-      # modules' sources, go.mod and go.sum, testdata, and the postgres module's SQL, never their
-      # docs; each requires the base module at its released version, not this tree's, so a change
-      # to the base alone doesn't run them. Then the compose harness, this workflow, and the root
-      # mise.toml that defines the integration tasks and the harness's environment.
       - id: integration
         uses: dorny/paths-filter@v4.0.3
         with:
@@ -119,27 +86,14 @@ jobs:
               - '.github/workflows/ci.yml'
               - 'mise.toml'
 
-      - id: lint
-        uses: dorny/paths-filter@v4.0.3
-        with:
-          filters: |
-            lint:
-              - '.github/workflows/**'
-              - '**/*.sh'
-              - 'mise.toml'
-
   lint:
-    needs: changes
-    if: needs.changes.outputs.lint == 'true'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # The lint needs only the root's shellcheck and actionlint, not its Go toolchain; the
-      # routing test needs bash alone.
       - uses: jdx/mise-action@v5.2.10
         with:
-          install_args: actionlint shellcheck
+          install_args: actionlint shellcheck github:standards-lab/claude-plugins
 
       - name: mise run lint
         run: mise run lint
@@ -156,13 +110,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # check:go needs only the root's Go toolchain and golangci-lint.
       - uses: jdx/mise-action@v5.2.10
         with:
           install_args: go golangci-lint
 
-      # The modules go.sum pins, as downloaded, and the build cache; both are keyed on go.sum, the
-      # build cache being only a speedup the go command checks entry by entry.
       - uses: actions/cache@v6.1.0
         with:
           path: |
@@ -189,19 +140,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # NativeAOT links with clang against zlib, so a .NET tool (a .slnx) alone needs them; a Rust
-      # tool's musl targets come with its pinned toolchain.
       - name: Install the NativeAOT prerequisites
         if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
 
-      # mise installs from the tool's directory, so the toolchain the tool's mise.toml pins is the
-      # one installed; the tool's tasks put it ahead of the runner's own dotnet on PATH.
       - uses: jdx/mise-action@v5.2.10
         with:
           working_directory: tools/${{ matrix.tool }}
 
-      # A .NET tool's packages its lock files pin, as downloaded; bin/ and obj/ are built fresh.
       - uses: actions/cache@v6.1.0
         if: hashFiles(format('tools/{0}/*.slnx', matrix.tool)) != ''
         with:
@@ -209,8 +155,6 @@ jobs:
           key: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles(format('tools/{0}/**/packages.lock.json', matrix.tool)) }}
           restore-keys: nuget-${{ matrix.tool }}-${{ runner.os }}-${{ runner.arch }}-
 
-      # A Rust tool's crates its Cargo.lock pins, as downloaded, and any git sources; target/ is
-      # built fresh.
       - uses: actions/cache@v6.1.0
         if: hashFiles(format('tools/{0}/Cargo.lock', matrix.tool)) != ''
         with:
@@ -224,8 +168,6 @@ jobs:
         working-directory: tools/${{ matrix.tool }}
         run: mise run check
 
-      # The notices a release would pack for this runner, so a package the script can't give a
-      # notice for fails here, not at the tag.
       - name: Third-party notices
         working-directory: tools/${{ matrix.tool }}
         run: |
@@ -236,12 +178,6 @@ jobs:
           esac
           mise exec -- ../notices.sh "$TOOL" "$rid" >/dev/null
 
-  # The provider modules' live tiers, each against its compose service, the same tasks a developer
-  # runs; never the base module's tools tier, nor cmd/docproc's built-binary tier, which runs the
-  # same tools: both are test:integration's, on the developer's machine. On a push to main whose
-  # paths need it, and always on demand, where the paths filter has no push to compare; skipped on
-  # a pull request, below the per-PR rate by design. Each task starts its service, prints its log on
-  # a failure, and stops it.
   integration:
     needs: changes
     if: >-
@@ -251,7 +187,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
 
-      # The tasks need only the root's Go toolchain; docker is the runner's.
       - uses: jdx/mise-action@v5.2.10
         with:
           install_args: go

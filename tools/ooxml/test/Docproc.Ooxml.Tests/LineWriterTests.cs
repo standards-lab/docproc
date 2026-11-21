@@ -9,7 +9,7 @@ using Docproc.Ooxml.Writing;
 namespace Docproc.Ooxml.Tests;
 
 // The line writer's seam, independent of the reader: hand-built models against lines written by
-// hand from the contract (context/layers.md, "docproc-ooxml"), never a snapshot of
+// hand from the contract (docs/tool-contract.md, "docproc-ooxml"), never a snapshot of
 // docproc-ooxml's own output, and a sheet past the rows line's bound.
 public sealed class LineWriterTests
 {

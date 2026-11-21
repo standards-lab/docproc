@@ -1,6 +1,4 @@
-# cargo-deny's configuration, read by `currency` (tools/currency.sh), which runs `cargo deny check
-# advisories` alone; the license policy is cargo-about's, in about.toml.
+# cargo-deny's configuration, read by `currency`.
+# See docs/tool-builds.md
 [advisories]
-# An unmaintained crate anywhere in the locked graph is reported, a transitive one too, not only a
-# workspace member's direct dependency: cargo-deny 0.22.0 narrowed this default to "workspace".
 unmaintained = "all"

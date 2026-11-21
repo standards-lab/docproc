@@ -9,7 +9,7 @@ namespace Docproc.Ooxml.Reading;
 
 /// <summary>A document docproc-ooxml won't convert, and why. It is raised before any output is
 /// written. Its message is the reason, which never holds the input's path, and begins
-/// <c>encrypted</c> only for an encrypted input (context/layers.md, "Refusal reasons").</summary>
+/// <c>encrypted</c> only for an encrypted input (docs/tool-contract.md, "Refusal reasons").</summary>
 internal sealed class RefusalException(string reason) : Exception(reason);
 
 /// <summary>A document docproc-ooxml reads but won't convert, as its readers find it: what in it goes

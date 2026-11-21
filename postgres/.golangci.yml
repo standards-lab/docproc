@@ -1,35 +1,26 @@
-# golangci-lint v2 configuration for the postgres module, run by `mise run check` from this
-# directory: golangci-lint takes the configuration nearest the directory it runs in, so this one,
-# not the root's, holds the module. It is the root's but for depguard's lists, which hold the
-# module to its own requirements.
+# golangci-lint v2 configuration for the postgres module, run by `mise run check` from here.
+# See docs/development.md
+# See architecture/principles/comments.md
 version: "2"
 
-# The live tier's files, under the integration build tag, are linted with the unit tier's: a file
-# of either tier builds under the tag, so one run covers both.
 run:
   build-tags:
     - integration
 
 linters:
-  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus depguard, which
-  # holds the module to its allowed imports, and testpackage, which keeps tests black-box, as the
-  # root's configuration says.
   default: standard
   enable:
     - depguard
+    - nolintlint
     - testpackage
   settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     testpackage:
       skip-regexp: export_test\.go
       allow-packages: [""]
     depguard:
-      # The module's requirements alone: the standard library, docproc's base packages, whose
-      # dispatch.Index it implements, sqlate's packages and its PostgreSQL engine, and pgx v5. Its
-      # tests add sqlate/postgres's pgtest, which imports testing and so stays out of the
-      # module's own packages. Allow entries match by prefix unless they end in `$`, so each is
-      # anchored. The longest match wins, so the deny entries keep the storage and cmd/docproc
-      # modules out despite docproc's prefix, and pgtest out of the production files despite
-      # sqlate's.
       rules:
         production:
           list-mode: strict

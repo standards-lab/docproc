@@ -126,8 +126,8 @@ content rule docproc's tools share (Unicode 18.0.0).
 
 A field with no value is left out, never `null`, and so is an empty list. The same input gives
 byte-identical stdout and media. The contract, field by field, is docproc's:
-[`context/layers.md`](../../context/layers.md), "The tool contract" and its "docproc-mail"
-section. From schema `"2"` on, it grows by addition only; any other change moves the schema, and
+[`docs/tool-contract.md`](../../docs/tool-contract.md), its "docproc-mail" section. From schema
+`"2"` on, it grows by addition only; any other change moves the schema, and
 [`CHANGELOG.md`](CHANGELOG.md) records it.
 
 ## Exit codes and stderr
@@ -212,11 +212,12 @@ crate, [`tools/envelope`](../envelope).
 
 ## Building and testing
 
-The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-about) is pinned
-in [`mise.toml`](mise.toml) alone, and the fixture generator's .NET SDK in
-[`mise.fixtures.toml`](mise.fixtures.toml). Its tasks run from this directory,
-`mise run <task>`, or from the repository root, `mise -C tools/mail run <task>`; docproc's own
-`mise run check` runs this tool's check.
+The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-about) is pinned in
+[`mise.toml`](mise.toml) alone, and the fixture generator's .NET SDK in
+[`mise.fixtures.toml`](mise.fixtures.toml). Its tasks run from this directory, `mise run <task>`, or
+from the repository root, `mise -C tools/mail run <task>`; docproc's own `mise run check` runs this
+tool's check. The reasoning behind its configuration is on
+[`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: shellchecks the scripts, verifies formatting, lints with warnings as errors, and runs
   the tests of docproc-mail and of the shared crate, [`tools/envelope`](../envelope), against the

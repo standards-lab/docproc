@@ -70,23 +70,27 @@ bytes. The TIFF is Apache-2.0, © The Apache Software Foundation; POI's license 
 | `tiff.docx` | `pictures/generate.sh` | Apache-2.0 | 11705 | `d1d54755de784b7662a1b7e430bef7afb6ed8d3b0336fba4550f39e605f6f8dc` |
 | its `word/media/image1.tiff` | `test-data/slideshow/testtiff.tif` at POI's commit | Apache-2.0, Apache POI's | 12236 | `9006e4b5615beb93d5ff99a79ed62551a523ec8b0e2f881b074589d28c47b119` |
 
-The TIFF is 640x400, 8-bit RGB, LZW-compressed, written by GIMP.
+The TIFF is 640x400 at 96 dpi, 8-bit RGB, LZW-compressed, written by GIMP; the package shows it
+at 6096000x3810000 EMU.
 
 ## Legacy, generated
 
 `legacy/generated/` holds every `*.libreoffice.*` file in `ooxml/` saved by LibreOffice as `.doc`,
-`.xls`, or `.ppt`, its name kept with the legacy extension: seven docx files as `.doc`
-(`charts`, `comments`, `lists`, `media`, `notes`, `sections`, `tables`), four xlsx as `.xls`
-(`cells`, `drawings`, `formulas`, `merges`), and three pptx as `.ppt` (`bullets`, `slide-objects`,
-`slides`). `legacy/generate.sh` wrote them, running soffice as the office package runs it: in the
-picture package's default image at the time, `picture.LibreOfficeImage`
+`.xls`, or `.ppt`, its name kept with the legacy extension: seven docx files as `.doc` (`charts`,
+`comments`, `lists`, `media`, `notes`, `sections`, `tables`), four xlsx as `.xls` (`cells`,
+`drawings`, `formulas`, `merges`), and three pptx as `.ppt` (`bullets`, `slide-objects`, `slides`).
+`legacy/generate.sh` wrote them, running soffice as the office package runs it: in the picture
+package's default image at the time, `picture.LibreOfficeImage`
 (`gotenberg/gotenberg:8.39.0-libreoffice@sha256:4c0eb92ef22e5d5fb0a49eac924b63d85d0b0334ea3365a1f5ca428f367b3054`),
-LibreOffice 26.8.1.1, under the container runner's lockdown, with the filters `MS Word 97`,
-`MS Excel 97`, and `MS PowerPoint 97`. The script writes `legacy/generated/MANIFEST`, which
-records the image, soffice's `--version` line, and each file's SHA-256. LibreOffice's binary
-formats carry the time they were saved, so a regeneration's sums differ from the committed
-files'; the manifest is the committed files' record. They are office's fixtures re-saved, under
-office's license, Apache-2.0.
+LibreOffice 26.8.1.1, under the container runner's lockdown (no network, the caller's uid:gid, every
+capability dropped), each file with a user profile of its own in the mounted working directory, with
+the filters `MS Word 97`, `MS Excel 97`, and `MS PowerPoint 97`. The script reads the image's
+reference from the Go literal `picture/spec.go` declares, its two halves joined, and pulls the image
+when it isn't present; it needs docker. The script writes `legacy/generated/MANIFEST`, which records
+the image, soffice's `--version` line, and each file's SHA-256. LibreOffice's binary formats carry
+the time they were saved, so a regeneration's sums differ from the committed files'; the manifest is
+the committed files' record. They are office's fixtures re-saved, under office's license,
+Apache-2.0.
 
 ## Legacy, real
 

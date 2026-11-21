@@ -196,7 +196,7 @@ public sealed class CliTests : IDisposable
     }
 
     // A slide's embedded package and OLE object are written as stored; the chart beside them
-    // embeds its source workbook, which is never media (context/design.md, OX-5).
+    // embeds its source workbook, which is never media (docs/design-review.md, OX-5).
     [Fact]
     public void SlidePayloadsAreWrittenAndAChartsWorkbookIsNot()
     {
@@ -219,7 +219,7 @@ public sealed class CliTests : IDisposable
         Assert.DoesNotContain(".xlsx", result.Stdout, StringComparison.Ordinal);
     }
 
-    // The properties by the reading rule (context/layers.md, "docproc-ooxml"): core values strings
+    // The properties by the reading rule (docs/tool-contract.md, "docproc-ooxml"): core values strings
     // as stored, an extended value all digits a number, a custom value its variant's type, a file
     // time its stored text, and one that isn't its type's the string it is stored as; keys in
     // stored order, a repeated key's first value kept with a warning, and an empty value or a
@@ -790,7 +790,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal("docproc-ooxml: error: stdout not written: Broken pipe\n", stderr);
     }
 
-    // A sheet's rows are read forward twice, never held whole (context/design.md, OX-2). Its
+    // A sheet's rows are read forward twice, never held whole (docs/design-review.md, OX-2). Its
     // output is 50,000 rows in 33 MB of lines, run with the managed heap capped at 16 MiB, less
     // than the output and far less than the sheet's DOM, which the spike held: it peaked at
     // 513 MiB on this sheet, and failed under this cap with exit code 4. Each rows line is within 256 KiB, and
@@ -831,7 +831,7 @@ public sealed class CliTests : IDisposable
             AssertRefused(LargeSheet("late.xlsx", 5000, "<row r=\"5001\"><c r=\"A5001\" t=\"b\"><v>2</v></c></row>")));
 
     // The validate pass meets a sheet's merges after its cells, so it keeps the failing cells
-    // until it knows which a merge covers, as runs of positions, never one by one (context/design.md,
+    // until it knows which a merge covers, as runs of positions, never one by one (docs/design-review.md,
     // OX-2). 199,999 cells that fail, each covered by A1:J20000, whose anchor A1 holds a number,
     // are passed over with the managed heap capped at 16 MiB, and the sheet is refused, before any
     // output, with the failure of A20001, the one failing cell no merge covers, after them all.

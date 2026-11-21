@@ -23,7 +23,7 @@
 //! character, so the Markdown reads, and is written, as it was ([`bare`]).
 //!
 //! Markdown made from HTML is compared with the message's source text by the content rule, the
-//! shared crate's (context/layers.md, schema "2"): the source text's sentences the Markdown lacks
+//! shared crate's (docs/tool-contract.md, schema "2"): the source text's sentences the Markdown lacks
 //! are appended to it, in order, as one paragraph escaped as a text body's Markdown is
 //! ([`with_missing`]). The source text is the text body, else the RTF body's own text.
 

@@ -1,14 +1,14 @@
-# design
+# The design review
 
-This note holds the design review of the five artifacts v1.ai.processing promotes: each
+This page holds the design review of the five artifacts v1.ai.processing promotes: each
 finding's settled design and disposition, with the evidence that justified it, since the
 evaluations themselves are not kept. Fable 5.2 evaluated each artifact, the architect settled its
 findings in one review round per artifact, and a sixth round gave the shapes and vocabularies the
-artifacts share one home each ("Structural single homes"). `layers.md` holds the boundaries and
-the change lists. An entry names the task that carries it and the `layers.md` section that states
-it, and doesn't restate what that section holds; an entry a later one changed points to it. The
-note opens with how the review changes the goal's tasks and closes with each artifact's first tag
-and the task that releases it.
+artifacts share one home each ("Structural single homes"). [`layers.md`](layers.md) and the pages
+it lists hold the boundaries and the change lists. An entry names the task that carries it and the
+page and section that states it, and doesn't restate what that section holds; an entry a later one
+changed points to it. The page opens with how the review changes the goal's tasks and closes with
+each artifact's first tag and the task that releases it.
 
 ## How the review changes the goal's tasks
 
@@ -36,7 +36,7 @@ edits in the goal record, applied to the roadmap at SHIP.
 From spike-ai-pipeline-office v0.1.0, built in `tools/ooxml/`, whose README and CHANGELOG state
 what each accepted finding changed. Probes ran on the spike's published binary (0.1.0+6ed0d0e,
 linux-x64). Every finding was accepted; the entries below keep the evidence and the rejected
-alternatives the code can't state, and what the build leaves to later tasks is in `layers.md`,
+alternatives the code can't state, and what the build leaves to later tasks is in `changes.md`,
 "docproc-ooxml [ooxml]".
 
 - **OX-1 · A sheet's charts and pictures had no line for their Markdown.** The renderer writes a
@@ -62,8 +62,8 @@ alternatives the code can't state, and what the build leaves to later tasks is i
   on native x64 and arm64 runners, since a NativeAOT publish can't cross-link, and a Go job, which
   library adds with the Go module releases. Rejected: a Go-only root check; library building the
   CI.
-- **OX-11 · Hyperlink targets unread; unread content left no trace.** Each unread kind a document holds gets one warning;
-  reading those kinds stays backlog.
+- **OX-11 · Hyperlink targets unread; unread content left no trace.** Each unread kind a document
+  holds gets one warning; reading those kinds stays backlog.
 - **OX-12 · The baseline harness isn't promoted.** `bench/`, its tests, `baseline.sh`, and
   `docs/findings/` stay in the spike as its evidence, and Markdig with them; the acceptance rerun
   over ~/docs is the measurement from then on.
@@ -78,7 +78,7 @@ each accepted finding changed. Probes ran on the spike's committed musl release 
 linux-x64) over inputs built in a scratch directory; an entry says where a finding was found by
 reading. Every finding was accepted, ML-3, ML-6, ML-11, and ML-12 in the form the round settled;
 the entries below keep the evidence and the rejected alternatives the code can't state, and what
-the build leaves to later tasks is in `layers.md`, "docproc-mail [mail]".
+the build leaves to later tasks is in `changes.md`, "docproc-mail [mail]".
 
 - **ML-1 · One message's HTML body ended the whole run by signal.** htmd 0.5.6 walks the DOM
   recursively and html5ever caps no depth: an `.eml` whose HTML nests 4,000 `<div>` exited 0,
@@ -95,7 +95,7 @@ the build leaves to later tasks is in `layers.md`, "docproc-mail [mail]".
 - **ML-3 · The content rule's Unicode 16.0 couldn't be both schema "2" and current.** 16.0 was
   the measuring tool's (uniseg 0.10.1, a Go library), while current Rust crates carry 18.0
   (finl_unicode 1.5.1, unicode-ident 1.0.27). Schema "2"'s rule takes the Unicode version its
-  pinned crates carry, so a currency bump that moves it is a reviewed change (`layers.md`,
+  pinned crates carry, so a currency bump that moves it is a reviewed change (`tool-contract.md`,
   "docproc-mail"). Rejected: the shared crate owning tables generated from UCD 16.0.
 - **ML-6 · Linking inline images by `file` was more than a rename.** Run over a built `.eml`: the
   Markdown kept `cid:One%2Bimg@example.com` beside a `content_id` of `One+img@example.com`; an
@@ -134,7 +134,7 @@ onenote_parser 2.1.0's source; probes ran on the spike's v0.1.0 musl release bin
 committed fixtures, and an entry says where a finding was found by reading. Every finding was
 accepted, ON-2 and ON-4 in the form round 3 settled; the entries below keep the evidence and the
 rejected alternatives the code can't state, and what the build leaves to later tasks is in
-`layers.md`, "docproc-onenote [onenote]". Two rulings close the section: the parser's MPL-2.0
+`changes.md`, "docproc-onenote [onenote]". Two rulings close the section: the parser's MPL-2.0
 license, and the rule that nothing is asked of the parser upstream.
 
 - **ON-1 · Recognised ink words reached the Markdown only through the page's ink image.** The
@@ -192,7 +192,7 @@ license, and the rule that nothing is asked of the parser upstream.
   to `\\server\Team Notes\plan.docx` was text, not a link, and no URL reached the content
   rule; in a table cell, a code span and an equation's LaTeX left `|`, which GFM reads as a cell
   boundary even in a code span. The shared destination rule settles it, and also escapes a `\`
-  and a `&` that could begin a character reference (`layers.md`, "Common envelope").
+  and a `&` that could begin a character reference (`tool-contract.md`, "Common envelope").
 - **ON-9 · Five workarounds stood on onenote_parser's behaviour, under a caret requirement.** The
   parser is current and maintained, by one person; the tool works around (a) its private error
   kind, told by message prefix, (b) a `println!` that costs `libc`, an `unsafe` `dup2`, and
@@ -257,7 +257,7 @@ probes on scratch copies and an entry says where a finding was run, the rest fou
 Round 4 accepted every finding as proposed, merged and with conflicts resolved as the synthesis
 set out, and every decision as recommended; each decision names the round's question that
 settled it. `library` built the changes into the base module, whose package docs state them,
-unless an entry names another task; the signatures the decisions changed are in `layers.md`'s
+unless an entry names another task; the signatures the decisions changed are in `api.md`'s
 "docproc's API" sections. An entry merged into a PX finding is settled there and only points to
 it.
 
@@ -299,19 +299,19 @@ it.
   `dispatch`'s; `Read` and `Convert` return the sequence. Rejected: adapters in `dispatch` and a
   public envelope package.
 - **8 · `stages.Build`'s options (Q9).** Settled → library. One `Options` struct, each bound's
-  owner and outcome stated once in `layers.md`, "Dispatch". Rejected: the three
+  owner and outcome stated once in `api.md`, "Dispatch". Rejected: the three
   settled arguments, under which Cerebro can set none of the groups' bounds.
 - **9 · Default bounds (Q10).** Settled → library; docproc (`cmd/docproc`'s starting values);
   acceptance. No `Limits` or run bound has a library default; `cmd/docproc` ships starting
   values, and acceptance dispatches PI-1's bombs through it; the bomb rule sums across an
   archive's entries. `Limits.Bytes` bounds what a stage writes too: `dispatch.Remaining(ctx)`
   gives a stage the bytes its dispatch may still admit, and a part past them is stopped at the
-  write (`layers.md`, "Dispatch"; `acceptance.md`, "Bombs"). Rejected: `dispatch.New` refusing a
+  write (`api.md`, "Dispatch"; `acceptance.md`, "Bombs"). Rejected: `dispatch.New` refusing a
   zero `Limits.Bytes`.
 - **10 · Envelope additions (Q11).** Settled → ooxml, mail, onenote; library reads them. Three
   additions under schema "2", before the tool tasks start: `--version`'s second line
   `schema <n>`; the warning escape's form stated, and an error reason never leading with the
-  input path; a `message` line's optional `media` for `data:` images (`layers.md`, "Common
+  input path; a `message` line's optional `media` for `data:` images (`tool-contract.md`, "Common
   envelope", "docproc-mail"). Rejected: the reader parsing Markdown for PT-7; a schema found
   only at the first read.
 - **11 · Archive entries that harm no stage (Q12).** Settled → library. Links, devices, and
@@ -494,7 +494,7 @@ it.
   the same events.
 - **PD-3 · Puts before events made the walk a pipeline.** Accepted → library; its failure class
   merged into PX-1, its reused hash into PX-10. The queue, its drain before a found part and the
-  part's own event, and `ErrTooLarge` mapped from go-storage's are stated in `layers.md`.
+  part's own event, and `ErrTooLarge` mapped from go-storage's are stated in `api.md`.
 - **PD-4 · A lease had to outlast the loop body.** Decided in decision 3. A claim lasts from
   `Claim` through every yield of the part's subtree, so a timer on the walk's goroutine never
   fires while the body blocks it.
@@ -532,7 +532,7 @@ it.
 - **PX-2 · The module's shape follows from one fact: only `stages` calls the format packages.**
   Accepted → library; decision 7. The build tag stays on the exec runner alone.
 - **PX-3 · Every group added a value the host must supply.** Accepted → library; docproc;
-  decisions 8 and 9. Each bound is stated once with its owner and outcome (`layers.md`,
+  decisions 8 and 9. Each bound is stated once with its owner and outcome (`api.md`,
   "Dispatch"); a unit run takes a deadline, a stream run an idle bound.
 - **PX-4 · "The part held something not read" had seven spellings.** Accepted → library; decision
   15. A flag, a warning, or a child, so counts by outcome become true and a package's encrypted
@@ -563,7 +563,7 @@ spike-ai-pipeline-processing v0.9.0, with the spike's docinfer read for its use 
 finding was found by reading; `go vet` passed over the command, and nothing else ran. Round 5
 accepted every finding, DP-3 and DP-10 in the form it settled, and a follow-up settled DP-16's
 form. An entry is carried by docproc unless it names another task; the command's changes are in
-`layers.md`, "The nested modules", and `rundir`'s in the `rundir` row of "docproc's packages
+`changes.md`, "The nested modules", and `rundir`'s in the `rundir` row of "docproc's packages
 [library]", with its API under "The nested modules".
 
 - **DP-1 · The schema "2" event line couldn't be the embed `layers.md` listed.** Accepted →
@@ -576,7 +576,7 @@ form. An entry is carried by docproc unless it names another task; the command's
   has no successor once the library replays children, while dispatch's `Warning` is a line kind
   "1" never had; and a zero count is now left out. The line embeds `dispatch.Event` inline
   beside its own kind, an error line's text, and the record's fields, `Event.Part` gaining
-  `omitzero`, and its kinds are `part`, `output`, `warning`, and `error` (`layers.md`, "The
+  `omitzero`, and its kinds are `part`, `output`, `warning`, and `error` (`changes.md`, "The
   nested modules").
 - **DP-2 · The record was the one file not written whole, and a killed run's was unreadable.**
   Accepted → docproc. `Run.Write` encoded into a 4,096-byte `bufio.Writer` flushed only in `End`;
@@ -661,8 +661,8 @@ form. An entry is carried by docproc unless it names another task; the command's
 - **DP-16 · The manifest's `Tool` and `StageState` copied `stages.Tool` and `Row`.** Accepted →
   library (the shapes) and docproc (the manifest), in the form the follow-up settled, which
   supersedes round 5's: the stage table's shapes are declared once in `dispatch`, versioned by
-  `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so
-  `schema` imports no docproc package but `dispatch` and `inspect` (`layers.md`, "Dispatch", "The
+  `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so `schema`
+  imports no docproc package but `dispatch` and `inspect` (`api.md`, "Dispatch"; `changes.md`, "The
   nested modules"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
   unversioned package and has `schema`, and so `cmd/docinfer`, compile `stages` and every format
   package beneath it; `schema` keeping its own copies, the standards review's interim form, which
@@ -688,7 +688,7 @@ form. An entry is carried by docproc unless it names another task; the command's
 Round 6, the architect's follow-up to DP-16's fix, looked across the artifacts for a shape, a
 vocabulary, or a rule stated in two places, or held by a package that isn't its owner, and
 accepted all nine findings as recommended. Each settles one home; its signatures are in
-`layers.md`, the section an entry names, the base module's parts are built, and the docinfer
+the page and section an entry names, the base module's parts are built, and the docinfer
 goal's parts are pending edits in the goal record.
 
 - **SH-1 · The Meta keys a consumer reads.** Accepted → library; the docinfer goal reads the
@@ -696,7 +696,7 @@ goal's parts are pending edits in the goal record.
   moved every writer into `stages`, so a consumer reading `window`, `count`, `page`, or `sheet`
   would import `stages` and every format package beneath it, as DP-16 found for the manifest.
   The keys are constants in `dispatch` beside `Output`, each documented with its writer and its
-  format, versioned by `dispatch.Version`; docinfer reads them there (`layers.md`, "Dispatch").
+  format, versioned by `dispatch.Version`; docinfer reads them there (`api.md`, "Dispatch").
   Rejected: the constants in `stages`.
 - **SH-2 · The transcript join was inference held in docproc.** Accepted → library (`audio`
   drops it) and the docinfer goal (`join`), a pending edit. `audio` held `Join`, `JoinRequest`,
@@ -705,22 +705,22 @@ goal's parts are pending edits in the goal record.
   declared, and docinfer's root imported `audio` for it. They move to a small `join` package
   beside `chunk`, `JoinRequest` as `Request`, stating docinfer's own seam-word setting, versioned
   by `docinfer.Version`; docinfer needs nothing of docproc but `dispatch`, and `rundir` for
-  `cmd/docinfer` (`layers.md`, "The pipeline", "Assumptions"). Rejected: `audio` keeping the join
+  `cmd/docinfer` (`layers.md`, "Assumptions"). Rejected: `audio` keeping the join
   for docinfer to import.
 - **SH-3 · The envelope's cases were tested three times.** Accepted → ooxml (writes the table and
   its `tools/` wiring), mail (the shared crate reads it), library (`internal/cli` reads it). The
   warning escape, the split of a stderr line into `where` and `what`, the media name a payload's
-  bytes and stored name make, the exit codes' meanings, and the literal-text escape were stated
-  once in prose and tested in C#, Rust, and Go, each over its own cases; ML-9's drifts came from
-  copies of this kind. One committed table, `tools/envelope/cases.json`, is read in place by all
-  three, and `internal/cli` exports the schema constant and the version pattern once for the
-  readers' specs (`layers.md`, "Common envelope"). Rejected: each language keeping its own cases.
+  bytes and stored name make, the exit codes' meanings, and the literal-text escape were stated once
+  in prose and tested in C#, Rust, and Go, each over its own cases; ML-9's drifts came from copies
+  of this kind. One committed table, `tools/envelope/cases.json`, is read in place by all three, and
+  `internal/cli` exports the schema constant and the version pattern once for the readers' specs
+  (`tool-contract.md`, "Common envelope"). Rejected: each language keeping its own cases.
 - **SH-4 · The found-part hash check read a name as a hash.** Accepted → library. The dispatcher
   checked a found part whose name was a SHA-256, so the envelope's media name rule had a second
   home in `dispatch` beside `internal/cli`, and a part named like a hash was checked while one
   whose stage knew its hash under another name was not. A stage claims a found part's SHA-256 on
   `Found`, which the dispatcher checks as it checks `Input.SHA256`; the media name rule stays in
-  `internal/cli` alone (`layers.md`, "Dispatch"). Rejected: the dispatcher keeping the rule.
+  `internal/cli` alone (`api.md`, "Dispatch"). Rejected: the dispatcher keeping the rule.
 - **SH-5 · A refusal's reason was mapped stage by stage.** Accepted → ooxml (its encrypted
   refusal), onenote (its goldens), library (the mapping, the outcome). office's and onenote's
   stages each mapped a reason beginning `encrypted`, onenote's stage matched its table of
@@ -739,14 +739,14 @@ goal's parts are pending edits in the goal record.
   own, and `rundir.ContentPath`, which DP-7 made part of schema "2", restated it. `dispatch`
   exports it once, `ContentFile(sha256)`, a path relative to the store's directory, whose doc
   states the layout stable; `FileContent` writes by it, and `ContentPath` joins the run
-  directory's content directory to it (`layers.md`, "Content"). Rejected: `rundir` restating the
+  directory's content directory to it (`api.md`, "Content"). Rejected: `rundir` restating the
   layout under schema "2".
 - **SH-7 · A record output didn't say what it holds.** Accepted → library. A record output's
   shape, an audio or video plan or a tool's lines, was known only from its stage and its name,
   versioned by nothing a reader could check. Its `Output.MediaType` names the shape and its
   version (`application/vnd.docproc.audio-plan+json; version=1`, a tool's lines with
   `schema=2`), constants in `dispatch` beside `OutputKind` and the Meta keys, which `stages`
-  sets (`layers.md`, "Dispatch"). Rejected: a Meta key for the shape's version.
+  sets (`api.md`, "Dispatch"). Rejected: a Meta key for the shape's version.
 - **SH-8 · `ContentType.Detected` was a host's field in a shared shape.** Accepted → docproc
   (`rundir/schema`'s `File`, `cmd/docproc`'s `run`), library (`dispatch` drops it), and the
   docinfer goal (the metadata function), a pending edit. `Detected` was `cmd/docproc`'s sniffed
@@ -754,7 +754,7 @@ goal's parts are pending edits in the goal record.
   carries, and docinfer's metadata text read it from the depth-0 part, built by `job` and by
   `cmd/docinfer` alike. It moves to `rundir/schema`'s `File`, filled by `run` beside `Statx`;
   docinfer builds an input's metadata text with one function over `dispatch.Part`, and
-  `cmd/docinfer` adds its file lines (`layers.md`, "One job, and its cancellation"). Rejected:
+  `cmd/docinfer` adds its file lines (docinfer's `MetadataText`). Rejected:
   keeping it in `dispatch.ContentType`, left empty everywhere but `cmd/docproc`.
 - **SH-9 · `dispatch.Version` didn't say what it covers.** Accepted → library; the docinfer goal
   for its version's doc. `Version` named "the shapes below", while the shapes carry route's
@@ -763,8 +763,8 @@ goal's parts are pending edits in the goal record.
   no golden held a routed or flagged part, and docinfer's "1" carried dispatch's shapes without
   saying so. `Version`'s doc names the shapes, the vocabularies they carry, and the index's
   shapes; `dispatch`'s goldens hold a routed, flagged part and an entry's log; docinfer's "1"
-  states that it includes dispatch's "1", as `rundir`'s "2" does (`layers.md`, "Dispatch",
-  "docinfer's shapes"). Rejected: a version of their own for route's, inspect's, and the index's
+  states that it includes dispatch's "1", as `rundir`'s "2" does (`api.md`, "Dispatch";
+  docinfer's `Version`). Rejected: a version of their own for route's, inspect's, and the index's
   vocabularies.
 
 ## Releases

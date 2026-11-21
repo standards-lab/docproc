@@ -195,7 +195,7 @@ internal sealed class MarkdownRenderer
                 chunks.Add(new Chunk(text, false, block is Paragraph));
             }
             // A chart in a docx table's cell, which a GFM cell can't hold, renders as its own
-            // chunk after the table, its title left in the cell (context/design.md, OX-15).
+            // chunk after the table, its title left in the cell (docs/design-review.md, OX-15).
             if (block is Table docxTable && docxTable.Rows.All(row => row.Row is null))
             {
                 foreach (var chart in CellCharts(docxTable.Rows.SelectMany(row => row.Cells).SelectMany(cell => cell.Blocks ?? [])))
@@ -527,7 +527,7 @@ internal sealed class MarkdownRenderer
     // that differs from the image text is the image's title, its lines joined by spaces and
     // written by Title, a pipe escaped as Target escapes one. An embedded package or OLE object is
     // a link to its file, its text its program id or else its part's file name; it follows its
-    // preview picture (context/layers.md, "docproc-ooxml").
+    // preview picture (docs/tool-contract.md, "docproc-ooxml").
     private static string RenderMedia(Media media)
     {
         var destination = Target(media.Name ?? media.Target ?? "");
@@ -728,7 +728,7 @@ internal sealed class MarkdownRenderer
         }
     }
 
-    // The lines of inlines, rendered as segments (context/design.md, OX-16): the text split at
+    // The lines of inlines, rendered as segments (docs/design-review.md, OX-16): the text split at
     // its line breaks, each line trimmed (leading spaces would make an indented code block), each
     // text run escaped on its own, each note's or comment's label appended as it is, and an
     // external hyperlink's text within [ and ](target). A hyperlink's text keeps to one line, its
@@ -862,7 +862,7 @@ internal sealed class MarkdownRenderer
         text.Replace('\t', ' ').Split('\n').Select(line => line.Trim()).Where(line => line.Length > 0);
 
     // Backslash-escapes what Markdown would read as markup, by the envelope's literal-text rule
-    // (context/layers.md, "Common envelope"), which htmd's escaping and so mail's and onenote's
+    // (docs/tool-contract.md, "Common envelope"), which htmd's escaping and so mail's and onenote's
     // Markdown share: emphasis, code, links, entities, strikethrough, math, and table pipes
     // anywhere; a `<` that could open an HTML tag, comment, or instruction; and, when the text
     // begins its line, at its start what would open a heading, a block quote, a list, or a setext

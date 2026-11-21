@@ -1,7 +1,7 @@
 # acceptance
 
 Measured 2026-11-19 on an Intel Core Ultra 9 185H, 16 cores and 22 threads, with gs 10.08.0.
-This note holds the results of v1.ai.processing's acceptance task, a section for each
+This page holds the results of v1.ai.processing's acceptance task, a section for each
 measurement.
 
 ## PDF pages in shared gs processes
@@ -159,7 +159,7 @@ belongs to the tool package and is on the backlog.
 
 Since v0.4.1, every exec-runner run's `TMPDIR` is a directory of the run's own under the host's
 `TMPDIR`, removed once gs is reaped, so a page's own process ended early leaves nothing beside the
-PDF either (`layers.md`, "Running the tools").
+PDF either ([`docs/api.md`](api.md), "Running the tools").
 
 ### Recipe
 

@@ -132,7 +132,7 @@ func (p *Preparer) Images(ctx context.Context, path string, req ImagesRequest) i
 // defaultPagesPerProcess is the most pages one gs process renders for a request of zero
 // PagesPerProcess: the smallest count whose median time, on the 915-page CFR volume at
 // cmd/docproc's starting settings, came within 5% of the fastest count's median, 97.6 s against
-// 64's 94.2 s (context/acceptance.md).
+// 64's 94.2 s (docs/acceptance.md).
 const defaultPagesPerProcess = 8
 
 // outcome is one page's file, its DPI, and its text, or its error, as its lane hands it to the

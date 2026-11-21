@@ -23,7 +23,7 @@ import (
 )
 
 // fixtures are the OOXML fixtures in testdata/ooxml, copied from office v0.1.0, as
-// testdata/README.md lists them.
+// office/testdata/README.md lists them.
 var fixtures = []string{
 	"media.libreoffice.docx",
 	"notes.libreoffice.docx",

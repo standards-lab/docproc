@@ -123,11 +123,11 @@ every line but the notebook line.
   gives it; its `reason`; and `encrypted: true` for a password-protected section.
 
 Ids are lowercase hyphenated GUIDs, colours `"#rrggbb"`, and times ISO 8601 UTC to the second, a
-fraction cut, not rounded. A field with no value is left out, never `null`, and so is an empty
-list. The same input gives byte-identical stdout and media, but at the three edges
-[Limits](#limits) names. The contract, field by field, is docproc's:
-[`context/layers.md`](../../context/layers.md), "The tool contract" and its "docproc-onenote"
-section. From schema `"2"` on, it grows by addition only; any other change moves the schema, and
+fraction cut, not rounded. A field with no value is left out, never `null`, and so is an empty list.
+The same input gives byte-identical stdout and media, but at the three edges [Limits](#limits)
+names. The contract, field by field, is docproc's:
+[`docs/tool-contract.md`](../../docs/tool-contract.md), its "docproc-onenote" section. From schema
+`"2"` on, it grows by addition only; any other change moves the schema, and
 [`CHANGELOG.md`](CHANGELOG.md) records it.
 
 ### Markdown
@@ -277,10 +277,11 @@ crate, [`tools/envelope`](../envelope).
 
 ## Building and testing
 
-The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-about) is pinned
-in [`mise.toml`](mise.toml) alone. Its tasks run from this directory, `mise run <task>`, or from
-the repository root, `mise -C tools/onenote run <task>`; docproc's own `mise run check` runs this
-tool's check.
+The toolchain (Rust with both musl targets, jq, shellcheck, cargo-deny, cargo-about) is pinned in
+[`mise.toml`](mise.toml) alone. Its tasks run from this directory, `mise run <task>`, or from the
+repository root, `mise -C tools/onenote run <task>`; docproc's own `mise run check` runs this tool's
+check. The reasoning behind its configuration is on
+[`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: verifies formatting, lints with warnings as errors, and runs the tests of
   docproc-onenote and of the shared crate, [`tools/envelope`](../envelope), against the static

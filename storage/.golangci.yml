@@ -1,34 +1,26 @@
-# golangci-lint v2 configuration for the storage module, run by `mise run check` from this
-# directory: golangci-lint takes the configuration nearest the directory it runs in, so this one,
-# not the root's, holds the module. It is the root's but for depguard's lists, which hold the
-# module to its own requirements.
+# golangci-lint v2 configuration for the storage module, run by `mise run check` from here.
+# See docs/development.md
+# See architecture/principles/comments.md
 version: "2"
 
-# The live tier's files, under the integration build tag, are linted with the unit tier's: a file
-# of either tier builds under the tag, so one run covers both.
 run:
   build-tags:
     - integration
 
 linters:
-  # The standard set (errcheck, govet, ineffassign, staticcheck, unused), plus depguard, which
-  # holds the module to its allowed imports, and testpackage, which keeps tests black-box, as the
-  # root's configuration says.
   default: standard
   enable:
     - depguard
+    - nolintlint
     - testpackage
   settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
     testpackage:
       skip-regexp: export_test\.go
       allow-packages: [""]
     depguard:
-      # The module's requirements alone: the standard library, docproc's base packages, whose
-      # dispatch.Content it implements, and go-storage's Client it stores through; its tests add
-      # go-storage's Fake, which the unit tier runs over, and its S3 provider, which the live tier
-      # runs against. Allow entries match by prefix unless they end in `$`, so each is anchored.
-      # The longest match wins, so the deny entries keep the postgres and cmd/docproc modules out
-      # despite docproc's prefix.
       rules:
         production:
           list-mode: strict

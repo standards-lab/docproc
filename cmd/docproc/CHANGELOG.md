@@ -43,7 +43,8 @@ whose changes reach `docproc run` as Changed says.
   to its model's request size, the longest audio one request takes; a source no longer than it is
   one window. A value of 4s or less, which is not over twice the 2 s overlap between windows, zero
   among them, fails the run before any tool is looked up, as a value that doesn't parse does, the
-  error naming the variable. The base module's [README](../../README.md#configuration) lists it.
+  error naming the variable. The base module's
+  [command page](../../docs/command.md#configuration) lists it.
 
 ### Changed
 
@@ -115,7 +116,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   largest side; and ImageMagick's area, memory, map, and disk limits. A value the command can't
   take fails the run before any tool is looked up, and the error names every such variable.
   `DOCPROC_SHUTDOWN_TIMEOUT` bounds the shutdown. The base module's
-  [README](../../README.md#configuration) lists each variable with its bound and starting value.
+  [command page](../../docs/command.md#configuration) lists each variable with its bound and
+  starting value.
 - `docproc run`'s exit statuses: 0 when the run ends, failed parts and inputs stopped with an
   error included, the summary's last line counting both, a failure replayed from the index among
   the failed parts; 1 when it stops or never begins, a failure of the index or the content store
