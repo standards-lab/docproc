@@ -24,7 +24,6 @@ fn expectations() -> Vec<Value> {
         .clone()
 }
 
-/// The committed notebook directories: each holds one .onetoc2, so each is a directory input.
 const DIRECTORIES: [&str; 6] = [
     "interop/SUT",
     "onenote-rs",
@@ -34,9 +33,6 @@ const DIRECTORIES: [&str; 6] = [
     "onenote-rs/OneNote_RecycleBin",
 ];
 
-/// The expectation of the notebook [`composed`] builds: non-legacy's, whose table of contents
-/// also lists a "New Section Group" and a "OneNote_RecycleBin" its directory lacks, with those
-/// two added from onenote.rs's samples.
 fn composed_expectation() -> Value {
     let group = "2ed96381-1fac-4ca5-bda9-0e3a35478644";
     let mut expected = expectations()
@@ -61,7 +57,6 @@ fn composed_expectation() -> Value {
     expected
 }
 
-/// The expectations cover every committed .onetoc2 of the public sets.
 #[test]
 fn every_committed_notebook_has_an_expectation() {
     let mut listed: Vec<String> = expectations()
@@ -81,12 +76,6 @@ fn every_committed_notebook_has_an_expectation() {
     assert_eq!(listed, tocs);
 }
 
-/// Each .onetoc2 reads as its expectation says: its notebook line, its entries depth-first with
-/// each section's pages after it, its skipped sections, and its warnings, which name a recycle
-/// bin beside it, a section that fails, in place of a refusal, and a notebook that reads no
-/// entry, at `/`. Interop's password-protected Encryption.one is skipped as encrypted, its
-/// skipped line carrying `encrypted: true`; its package's reading, which scans the cabinet's
-/// entry, is the directory's (`a_package_reads_as_its_directorys_golden`).
 #[test]
 fn every_committed_notebook_reads_as_expected() {
     for expected in expectations() {
@@ -95,8 +84,6 @@ fn every_committed_notebook_reads_as_expected() {
     }
 }
 
-/// A notebook directory reads as the .onetoc2 it holds, the notebook line named for the
-/// directory either way.
 #[test]
 fn a_notebook_directory_reads_as_its_toc() {
     for dir in DIRECTORIES {
@@ -108,8 +95,6 @@ fn a_notebook_directory_reads_as_its_toc() {
     }
 }
 
-/// A table of contents read away from its sections, as one spooled from a stream is, reads no
-/// entry, the parser dropping each missing section without a word, and warns at `/`.
 #[test]
 fn a_table_of_contents_without_its_sections_warns_at_the_root() {
     let alone = scratch("toc-alone");
@@ -125,9 +110,6 @@ fn a_table_of_contents_without_its_sections_warns_at_the_root() {
     );
 }
 
-/// A section group's line comes in its table of contents' place, its sections after it with
-/// the group as their parent and its name in their paths; a recycle bin the table of contents
-/// lists is skipped with the warning, and its pages are never written.
 #[test]
 fn a_section_group_holds_its_sections() {
     let out = run(&[composed()]);
@@ -135,10 +117,6 @@ fn a_section_group_holds_its_sections() {
     assert!(!out.stdout.contains("OneNote_DeletedPages"));
 }
 
-/// Each package, built from a committed notebook directory's OneNote files, reads as the
-/// directory's golden, its .onetoc2's, in every line but the first, and its stderr; the first is
-/// the golden's but for its input kind. The composed notebook, which has no golden, reads as its
-/// directory does.
 #[test]
 fn a_package_reads_as_its_directorys_golden() {
     let packages = scratch("packages");
@@ -178,8 +156,6 @@ fn a_package_reads_as_its_directorys_golden() {
     );
 }
 
-/// Every line of every notebook read keeps the line rules, and each read's output is
-/// byte-identical from one run to the next.
 #[test]
 fn every_notebook_read_keeps_the_line_rules_and_repeats_byte_for_byte() {
     let mut inputs: Vec<PathBuf> = expectations()
@@ -198,8 +174,6 @@ fn every_notebook_read_keeps_the_line_rules_and_repeats_byte_for_byte() {
     }
 }
 
-/// Checks a read against its expectation: exit code, warnings, the notebook line in full, then
-/// each line in order, a page line by its id, section and title.
 fn check(out: &Run, expected: &Value, input: &str, file: &str) {
     assert_eq!(
         out.code,
@@ -240,7 +214,6 @@ fn check(out: &Run, expected: &Value, input: &str, file: &str) {
     assert_eq!(lines, want, "{file}");
 }
 
-/// A page line cut to the fields an expectation gives; other lines whole.
 fn projected(line: Value) -> Value {
     if line["line"] != "page" {
         return line;
@@ -252,8 +225,6 @@ fn projected(line: Value) -> Value {
     page
 }
 
-/// non-legacy's notebook with onenote.rs's "New Section Group" and "OneNote_RecycleBin" added,
-/// as its table of contents lists them, built once under Cargo's temporary directory.
 fn composed() -> PathBuf {
     static COMPOSED: OnceLock<PathBuf> = OnceLock::new();
     COMPOSED
@@ -274,8 +245,6 @@ fn composed() -> PathBuf {
         .clone()
 }
 
-/// A .onepkg of `dir`'s OneNote files, an MSZIP cabinet named for the directory and written
-/// into `into`, its entries named with Windows separators as an export names them.
 fn package(dir: &Path, into: &Path) -> PathBuf {
     let files: Vec<String> = files_under(dir)
         .into_iter()

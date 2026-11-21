@@ -2,6 +2,14 @@
 //! crate's own (src/page.rs), with outline items nested as stored, paragraphs split into runs,
 //! equations read as LaTeX, and images', embedded files' and ink drawings' contents named, and
 //! written, by the media directory, each recorded in the page's media as it is stored.
+//!
+//! A list marker, which onenote_parser keeps on the outline element, goes on the element's first
+//! block when that is a paragraph. A paragraph's runs are cut at its stored formattings' run
+//! indices, in UTF-16 code units, the last run taking the rest of the text; consecutive math runs
+//! are one equation, which takes the stored math objects in order, one per math run. A run that
+//! starts inside one of onenote_parser's hyperlinks, whose targets come from the hidden HYPERLINK
+//! fields, takes its target; a run styled as a link outside them is a link OneNote recognised in
+//! typed text, whose target is its own text, joined across the link-styled runs it spans.
 
 use std::io::Read;
 use std::ops::Range;
@@ -102,9 +110,6 @@ pub fn page(page: &Page, media: &mut Media, place: &str) -> Result<PageRead, Fau
     })
 }
 
-/// A page's recognised ink words, each its best guess and its id, over its recognition's lines
-/// in order, and the other guesses of those that have them, each by its index among the words.
-/// A word with no guess is left out.
 fn recognition(page: &Page) -> (Vec<page::Word>, Vec<InkAlternatives>) {
     let mut words = Vec::new();
     let mut alternatives = Vec::new();
@@ -136,9 +141,6 @@ fn outline_offsets(outline: &Outline) -> Offsets {
     }
 }
 
-/// One page's read: the media its images, embedded files and drawings go to, the record of each
-/// in the order it is read, and the counts that name each image, embedded file and equation in
-/// a warning, in the order they are read.
 struct Reader<'a> {
     media: &'a mut Media,
     place: &'a str,
@@ -161,9 +163,6 @@ impl Reader<'_> {
             .collect()
     }
 
-    /// An outline element. Its list marker goes on its first block when that is a paragraph:
-    /// onenote_parser keeps the marker on the element, and an element holds one paragraph in
-    /// every file seen.
     fn element(&mut self, element: &OutlineElement) -> Result<Item, Fault> {
         let mut list = element.list_contents().first().and_then(marker);
         let mut blocks = Vec::new();
@@ -211,14 +210,10 @@ impl Reader<'_> {
         }
     }
 
-    /// A paragraph's visible runs. Each stored formatting covers the text up to its run index,
-    /// counted in UTF-16 code units, and the last covers the rest. Hidden runs are left out,
-    /// an equation is one run, and neighbours left with the same formatting are joined.
     fn runs(&mut self, text: &RichText) -> Vec<page::Run> {
         let units: Vec<u16> = text.text().encode_utf16().collect();
         let styles = text.text_run_formatting();
         let default = ParagraphStyling::default();
-        // A paragraph with text and no formatting is one run, unformatted.
         let styles: Vec<&ParagraphStyling> = if styles.is_empty() {
             vec![&default]
         } else {
@@ -274,8 +269,6 @@ impl Reader<'_> {
         runs
     }
 
-    /// An equation's LaTeX. One whose markers don't parse is the LaTeX of its text alone,
-    /// with a warning naming it by its number on the page.
     fn latex(&mut self, parts: Vec<(String, Object)>) -> String {
         self.equations += 1;
         let text: String = parts.iter().map(|(text, _)| text.as_str()).collect();
@@ -307,8 +300,6 @@ impl Reader<'_> {
         })
     }
 
-    /// An image, the first of the reader's three store sites. Its file is named by its own
-    /// stored extension, else its filename's.
     fn image(&mut self, image: &Image) -> Result<page::Image, Fault> {
         self.images += 1;
         let place = format!("{}, image {}", self.place, self.images);
@@ -341,7 +332,6 @@ impl Reader<'_> {
         })
     }
 
-    /// An embedded file, the second store site. Its file is named by its filename's extension.
     fn embedded_file(&mut self, file: &EmbeddedFile) -> Result<page::EmbeddedFile, Fault> {
         self.files += 1;
         let place = format!("{}, embedded file {}", self.place, self.files);
@@ -371,9 +361,6 @@ impl Reader<'_> {
         })
     }
 
-    /// A drawing of `strokes`, the third store site: its SVG stored in the media, and its
-    /// record, with the recognised words its strokes belong to. Strokes with no points draw
-    /// nothing and have none, so their words are no drawing's.
     fn drawing(&mut self, strokes: &[Stroke]) -> Result<Option<page::Ink>, Fault> {
         let Some(svg) = ink::svg(strokes) else {
             return Ok(None);
@@ -393,9 +380,6 @@ impl Reader<'_> {
         Ok(Some(page::Ink { file, words }))
     }
 
-    /// A record's file: its content streamed into the media and named. Data that is missing or
-    /// invalid gives no file and a warning at `place`; data that fails partway through its read
-    /// is a media fault, exit 1, as the store makes every payload it can't read.
     fn file(
         &mut self,
         status: FileDataStatus,
@@ -415,18 +399,12 @@ impl Reader<'_> {
     }
 }
 
-/// A stored run, by what it becomes.
 enum Stored {
-    /// Visible text: its formatting, and whether it is styled as a link.
     Text(page::Run, bool),
-    /// A math-formatted run: a part of an equation.
     Math,
-    /// A hidden run, which holds a link's target among others, or an empty one: left out.
     Skipped,
 }
 
-/// A run as it is cut from the paragraph: its UTF-16 range, whether it is styled as a link,
-/// and, for an equation, its stored runs, each with its math object.
 struct Piece {
     range: Range<usize>,
     run: page::Run,
@@ -434,10 +412,6 @@ struct Piece {
     equation: Option<Vec<(String, Object)>>,
 }
 
-/// The pieces of a paragraph's stored runs over its UTF-16 `units`. Consecutive math runs are
-/// one equation, ended by any other stored run. The math objects go to the math runs in order,
-/// one each, as onenote_parser reads them; a math run past the last object has none, which
-/// fails its equation's parse if the run holds a marker.
 fn pieces(units: &[u16], stored: Vec<(Range<usize>, Stored)>, objects: &[Object]) -> Vec<Piece> {
     let mut objects = objects.iter().copied();
     let mut pieces: Vec<Piece> = Vec::new();
@@ -480,8 +454,6 @@ fn pieces(units: &[u16], stored: Vec<(Range<usize>, Stored)>, objects: &[Object]
     pieces
 }
 
-/// The display mode of a paragraph's runs' equations: "display" for an equation that is its
-/// paragraph's only run, "inline" for any other.
 fn math_modes(runs: &mut [page::Run]) {
     let display = runs.len() == 1;
     for run in runs.iter_mut().filter(|run| run.math.is_some()) {
@@ -489,9 +461,6 @@ fn math_modes(runs: &mut [page::Run]) {
     }
 }
 
-/// The UTF-16 ranges of `count` runs over `len` code units, ended by `indices`. The last run
-/// takes the rest of the text, so none of it is lost when the indices run short; ranges are
-/// kept inside the text and never run backwards.
 fn ranges(len: usize, indices: &[u32], count: usize) -> Vec<Range<usize>> {
     let mut start = 0;
     (0..count)
@@ -509,10 +478,6 @@ fn ranges(len: usize, indices: &[u32], count: usize) -> Vec<Range<usize>> {
         .collect()
 }
 
-/// Gives each run but an equation its link target. A run that starts inside one of onenote_parser's
-/// hyperlinks, whose targets come from the hidden HYPERLINK fields, takes its target. A run
-/// styled as a link outside any of them is a link OneNote recognised in typed text, and its
-/// target is its own text, joined across the neighbouring link-styled runs it spans.
 fn link(pieces: &mut [Piece], links: &[(Range<usize>, String)]) {
     for piece in pieces.iter_mut().filter(|piece| piece.equation.is_none()) {
         piece.run.link = links
@@ -548,8 +513,6 @@ fn link(pieces: &mut [Piece], links: &[(Range<usize>, String)]) {
     }
 }
 
-/// The runs, with neighbours of the same formatting and link joined; an equation is never
-/// joined.
 fn join(pieces: Vec<Piece>) -> Vec<page::Run> {
     let mut runs: Vec<page::Run> = Vec::with_capacity(pieces.len());
     for piece in pieces {
@@ -577,15 +540,10 @@ fn same_format(a: &page::Run, b: &page::Run) -> bool {
     }
 }
 
-/// A list marker. onenote_parser gives the stored format string less its length: a bullet
-/// is its character; a number is U+FFFD followed by its MSONFC format code, with the text
-/// written before and after the number around them. Only whether it is numbered, and where it
-/// restarts, are read.
 fn marker(list: &List) -> Option<page::List> {
     list_of(list.list_format(), list.list_restart())
 }
 
-/// The list marker of a stored format string and restart; none for an empty format.
 fn list_of(format: &[char], restart: Option<i32>) -> Option<page::List> {
     let numbered = format
         .iter()
@@ -594,7 +552,6 @@ fn list_of(format: &[char], restart: Option<i32>) -> Option<page::List> {
     (!format.is_empty()).then_some(page::List { numbered, restart })
 }
 
-/// Note tags: each its label, whether it is a To Do, and whether it is completed.
 fn tags(tags: &[NoteTag]) -> Vec<page::Tag> {
     tags.iter()
         .map(|tag| {
@@ -611,8 +568,6 @@ fn tags(tags: &[NoteTag]) -> Vec<page::Tag> {
         .collect()
 }
 
-/// Whether a tag's icon, by its name in onenote_parser's NoteTagShape, which the parser doesn't
-/// export, is a check box: a To Do, a task.
 fn is_task(shape: &str) -> bool {
     shape.contains("CheckBox")
 }
@@ -635,7 +590,6 @@ mod tests {
 
     #[test]
     fn runs_split_on_utf16_indices() {
-        // "𝑎=𝑏" is five UTF-16 code units: a surrogate pair, "=", a surrogate pair.
         let text = "𝑎=𝑏";
         let units: Vec<u16> = text.encode_utf16().collect();
         let ranges = ranges(units.len(), &[2, 3], 3);
@@ -650,9 +604,7 @@ mod tests {
     #[test]
     fn the_last_run_takes_the_rest_and_ranges_stay_in_the_text() {
         assert_eq!(ranges(10, &[4], 2), vec![0..4, 4..10]);
-        // Too few indices: the middle run ends at the text's end, the last is empty.
         assert_eq!(ranges(10, &[4], 3), vec![0..4, 4..10, 10..10]);
-        // An index past the end, or before the previous one, is clamped.
         assert_eq!(ranges(10, &[12, 3], 3), vec![0..10, 10..10, 10..10]);
         assert_eq!(ranges(0, &[], 1), vec![0..0]);
     }
@@ -703,14 +655,11 @@ mod tests {
         }
     }
 
-    /// Consecutive math runs are one equation, which takes the math objects in order, one per
-    /// math run; text, a hidden run or an empty one ends it.
     #[test]
     fn consecutive_math_runs_are_one_equation() {
         use onenote_parser::contents::MathObjectType as T;
         let text = "x: \u{fdd0}𝑎\u{fdee}2\u{fdef}+𝑏 or 𝑐";
         let units: Vec<u16> = text.encode_utf16().collect();
-        // "x: ", then the superscript's three runs, "+𝑏", a hidden empty run, " or ", "𝑐".
         let stored = vec![
             (0..3, Stored::Text(page::Run::default(), false)),
             (3..4, Stored::Math),
@@ -743,8 +692,6 @@ mod tests {
         assert_eq!(second, &vec![("𝑐".to_owned(), objects[4])]);
     }
 
-    /// A math run past the last stored object has none, and its equation's markers don't
-    /// parse; its text alone is still read.
     #[test]
     fn a_math_run_without_an_object_has_none() {
         let text = "\u{fdd0}𝑥\u{fdef}";
@@ -769,14 +716,12 @@ mod tests {
         }
     }
 
-    /// Two equations side by side stay two runs, even with the same LaTeX.
     #[test]
     fn equations_never_join() {
         let runs = join(vec![equation("x"), equation("x"), piece(0..1, "y", false)]);
         assert_eq!(runs.len(), 3);
     }
 
-    /// An equation is display math when it is its paragraph's only run, inline otherwise.
     #[test]
     fn an_equation_alone_is_display_math() {
         let mut alone = join(vec![equation("x")]);
@@ -788,8 +733,6 @@ mod tests {
         assert_eq!(beside[0].math, None);
     }
 
-    /// Data that is missing or invalid gives no file, and nothing goes to the media, which a
-    /// directory that can't be written would refuse; no committed fixture holds such a record.
     #[test]
     fn missing_or_invalid_data_has_no_file() {
         let mut media = Media::new(Some("/dev/null/media".into()));
@@ -811,9 +754,6 @@ mod tests {
         assert!(reader.read.is_empty());
     }
 
-    /// A list's format is a bullet's character, or U+FFFD and a number's format code between
-    /// the text around the number: a number's when a code follows the U+FFFD. An empty format
-    /// is no marker.
     #[test]
     fn a_list_marker_is_a_bullet_or_a_number() {
         let chars = |text: &str| text.chars().collect::<Vec<_>>();
@@ -823,12 +763,10 @@ mod tests {
         assert_eq!(read("•", None), Some((false, None)));
         assert_eq!(read("\u{fffd}\0.", None), Some((true, None)));
         assert_eq!(read("(\u{fffd}\u{4})", Some(3)), Some((true, Some(3))));
-        // A U+FFFD with no code after it is a bullet's character.
         assert_eq!(read("\u{fffd}", None), Some((false, None)));
         assert_eq!(read("", Some(1)), None);
     }
 
-    /// A tag is a task when its icon is one of the parser's check boxes, of any colour or mark.
     #[test]
     fn a_check_box_tag_is_a_task() {
         for shape in [

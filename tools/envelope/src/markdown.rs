@@ -35,9 +35,6 @@ pub fn escape(text: &str, line_start: bool) -> String {
     out
 }
 
-/// Whether what follows a `<` could make it an HTML tag, a comment, or an instruction: a letter,
-/// `/` then a letter or nothing, `!`, or `?`. A `<` that ends its text is escaped too, since the
-/// text after it could carry on.
 fn html_like(rest: &str) -> bool {
     let mut chars = rest.chars();
     match chars.next() {
@@ -128,7 +125,6 @@ mod tests {
     use super::*;
     use crate::cases;
 
-    /// Each case is a whole line of literal text.
     #[test]
     fn literal_text_makes_its_tables_markdown() {
         for case in cases::group("literal_escape") {
@@ -137,7 +133,6 @@ mod tests {
         }
     }
 
-    /// Past a line's start, a first character or a run of digits is text like any other.
     #[test]
     fn text_past_a_lines_start_escapes_no_line_markup() {
         assert_eq!(escape("# x", false), "# x");
@@ -145,7 +140,6 @@ mod tests {
         assert_eq!(escape("*x*", false), "\\*x\\*");
     }
 
-    /// Each case's target is written as its destination.
     #[test]
     fn a_target_makes_its_tables_destination() {
         for case in cases::group("destinations") {
@@ -154,7 +148,6 @@ mod tests {
         }
     }
 
-    /// Each case's title is written as its Markdown.
     #[test]
     fn a_title_makes_its_tables_markdown() {
         for case in cases::group("titles") {
@@ -163,8 +156,6 @@ mod tests {
         }
     }
 
-    /// CommonMark reads each case's title, in a link and in an image, back as written, or as its
-    /// `reads` where it has one.
     #[cfg(feature = "markdown")]
     #[test]
     fn a_title_reads_back_as_written() {
@@ -187,8 +178,6 @@ mod tests {
         }
     }
 
-    /// CommonMark reads each case's destination, in a link, back as its target, or as its
-    /// `reads` where it has one.
     #[cfg(feature = "markdown")]
     #[test]
     fn a_destination_reads_back_as_its_target() {

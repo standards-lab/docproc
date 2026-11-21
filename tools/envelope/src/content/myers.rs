@@ -24,8 +24,6 @@ pub fn kept(a: &[u32], b: &[u32], edits_max: usize) -> Option<Vec<bool>> {
         .then_some(diff.kept)
 }
 
-/// The most rounds of the middle-snake search: each side's d reaches at most half of D, rounded
-/// up, and no more than the sequences can need.
 fn depth(n: usize, m: usize, edits_max: usize) -> usize {
     ((n + m).div_ceil(2) + 1).min(edits_max.div_ceil(2) + 1)
 }
@@ -39,8 +37,6 @@ struct Diff<'a> {
 }
 
 impl Diff<'_> {
-    /// Aligns `a[x]` with `b[y]`, marking what it keeps; with `edits_max`, the top level, false
-    /// when more edits than that separate them. A sub-problem's edits are within its parent's.
     fn conquer(
         &mut self,
         mut x: Range<usize>,
@@ -68,9 +64,6 @@ impl Diff<'_> {
         true
     }
 
-    /// Where an optimal path's middle snake starts, splitting the problem in two, or None when
-    /// more than `edits_max` edits separate `a[x]` and `b[y]`. Both are non-empty and differ at
-    /// both ends.
     fn middle_snake(
         &mut self,
         x: Range<usize>,
@@ -83,7 +76,6 @@ impl Diff<'_> {
         self.forward.set(1, 0);
         self.backward.set(1, 0);
         let rounds = (n + m).div_ceil(2) + 1;
-        // A path found in the forward search of round d has 2d - 1 edits, in the backward one 2d.
         let (forward_max, backward_max) = match edits_max {
             Some(max) => (max.div_ceil(2), max / 2),
             None => (rounds, rounds),
@@ -141,7 +133,6 @@ impl Diff<'_> {
     }
 }
 
-/// The furthest x reached on each diagonal k, from -depth to depth.
 struct V {
     offset: isize,
     x: Vec<usize>,
@@ -168,7 +159,6 @@ impl V {
 mod tests {
     use super::*;
 
-    /// The length of a longest common subsequence, by dynamic programming, the reference.
     fn lcs(a: &[u32], b: &[u32]) -> usize {
         let mut row = vec![0usize; b.len() + 1];
         for &ai in a {
@@ -186,7 +176,6 @@ mod tests {
         row[b.len()]
     }
 
-    /// Whether `kept` marks a subsequence of `a` that is one of `b`.
     fn is_common(a: &[u32], b: &[u32], kept: &[bool]) -> bool {
         let mut rest = b.iter();
         a.iter()
@@ -195,7 +184,6 @@ mod tests {
             .all(|(token, _)| rest.any(|other| other == token))
     }
 
-    /// A small deterministic generator, so the cases are the same on every run.
     fn sequence(seed: &mut u64, length: usize, alphabet: u32) -> Vec<u32> {
         (0..length)
             .map(|_| {
@@ -207,7 +195,6 @@ mod tests {
             .collect()
     }
 
-    /// Over many pairs, what it keeps is a common subsequence as long as the reference's.
     #[test]
     fn it_keeps_a_longest_common_subsequence() {
         let mut seed = 7;
@@ -232,12 +219,9 @@ mod tests {
         assert_eq!(kept(&[1, 9, 3], &[1, 3], 1), Some(vec![true, false, true]));
     }
 
-    /// The bound is on D, the edits of an optimal alignment: exactly at it the alignment is
-    /// made, one past it none is.
     #[test]
     fn the_bound_stops_the_alignment_past_it() {
         for edits in [1usize, 2, 3, 10, 11] {
-            // Each differing pair is two edits, a deletion and an insertion; an extra token one.
             let a: Vec<u32> = (0..edits as u32 / 2)
                 .flat_map(|n| [n * 3, n * 3 + 1])
                 .chain((edits % 2 == 1).then_some(999))

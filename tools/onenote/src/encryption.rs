@@ -4,7 +4,8 @@
 //! (`Encryption.one`'s "Unexpected end of file"). [MS-ONESTORE] 2.5.19's encryption key, which a
 //! password-protected section holds, opens and closes with fixed 8-byte constants, so a section
 //! the parser couldn't read and that holds both is encrypted. The file is scanned only after its
-//! parse failed: a false match relabels a read that already failed and never costs content.
+//! parse failed: a false match relabels a read that already failed and never costs content. The
+//! scan streams the file, so a large section isn't held whole.
 
 use std::io::{self, ErrorKind, Read};
 
@@ -13,12 +14,9 @@ use std::io::{self, ErrorKind, Read};
 pub const REASON: &str = "encrypted section (a password-protected section, holding an \
                           [MS-ONESTORE] 2.5.19 encryption key); remove its password in OneNote first";
 
-/// 2.5.19's EncryptionKey header, 0xFB6BA385DAD1A067, as it is stored: little-endian.
 const HEADER: [u8; 8] = 0xFB6B_A385_DAD1_A067_u64.to_le_bytes();
-/// 2.5.19's EncryptionKey footer, 0x2649294F8E198B3C, as it is stored: little-endian.
 const FOOTER: [u8; 8] = 0x2649_294F_8E19_8B3C_u64.to_le_bytes();
 
-/// The bytes read at a time: the scan streams, so a large section isn't held whole.
 const CHUNK: usize = 64 << 10;
 
 /// Whether `source` holds both of 2.5.19's constants, anywhere, in either order. A constant that
@@ -26,7 +24,6 @@ const CHUNK: usize = 64 << 10;
 pub fn holds_key(mut source: impl Read) -> io::Result<bool> {
     let keep = HEADER.len() - 1;
     let mut buffer = vec![0; keep + CHUNK];
-    // The bytes at the buffer's start that are kept from the previous read.
     let mut kept = 0;
     let (mut header, mut footer) = (false, false);
     loop {
@@ -53,7 +50,6 @@ pub fn holds_key(mut source: impl Read) -> io::Result<bool> {
 mod tests {
     use super::*;
 
-    /// A reader that gives at most `step` bytes a read, so a constant straddles reads.
     struct Trickle<'a> {
         bytes: &'a [u8],
         step: usize,
@@ -72,8 +68,6 @@ mod tests {
         holds_key(Trickle { bytes, step }).unwrap()
     }
 
-    /// Interop's password-protected `Encryption.one` holds both constants, as it stores them;
-    /// its sections that read hold neither pair.
     #[test]
     fn a_password_protected_section_holds_the_key() {
         let fixture = |path: &str| {
@@ -96,7 +90,6 @@ mod tests {
         for step in [1, 3, 7, 8, 9, 64, 1 << 20] {
             assert!(scan(&bytes, step), "step {step}");
         }
-        // Back to back, the end of one the start of the other.
         let joined = [HEADER, FOOTER].concat();
         assert!(scan(&joined, 5));
     }

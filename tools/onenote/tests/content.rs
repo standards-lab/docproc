@@ -8,8 +8,6 @@ use serde_json::Value;
 
 use common::{fixture, run};
 
-/// Every field of tests/fixtures/content.json holds in its page's read: the value at its
-/// pointer, or no value for a null.
 #[test]
 fn every_content_expectation_holds() {
     let bytes = std::fs::read(fixture("content.json")).unwrap();

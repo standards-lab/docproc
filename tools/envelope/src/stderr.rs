@@ -8,6 +8,9 @@
 //! three. A reason takes `<what>`'s escape, so an echoed argument or a reader's message that holds
 //! a line break still makes one line. A reason never leads with the input's path, which the caller
 //! already knows.
+//!
+//! A failure to write stderr is dropped: stderr is the only place it could be told, and the exit
+//! code still says what happened.
 
 use std::io::{self, Write};
 
@@ -35,13 +38,10 @@ pub fn error_line(tool: &str, reason: &str) -> String {
     format!("{tool}: error: {}\n", escape(reason, false))
 }
 
-/// Writes text to stderr as it is. stderr is the only place a failure to write could be told, so
-/// one is dropped: the exit code still says what happened.
 pub(crate) fn write(text: &str) {
     let _ = io::stderr().lock().write_all(text.as_bytes());
 }
 
-/// The envelope's escape, `in_where` adding `:\ ` for a colon followed by a space.
 fn escape(text: &str, in_where: bool) -> String {
     let mut out = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
@@ -63,7 +63,6 @@ mod tests {
     use super::*;
     use crate::cases;
 
-    /// The table's tool name, which each of its lines begins with.
     const TOOL: &str = "tool";
 
     #[test]
@@ -78,8 +77,6 @@ mod tests {
         }
     }
 
-    /// Split at its first three `": "` and unescaped, each warning line gives its where and what
-    /// back, as docproc reads it.
     #[test]
     fn a_warning_line_splits_back_to_its_where_and_what() {
         for case in cases::group("warnings") {
@@ -100,8 +97,6 @@ mod tests {
         }
     }
 
-    /// Control characters past the table's line feed and carriage return: each a `\u{…}`, in a
-    /// where, a what, and a reason, and each read back.
     #[test]
     fn a_control_character_is_escaped_by_its_code_point() {
         let place = "tab\there: \u{1b}[0m";
@@ -117,7 +112,6 @@ mod tests {
         assert_eq!(error_line(TOOL, "a\0b"), "tool: error: a\\u{0}b\n");
     }
 
-    /// The inverse docproc applies, here only to show the escape inverts.
     fn unescape(text: &str) -> String {
         let mut out = String::new();
         let mut chars = text.chars();

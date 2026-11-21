@@ -90,7 +90,6 @@ pub fn version(version: &str, schema: &str) -> Result<(), Fault> {
         .map_err(Fault::Output)
 }
 
-/// `--version`'s output, both of its lines.
 fn version_text(version: &str, schema: &str) -> String {
     format!("{version}\nschema {schema}\n")
 }
@@ -109,8 +108,6 @@ mod tests {
     use super::*;
     use crate::cases;
 
-    /// Each fault exits with the code whose meaning the table gives for it, and the table holds
-    /// the codes 0 to 4 alone.
     #[test]
     fn each_fault_exits_with_its_tables_code() {
         let table: Vec<(u64, String)> = cases::group("exit_codes")
@@ -126,7 +123,6 @@ mod tests {
             let code = u64::from(fault.code());
             table.iter().find(|(c, _)| *c == code).unwrap().1.clone()
         };
-        // Each fault by the word of its code's meaning that names it.
         let faults = [
             (Fault::Output(io::Error::other("full")), "stdout"),
             (Fault::Media("x".into()), "media"),

@@ -17,10 +17,6 @@
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Changed from one2html: the equation is returned bare, not wrapped in \(…\) or \[…\]; the
-// renderer can't fail; its log warnings for alignment it doesn't render are left out; and
-// itertools' chunks and join are std's.
 
 //! The LaTeX renderer.
 //!
@@ -37,6 +33,17 @@
 //! - n-ary operators, bracket delimiters and accents, from small fixed tables, since LaTeX
 //!   spells them differently: `\sum` rather than a bare `∑`, for its limits; `\left\{` rather
 //!   than `\left{`; `\hat{x}` rather than a combining U+0302.
+//!
+//! Upright text and a function's name are `\operatorname{}`: bare text italicises (c·o·s), and
+//! `\mathrm{}` is ord-class, leaving its neighbours flush, where `\operatorname{}` is upright and
+//! mathop-class, spaced as LaTeX's own `\cos`, so a function's argument gets TeX's automatic
+//! spacing. A double-struck italic operator (ⅅ, ⅆ) keeps its code point after a thin space, for
+//! `dx`-style typography, and a function-application operator left in text is dropped, its
+//! function apply's rendering spacing it.
+//!
+//! Changed from one2html: the equation is returned bare, not wrapped in \(…\) or \[…\]; the
+//! renderer can't fail; its log warnings for alignment it doesn't render are left out; and
+//! itertools' chunks and join are std's.
 
 use docproc_envelope::category;
 
@@ -47,7 +54,6 @@ use super::ast::{
 };
 use super::text::TextType;
 
-/// An equation's LaTeX.
 pub(super) fn render(equation: Equation) -> String {
     render_eq(equation)
 }
@@ -107,8 +113,6 @@ fn render_op(op: Op) -> String {
             render_eq(num),
             render_eq(den)
         ),
-        // The function name is rendered by \operatorname{}, mathop-class, so the argument
-        // after it gets TeX's automatic spacing, as `\cos x` does.
         Op::FunctionApply { func, body } => {
             format!("{}{}", render_group(func), render_group(body))
         }
@@ -170,7 +174,6 @@ fn render_op(op: Op) -> String {
     }
 }
 
-/// A script's argument, braced; an empty one shows a placeholder.
 fn script(eq: Equation) -> String {
     if eq.is_empty() {
         "{\\square}".to_owned()
@@ -187,7 +190,6 @@ fn braced_or_empty(eq: Equation) -> String {
     }
 }
 
-/// A format character other than the function-application operator draws nothing.
 fn is_skippable_format(c: char) -> bool {
     category::is_format(c) && c != '\u{2061}'
 }
@@ -214,16 +216,11 @@ fn render_text_part(kind: TextType, text: &str) -> String {
         TextType::BoldItalic => format!("\\boldsymbol{{{}}}", decoded()),
         TextType::BoldScript => format!("\\boldsymbol{{\\mathcal{{{}}}}}", decoded()),
         TextType::Double => format!("\\mathbb{{{}}}", decoded()),
-        // Double-struck italic operators (ⅅ, ⅆ): the backends render the code point; the thin
-        // space keeps `dx`-style typography.
         TextType::DoubleOperator => format!("\\,{text}"),
         TextType::Fraktur => format!("\\mathfrak{{{}}}", decoded()),
         TextType::FrakturBold => format!("\\boldsymbol{{\\mathfrak{{{}}}}}", decoded()),
         TextType::Identifier => text.chars().map(decode_styled_letter).collect(),
         TextType::Mono => format!("\\mathtt{{{}}}", decoded()),
-        // Upright text. \operatorname{}, not bare text, which italicises (c·o·s), nor
-        // \mathrm{}, which is ord-class and leaves neighbours flush: \operatorname{} is
-        // upright and mathop-class, spaced as LaTeX's own \cos.
         TextType::Normal => format!("\\operatorname{{{text}}}"),
         TextType::Numeric => text.to_owned(),
         TextType::Operator => text
@@ -241,8 +238,6 @@ fn render_text_part(kind: TextType, text: &str) -> String {
     }
 }
 
-/// A styled run's letters as their base letters: offsets 0 to 25 from its range's start are
-/// A to Z, 26 to 51 a to z; anything else, such as a styled Greek letter, is decoded alone.
 fn decode_letters(text: &str, kind: TextType) -> String {
     let base = range_start(kind).map(|c| c as u32);
     text.chars()
@@ -279,9 +274,6 @@ fn range_start(kind: TextType) -> Option<char> {
     })
 }
 
-/// A styled Mathematical Alphanumeric Symbol as its base character. Math-italic Latin letters
-/// become ASCII, which math mode sets in italic; styled Greek letters become base Greek. Other
-/// styles are decoded by their own wrappers.
 fn decode_styled_letter(c: char) -> char {
     let code = c as u32;
     if (0x1d434..=0x1d44d).contains(&code) {
@@ -290,11 +282,9 @@ fn decode_styled_letter(c: char) -> char {
     if (0x1d44e..=0x1d467).contains(&code) {
         return char::from_u32('a' as u32 + (code - 0x1d44e)).unwrap_or(c);
     }
-    // The italic small h, which the block leaves to the Planck constant.
     if c == '\u{210e}' {
         return 'h';
     }
-    // Styled Greek: bold, italic, bold italic, sans bold and sans bold italic, 58 each.
     for start in [0x1d6a8u32, 0x1d6e2, 0x1d71c, 0x1d756, 0x1d790] {
         if (start..start + 58).contains(&code) {
             return greek_offset_to_base((code - start) as usize).unwrap_or(c);
@@ -303,8 +293,6 @@ fn decode_styled_letter(c: char) -> char {
     c
 }
 
-/// A styled Greek block's letter by its offset: capitals, ∇, small letters, ∂, then the
-/// variant forms.
 fn greek_offset_to_base(offset: usize) -> Option<char> {
     const CAPS: &str = "ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡϴΣΤΥΦΧΨΩ";
     const LOWERS: &str = "αβγδεζηθικλμνξοπρςστυφχψω";
@@ -319,11 +307,8 @@ fn greek_offset_to_base(offset: usize) -> Option<char> {
     }
 }
 
-/// Only the characters LaTeX parses in math mode are escaped; the rest pass as Unicode.
 fn escape_operator_char(c: char) -> String {
     match c {
-        // The function-application operator: the parser reads it into a function apply,
-        // whose rendering spaces it, so one left in text is dropped.
         '\u{2061}' => String::new(),
         '\\' => "\\backslash ".to_owned(),
         '{' => "\\{".to_owned(),
@@ -348,7 +333,6 @@ fn render_accent(char: char, body: Equation) -> String {
 
 fn accent_command(c: char) -> Option<&'static str> {
     Some(match c {
-        // Combining marks.
         '\u{0300}' => "\\grave",
         '\u{0301}' => "\\acute",
         '\u{0302}' => "\\hat",
@@ -360,7 +344,6 @@ fn accent_command(c: char) -> Option<&'static str> {
         '\u{030A}' => "\\mathring",
         '\u{030C}' => "\\check",
         '\u{20D7}' => "\\vec",
-        // Their spacing variants.
         '\u{02C6}' => "\\hat",
         '\u{02DC}' => "\\tilde",
         '\u{00AF}' => "\\bar",
@@ -387,7 +370,6 @@ fn render_box(body: Equation, size: BoxSize, no_break: bool) -> String {
     }
 }
 
-/// Brackets around `body`, sized as stored, or growing with it when no size is.
 fn sized_brackets(
     open: Option<char>,
     close: Option<char>,
@@ -421,7 +403,6 @@ fn bracket_delim_str(c: char) -> String {
     }
 }
 
-/// A matrix: its items in rows of `columns`, the last row padded with empty cells.
 fn render_matrix(
     columns: u8,
     items: Vec<Equation>,
@@ -447,7 +428,6 @@ fn render_matrix(
         .collect();
     let padding = (columns - cells.len() % columns) % columns;
     let pad = if placeholders { "\\square" } else { "" };
-    // The last row's padding is empty cells, which show a placeholder as any empty cell does.
     cells.extend(std::iter::repeat_n(pad.to_owned(), padding));
     let rows = cells
         .chunks(columns)
@@ -580,7 +560,6 @@ fn render_stretch_stack(char: char, pos: StretchStackPosition, body: Equation) -
         '\u{23DF}' | '\u{FE38}' => Some("\\underbrace"),
         '\u{23B4}' => Some("\\overbracket"),
         '\u{23B5}' => Some("\\underbracket"),
-        // Stretchy arrows.
         '→' => Some("\\xrightarrow"),
         '←' => Some("\\xleftarrow"),
         '↔' => Some("\\xleftrightarrow"),

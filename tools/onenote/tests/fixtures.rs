@@ -7,8 +7,6 @@ use serde_json::Value;
 
 use common::{files_under, fixture, sha256};
 
-/// Each set: its directory under tests/fixtures, its repository, its pinned commit, and its
-/// license.
 const SETS: [(&str, &str, &str, &str); 2] = [
     (
         "interop",
@@ -24,8 +22,6 @@ const SETS: [(&str, &str, &str, &str); 2] = [
     ),
 ];
 
-/// Every file of a set but its sources.json has one sources entry, at the set's pin and under
-/// its license, whose SHA-256 matches it; its LICENSE is among them.
 #[test]
 fn every_fixture_file_has_a_matching_sources_entry() {
     for (set, repository, commit, license) in SETS {
@@ -58,8 +54,6 @@ fn every_fixture_file_has_a_matching_sources_entry() {
     }
 }
 
-/// onenote.rs's set holds its maintainer's samples alone: never Joplin's AGPL samples, nor the
-/// Interop file it vendors, which the Interop set holds.
 #[test]
 fn the_onenote_rs_set_holds_no_third_party_sample() {
     for file in files_under(&fixture("onenote-rs")) {

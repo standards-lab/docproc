@@ -17,12 +17,12 @@
 // NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
 // DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Changed from one2html: a run is split at every marker in it, not only at a leading start or
-// a trailing separator or end, and its tokens are built up front.
 
 //! The lexer: an equation's runs as tokens. Each marker is a token carrying its run's object;
 //! the text between markers is a text token.
+//!
+//! Changed from one2html: a run is split at every marker in it, not only at a leading start or
+//! a trailing separator or end, and its tokens are built up front.
 
 use onenote_parser::contents::MathObjectType;
 
@@ -33,7 +33,6 @@ const START: char = '\u{fdd0}';
 const SEP: char = '\u{fdee}';
 const END: char = '\u{fdef}';
 
-/// Whether `c` is one of RichEdit's math object markers.
 pub(super) fn is_marker(c: char) -> bool {
     matches!(c, START | SEP | END)
 }

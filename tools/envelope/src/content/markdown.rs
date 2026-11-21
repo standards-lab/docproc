@@ -58,7 +58,6 @@ pub fn plain(markdown: &str) -> Text {
     out
 }
 
-/// An HTML block's line with its tags and comments removed.
 fn untagged(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -89,7 +88,6 @@ mod tests {
         (text.text, urls)
     }
 
-    /// Links and images are their text and their destination; emphasis and escapes go.
     #[test]
     fn markdown_reads_as_its_plain_text() {
         let (text, urls) = read(
@@ -102,7 +100,6 @@ mod tests {
         assert_eq!(urls, ["http://x.example/a", "f.png"]);
     }
 
-    /// Blocks end lines; a tag in an HTML block is no text, the text between tags is.
     #[test]
     fn blocks_end_lines_and_tags_are_no_text() {
         let (text, urls) = read(
@@ -112,7 +109,6 @@ mod tests {
         assert!(urls.is_empty());
     }
 
-    /// An autolink is its text and its destination, the two compared as one URL each.
     #[test]
     fn autolinks_are_their_text_and_destination() {
         let (_, urls) = read("<http://x.example/>");

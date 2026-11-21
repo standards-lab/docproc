@@ -14,10 +14,8 @@ use serde_json::Value;
 
 const BIN: &str = env!("CARGO_BIN_EXE_docproc-onenote");
 
-/// The prefix of every error and warning line.
 pub const NAME: &str = "docproc-onenote";
 
-/// One run of the binary: its exit code, stdout and stderr.
 pub struct Run {
     pub code: Option<i32>,
     pub stdout: String,
@@ -25,7 +23,6 @@ pub struct Run {
 }
 
 impl Run {
-    /// stdout's lines, each parsed as JSON.
     pub fn lines(&self) -> Vec<Value> {
         self.stdout
             .lines()
@@ -38,12 +35,10 @@ pub fn run<S: AsRef<OsStr>>(args: &[S]) -> Run {
     finish(Command::new(BIN).args(args))
 }
 
-/// One run of the binary in the working directory `dir`.
 pub fn run_in<S: AsRef<OsStr>>(dir: &Path, args: &[S]) -> Run {
     finish(Command::new(BIN).args(args).current_dir(dir))
 }
 
-/// One run of the binary with its stdout on `stdout`.
 pub fn run_to<S: AsRef<OsStr>>(stdout: impl Into<Stdio>, args: &[S]) -> Run {
     finish(Command::new(BIN).args(args).stdout(stdout))
 }
@@ -57,29 +52,24 @@ fn finish(command: &mut Command) -> Run {
     }
 }
 
-/// A committed fixture, by its path under tests/fixtures.
 pub fn fixture(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(path)
 }
 
-/// A test-built input, written under Cargo's temporary directory for integration tests.
 pub fn built(name: impl AsRef<Path>, bytes: &[u8]) -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::write(&path, bytes).unwrap();
     path
 }
 
-/// A committed fixture with one byte set to `value`, written as a test-built input.
 pub fn patched(path: &str, offset: usize, value: u8, name: &str) -> PathBuf {
     let mut bytes = std::fs::read(fixture(path)).unwrap();
     bytes[offset] = value;
     built(name, &bytes)
 }
 
-/// An empty directory under Cargo's temporary directory for integration tests, emptied if a
-/// previous run left it.
 pub fn scratch(name: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     if path.exists() {
@@ -89,27 +79,18 @@ pub fn scratch(name: &str) -> PathBuf {
     path
 }
 
-/// The error line a refusal for `reason` writes; it never names the input, which docproc
-/// already knows.
 pub fn error(reason: &str) -> String {
     format!("{NAME}: error: {reason}\n")
 }
 
-/// The committed inputs' directory, tests/fixtures, where the goldens are run.
 pub fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
-/// The goldens of the committed input `input`, by its path under tests/fixtures: that path under
-/// tests/golden, `.jsonl` and `.stderr` added to its name, since a section and a table of
-/// contents can share a stem.
 pub fn goldens(input: &str) -> (PathBuf, PathBuf) {
     goldens_of(input, &[])
 }
 
-/// The goldens of the committed input `input` read with the options `options`: [`goldens`]'
-/// names, each option, its dashes dropped, added before the extension, as
-/// `Open Notebook.onetoc2.file-only.jsonl` for `--file-only`.
 pub fn goldens_of(input: &str, options: &[&str]) -> (PathBuf, PathBuf) {
     let base = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/golden")
@@ -125,21 +106,14 @@ pub fn goldens_of(input: &str, options: &[&str]) -> (PathBuf, PathBuf) {
     (with(".jsonl"), with(".stderr"))
 }
 
-/// A golden, read whole; `input` names its input in a failure.
 pub fn read_golden(path: &Path, input: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_else(|err| panic!("{input}: {}: {err}", path.display()))
 }
 
-/// Runs the binary over the committed input `input`, by its relative path, with tests/fixtures
-/// as its working directory, so its stderr is the same on every machine; asserts that it exits
-/// `code`; and compares its stdout and stderr, byte for byte, with its goldens. With
-/// UPDATE_GOLDEN set (the `golden` task), it writes the goldens instead; their diff is reviewed
-/// before committing.
 pub fn golden(input: &str, code: i32) {
     golden_with(input, &[], code);
 }
 
-/// [`golden`], with the options `options` before the input, against [`goldens_of`]'s goldens.
 pub fn golden_with(input: &str, options: &[&str], code: i32) {
     let mut args = options.to_vec();
     args.push(input);
@@ -160,7 +134,6 @@ pub fn golden_with(input: &str, options: &[&str], code: i32) {
     assert_eq!(out.stderr, read_golden(&stderr, input), "{input}: stderr");
 }
 
-/// A file's lowercase hex SHA-256, by sha256sum, so the tests take no hashing crate.
 pub fn sha256(path: &Path) -> String {
     let out = Command::new("sha256sum").arg(path).output().unwrap();
     assert!(out.status.success(), "sha256sum {}", path.display());
@@ -172,7 +145,6 @@ pub fn sha256(path: &Path) -> String {
         .to_owned()
 }
 
-/// Every file under `dir`, as paths relative to it, sorted.
 pub fn files_under(dir: &Path) -> Vec<String> {
     let mut found = Vec::new();
     let mut pending = vec![dir.to_path_buf()];
@@ -191,9 +163,6 @@ pub fn files_under(dir: &Path) -> Vec<String> {
     found
 }
 
-/// The rules every line keeps: a JSON object whose `line` field names its kind, with no null,
-/// empty string, empty list or empty object anywhere in it; and every time ISO 8601 UTC to the
-/// second. `file` names the input in failures.
 pub fn assert_line_rules(line: &Value, file: &str) {
     assert!(line["line"].is_string(), "{file}: {line}");
     assert_no_empty(line, file);
@@ -222,7 +191,6 @@ fn assert_no_empty(value: &Value, file: &str) {
     }
 }
 
-/// Whether `time` has the form 2020-10-27T10:47:23Z.
 fn is_iso8601_second(time: &str) -> bool {
     let bytes = time.as_bytes();
     bytes.len() == 20

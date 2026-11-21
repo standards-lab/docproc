@@ -32,10 +32,8 @@ use std::thread;
 use docproc_envelope::{Fault, Lines, Media, panic_text, stderr};
 use sniff::Input;
 
-/// The binary's name, which Cargo.toml's package gives, leading every stderr line.
 const NAME: &str = env!("CARGO_BIN_NAME");
 
-/// The usage: on stdout for `--help`, and on stderr after a usage error's line.
 const USAGE: &str = concat!(
     "usage: ",
     env!("CARGO_BIN_NAME"),
@@ -46,21 +44,14 @@ const USAGE: &str = concat!(
     " --help"
 );
 
-/// The read thread's stack with no address-space limit, and its cap under one: 256 MiB holds
-/// outline, group, table and equation nesting far past any real page's. It is an address-space
-/// reservation, its pages touched only as deep as a read goes, so it costs no resident memory
-/// beyond what the read uses.
 const STACK_CAP: usize = 256 << 20;
 
-/// The read thread's least stack under an address-space limit, however tight: below it, a
-/// thread that can start would overflow on nesting a real page has.
 const STACK_FLOOR: usize = 8 << 20;
 
 /// The reason a refused table of contents gives under `--file-only`, fixed text that docproc
 /// maps to the part being read elsewhere: through its sibling sections, each its own input.
 pub const TOC_REFUSED: &str = "a table of contents; its sections are read on their own";
 
-/// The parsed command line.
 enum Command {
     Version,
     Help,
@@ -70,25 +61,19 @@ enum Command {
 struct Args {
     input: PathBuf,
     media: Option<PathBuf>,
-    /// `--file-only`: a table of contents, given as a file or as its notebook's directory, is
-    /// refused before any section is read, so only a section or a package is read.
     file_only: bool,
 }
 
 fn main() -> ExitCode {
-    // args_os: a path needn't be UTF-8, and std::env::args panics on one that isn't.
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     docproc_envelope::run(NAME, USAGE, || run(&args))
 }
 
 fn run(args: &[OsString]) -> Result<(), Fault> {
     let args = match parse(args)? {
-        // The bare version, which the release compares with its tag's, then the schema.
         Command::Version => {
             return docproc_envelope::version(env!("CARGO_PKG_VERSION"), model::SCHEMA);
         }
-        // The usage, asked for, so on stdout and exit 0; a stdout that can't take it is an
-        // output fault, exit 1, as for --version.
         Command::Help => {
             let mut out = io::stdout().lock();
             return writeln!(out, "{USAGE}")
@@ -100,15 +85,10 @@ fn run(args: &[OsString]) -> Result<(), Fault> {
     on_read_thread(|| read(args))
 }
 
-/// Runs `read` on a thread whose stack [`read_stack`] sizes from the soft address-space limit,
-/// and gives its outcome. A thread that can't start, its stack's reservation refused even at
-/// that size, is a fault outside any record, exit 4; a panic on it is one too, as it would be on
-/// the main thread, the envelope's hook keeping it silent.
 fn on_read_thread(read: impl FnOnce() -> Result<(), Fault> + Send) -> Result<(), Fault> {
     thread::scope(|scope| {
         let reader = thread::Builder::new()
             .name("read".to_owned())
-            // Set explicitly, so RUST_MIN_STACK, std's default for a spawned thread, is ignored.
             .stack_size(read_stack(address_space_limit()))
             .spawn_scoped(scope, read)
             .map_err(|_| Fault::Internal("the read thread can't start".to_owned()))?;
@@ -118,10 +98,6 @@ fn on_read_thread(read: impl FnOnce() -> Result<(), Fault> + Send) -> Result<(),
     })
 }
 
-/// The read thread's stack under a soft address-space limit of `limit` bytes: [`STACK_CAP`] with
-/// none, RLIM_INFINITY; under one, a quarter of it, leaving the rest to the read's heap and the
-/// binary, floored at [`STACK_FLOOR`] and capped at [`STACK_CAP`]. No flag or environment
-/// changes it.
 fn read_stack(limit: libc::rlim_t) -> usize {
     if limit == libc::RLIM_INFINITY {
         return STACK_CAP;
@@ -129,8 +105,6 @@ fn read_stack(limit: libc::rlim_t) -> usize {
     usize::try_from(limit / 4).map_or(STACK_CAP, |quarter| quarter.clamp(STACK_FLOOR, STACK_CAP))
 }
 
-/// The process's soft address-space limit, RLIMIT_AS, read at startup; RLIM_INFINITY, as with no
-/// limit, if getrlimit fails.
 fn address_space_limit() -> libc::rlim_t {
     let mut limit = libc::rlimit {
         rlim_cur: libc::RLIM_INFINITY,
@@ -144,16 +118,12 @@ fn address_space_limit() -> libc::rlim_t {
     }
 }
 
-/// Reads the input the arguments name, on the read thread.
 fn read(args: Args) -> Result<(), Fault> {
     let path = &args.input;
     let input = sniff::sniff(path)?;
-    // A notebook directory is read through its table of contents, so --file-only refuses it as
-    // it refuses the table of contents itself.
     if args.file_only && matches!(input, Input::Directory(_)) {
         return Err(Fault::Refused(TOC_REFUSED.to_owned()));
     }
-    // From here, descriptor 1 is /dev/null and the lines go to the descriptor stdout was.
     let mut out = Lines::new(BufWriter::new(stdout::take()?));
     let mut media = Media::new(args.media);
     match input {
@@ -170,8 +140,6 @@ pub fn warn(place: &str, what: &str) {
     stderr::warning(NAME, place, what);
 }
 
-/// Parses the arguments by hand: `--version` or `--help` alone, or one input and an optional
-/// `--media <dir>` and `--file-only`, in any order.
 fn parse(args: &[OsString]) -> Result<Command, Fault> {
     if let [flag] = args {
         if flag == "--version" {
