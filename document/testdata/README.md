@@ -129,8 +129,8 @@ same bytes. Run it in `document/testdata/forms`:
 mise exec -- go run generate.go
 ```
 
-Its fields, in the AcroForm's order, are its truth, which the generator's doc lists and the tests
-hold the forms record to exactly:
+Its fields, in the AcroForm's order, are its truth, which the tests hold the forms record to
+exactly:
 
 | Field | Type | Value |
 | ----- | ---- | ----- |
