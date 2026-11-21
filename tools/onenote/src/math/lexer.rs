@@ -22,8 +22,7 @@
 //! the text between markers is a text token. The markers are RichEdit's, as
 //! <https://learn.microsoft.com/en-us/archive/blogs/murrays/officemath> describes them.
 //!
-//! Changed from one2html: a run is split at every marker in it, not only at a leading start or
-//! a trailing separator or end, and its tokens are built up front.
+//! A run is split at every marker in it, and its tokens are built up front.
 
 use onenote_parser::contents::MathObjectType;
 

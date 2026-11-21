@@ -42,9 +42,7 @@
 //! `dx`-style typography, and a function-application operator left in text is dropped, its
 //! function apply's rendering spacing it.
 //!
-//! Changed from one2html: the equation is returned bare, not wrapped in \(…\) or \[…\]; the
-//! renderer can't fail; its log warnings for alignment it doesn't render are left out; and
-//! itertools' chunks and join are std's.
+//! The renderer can't fail, and an alignment it doesn't render is left out silently.
 
 use docproc_envelope::category;
 

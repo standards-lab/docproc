@@ -20,11 +20,9 @@
 
 //! Math text's characters by kind, which decides how the renderer writes each run of them.
 //!
-//! Changed from one2html: the ranges are a list, not a phf map, since none overlaps; the Unicode
-//! blocks are their ranges, not unicode-blocks'; the sans bold italic Greek range ends at
-//! U+1D7C9, where one2html's U+17C9 left it empty; an unknown character is an identifier without
-//! a log warning; the classification can't fail; and the general categories are
-//! docproc-envelope's, over ICU4X.
+//! The ranges are a list, since none overlaps, and each Unicode block is its range; the sans bold
+//! italic Greek range ends at U+1D7C9. An unknown character is an identifier, so the
+//! classification can't fail, and the general categories are docproc-envelope's, over ICU4X.
 
 use docproc_envelope::category;
 
