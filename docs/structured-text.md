@@ -17,10 +17,10 @@ inference. A field's outcome follows from that, the first that applies:
 - **Cut** when it can't be plain text and has no processor.
 
 Owner is the layer that produces the field's value as the settled designs leave it (the tool,
-docproc, docinfer, or Cerebro), with the layer that holds a form of it beside; a cut field's text
-is owned where it is carried. Capstone task is the task of
-`standards-lab/context/data-intelligence.md` ("Design") that reads the field, or, where none
-does, the docproc stage that reads it.
+docproc, docinfer, or Cerebro), with the layer that holds a form of it beside; a cut field's text is
+owned where it is carried. Capstone task is the task of `standards-lab/context/data-intelligence.md`
+("Design") that reads the field, or, where none does, the docproc stage that reads it. Consumer
+paths are spike-ai-pipeline-processing's ([`layers.md`](layers.md)).
 
 | Tool | Field | Consumer | Owner | Capstone task | |
 | --- | --- | --- | --- | --- | --- |

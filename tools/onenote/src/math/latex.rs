@@ -1,5 +1,6 @@
-// Ported from one2html 2.0.1, src/page/math/render/latex.rs and render/mod.rs
-// (https://github.com/msiemens/one2html), under its MIT licence:
+// Adapted from msiemens/one2html (4924024), src/page/math/render/latex.rs: bare, infallible LaTeX.
+// Adapted from msiemens/one2html (4924024), src/page/math/render/mod.rs: the LaTeX path alone.
+// one2html's MIT licence:
 //
 // Copyright 2020 Markus Siemens
 //

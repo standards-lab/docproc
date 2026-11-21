@@ -91,20 +91,20 @@ is never absolute; it lies outside `tools/`, whose go.mod only keeps the tools' 
 base module. A module's output names its directory (`module`, `.` for the base), its changelog,
 the tag's prefix before its vX.Y.Z (`prefix`, empty for the base), and its version.
 
-A system tool's tag, `tools/<format>/vX.Y.Z`, names the tool's directory, `tools/<format>`, its
-changelog, `tools/<format>/CHANGELOG.md`, and its version. Each runner builds the tool's release
-binary natively, linux-x64 and linux-arm64, and `tools/pack.sh` refuses to pack it unless its
-`--version` is the tag's version and, for a binary that links glibc, as docproc-ooxml's NativeAOT
-binary does, unless the newest glibc symbol version it requires is within the floor the tool's
-mise.toml declares (`GLIBC_FLOOR`, 2.34 for docproc-ooxml); a binary that links glibc with no
-floor declared is refused too. NativeAOT links with clang against zlib, and mise installs from
-the tool's directory, so the toolchain the tool's mise.toml pins is the one installed. Each
-archive, `docproc-<format>-vX.Y.Z-<rid>.tar.gz`, holds the binary, LICENSE, and the tool's
-`THIRD-PARTY-NOTICES.txt`; its entries are sorted, owned by root, and dated by the commit, so the
-same binary packs to the same bytes. The tool's release job creates the GitHub release as a draft
-from the tag's section of the tool's changelog, attaches both archives and their SHA256SUMS, and
-only then publishes it, so a release appears only whole: a failed upload leaves a draft, never a
-published release without its assets.
+A system tool's tag, `tools/<format>/vX.Y.Z`, routes to `format` and `version`, from which the
+workflow names the tool's directory, `tools/<format>`, and its changelog,
+`tools/<format>/CHANGELOG.md`. Each runner builds the tool's release binary natively, linux-x64 and
+linux-arm64, and `tools/pack.sh` refuses to pack it unless its `--version` is the tag's version and,
+for a binary that links glibc, as docproc-ooxml's NativeAOT binary does, unless the newest glibc
+symbol version it requires is within the floor the tool's mise.toml declares (`GLIBC_FLOOR`, 2.34
+for docproc-ooxml); a binary that links glibc with no floor declared is refused too. NativeAOT links
+with clang against zlib, and mise installs from the tool's directory, so the toolchain the tool's
+mise.toml pins is the one installed. Each archive, `docproc-<format>-vX.Y.Z-<rid>.tar.gz`, holds the
+binary, LICENSE, and the tool's `THIRD-PARTY-NOTICES.txt`; its entries are sorted, owned by root,
+and dated by the commit, so the same binary packs to the same bytes. The tool's release job creates
+the GitHub release as a draft from the tag's section of the tool's changelog, attaches both archives
+and their SHA256SUMS, and only then publishes it, so a release appears only whole: a failed upload
+leaves a draft, never a published release without its assets.
 
 A Go module's tag is the base module's, `vX.Y.Z`, or a nested module's, `<module>/vX.Y.Z` for a
 go.mod at `<module>/` outside `tools/`. The module job publishes its GitHub release from the tag's
@@ -113,3 +113,6 @@ no assets: the module proxy serves the module from the tag itself.
 
 In both release jobs, the release action's prefix is the tag's part before its `vX.Y.Z`, empty for
 the base module, so the action finds the version's section in the tool's or module's own changelog.
+
+docproc-envelope, the shared Rust crate at `tools/envelope`, is a path dependency of each Rust tool
+and is never tagged; a change to it runs every Rust tool's check.

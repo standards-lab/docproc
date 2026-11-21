@@ -1,10 +1,12 @@
 # Limits
 
-docproc reads no ODF, WordPerfect, `.xlsb`, ODG, RAR, ISO, xz, bzip2, HTML, or bare RFC 822 file:
-each routes to no stage. It runs no virus scan and flags no macro in an OLE2 file. It detects
-no text's encoding: text is read by its byte order mark, as UTF-8, or else as windows-1252.
-Beyond that, each stage inherits its tool's
-limits, as the tools' READMEs state them in full; these are the ones a host sizes or routes by.
+ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; RAR,
+ISO, xz, bzip2, and HTML route to no stage. docproc runs no virus scan and flags no macro in an
+OLE2 file. It detects no text's encoding: text is read by its byte order mark, as UTF-8, or else as
+windows-1252. Beyond that, each stage inherits its tool's limits, as the tools' READMEs
+([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
+[docproc-onenote](../tools/onenote/README.md)) state them in full; these are the ones a host sizes
+or routes by.
 
 - **office.** Pictures are listed with no layout, so a picture another covers, that sits off the
   slide or page, or that is cropped away is still listed and handed onward. Text boxes,
@@ -15,13 +17,12 @@ limits, as the tools' READMEs state them in full; these are the ones a host size
   docproc-ooxml links glibc, 2.34 or newer. Under a memory bound on x64 it aborts by SIGABRT in
   about 1 run in 20 at 256 MiB, its last stderr line naming libssl, not memory, and converts in
   20 of 20 at 512 MiB and above; arm64 is unmeasured.
-- **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is
-  refused; TNEF and opaque S/MIME parts are not read; an attachment by reference has no file;
-  every mbox is read as an mboxrd. docproc-mail's memory is a small multiple of the largest
-  single attachment, and of the file for an `.eml`, which is read whole. The Threader keeps each
-  message's threading keys alone: the spike measured it over 200,000 messages at 362 bytes a
-  message held, 435 while Threads runs, and the keys are unchanged since. It holds them in
-  memory; it doesn't spill.
+- **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is refused;
+  TNEF and opaque S/MIME parts are not read; an attachment by reference has no file; every mbox is
+  read as an mboxrd. docproc-mail's memory is a small multiple of the largest single attachment, and
+  of the file for an `.eml`, which is read whole. The Threader keeps each message's threading keys
+  alone: it holds about 362 bytes a message, 435 while Threads runs (spike-ai-pipeline-processing's
+  measurement over 200,000 messages). It holds them in memory; it doesn't spill.
 - **onenote.** A password-protected section is refused as an input and skipped inside a
   notebook; a page is read at its latest revision only; merged table cells are read as their
   own; a section that fails inside a section group is lost with no warning. docproc-onenote holds

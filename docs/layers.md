@@ -1,10 +1,11 @@
 # Layers
 
-These pages state, as signatures and schemas, the boundaries between the five layers of Cerebro's
-stack: the system tools (docproc-ooxml, docproc-mail, docproc-onenote), docproc (the Go extraction
-library), docinfer (the Go inference library), go-ai (the model client), and Cerebro (the
-data-intelligence capstone's processing service). Each arrow points from a layer to a layer that
-uses it:
+These pages state, as signatures and schemas, docproc's boundaries, with the system tools below it
+and its callers above, in Cerebro's five-layer stack: the system tools (docproc-ooxml,
+docproc-mail, docproc-onenote), docproc (the Go extraction library), docinfer (the Go inference
+library), go-ai (the model client), and Cerebro (the data-intelligence capstone's processing
+service); Cerebro's planned boundary is in [`context/cerebro.md`](../context/cerebro.md). Each
+arrow points from a layer to a layer that uses it:
 
 ```text
                     ┌────────────────────────┐
@@ -33,23 +34,13 @@ The boundaries' pages:
 - [Consumers of structured text](structured-text.md): the rule that every piece of text exists
   once.
 - [docproc's API](api.md): inspection and routing, running the tools, dispatch, content, the
-  index, and the event shapes.
-- [Changes per tool and per package](changes.md): what each promotion changes from its spike.
+  index, the event shapes, and the run directory.
 - [The design review](design-review.md): each finding's settled design and disposition.
 
 ## Assumptions
 
-- Assumes docproc's dispatch keeps asking each tool for its Markdown alone as the text it hands to
-  inference, as processing's stages do.
 - Assumes Athena builds `sparse_rows` from typed cells, not from Markdown (`athena-mapping`).
-- Assumes docproc keeps processing's package names `office`, `email`, and `onenote`, not the
-  tools' names: each does more than decode its tool (LibreOffice's legacy conversion, threading).
 - Assumes `cmd/docinfer`, in docinfer's repository, reads a `cmd/docproc` run directory through
   docproc's public `rundir` and `rundir/schema`.
-- Assumes inference needs nothing of docproc beyond `dispatch` (its dispatcher, events, shapes,
-  and Meta keys) and, for `cmd/docinfer`, `rundir`, so docproc depends on no model concept and
-  imports no docinfer package.
-- Assumes every stream input is spooled to scratch before its stages run, since every stage and
-  tool reads a path; no stage reads a stream directly.
 - Assumes the typed metadata shapes wait for the capstone's `metadata` task; until then,
   `Output.Meta` and the tools' lines carry metadata.

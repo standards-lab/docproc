@@ -24,3 +24,5 @@ events. No bound, cap, or limit has a library default: the run bounds (`stages.O
 Idle, and Memory), `dispatch.Limits`, and the caps in each stage's request are none until the host
 sets them. `stages.Options.Concurrency`, the pages and windows held at once, is one until the host
 raises it.
+
+The packages' exported API, and the boundary other layers build against, is on [`api.md`](api.md).

@@ -1,43 +1,20 @@
 # The design review
 
-This page holds the design review of the five artifacts v1.ai.processing promotes: each
-finding's settled design and disposition, with the evidence that justified it, since the
-evaluations themselves are not kept. Fable 5.2 evaluated each artifact, the architect settled its
-findings in one review round per artifact, and a sixth round gave the shapes and vocabularies the
-artifacts share one home each ("Structural single homes"). [`layers.md`](layers.md) and the pages
-it lists hold the boundaries and the change lists. An entry names the task that carries it and the
-page and section that states it, and doesn't restate what that section holds; an entry a later one
-changed points to it. The page opens with how the review changes the goal's tasks and closes with
-each artifact's first tag and the task that releases it.
-
-## How the review changes the goal's tasks
-
-The settled designs grow every build task and move work between them. The changes are pending
-edits in the goal record, applied to the roadmap at SHIP.
-
-- **library** adds the Go job and the Go module releases to ooxml's CI, classifies failures once,
-  replays a miss from the nearest ancestor with a file, sets no default bounds, records a table
-  of contents' refusal and a death by signal, and corrects the signed-PDF cause; unrouted
-  formats, HTML, and ClamAV stay backlog.
-- **docproc** tags the base module v0.2.0 when `rundir` lands, with a committed `go.work` between
-  tags (DP-3), makes `rundir` one handle, and has its README name `stages` as the shipped wiring.
-- **reports** writes a page per input content and tags `cmd/docproc/v0.1.0`.
-- **acceptance** gains measurements over ~/docs: each tool's peak memory, the word error rate of
-  its audio before the tag, and the inspection evaluation's bombs through `cmd/docproc`'s
-  starting bounds.
-- **The docinfer goal** counts a job's outputs by part ID, owns `outdir`'s atomic write, gains
-  the `join` package from docproc's `audio` and the one metadata-text function, reads `dispatch`'s
-  Meta keys, and states that its "1" includes `dispatch`'s "1" (SH-1, SH-2, SH-8, SH-9).
-- **The goal's sync** takes the architecture-page edits: the `tools/` module zip, a nested
-  command's layout, the rule for external repositories, and CI's gate job.
+This page holds the design review of the five artifacts v1.ai.processing promotes: each finding's
+settled design and disposition, with the evidence that justified it, since the evaluations
+themselves are not kept. Fable 5.2 evaluated each artifact, the architect settled its findings in
+one review round per artifact, and a sixth round gave the shapes and vocabularies the artifacts
+share one home each ("Structural single homes"). [`layers.md`](layers.md) and the pages it lists
+hold the boundaries. An entry names the task that carries it and the page and section that states
+it, and doesn't restate what that section holds; an entry a later one changed points to it.
 
 ## docproc-ooxml
 
 From spike-ai-pipeline-office v0.1.0, built in `tools/ooxml/`, whose README and CHANGELOG state
 what each accepted finding changed. Probes ran on the spike's published binary (0.1.0+6ed0d0e,
 linux-x64). Every finding was accepted; the entries below keep the evidence and the rejected
-alternatives the code can't state, and what the build leaves to later tasks is in `changes.md`,
-"docproc-ooxml [ooxml]".
+alternatives the code can't state, and what the build leaves to later tasks is in
+[`tool-gaps.md`](../context/tool-gaps.md).
 
 - **OX-1 · A sheet's charts and pictures had no line for their Markdown.** The renderer writes a
   sheet's chart tables and picture links after its cell table, and a chart sheet has only those,
@@ -78,7 +55,7 @@ each accepted finding changed. Probes ran on the spike's committed musl release 
 linux-x64) over inputs built in a scratch directory; an entry says where a finding was found by
 reading. Every finding was accepted, ML-3, ML-6, ML-11, and ML-12 in the form the round settled;
 the entries below keep the evidence and the rejected alternatives the code can't state, and what
-the build leaves to later tasks is in `changes.md`, "docproc-mail [mail]".
+the build leaves to later tasks is in [`tool-gaps.md`](../context/tool-gaps.md).
 
 - **ML-1 · One message's HTML body ended the whole run by signal.** htmd 0.5.6 walks the DOM
   recursively and html5ever caps no depth: an `.eml` whose HTML nests 4,000 `<div>` exited 0,
@@ -133,8 +110,7 @@ state what each accepted finding changed. Evidence was read from the spike at `8
 onenote_parser 2.1.0's source; probes ran on the spike's v0.1.0 musl release binary over its
 committed fixtures, and an entry says where a finding was found by reading. Every finding was
 accepted, ON-2 and ON-4 in the form round 3 settled; the entries below keep the evidence and the
-rejected alternatives the code can't state, and what the build leaves to later tasks is in
-`changes.md`, "docproc-onenote [onenote]". Two rulings close the section: the parser's MPL-2.0
+rejected alternatives the code can't state. Two rulings close the section: the parser's MPL-2.0
 license, and the rule that nothing is asked of the parser upstream.
 
 - **ON-1 · Recognised ink words reached the Markdown only through the page's ink image.** The
@@ -157,12 +133,12 @@ license, and the rule that nothing is asked of the parser upstream.
   (`interop/SUT`'s `FileSyncWOPI_OneNoteWithODB.one`). docproc always passes `--file-only` and
   records the tool's refusal as the part's outcome, `read elsewhere`, mapped in `internal/cli`
   (SH-5). Rejected: the tool reading notebooks for docproc.
-- **ON-3 · The expectations `layers.md` kept all pointed into the fields schema "2" cuts.** Every
-  pointer in `tests/fixtures/content.json` started `/content`, `/ink`, or `/ink_text`;
-  `sections.json` counted each page's containers by kind; `tests/content.rs`, `tests/media.rs`,
-  and `tests/ink.rs` walked the same tree. They were the tool's only hand truth, and a golden
-  records what the tool wrote, not what is right. A refusal's stderr led with the input path as
-  given, and no `.onepkg` was committed.
+- **ON-3 · The expectations the boundary pages' earlier draft kept all pointed into the fields
+  schema "2" cuts.** Every pointer in `tests/fixtures/content.json` started `/content`, `/ink`, or
+  `/ink_text`; `sections.json` counted each page's containers by kind; `tests/content.rs`,
+  `tests/media.rs`, and `tests/ink.rs` walked the same tree. They were the tool's only hand truth,
+  and a golden records what the tool wrote, not what is right. A refusal's stderr led with the input
+  path as given, and no `.onepkg` was committed.
 - **ON-4 · An encryption signal is feasible for desktop-format sections.** The mapping is
   `internal/cli`'s. `Encryption.one` was refused with the parser's
   `Unexpected end of file`, and skipped inside a notebook with the same reason, so docproc could
@@ -291,13 +267,13 @@ it.
   tests.
 - **6 · Flags (Q7).** Settled → library. Content flags in the part's `Entry`, name flags from
   `inspect.Name` at every occurrence, the verdict over both under the current options; `Item.Flag`
-  replaces `QuarantineError`; `inspect.Options` gains `Validate`, `Bomb`, and `Verdict`. Answers
-  `layers.md`'s open question on a changed policy. Rejected: `Index.Flags` and `RecordFlags`,
-  the policy frozen at preparation.
-- **7 · The module's shape (Q8).** Settled → library; `layers.md`'s package table, done here.
-  The adapters move into `stages`; the envelope reader stays in `internal/cli`; `Warning` stays
-  `dispatch`'s; `Read` and `Convert` return the sequence. Rejected: adapters in `dispatch` and a
-  public envelope package.
+  replaces `QuarantineError`; `inspect.Options` gains `Validate`, `Bomb`, and `Verdict`. Answers the
+  open question the boundary pages' earlier draft left on a changed policy. Rejected: `Index.Flags`
+  and `RecordFlags`, the policy frozen at preparation.
+- **7 · The module's shape (Q8).** Settled → library; the package table is
+  [`packages.md`](packages.md). The adapters move into `stages`; the envelope reader stays in
+  `internal/cli`; `Warning` stays `dispatch`'s; `Read` and `Convert` return the sequence. Rejected:
+  adapters in `dispatch` and a public envelope package.
 - **8 · `stages.Build`'s options (Q9).** Settled → library. One `Options` struct, each bound's
   owner and outcome stated once in `api.md`, "Dispatch". Rejected: the three
   settled arguments, under which Cerebro can set none of the groups' bounds.
@@ -344,7 +320,7 @@ it.
 - **18 · Test tiers (Q19).** Settled → library; acceptance. The findings and bake-off tiers,
   `corpustest`, and the model harnesses stay in the spike; the readers replay the tools' goldens
   in place; `dispatch/dispatchtest` is public; `internal/tooltest` holds the stand-in. Rejected:
-  `layers.md`'s helpers row as written.
+  the boundary pages' earlier draft's helpers row as written.
 - **19 · `FileIndex` (Q17).** Settled → library. Single-process, its claims in memory. Rejected:
   cross-process claim files with `Renew`.
 - **20 · The time bound's reach (Q20).** Settled → library. A recorded timeout's bound is out of
@@ -461,8 +437,8 @@ it.
 - **PS-6 · The audio plan trusted ffprobe's duration.** Accepted → library.
 - **PS-7 · Corrections, regions, and the text-skip are experiment surface.** Accepted → library:
   they stay in the spike.
-- **PS-8 · The vision harness and the bake-off tiers couldn't move as `layers.md` said.** Merged
-  into PX-9; decision 18.
+- **PS-8 · The vision harness and the bake-off tiers couldn't move as the boundary pages' earlier
+  draft said.** Merged into PX-9; decision 18.
 - **PS-9 · `Images` spooled the PDF a second time.** Merged into PX-10.
 - **PS-10 · A model's limits were library constants.** Merged into PX-8; `Limit`, `Density`, and
   `DefaultDPI` accepted with it.
@@ -516,7 +492,8 @@ it.
 - **PD-15 · A replay couldn't tell a truncated log.** Accepted → library.
 - **PD-16 · The adapters were a second package inside `dispatch`.** Merged into PX-2; decision 7.
 - **PD-17 · The providers need the index contract as a suite.** Merged into PX-9.
-- **PD-18 · The test tiers didn't divide where `layers.md` did.** Merged into PX-9.
+- **PD-18 · The test tiers didn't divide where the boundary pages' earlier draft did.** Merged into
+  PX-9.
 - **PD-19 · A stage's own and a store's warnings had no place.** Merged into PX-4; its order is
   superseded by PX-5.
 - **PD-20 · The archive stage took its own copy of the options.** Merged into PX-6, its `Check`
@@ -562,22 +539,21 @@ From spike-ai-pipeline's docproc command at `6a631f1`, over its library,
 spike-ai-pipeline-processing v0.9.0, with the spike's docinfer read for its use of `rundir`. Every
 finding was found by reading; `go vet` passed over the command, and nothing else ran. Round 5
 accepted every finding, DP-3 and DP-10 in the form it settled, and a follow-up settled DP-16's
-form. An entry is carried by docproc unless it names another task; the command's changes are in
-`changes.md`, "The nested modules", and `rundir`'s in the `rundir` row of "docproc's packages
-[library]", with its API under "The nested modules".
+form. An entry is carried by docproc unless it names another task; `rundir`'s API is in `api.md`,
+"Run directory".
 
-- **DP-1 · The schema "2" event line couldn't be the embed `layers.md` listed.** Accepted →
-  docproc, and library for `Part`'s `omitzero`. Five things didn't fit. An input's error line
-  carried its text in `error` (run/execute.go:235), and `dispatch.Event.Err` never marshals, so
-  the text had no field; `Event.Part`, a value tagged `part`, would marshal an empty part on an
-  error line, where "1" leaves it out; `schema.Event`'s kind field is named `Event`, and
-  embedding `dispatch.Event` declares a second field of that name, which doesn't compile; "1"'s
-  `warning`, the command's note that no record held a seen part's children (run/replay.go:240),
-  has no successor once the library replays children, while dispatch's `Warning` is a line kind
-  "1" never had; and a zero count is now left out. The line embeds `dispatch.Event` inline
-  beside its own kind, an error line's text, and the record's fields, `Event.Part` gaining
-  `omitzero`, and its kinds are `part`, `output`, `warning`, and `error` (`changes.md`, "The
-  nested modules").
+- **DP-1 · The schema "2" event line couldn't be the embed the boundary pages' earlier draft
+  listed.** Accepted → docproc, and library for `Part`'s `omitzero`. Five things didn't fit. An
+  input's error line carried its text in `error` (run/execute.go:235), and `dispatch.Event.Err`
+  never marshals, so the text had no field; `Event.Part`, a value tagged `part`, would marshal an
+  empty part on an error line, where "1" leaves it out; `schema.Event`'s kind field is named
+  `Event`, and embedding `dispatch.Event` declares a second field of that name, which doesn't
+  compile; "1"'s `warning`, the command's note that no record held a seen part's children
+  (run/replay.go:240), has no successor once the library replays children, while dispatch's
+  `Warning` is a line kind "1" never had; and a zero count is now left out. The line embeds
+  `dispatch.Event` inline beside its own kind, an error line's text, and the record's fields,
+  `Event.Part` gaining `omitzero`, and its kinds are `part`, `output`, `warning`, and `error`
+  (`api.md`, "Run directory").
 - **DP-2 · The record was the one file not written whole, and a killed run's was unreadable.**
   Accepted → docproc. `Run.Write` encoded into a 4,096-byte `bufio.Writer` flushed only in `End`;
   run 1 over ~/docs wrote 12,008 lines in 9.5 MB, about 800 bytes a line, so the file on disk
@@ -600,8 +576,7 @@ form. An entry is carried by docproc unless it names another task; the command's
   changes `rundir`, before it tags `cmd/docproc/v0.1.0`; a committed `go.work` over the base
   module and `cmd/docproc` carries changes between tags. Reverses "`docproc` releases
   nothing". Rejected: `library` building `rundir` so v0.1.0 holds it, which tags a public
-  package before its one writer exists. `reports` adds `Dir.ReportDir`, so it tags v0.3.0
-  ("Releases").
+  package before its one writer exists. `reports` adds `Dir.ReportDir`, so it tags v0.3.0.
 - **DP-4 · The copy of a seen part's subtree goes.** Accepted → docproc. The spike's dispatcher
   never replayed a seen part's children, so `run/replay.go` (249 lines) copied each subtree from
   the earliest record holding it, loading every earlier record into memory first, with a second
@@ -662,8 +637,8 @@ form. An entry is carried by docproc unless it names another task; the command's
   library (the shapes) and docproc (the manifest), in the form the follow-up settled, which
   supersedes round 5's: the stage table's shapes are declared once in `dispatch`, versioned by
   `dispatch.Version`; `stages.Set` holds them, and `rundir/schema`'s manifest uses them, so `schema`
-  imports no docproc package but `dispatch` and `inspect` (`api.md`, "Dispatch"; `changes.md`, "The
-  nested modules"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
+  imports no docproc package but `dispatch` and `inspect` (`api.md`, "Dispatch" and "Run
+  directory"). Rejected: `schema` aliasing `stages`' shapes, which ties schema "2" to an
   unversioned package and has `schema`, and so `cmd/docinfer`, compile `stages` and every format
   package beneath it; `schema` keeping its own copies, the standards review's interim form, which
   leaves two definitions of one shape to drift.
@@ -766,39 +741,3 @@ goal's parts are pending edits in the goal record.
   states that it includes dispatch's "1", as `rundir`'s "2" does (`api.md`, "Dispatch";
   docinfer's `Version`). Rejected: a version of their own for route's, inspect's, and the index's
   vocabularies.
-
-## Releases
-
-Every new artifact starts at v0.1.0, whatever its spike's version, and its CHANGELOG's first entry
-links the spike release, or commit, it is promoted from. The tools release first, since the
-library's readers take their first schema "2" tags as their minimums.
-
-```text
-tools/ooxml/v0.1.0     docproc-ooxml     ooxml      from spike-ai-pipeline-office v0.1.0
-tools/mail/v0.1.0      docproc-mail      mail       from spike-ai-pipeline-mail v0.3.1
-tools/onenote/v0.1.0   docproc-onenote   onenote    from spike-ai-pipeline-onenote v0.1.0
-tools/mail/v0.1.1      docproc-mail      onenote    fix: its Markdown reads back as written
-tools/ooxml/v0.1.1     docproc-ooxml     onenote    fix: its Markdown reads back as written
-v0.1.0                 docproc           library    from spike-ai-pipeline-processing v0.9.0
-storage/v0.1.0         docproc/storage   providers  new
-postgres/v0.1.0        docproc/postgres  providers  new
-v0.2.0                 docproc           docproc    rundir and rundir/schema landed
-tools/mail/v0.1.2      docproc-mail      reports    htmd 0.6 in place of 0.5.6
-v0.3.0                 docproc           reports    rundir's Dir.ReportDir
-cmd/docproc/v0.1.0     cmd/docproc       reports    from spike-ai-pipeline's docproc at 6a631f1
-```
-
-- **The tools.** `.github/workflows/release.yml` releases each `tools/*/v*` tag through
-  `tools/pack.sh`, which runs the tool's `publish` task; each tool's README, "Install", lists
-  its archives.
-- **The library.** `library` tags the base module, and `providers` tags `storage` and
-  `postgres`, through the Go module releases in `.github/workflows/release.yml`.
-- **docproc.** The `docproc` task tags the base module v0.2.0 when `rundir` lands (DP-3), and a
-  committed `go.work` over the base module and `cmd/docproc` carries changes between tags.
-- **reports.** `reports` tags `tools/mail/v0.1.2` and the base module v0.3.0, which adds
-  `rundir`'s `Dir.ReportDir`, while `cmd/docproc` reaches the untagged base module through a
-  temporary `replace`. A second pull request replaces it with a requirement of v0.3.0, and once
-  that merges, `reports` tags `cmd/docproc/v0.1.0`, since `go install …@version` refuses a module
-  that carries a `replace`.
-- **Untagged.** docproc-envelope, the shared Rust crate at `tools/envelope`, is a path
-  dependency of each Rust tool and is never tagged; a change to it runs every Rust tool's check.

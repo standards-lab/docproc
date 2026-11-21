@@ -51,8 +51,9 @@ type Job struct {
 The `Client` has one method per Command and Query, each taking a `context.Context`.
 
 - **Input.** `Submit` stages a small document in blob storage at `input/<sha256>` before it returns
-  the job queued; a larger one goes through the upload, any replica taking any chunk, `GetUpload`
-  giving the offset to resume from. Either way the input is durable past the work queue's
+  the job queued; a larger one goes through the upload, any replica taking any chunk, a mismatched
+  chunk refused, `GetUpload` giving the offset to resume from, and `CompleteUpload` queuing the job
+  once all `Size` bytes are received. Either way the input is durable past the work queue's
   `MaxDeliver` deliveries: `dispatch.Input`'s `Reader` is blob storage's and its `SHA256` the
   declared one, checked once by the dispatcher's spool ([`docs/api.md`](../docs/api.md), "Input from
   a stream, or a path"); a mismatch fails the job at once. `Submit`'s `ID` makes a retried Submit
@@ -62,12 +63,13 @@ The `Client` has one method per Command and Query, each taking a `context.Contex
   The replica running it extends its work-queue delivery while it runs, runs `job.Runner.Run` with
   `docinfer.Options.Final` set on the last delivery, and on a redelivery resumes a store from its
   last checkpoint (docinfer's `job` package doc).
-- **A dead last delivery** gets no handler error, from which alone go-messaging reports exhaustion
-  (`go-messaging/runtime.go`, `Consume`), so Cerebro appends `failed` to a running job with no live
-  delivery and no deliveries left.
+- **A dead last delivery** gets no handler error, so nothing reports its exhaustion: Cerebro
+  appends `failed` to a running job with no live delivery and no deliveries left, found by a
+  `MaxDeliver` advisory or a sweep, the `state` task's choice.
 - **Fencing.** `CancelJob` appends `cancel_requested`. The running replica watches its subject
   through a headers-only consumer and ends the job's context on a `cancel_requested`, after which
-  only `cancelled` follows, or on a `started` newer than its own, after which it appends nothing.
+  only `cancelled` follows, or on a `started` newer than its own, after which it appends nothing. A
+  refused append reads the subject's tail and acts on either alike.
 - **The profile** resolves to a `docinfer.Pipeline`. Each attempt's `started` carries the resolved
   `docinfer.Profile` before any batch, so the consumer registers the matching embedding space (the
   `chunks` task). The `vision` task's prompt and sampling live in a profile.
@@ -96,10 +98,9 @@ JetStream        CEREBRO_WORK                cerebro.work: work-queue retention,
 
 The host sweeps content by age ([`docs/api.md`](../docs/api.md), "Content"). Each job's events go on
 one subject of its own, so the job has a gap-free sequence the sequence check guards; the subjects
-share one stream, so ~/docs' 592 jobs make no streams to reap.
-`standards-lab/context/messaging.md`'s conventions govern committed mutations, not a job's progress
-stream. The browser never subscribes: Athena relays its own stream (data-intelligence.md,
-"Browser"). The names and retentions are the `state` task's.
+share one stream, leaving no streams to reap. `standards-lab/context/messaging.md`'s conventions
+govern committed mutations, not a job's progress stream. The browser never subscribes: Athena relays
+its own stream (data-intelligence.md, "Browser"). The names and retentions are the `state` task's.
 
 ## Events
 
@@ -154,29 +155,26 @@ type Attempt struct {
 }
 ```
 
-Each event carries the job's sequence, from 1 with no gap, in the CloudEvents `sequence` extension.
-A batch is identified by its job and its event's sequence, so docinfer numbers no batches. The
-consumer checks completeness by holding every sequence through `completed`'s and recomputing the
-manifest over what it committed. Counts are reported per attempt, never summed. The digest covers
-the chunks' digests, not their vectors; a vector is checked by its length against the profile's
-dimensions.
+Each event carries the job's sequence, from 1 with no gap, in the CloudEvents `sequence` extension,
+kept contiguous by the append check. A batch is identified by its job and its event's sequence,
+which no attempt reuses, so docinfer numbers none. The consumer checks completeness by holding every
+sequence through `completed`'s and recomputing the manifest over what it committed, every attempt's
+batches, since a redelivery replays content. Counts are per attempt, never summed: a failed attempt
+reports none. The digest covers the chunks' digests, so their text, not their vectors: it proves
+which chunks arrived; a vector's length is checked against the profile's dimensions.
 
 ## Open questions
 
-- **Live sources.** spike-ai-pipeline-processing's `media.Streamer` reads a URL source (srt, rtmp,
-  http, udp) as it arrives, a surface that stays in the spike until an owner is named
-  ([`docs/design-review.md`](../docs/design-review.md), decision 14). Whether a live source is a
-  job, and through which Command, is the `protocol` task's.
+- **Live sources.** A URL source read as it arrives (srt, rtmp, http, udp) has no owner yet
+  ([`docs/design-review.md`](../docs/design-review.md), decision 14). Whether one is a job, and
+  through which Command, is the `protocol` task's.
 - **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
   default the `protocol` task picks.
-- **A dead last delivery**: whether a `MaxDeliver` advisory's handler or a sweep of running jobs
-  finds it is the `state` task's.
 
 ## Requests to go-messaging
 
-go-messaging's NATS provider publishes each event on its type and filters a durable consumer by
-types (`go-messaging/nats/broker.go`, `nats/source.go`), and a delivery lasts its `AckWait`.
-data-intelligence.md queues these asks, sized by the `state` and `events` tasks:
+data-intelligence.md queues these asks of go-messaging's NATS provider, sized by the `state` and
+`events` tasks:
 
 - A publish on a subject the caller names.
 - A durable consumer filtered by subject.

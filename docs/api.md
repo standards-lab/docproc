@@ -5,26 +5,24 @@ of an input, reads it through its stage and the tools, stores each output's cont
 what it prepared in its index. It requires `golang.org/x/text` only and depends on no model concept:
 no model client, no inference, no embedding. Inference is docinfer's
 (`github.com/standards-lab/docinfer`), and the imports run one way: docinfer imports docproc, and no
-docproc package imports docinfer. The base module is built (`library`): each package's doc comment
-is the reference for its exported names, and the signatures below are the boundary other layers
-build against. The providers are built (`providers`), each module's README and package doc their
-reference; `rundir` and `cmd/docproc` are built (`docproc`), `command.md` and each
-package's doc their reference, and `cmd/docproc`'s report is built (`reports`), `internal/report`'s
-package doc its reference.
+docproc package imports docinfer. Each package's doc comment is the reference for its exported
+names, and the signatures below are the boundary other layers build against. Each provider
+module's README and package doc are its reference, `command.md` and each package's doc
+`cmd/docproc`'s, and `internal/report`'s package doc that of `cmd/docproc`'s report.
 
 The modules:
 
 ```text
 github.com/standards-lab/docproc              the library below; requires golang.org/x/text only
-github.com/standards-lab/docproc/storage      Content over go-storage's Client, built:
+github.com/standards-lab/docproc/storage      Content over go-storage's Client:
                                               New(Config{Client, Prefix, Renew}); requires the
                                               library and go-storage
-github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqlate, built:
+github.com/standards-lab/docproc/postgres     Index over PostgreSQL through sqlate:
                                               New(ctx, Config{DB *sqlate.DB, Lease, Flush}),
                                               Index.Close, Migrations, Verify, Statements, and
                                               NewRetention(db, age); requires the library,
                                               sqlate, sqlate/postgres, and pgx
-github.com/standards-lab/docproc/cmd/docproc  the docproc command, built: version and run;
+github.com/standards-lab/docproc/cmd/docproc  the docproc command: version, run, and report;
                                               requires the library, go-cli-sdk, go-core, and
                                               golang.org/x/sys
 ```
@@ -66,7 +64,6 @@ stages                     Build and its Options, Routes and ParseRoutes, the st
 internal/tooltest,         test helpers: the unit tier's stand-in tool, golden sums, and
   goldentest, mediatest      media's stand-in ffmpeg run
 rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and written
-                             (built, `docproc`)
 ```
 
 No root package. Another module reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`,
@@ -126,12 +123,12 @@ every occurrence. A link, a device, and a traversing or absolute name in an arch
 the entry an unread child ("Dispatch") and the others read; a bomb and an unreadable directory
 are unsafe. The bomb rule weighs each entry and the sum of an archive's entries.
 
-`Identify` checks email's signatures first, in v0.5.0's order, then the other strong signatures,
-then the weak ones, ending with an mbox's `From ` line and, after it, the byte order marks. A
-message's header is read as mail reads one: a line past mail's `LINE_MAX` ends the block, and a
-field's name is checked by route itself, not by net/textproto, which refuses the space before the
-colon that mail allows (RFC 5322 4.5.8's obsolete syntax). A OneNote section or table of contents is
-told by its OneStore file type GUID ([MS-ONESTORE] 2.3.1).
+`Identify` checks email's signatures first, then the other strong signatures, then the weak ones,
+ending with an mbox's `From ` line and, after it, the byte order marks. A message's header is read
+as mail reads one: a line past mail's `LINE_MAX` ends the block, and a field's name is checked by
+route itself, not by net/textproto, which refuses the space before the colon that mail allows (RFC
+5322 4.5.8's obsolete syntax). A OneNote section or table of contents is told by its OneStore file
+type GUID ([MS-ONESTORE] 2.3.1).
 
 ## Running the tools
 
@@ -350,9 +347,9 @@ How `audio` and `media` run ffmpeg, and why:
 
 - The decode is bit-exact, `+bitexact` on the codec and the format, so the same source is the
   same samples, and so the same windows, whatever the build's CPU paths and through either runner.
-  Its arguments are v0.9.0's tracker decode, and media's run decodes its audio with the same ones,
-  so its windows are audio's Splitter's; media's decodes audio in one thread, which is cheap, since
-  threads change no output.
+  Its arguments are spike-ai-pipeline-processing v0.9.0's tracker decode, and media's run decodes
+  its audio with the same ones, so its windows are audio's Splitter's; media's decodes audio in one
+  thread, which is cheap, since threads change no output.
 - The tracker measures a frame's energy in integer centibels, hundredths of a dB, relative to full
   scale, from -120 dB, where it puts digital silence and anything quieter, to 0 dB, so its
   percentile and its comparisons are exact. The rolling window's energies are counted in a Fenwick
@@ -1125,9 +1122,89 @@ kinds or has a `messaging.go`. Their shapes sit in their producing packages' ord
 docproc's are `dispatch`'s (above), versioned by `dispatch.Version`, and docinfer's are its root
 package's and `job`'s (docinfer's README, "Packages"), both versioned by `docinfer.Version`.
 Cerebro's `messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own
-data types ([`cerebro.md`](../context/cerebro.md), "Events"). The spike's docproc `schema` shapes
-(`spike-ai-pipeline/internal/docproc/schema/part.go`, `record.go`) move into `dispatch` and
-`inspect`, and `rundir/schema` aliases them ([`changes.md`](changes.md), "The nested modules"); the
-spike's docinfer `outdir` shapes move into docinfer. The shapes grow by addition only, as the tools'
-contracts do.
+data types ([`cerebro.md`](../context/cerebro.md), "Events"). `rundir/schema` aliases `dispatch`'s
+and `inspect`'s shapes ("Run directory"). The shapes grow by addition only, as the tools' contracts
+do.
 
+## Run directory
+
+`rundir` and `rundir/schema` are public packages of docproc's base module, with no module or tag
+of their own. `cmd/docinfer`, in docinfer's repository, reads `cmd/docproc`'s run directory
+through them, and Go's internal rule is by import path, so docproc's `cmd/internal` would bar
+it. They version with the library, which both commands require, on the base module's tags
+([`ci.md`](ci.md), "Releases").
+
+```go
+package rundir
+// Open opens the run directory at root to read it, creating nothing: it fails with
+// fs.ErrNotExist when root is no run directory, and refuses another schema, naming both.
+func Open(root string) (*Dir, error)
+// Create opens root to write it, making the directory, its rundir.json, the index, and the
+// content store when they are absent; over an existing directory it refuses as Open does.
+func Create(root string) (*Dir, error)
+func (d *Dir) Runs() ([]string, error)                         // its runs' ids, in order
+func (d *Dir) Latest() (string, error)                         // the latest run that ended
+func (d *Dir) Manifest(id string) (schema.Manifest, error)
+func (d *Dir) Record(id string) iter.Seq2[schema.Event, error] // its lines, in order
+func (d *Dir) Content() dispatch.Content                       // the run directory's FileContent
+func (d *Dir) Kept(sha256 string) (string, bool, error)        // quarantine/<sha256>, if kept
+func (d *Dir) ReportDir(id string) (string, error)             // runs/<run>/report, not made
+func ContentPath(sha256 string) string // a content's file from the root: the content directory
+                                       // joined to dispatch.ContentFile(sha256)
+// The writer's, on a Dir from Create:
+func (d *Dir) Index() dispatch.Index
+func (d *Dir) Begin(m schema.Manifest) (*Run, error)
+func (d *Dir) Quarantine(sha256, path string) (string, error) // quarantine/<sha256>, kept once
+func (r *Run) ID() string                                     // a version 7 UUID
+func (r *Run) Write(e schema.Event) error                     // one line, written through
+func (r *Run) End(err error) error
+```
+
+One process writes a run directory. Its root's `rundir.json` holds its schema, and every method
+that takes an id refuses one that isn't a run of the directory, so no caller checks an id first.
+`Begin` removes the `.work-*` directories a killed run left. A record is appended, never renamed:
+each line is written through as it is made, so a killed run's record loses at most its last line,
+and a reader of a run whose manifest has no `end` drops a last line with no newline; `Latest`
+names only a run that ended, and a reader given an unended run by id says so. `Record` yields the
+lines in order and ends on the first that doesn't decode.
+
+The run directory is schema "2", which includes `dispatch`'s shapes at `dispatch.Version` "1", so
+a break there is a break here. `schema` aliases those shapes (`dispatch.Part`, `ContentType`,
+`Identity` as its `Stage`, `Output`, and `Warning`, and `inspect.Flag`), so no shape is defined
+twice, and a part's `parent` is its parent's ID, a change of meaning "1" can't take. The
+manifest's tools and stage table are `dispatch.Tool` and `dispatch.Row`, which `stages.Set` holds
+and `cmd/docproc`'s `run` copies in, so `schema` imports no docproc package but `dispatch` and
+`inspect`, and a reader of the run directory, `cmd/docinfer` among them, never compiles `stages` and
+the format packages beneath it. An output's content is in the run directory's `FileContent`, found
+by its `sha256` in place of "1"'s `ref` path under `outputs/`; the content store's directory and a
+content's path in it (`ContentPath`, the content directory joined to `dispatch.ContentFile`'s
+layout) are part of "2", since the report links a content's file and a reader that isn't Go follows
+it.
+
+The record holds one line per event, of four kinds: `part`, `output`, `warning`, and `error`, an
+input whose dispatch stopped before its own event. A `warning` line is a warning event dispatch
+yields; "1"'s `warning`, a string the command wrote on a part line when no record held a seen part's
+children, is gone with the copy that wrote it, since the dispatcher replays children. A reader may
+tell the first three kinds by which of `output` and `warning` is set.
+
+```go
+package schema
+type Event struct {
+    Kind  string `json:"event"` // part, output, warning, error
+    Input string `json:"input"` // the input's own absolute path
+    dispatch.Event              // its fields inline, its Part left out on an error line
+    File       *File  `json:"file,omitempty"`      // an input's own part line
+    Quarantine string `json:"quarantine,omitzero"` // quarantine/<sha256>, while it is kept
+    Time       *Span  `json:"time,omitempty"`      // an input's: its first event to its last
+    Error      string `json:"error,omitzero"`      // an error line's text: Err never marshals
+}
+```
+
+`quarantine` names the kept file whenever it exists, whether this event copied it or an earlier run
+did, and the flags are the line's, with no `flags.json`. The record's other shapes, `File`, `Span`,
+and the manifest, are its own; `File` holds what `cmd/docproc` knows of an input's file beside the
+part, its `detected` the sniffed MIME type, filled by `run` beside `Statx`. The manifest holds
+`schema` and `run` for a manifest read alone, no `record`, whose path is the layout's
+(`runs/<id>/record.jsonl`), `docproc`, a `Build` of the command's module version and the
+library's from the build info, and `collected`, the number of inputs its arguments named. Every
+`Time` is UTC, made by `TimeOf`.

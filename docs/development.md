@@ -92,11 +92,11 @@ Its tasks:
 
 ## Currency and upgrade
 
-[`scripts/currency.sh`](../scripts/currency.sh) is both tasks. `report` prints one line for each
-pin behind its latest, a held one with its hold's reason, and exits 1 when any it reports is not
-held; it reads the network and writes nothing but the tools' `obj/`. `upgrade` moves every pin
-`report` shows trailing to its latest, but a held one, so a report after it shows none of them but
-the held. Run it, review the diff, and run the check.
+[`scripts/currency.sh`](../scripts/currency.sh) is both tasks. `report` prints one line for each pin
+behind its latest, a held one with its hold's reason, and exits 1 when any it reports is not held;
+it reads the network and writes nothing but the tools' `obj/` and cargo-deny's advisory database.
+`upgrade` moves every pin `report` shows trailing to its latest, but a held one, so a report after
+it shows none of them but the held. Run it, review the diff, and run the check.
 
 - **Captures fail currency.** Each scan captures its command's output in a variable before
   reading it, and each capture ends in `|| return`, so a scan command that fails (a go list
@@ -111,10 +111,9 @@ the held. Run it, review the diff, and run the check.
 - **The root mise tools.** Those the root mise.toml pins; the tools' mise files are their own.
   `--no-global` reads and writes the root mise.toml alone, never the global config, and a held
   tool is excluded from the upgrade by name.
-- **Images.** An image's latest is its highest semver tag carrying the pin's variant suffix
-  (18.7-alpine, -alpine); a tag needs at least one dot to count, so a bare build number never
-  sorts above every release. A service that builds from `compose/<service>/Dockerfile` has its
-  one pin in that file's FROM line.
+- **Images.** An image's latest follows `architecture/principles/rolling-currency.md`'s rule for a
+  container image. A service that builds from `compose/<service>/Dockerfile` has its one pin in that
+  file's FROM line.
 - **Each tool's own.** Each tool's currency reports its packages, advisories, and toolchain, each
   line prefixed with the tool's directory. A tool reporting anything exits non-zero, which marks
   the whole report stale without stopping the other scans.

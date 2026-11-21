@@ -1,16 +1,16 @@
 # The tool contract
 
-Each tool runs as a process behind docproc's `tool` package (processing `tool/tool.go`), reads one
-input, and writes one contract to stdout: JSON Lines, schema "2", with Markdown inside it as the
-text layer. Every piece of text the input holds exists once, by the rule
-[`structured-text.md`](structured-text.md) states and applies field by field.
+Each tool runs as a process behind docproc's `tool` package, reads one input, and writes one
+contract to stdout: JSON Lines, schema "2", with Markdown inside it as the text layer. Every piece
+of text the input holds exists once, by the rule [`structured-text.md`](structured-text.md) states
+and applies field by field.
 
 ## Common envelope
 
 - **Lines.** stdout holds JSON Lines and nothing else, one compact object per line. Each line's
   `line` names its kind; the first line carries `schema` (`"2"`) and the input's kind. docproc
   decodes line by line, keeping a line, block, or container of an unknown kind as an `Unknown*`
-  value, as processing's `office/model.go`, `email/model.go`, and `onenote/model.go` do.
+  value.
 - **Absence.** A field with no value, or an empty list, is left out, never `null`.
 - **Text layer.** A line that holds text carries it as `markdown`: docproc-ooxml's `document`,
   docproc-mail's `message`, docproc-onenote's `page`. Literal text is escaped by htmd's rules, as
@@ -46,8 +46,7 @@ text layer. Every piece of text the input holds exists once, by the rule
 - **Version.** `--version` writes the version alone on its first line and `schema <n>` on its
   second, exit 0, so a reader's spec refuses a tool of another schema at startup.
 - **Exit codes.** 0 read, skipped items included; 1 stdout or media not written; 2 usage; 3
-  refused before any output; 4 a fault of the tool's own. All three spikes use these
-  meanings (office, mail, and onenote READMEs, "Usage").
+  refused before any output; 4 a fault of the tool's own.
 - **Determinism.** The same input gives byte-identical stdout and media, proven by committed
   golden outputs (`.jsonl` and `.stderr` per fixture, as mail's `tests/golden/`); no JSON Schema.
 - **Cases.** One committed table, `tools/envelope/cases.json`, holds the envelope's cases: the
@@ -62,10 +61,8 @@ text layer. Every piece of text the input holds exists once, by the rule
 
 ## docproc-ooxml
 
-From spike-ai-pipeline-office 0.1.0 (`src/SpikeAiPipeline.Office/Model/Document.cs`, README "The
-JSON model"), which writes either the model (indented JSON) or Markdown, never both. docproc-ooxml
-writes a `document` line first, then, per xlsx sheet in workbook order, a `sheet` line and its
-`rows` lines, so no line holds a whole sheet:
+docproc-ooxml writes a `document` line first, then, per xlsx sheet in workbook order, a `sheet` line
+and its `rows` lines, so no line holds a whole sheet:
 
 ```text
 document  line, schema, format (docx|xlsx|pptx), properties?, markdown?, media?
@@ -80,33 +77,30 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
           Markdown table rows
 ```
 
-- `markdown` is office's Markdown rendering (`Rendering/MarkdownRenderer.cs`, the goldens
-  `test/SpikeAiPipeline.Office.Tests/Expected/*.md`): headings, lists, GFM tables, charts as tables
-  of their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. An xlsx's
+- `markdown` is the document's Markdown rendering: headings, lists, GFM tables, charts as tables of
+  their cached series, notes and comments as GFM footnotes, slides as `# Slide n`. An xlsx's
   Markdown is split along its lines, and each sheet's text exists once: the `document` line holds
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
   header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables and its
   pictures' links, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
-  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The
-  lines' Markdown fragments concatenate in order with nothing between them into office's whole
-  rendering: each ends in its own newline and opens with the blank line that separates it from
-  the chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`
-  (`MarkdownRenderer.cs`, `media.Alt ?? media.Title`), so a title-only picture is
-  `![title](file)`. A `title` that differs from the image text, which office leaves out, becomes
-  its image's Markdown title, `![alt](file "title")`.
-- `media` holds every picture office writes (`Media` blocks, `Reading/MediaStore.cs`), plus
-  embedded packages (`embedded`, the part as stored) and OLE objects (`ole`, the part as stored,
-  its compound file unwrapped by docproc, `prog_id` from the element naming its relationship),
-  which office leaves unextracted (README "What office does not do"). Each is found through its
-  story part's, sheet's, or slide's own embedded-package and embedded-object relationships; a
-  chart's embedded source workbook is never media. The Markdown links a payload as
-  `[<prog_id, or the part's file name>](<file>)` after its preview picture. `part` is the
-  package part, `target` a linked picture's URL; the placement is the docx section's index from
-  0, the ordinal from 1 of the xlsx sheet's `sheet` line, or the pptx slide's index from 0. A
-  docx's media run in the order of its Markdown's chunks: each section's headers, the body, each
-  section's footers, the footnotes, the endnotes, and the comments with their replies, nested
-  blocks in place; a medium shown more than once is listed each time, with its own placement.
+  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The lines'
+  Markdown fragments concatenate in order with nothing between them into the document's whole
+  rendering: each ends in its own newline and opens with the blank line that separates it from the
+  chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`, so a
+  title-only picture is `![title](file)`. A `title` that differs from the image text becomes its
+  image's Markdown title, `![alt](file "title")`.
+- `media` holds every picture the document shows, plus embedded packages (`embedded`, the part as
+  stored) and OLE objects (`ole`, the part as stored, its compound file unwrapped by docproc,
+  `prog_id` from the element naming its relationship). Each is found through its story part's,
+  sheet's, or slide's own embedded-package and embedded-object relationships; a chart's embedded
+  source workbook is never media. The Markdown links a payload as
+  `[<prog_id, or the part's file name>](<file>)` after its preview picture. `part` is the package
+  part, `target` a linked picture's URL; the placement is the docx section's index from 0, the
+  ordinal from 1 of the xlsx sheet's `sheet` line, or the pptx slide's index from 0. A docx's media
+  run in the order of its Markdown's chunks: each section's headers, the body, each section's
+  footers, the footnotes, the endnotes, and the comments with their replies, nested blocks in place;
+  a medium shown more than once is listed each time, with its own placement.
 - `properties` is read from the three parts as XML. A core value is a string as stored, dates
   included; an extended value is a number when it is all digits, else a string; a custom value
   takes its variant's type, a file time as its stored ISO 8601 text. Keys keep their stored
@@ -119,11 +113,11 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   real types are numbers and its boolean true or false, unless the text is no such value; any
   other type, file times and currency among them, is a string. An all-digits number drops its
   leading zeros, which a JSON number can't have.
-- A sheet's `rows` lines keep its typed cells, office's `TableCell` less its docx-only fields.
-  Each holds the sheet's next rows, in order, with their Markdown, as many as keep the line
-  within 256 KiB, and at least one, so a line is bounded by the larger of 256 KiB and one row,
-  never by the sheet; a `sheet` line holds one row, its header, and is bounded the same way.
-- Field names move to snake_case, as mail's and onenote's are. Non-ASCII text is written as
+- A sheet's `rows` lines keep its typed cells. Each holds the sheet's next rows, in order, with
+  their Markdown, as many as keep the line within 256 KiB, and at least one, so a line is bounded by
+  the larger of 256 KiB and one row, never by the sheet; a `sheet` line holds one row, its header,
+  and is bounded the same way.
+- Field names are snake_case, as mail's and onenote's are. Non-ASCII text is written as
   itself, never as a `\u` escape: the lines are data, never embedded in HTML.
 - **Refusals.** The format is the main part's exact content type, the part the package's
   `officeDocument` relationship names, in Transitional's or Strict's namespace; any other, such
@@ -296,12 +290,10 @@ an xlsx's notes) are warned of once each, where the document first holds one
 
 ## docproc-mail
 
-From spike-ai-pipeline-mail 0.3.1 (`src/model.rs`, README "Schema \"1\"", goldens
-`tests/golden/{msg,pst,generated}/`; `.eml` and mbox scored against
-`tests/fixtures/mime/truth.json`). Lines `skipped` and `store` keep their schema "1" fields, the
-store's `display_name`, a .pst's name and a label, among them; `folder` keeps them less
-`display_name`, which duplicates its `path`'s last name (58 of 58 folders in the run
-[`payload-measurement.md`](payload-measurement.md) measures). A message changes:
+The `store`, `folder`, and `skipped` lines are as [tools/mail/README.md](../tools/mail/README.md),
+"Output", states; a `folder` holds no `display_name`, which would duplicate its `path`'s last name
+(58 of 58 folders in the run [`payload-measurement.md`](payload-measurement.md) measures). A
+message's line:
 
 ```text
 message   line, id?, folder?, class?, subject?, sender?, to?, cc?, bcc?, submit_time?,
@@ -314,15 +306,14 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
                              Markdown's order
 ```
 
-- `markdown` is schema "1"'s `body.derived.markdown`, moved up; `body` and its `text`, `html`,
-  `rtf`, and `derived.html` are cut (measured in
-  [`payload-measurement.md`](payload-measurement.md)). The Markdown is made from the first of these
-  the message holds: its stored HTML, the HTML recovered from an RTF that encapsulates it
-  (`\fromhtml`), its text body, then the RTF's text, read as below and made Markdown as a text body
-  is. An HTML nested deeper than 512 open elements gives way to the text body, else to the HTML's
-  text with its tags stripped, with a warning. When the Markdown is made from HTML, stored or
-  recovered from the RTF, the tool appends the sentences of the message's source text that the
-  Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text body's
+- `markdown` is the message's Markdown; its stored text, HTML, and RTF bodies are not written
+  ([`payload-measurement.md`](payload-measurement.md) measures them). The Markdown is made from the
+  first of these the message holds: its stored HTML, the HTML recovered from an RTF that
+  encapsulates it (`\fromhtml`), its text body, then the RTF's text, read as below and made Markdown
+  as a text body is. An HTML nested deeper than 512 open elements gives way to the text body, else
+  to the HTML's text with its tags stripped, with a warning. When the Markdown is made from HTML,
+  stored or recovered from the RTF, the tool appends the sentences of the message's source text that
+  the Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text body's
   Markdown is. The source text is the text body; a message with an RTF body and no text body has the
   RTF's text, read by the RTF specification: the body decompressed, control words and ignorable
   groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as line breaks,
@@ -373,11 +364,11 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
     appended, in order, when its word-token sequence is not that of any sentence of the
     Markdown's plain text, split the same way: a comparison by set membership, linear in the
     tokens, so the rule's cost is bounded for any input.
-- `smtp_address` is an Exchange (`EX`) address's SMTP address, which schema "1" leaves out
-  (README "Known limits"): a recipient's from its `PidTagSmtpAddress` (0x39FE), the sender's from
-  the message's `PidTagSenderSmtpAddress` (0x5D01). It is left out when the input doesn't hold it,
-  and docproc's typed metadata then takes the sender's SMTP address from `transport_headers`'
-  From. Of the committed fixtures, only Tika's `testPST_variousBodyTypes.pst` holds a sender's.
+- `smtp_address` is an Exchange (`EX`) address's SMTP address: a recipient's from its
+  `PidTagSmtpAddress` (0x39FE), the sender's from the message's `PidTagSenderSmtpAddress` (0x5D01).
+  It is left out when the input doesn't hold it, and docproc's typed metadata then takes the
+  sender's SMTP address from `transport_headers`' From. Of the committed fixtures, only Tika's
+  `testPST_variousBodyTypes.pst` holds a sender's.
 - `inline` means the Markdown links the attachment, in every input format. Attachments are read
   before the Markdown is made, a nested message's included, and the HTML's image sources are
   rewritten to their media names: a `cid:` source, percent-decoded, matches an attachment's
@@ -390,23 +381,21 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   and no `file`, since the reader can't open it, and no class-specific field is written, so a
   contact, an appointment, or a task is a `message` line with the message fields alone. Filling
   either is an addition under "2".
-- `--attachments <dir>` becomes `--media <dir>`; `--after <id>` keeps its resume.
+- `--media <dir>` names the directory a line's files are written to, and `--after <id>` resumes a
+  read after the message whose `id` is given.
 
 ## docproc-onenote
 
-From spike-ai-pipeline-onenote 0.1.0 (`src/model.rs`, README "Schema \"1\""). It commits no golden
-outputs: its tests check JSON-pointer expectations
-(`tests/fixtures/{sections,notebooks,content}.json`) and run-to-run byte identity, so
-docproc-onenote adds goldens. Lines `notebook` and `skipped` keep
-their schema "1" fields, a `skipped` line gaining an optional `encrypted: true` (below), and
-`section_group` and `section` keep them less `display_name`, which duplicates their `path`'s last
-name (16 of 16). A page changes:
+The `notebook`, `section_group`, `section`, and `skipped` lines are as
+[tools/onenote/README.md](../tools/onenote/README.md), "Output", states, a `skipped` line carrying
+an optional `encrypted: true` (below); a `section_group` or `section` holds no `display_name`, which
+would duplicate its `path`'s last name (16 of 16). A page's line:
 
 ```text
 page      line, id, section, level, title?, creation_time?, modification_time, author?,
           markdown?, media?, ink_alternatives?
 media[]   kind (image|embedded_file|ink), file?, filename?, size?, extension?, type?
-          in the order processing's Page.Media walks them (onenote/media.go)
+          in the reader's stored order
 ink_alternatives[]  word (its index among the page's recognized ink words, from 0), alternatives[]
                     (strings, best first)   one per word the recognizer gave alternates
 ```
@@ -444,11 +433,6 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
 
 ## Versioning
 
-The contracts move to schema "2". Every spike writes "1", and the additions alone (`properties`, OLE
-media, `smtp_address`, `ink_alternatives`, the text the Markdown gains) would fit "1", but the cuts
-([`structured-text.md`](structured-text.md)) remove fields each spike reader of "1" declares, and
-processing's readers accept exactly "1" (`decodeDocument` in `office/model.go`, `decodeLine` in
-`email/model.go` and `onenote/model.go`), so "2" makes an old reader refuse instead of reading
-zeros. From "2" on, each tool's schema grows by addition only (an optional field, a line or media
-kind); a removal, rename, or change of meaning moves it to the next version.
+Each tool's schema, "2", grows by addition only (an optional field, a line or media kind); a
+removal, rename, or change of meaning moves it to the next version.
 

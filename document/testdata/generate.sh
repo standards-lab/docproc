@@ -2,7 +2,7 @@
 # generate regenerates the document fixtures from clean.typ: clean.pdf and its ground truth, then
 # degraded.pdf and its ground truth, byte-reproducibly, and prints their SHA-256 sums. It needs
 # typst 0.15.1 and ImageMagick 7.1.2, laptop prerequisites that the check never runs, and jq.
-# See README.md
+# See document/testdata/README.md
 set -euo pipefail
 cd "$(dirname "$0")"
 

@@ -1,5 +1,5 @@
-// Ported from one2html 2.0.1, src/page/math/lexer.rs (https://github.com/msiemens/one2html),
-// under its MIT licence:
+// Adapted from msiemens/one2html (4924024), src/page/math/lexer.rs: a run split at every marker.
+// one2html's MIT licence:
 //
 // Copyright 2020 Markus Siemens
 //
@@ -19,7 +19,8 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 //! The lexer: an equation's runs as tokens. Each marker is a token carrying its run's object;
-//! the text between markers is a text token.
+//! the text between markers is a text token. The markers are RichEdit's, as
+//! <https://learn.microsoft.com/en-us/archive/blogs/murrays/officemath> describes them.
 //!
 //! Changed from one2html: a run is split at every marker in it, not only at a leading start or
 //! a trailing separator or end, and its tokens are built up front.
@@ -28,7 +29,6 @@ use onenote_parser::contents::MathObjectType;
 
 use super::Object;
 
-// See https://learn.microsoft.com/en-us/archive/blogs/murrays/officemath for these markers.
 const START: char = '\u{fdd0}';
 const SEP: char = '\u{fdee}';
 const END: char = '\u{fdef}';
