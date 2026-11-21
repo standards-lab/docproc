@@ -12,7 +12,9 @@ go install github.com/standards-lab/docproc/cmd/docproc@<version>
 ```
 
 - `docproc version` prints the module's version, or `(devel)` for a binary that carries none. It
-  reads no configuration and looks up no tool.
+  reads no configuration and looks up no tool. A run's manifest names the same version beside the
+  docproc library's, as the build info names it: its replacement's version when it is replaced,
+  and `(devel)` for a replacement by a directory or a build that names no library.
 - `docproc run <path>... --out <dir>` runs the stages over each file argument and each regular
   file under each directory argument, in lexical order, each file once. A named symbolic link is
   followed; a link under a directory is not. It collects its inputs before it looks up any tool,
@@ -64,13 +66,13 @@ shutdown.
 
 | Variable | Bound | Starting value |
 | --- | --- | --- |
-| `DOCPROC_TOOL_MEMORY` | Every tool's memory bound, in bytes (`stages.Options.Memory`); set, the exec runner needs `prlimit` on PATH | 2 GiB |
+| `DOCPROC_TOOL_MEMORY` | Every tool's memory bound, in bytes (`stages.Options.Memory`); set, the exec runner needs `prlimit` on PATH; [Limits](limits.md) gives the tools' needs under it | 2 GiB |
 | `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, magick, soffice, docproc-ooxml, ffprobe; a gs process shared by a PDF's pages takes it as an idle bound between its pages | 10m |
 | `DOCPROC_STREAM_IDLE` | A stream run's idle bound (`Options.Idle`): ffmpeg, docproc-mail, docproc-onenote, 7zz | 2m |
 | `DOCPROC_MAX_PARTS` | The most parts one dispatch admits, the input among them (`dispatch.Limits.Parts`) | 100000 |
 | `DOCPROC_MAX_BYTES` | The most bytes one dispatch's parts may come to (`Limits.Bytes`); it bounds what the archive and document stages write too, and an entry stopped at it is recorded `limited`, with no size or SHA-256 | 32 GiB |
 | `DOCPROC_MAX_DEPTH` | The deepest part one dispatch admits, the input at depth 0 (`Limits.Depth`) | 16 |
-| `DOCPROC_BOMB_RATIO` | The bomb rule's ratio of expanded to compressed size (`inspect.Options.BombRatio`); zero exactly when `DOCPROC_BOMB_SIZE` is, for no bomb rule | 1000 |
+| `DOCPROC_BOMB_RATIO` | The bomb rule's ratio of expanded to compressed size (`inspect.Options.BombRatio`); zero exactly when `DOCPROC_BOMB_SIZE` is, for no bomb rule, and a rule half off names both variables | 1000 |
 | `DOCPROC_BOMB_SIZE` | The bomb rule's expanded size, in bytes (`inspect.Options.BombSize`) | 1 GiB |
 | `DOCPROC_ARCHIVE_ENTRIES` | The most entries a ZIP or a tar may hold (`inspect.Options.Entries`) | 100000 |
 | `DOCPROC_CLAIM_RELEASE` | The bound on a claim's release once a dispatch's context has ended (`dispatch.Config.Release`) | 10s |

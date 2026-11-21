@@ -15,11 +15,8 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/apptest"
 )
 
-// shutdownTimeout is the one variable docproc reads.
 var shutdownTimeout = lifecycle.NewEnv("DOCPROC").ShutdownTimeout
 
-// newApp returns the App over fresh buffers, and the recorder of the nodes
-// its runs build.
 func newApp(t *testing.T) (a *app.App, stdout, stderr *bytes.Buffer, built *apptest.Recorder) {
 	t.Helper()
 	stdout, stderr = new(bytes.Buffer), new(bytes.Buffer)
@@ -27,8 +24,6 @@ func newApp(t *testing.T) (a *app.App, stdout, stderr *bytes.Buffer, built *appt
 	return a, stdout, stderr, apptest.Builds(a)
 }
 
-// probe adds a leaf at a's root that declares the lifecycle config node and
-// reports whether it ran.
 func probe(a *app.App) *bool {
 	ran := new(bool)
 	a.Root().Add((&cli.Command{
@@ -45,7 +40,6 @@ func probe(a *app.App) *bool {
 func TestRun_RootHelp(t *testing.T) {
 	for _, args := range [][]string{nil, {"-h"}, {"--help"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
-			// An unreadable configuration proves the run reads none.
 			t.Setenv(shutdownTimeout, "not-a-duration")
 			a, stdout, stderr, built := newApp(t)
 
@@ -87,8 +81,6 @@ func TestRun_UnknownCommand(t *testing.T) {
 	}
 }
 
-// A usage error exits 2 with the error on stderr, before anything is built, so it reads no
-// configuration.
 func TestRun_UsageErrors(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -121,7 +113,6 @@ func TestRun_UsageErrors(t *testing.T) {
 	}
 }
 
-// A command's own help exits 2, as the root's does, and builds nothing.
 func TestRun_VersionHelp(t *testing.T) {
 	for _, flag := range []string{"-h", "--help"} {
 		t.Run(flag, func(t *testing.T) {
@@ -155,7 +146,6 @@ func TestRun_Version(t *testing.T) {
 	if code != process.ExitOK {
 		t.Errorf("code = %d, want %d; stderr = %q", code, process.ExitOK, stderr)
 	}
-	// A test binary carries no main module version.
 	if stdout.String() != "(devel)\n" {
 		t.Errorf("stdout = %q, want %q", stdout, "(devel)\n")
 	}
@@ -167,8 +157,6 @@ func TestRun_Version(t *testing.T) {
 	}
 }
 
-// New builds nothing: the graph freezes on its first Build and panics on a
-// Replace after it, so Halt's Replace succeeding proves New never built.
 func TestNew_IsCold(t *testing.T) {
 	t.Setenv(shutdownTimeout, "not-a-duration")
 
@@ -221,9 +209,6 @@ func TestRun_InvalidShutdownTimeoutFailsTheCommand(t *testing.T) {
 	}
 }
 
-// A halted run of a command that declares nodes builds the lifecycle config,
-// which fails with ErrHalted before the command runs. An unreadable
-// configuration proves the substitute replaced the production constructor.
 func TestRun_HaltStopsTheCommand(t *testing.T) {
 	t.Setenv(shutdownTimeout, "not-a-duration")
 	a, stdout, stderr, built := newApp(t)
@@ -249,7 +234,6 @@ func TestRun_HaltStopsTheCommand(t *testing.T) {
 	}
 }
 
-// Halt touches only a Build, so a run that builds nothing is unaffected.
 func TestRun_HaltLeavesVersion(t *testing.T) {
 	a, stdout, stderr, built := newApp(t)
 	apptest.Halt(a)

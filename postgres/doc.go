@@ -87,7 +87,9 @@
 // # Statements
 //
 // The statements are authored files compiled through sqlate's query package. [Verify], which
-// prepares them all, is for a host's verify stage, after its migrations.
+// prepares them all, is for a host's verify stage, after its migrations. The listener's LISTEN
+// and UNLISTEN take no parameters and can't be prepared, so they run on its pgx connection
+// outside the catalog, and Verify doesn't check them.
 //
 // A test that needs a throwaway database with the docproc set applied makes one with
 // github.com/standards-lab/sqlate/postgres/pgtest, passing [Migrations] to its Migrated, as this

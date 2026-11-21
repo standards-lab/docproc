@@ -12,9 +12,6 @@ import (
 //go:embed statements/*.sql
 var statementFiles embed.FS
 
-// statements is the index's SQL, compiled once for PostgreSQL. The files include no patterns, so
-// the catalog is sqlate's own. A compile error is a defect in the embedded files, which any test
-// of the package finds.
 var statements = query.MustCatalog(query.Patterns()).MustCompile(statementFiles, "statements", pgdialect.Dialect{})
 
 // Statements returns the compiled statements in name order, for a host that lists the SQL its

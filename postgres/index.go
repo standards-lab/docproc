@@ -40,7 +40,9 @@ type Config struct {
 // A claim's appends are buffered in memory, Flush at a time, so a token is honored only by the
 // Index that issued it: an Append or a Record through another Index, or after the claim ended
 // here, fails matching [dispatch.ErrClaimLost]. Record writes the buffer's remainder and the
-// entry in one statement, so an entry's log commits whole with it or not at all.
+// entry in one statement, so an entry's log commits whole with it or not at all. A flush or a
+// Record that fails while the claim survives keeps the buffer, so the next flush or a retried
+// Record writes it.
 //
 // Record, Release, and Drop each notify the key's waiters in their statement, so the
 // notification is sent when it commits. Wait listens for them on a connection of its own from the
@@ -56,36 +58,27 @@ type Index struct {
 	mu      sync.Mutex
 	buffers map[claimKey]*buffer
 
-	// lmu guards the listener Wait holds, started by the first Wait, and whether Close ended it.
 	lmu      sync.Mutex
 	listener *listener
 	closed   bool
 }
 
-// claimKey names a claim this Index issued: its key and its token.
 type claimKey struct {
 	key   dispatch.Key
 	token string
 }
 
-// buffer is a claim's log not yet written: its items as JSON and the position the first of them
-// takes. Its mutex orders the claim's flushes.
 type buffer struct {
 	mu    sync.Mutex
 	seq   int
 	items []string
 }
 
-// Errors the index gives.
 var (
-	// errNotClaimed refuses a renewal, an append, or a record whose token doesn't hold the key's
-	// claim.
 	errNotClaimed = fmt.Errorf("postgres: index: the token doesn't hold the key's claim: %w", dispatch.ErrClaimLost)
-	// errReplaced ends a read of an entry's log that was replaced or dropped while it read.
-	errReplaced = errors.New("postgres: index: the entry was replaced or dropped while its log was read")
+	errReplaced   = errors.New("postgres: index: the entry was replaced or dropped while its log was read")
 )
 
-// The statements the index runs, bound once.
 var (
 	claimEntry   = statements.Statement("claim_entry").Scan(query.Scalar[sql.NullString])
 	discardItems = statements.Statement("discard_items")
@@ -112,14 +105,11 @@ var (
 	})
 )
 
-// stored is a row's dispatch.Version and one of its values: an entry's JSON, or its log's token.
 type stored struct {
 	version string
 	data    []byte
 }
 
-// claimRow is key's row as a waiter reads it: its dispatch.Version, its entry's JSON, nil while
-// claimed, its lease's expiry, and the database's clock when it was read.
 type claimRow struct {
 	version string
 	entry   []byte
@@ -127,7 +117,6 @@ type claimRow struct {
 	now     time.Time
 }
 
-// page is one item of a page of a log: its position and its JSON.
 type page struct {
 	seq  int
 	item []byte
@@ -156,9 +145,6 @@ func New(ctx context.Context, cfg Config) (*Index, error) {
 	return &Index{db: cfg.DB, lease: cfg.Lease, flush: cfg.Flush, buffers: map[claimKey]*buffer{}}, nil
 }
 
-// checkDriver refuses db unless its driver is pgx's database/sql driver, naming the driver
-// connection's type it found. A pinned connection is the one way to reach the driver through a
-// sqlate session, and the way a LISTEN reaches pgx.
 func checkDriver(ctx context.Context, db *sqlate.DB) error {
 	conn, err := db.Conn(ctx)
 	if err != nil {
@@ -173,7 +159,6 @@ func checkDriver(ctx context.Context, db *sqlate.DB) error {
 	})
 }
 
-// args returns key as the statements' arguments.
 func args(key dispatch.Key) query.Args {
 	return query.Args{
 		"sha256":        key.SHA256,
@@ -183,8 +168,6 @@ func args(key dispatch.Key) query.Args {
 	}
 }
 
-// checkVersion refuses a row written under another dispatch.Version, whose JSON this build may
-// not read as written.
 func checkVersion(key dispatch.Key, version string) error {
 	if version != dispatch.Version {
 		return fmt.Errorf("postgres: index: %s %s was written under dispatch version %q, not %q", key.SHA256, key.Stage, version, dispatch.Version)
@@ -204,8 +187,6 @@ func (x *Index) Lookup(ctx context.Context, key dispatch.Key) (dispatch.Entry, b
 	return decodeEntry(key, row.version, row.data)
 }
 
-// decodeEntry returns key's entry from its row's JSON, refusing a row written under another
-// dispatch.Version.
 func decodeEntry(key dispatch.Key, version string, data []byte) (dispatch.Entry, bool, error) {
 	if err := checkVersion(key, version); err != nil {
 		return dispatch.Entry{}, false, err
@@ -368,7 +349,6 @@ func (x *Index) Wait(ctx context.Context, key dispatch.Key) (dispatch.Entry, boo
 			return dispatch.Entry{}, false, err
 		}
 		if isDone(w.l.done) {
-			// The listener ended: subscribe to the next before the row is read again.
 			w.cancel()
 			w = nil
 		}
@@ -400,7 +380,6 @@ func (x *Index) Append(ctx context.Context, key dispatch.Key, token string, r di
 	}
 	n, err := appendItems.Exec(ctx, x.db, args(key).With("token", token).With("seq", buf.seq).With("items", buf.items))
 	if err != nil {
-		// The items stay buffered, for the next flush or the record.
 		return fmt.Errorf("postgres: index: append: %w", err)
 	}
 	if n == 0 {
@@ -412,8 +391,6 @@ func (x *Index) Append(ctx context.Context, key dispatch.Key, token string, r di
 	return nil
 }
 
-// checkRecorded refuses a log item that doesn't set exactly one of its Output, Warning, and
-// Child, as dispatch's own indexes do.
 func checkRecorded(r dispatch.Recorded) error {
 	n := 0
 	for _, set := range []bool{r.Output != nil, r.Warning != nil, r.Child != nil} {
@@ -448,7 +425,6 @@ func (x *Index) Record(ctx context.Context, key dispatch.Key, token string, e di
 		With("entry", string(b)).With("version", dispatch.Version)
 	n, err := recordEntry.One(ctx, x.db, a)
 	if err != nil {
-		// The buffer stays, so a Record retried after a failure the claim survived writes it.
 		return fmt.Errorf("postgres: index: record: %w", err)
 	}
 	x.forget(key, token)
@@ -476,14 +452,12 @@ func (x *Index) Drop(ctx context.Context, key dispatch.Key) error {
 	return nil
 }
 
-// buffer returns the buffer of the claim token holds of key, issued by this Index, or nil.
 func (x *Index) buffer(key dispatch.Key, token string) *buffer {
 	x.mu.Lock()
 	defer x.mu.Unlock()
 	return x.buffers[claimKey{key, token}]
 }
 
-// forget drops the buffer of token's claim of key, once the claim ended or was lost.
 func (x *Index) forget(key dispatch.Key, token string) {
 	x.mu.Lock()
 	defer x.mu.Unlock()

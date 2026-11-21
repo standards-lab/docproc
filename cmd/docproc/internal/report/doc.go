@@ -13,23 +13,30 @@
 //
 // The tree follows the record's part IDs: a part is a child of the part its parent ID names, when
 // that part had its own line, and stays at the top of the tree otherwise, beside the input's own
-// part. A content's tree is the first input's, by path, holding it.
+// part. A content's tree is the first input's, by path, holding it. The input's own part heads
+// the tree, and the other parts keep the order of their own lines, the order the stages finished
+// them. A part with outputs or warnings but no line of its own shows as its lines name it, with
+// no outcome. A part's lines repeated after its own line, as when a replay whose subtree the
+// index no longer held whole prepares it again, start it afresh, so the part shows its last lines
+// once.
 //
-// The index's header names the run, its start and end, or that it has not ended, the docproc
-// build, its workers, its path arguments, how many inputs they named, the tools, the stage table,
-// and the error that stopped the run; a summary counts the inputs, and their parts, by route and
-// outcome. A content's page links each input's source by its absolute path, as a file URL, and
-// shows each part's record metadata: its ID, name, size, SHA-256, content type, route, stage,
-// outcome, flags, warnings, its outputs' meta, and, for a quarantined part, its kept file in the
-// run directory, rundir.Dir.Kept's, named and not linked.
+// The index's header names the run, its start and end, or that it has not ended, the docproc build,
+// its workers, its path arguments, how many inputs they named, the tools, the stage table, and the
+// error that stopped the run; a summary counts the inputs, and their parts, by route and outcome,
+// the routes in the stage table's order, any other after them by name, and each route's outcomes by
+// name. A content's page links each input's source by its absolute path, as a file URL, and shows
+// each part's record metadata: its ID, name, size, SHA-256, content type, route, stage, outcome,
+// flags, warnings, its outputs' meta, and, for a quarantined part, its kept file in the run
+// directory, rundir.Dir.Kept's, named and not linked.
 //
-// A text, Markdown, or record output shows inline, whole, read from the content store, Markdown
-// as its source; every text is escaped. A PNG or JPEG image shows as an img and a WAV window as
-// an audio player, each at its content's file, and any other output is linked. An output whose
-// content the store misses says so. Every link into the run directory is relative to the report
-// directory, so the run directory moves or archives whole. The pages load nothing from
-// elsewhere: no script, font, or style sheet, their style inline, following the reader's light or
-// dark scheme.
+// A text, Markdown, or record output shows inline, whole, read from the content store, Markdown as
+// its source; every text is escaped, a byte that isn't UTF-8 shown as U+FFFD. A PNG or JPEG image
+// shows as an img and a WAV window as an audio player, each at its content's file, and any other
+// output is linked. An output whose content the store misses says so, as does one whose SHA-256
+// isn't 64 lowercase hex digits, which names no page, content, or kept file, so no link or read
+// reaches outside the run directory. Every link into the run directory is relative to the report
+// directory, so the run directory moves or archives whole. The pages load nothing from elsewhere:
+// no script, font, or style sheet, their style inline, following the reader's light or dark scheme.
 //
 // Rendering reads no clock: every time is the record's, in UTC, so the same run directory renders
 // the same bytes in any local zone. An unended run renders the lines its record holds, marked not

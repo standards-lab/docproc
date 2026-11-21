@@ -14,26 +14,11 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/internal/app"
 )
 
-// This file pins the graph's structural properties the composition root
-// owns: each Nodes field names its node, and each leaf command's Build
-// keeps every order its nodes declare. It builds the nodes without
-// starting them, so it needs nothing running. A failing layer assertion
-// prints the System's layer table.
-
-// Each node's name is its Nodes field's name lowercased, ignoring the
-// name's spaces, so a field names the node it holds without a comment
-// repeating the name, and every field holds a handle once New returns.
 func TestGraph_NodesNamedByTheirFields(t *testing.T) {
 	a := app.New(cli.Streams{})
 	graphtest.CheckNames(t, a.Nodes())
 }
 
-// leafLayers builds refs, a leaf's node set, with lifecycleConfig from g,
-// as the dispatcher builds them for a dispatch to the leaf, and reports, as
-// an error, a failed Build or each After edge the Build dropped, the latter
-// carrying the layer table: a dropped After means the leaf's path forgot to
-// declare a node something it builds is ordered against, so that order is
-// silently lost for the leaf's run.
 func leafLayers(g *graph.Graph, lifecycleConfig graph.Ref, refs []graph.Ref) error {
 	sys, err := g.Build(append(slices.Clone(refs), lifecycleConfig)...)
 	if err != nil {
@@ -49,10 +34,6 @@ func leafLayers(g *graph.Graph, lifecycleConfig graph.Ref, refs []graph.Ref) err
 	return nil
 }
 
-// Every leaf of the App's tree builds, from the nodes its path declares and
-// the lifecycle config node, a System that drops no order. The leaves are
-// the root's own, not a list copied here, so a command mounted later is
-// checked too.
 func TestGraph_LeafLayers(t *testing.T) {
 	a := app.New(cli.Streams{})
 	for path, refs := range a.Root().Leaves() {
@@ -64,9 +45,6 @@ func TestGraph_LeafLayers(t *testing.T) {
 	}
 }
 
-// The layer guard fails a leaf it should, naming the dropped order and
-// carrying the layer table, so the test above can fail: a fixture leaf
-// declares a node ordered after one its path does not declare.
 func TestGraph_LeafLayersGuardFails(t *testing.T) {
 	a := app.New(cli.Streams{})
 	undeclared := a.Graph().Value("undeclared", struct{}{})
@@ -84,7 +62,6 @@ func TestGraph_LeafLayersGuardFails(t *testing.T) {
 		}
 		found = true
 		err := leafLayers(a.Graph(), a.Nodes().LifecycleConfig, refs)
-		// The same set again, for the table the error should carry.
 		sys, buildErr := a.Graph().Build(append(slices.Clone(refs), a.Nodes().LifecycleConfig)...)
 		if buildErr != nil {
 			t.Fatalf("Build: %v", buildErr)

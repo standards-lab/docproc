@@ -17,16 +17,11 @@ import (
 	"github.com/standards-lab/sqlate/query"
 )
 
-// dsnEnv names the PostgreSQL the live tier creates its databases on, which the root mise.toml
-// sets for the compose harness's server, and prefix starts each database's name.
 const (
 	dsnEnv = "DOCPROC_DSN"
 	prefix = "docproc"
 )
 
-// TestLive_Ping proves the harness: pgtest creates a database of the test's own on the server
-// DOCPROC_DSN names, and the pool over it answers a ping. pgtest drops the database when the
-// test ends.
 func TestLive_Ping(t *testing.T) {
 	db := pgtest.Create(t, dsnEnv, prefix)
 	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
@@ -36,19 +31,16 @@ func TestLive_Ping(t *testing.T) {
 	}
 }
 
-// bare returns a throwaway database with nothing applied.
 func bare(t *testing.T) *sqlate.DB {
 	t.Helper()
 	return pgtest.Create(t, dsnEnv, prefix).Session()
 }
 
-// migrated returns a throwaway database with the docproc set applied, as a host applies it.
 func migrated(t *testing.T) *sqlate.DB {
 	t.Helper()
 	return pgtest.Migrated(t, dsnEnv, prefix, docprocSet(t)).Session()
 }
 
-// docprocSet returns the module's migration set.
 func docprocSet(t *testing.T) migrate.Set {
 	t.Helper()
 	s, err := postgres.Migrations()
@@ -58,7 +50,6 @@ func docprocSet(t *testing.T) migrate.Set {
 	return s
 }
 
-// statement returns the module's statement named name.
 func statement(t *testing.T, name string) query.Statement {
 	t.Helper()
 	for _, st := range postgres.Statements() {
@@ -70,7 +61,6 @@ func statement(t *testing.T, name string) query.Statement {
 	return query.Statement{}
 }
 
-// exec runs sql with args on db, failing the test on an error.
 func exec(t *testing.T, db *sqlate.DB, sql string, args ...any) {
 	t.Helper()
 	if _, err := db.ExecContext(t.Context(), sql, args...); err != nil {
@@ -78,7 +68,6 @@ func exec(t *testing.T, db *sqlate.DB, sql string, args ...any) {
 	}
 }
 
-// scalar runs sql with args on db and scans its one row's one column.
 func scalar[T any](t *testing.T, db *sqlate.DB, sql string, args ...any) T {
 	t.Helper()
 	r, err := db.QueryContext(t.Context(), sql, args...)
@@ -101,7 +90,6 @@ func exists(t *testing.T, db *sqlate.DB, name string) bool {
 	return scalar[bool](t, db, `SELECT to_regclass($1) IS NOT NULL`, name)
 }
 
-// key is the statements' arguments for one key; the content hash is any 64 hex digits.
 var key = query.Args{
 	"sha256":        strings.Repeat("ab", 32),
 	"stage_name":    "fixture",
@@ -109,11 +97,8 @@ var key = query.Args{
 	"stage_config":  "fixture",
 }
 
-// keyCols is key as the columns' values, in the tables' order.
 var keyCols = []any{key["sha256"], key["stage_name"], key["stage_version"], key["stage_config"]}
 
-// The set applies and reverts as one migration: up creates the entries', the logs', and the
-// history tables and the retention's index, and down removes the set's tables.
 func TestLive_MigrationsUpAndDown(t *testing.T) {
 	db := bare(t)
 	m, err := migrate.New(db, []migrate.Set{docprocSet(t)}, migrate.Options{})
@@ -141,8 +126,6 @@ func TestLive_MigrationsUpAndDown(t *testing.T) {
 	}
 }
 
-// Verify prepares every statement: it fails on a database without the set and passes once
-// pgtest.Migrated has applied it.
 func TestLive_VerifyNeedsTheMigratedSchema(t *testing.T) {
 	if err := postgres.Verify(t.Context(), bare(t)); err == nil {
 		t.Fatal("Verify passed on a database without the docproc set")
@@ -152,9 +135,6 @@ func TestLive_VerifyNeedsTheMigratedSchema(t *testing.T) {
 	}
 }
 
-// The schema holds the index's model: a claimed row has no entry, and its items are not yet a
-// log; a recorded row's log is its token's items alone, in append order; a row can't hold an
-// entry and a lease at once; an item needs its entry; and deleting the entry deletes its log.
 func TestLive_SchemaHoldsTheModel(t *testing.T) {
 	db := migrated(t)
 	ctx := t.Context()
@@ -169,10 +149,8 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 		err := r.Scan(&seq, &item)
 		return item, err
 	})
-	// A page of the log under token, from its start, large enough for the whole log.
 	page := func(token string) query.Args { return key.With("token", token).With("after", -1).With("size", 10) }
 
-	// A claim: the row, with its token and a lease on the database's clock, and no entry.
 	exec(t, db, `INSERT INTO docproc_entry (sha256, stage_name, stage_version, stage_config, token, expires_at, dispatch_version)
 		VALUES ($1, $2, $3, $4, 'old', now() + interval '1 minute', '1')`, keyCols...)
 	exec(t, db, `INSERT INTO docproc_item (sha256, stage_name, stage_version, stage_config, token, seq, item)
@@ -184,7 +162,6 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 		t.Errorf("items of a claimed key = %v, %v, want none", got, err)
 	}
 
-	// A takeover by another token, whose items are appended out of order, then a record.
 	exec(t, db, `UPDATE docproc_entry SET token = 'new' WHERE sha256 = $1 AND stage_name = $2 AND stage_version = $3 AND stage_config = $4`, keyCols...)
 	for _, seq := range []int{1, 0} {
 		exec(t, db, `INSERT INTO docproc_item (sha256, stage_name, stage_version, stage_config, token, seq, item)
@@ -204,7 +181,6 @@ func TestLive_SchemaHoldsTheModel(t *testing.T) {
 		t.Errorf("items under the old token = %v, %v, want none", got, err)
 	}
 
-	// An item without its entry is refused, and a drop takes the log with the entry.
 	other := append([]any{strings.Repeat("cd", 32)}, keyCols[1:]...)
 	if _, err := db.ExecContext(ctx, `INSERT INTO docproc_item (sha256, stage_name, stage_version, stage_config, token, seq, item)
 		VALUES ($1, $2, $3, $4, 't', 0, '{}')`, other...); err == nil {

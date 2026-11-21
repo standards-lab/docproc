@@ -20,16 +20,12 @@ import (
 	"github.com/standards-lab/go-storage/s3"
 )
 
-// The environment the live tier reads: the S3 gateway's URL and the credential it accepts, which
-// the root mise.toml sets for the compose harness's SeaweedFS.
 const (
 	endpointEnv  = "DOCPROC_S3_ENDPOINT"
 	accessKeyEnv = "DOCPROC_S3_ACCESS_KEY"
 	secretKeyEnv = "DOCPROC_S3_SECRET_KEY"
 )
 
-// env returns the variable's value, failing the test when it is unset: the integration tier
-// states that the gateway is expected.
 func env(t *testing.T, name string) string {
 	t.Helper()
 	v := os.Getenv(name)
@@ -39,7 +35,6 @@ func env(t *testing.T, name string) string {
 	return v
 }
 
-// random returns a random name of n bytes in hex.
 func random(t *testing.T, n int) string {
 	t.Helper()
 	b := make([]byte, n)
@@ -49,9 +44,6 @@ func random(t *testing.T, n int) string {
 	return hex.EncodeToString(b)
 }
 
-// liveConfig returns the finalized go-storage configuration of a bucket of the test's own on the
-// gateway, which nothing has created yet. The harness keeps its data in tmpfs, so the bucket goes
-// when the service stops.
 func liveConfig(t *testing.T) gostorage.Config {
 	t.Helper()
 	cfg := gostorage.Config{
@@ -66,7 +58,6 @@ func liveConfig(t *testing.T) gostorage.Config {
 	return cfg
 }
 
-// liveClient returns go-storage's S3 provider over cfg.
 func liveClient(t *testing.T, cfg gostorage.Config) *s3.Client {
 	t.Helper()
 	client, err := s3.New(cfg)
@@ -76,16 +67,13 @@ func liveClient(t *testing.T, cfg gostorage.Config) *s3.Client {
 	return client
 }
 
-// TestLive_Suite runs the Content suite over go-storage's S3 provider, through a started Store,
-// in one bucket of the test's own, each case's store under a prefix of its own, so each starts
-// empty.
 func TestLive_Suite(t *testing.T) {
 	cfg := liveConfig(t)
 	store := gostorage.New(liveClient(t, cfg), cfg)
 	if err := store.Start(t.Context()); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	t.Cleanup(func() { _ = store.Shutdown(context.Background()) }) // the S3 client closes nothing
+	t.Cleanup(func() { _ = store.Shutdown(context.Background()) })
 	dispatchtest.Content(t, func(t *testing.T) dispatch.Content {
 		c, err := storage.New(storage.Config{Client: store, Prefix: random(t, 6) + "/", Renew: time.Hour})
 		if err != nil {
@@ -95,8 +83,6 @@ func TestLive_Suite(t *testing.T) {
 	})
 }
 
-// TestLive_MissingContainer checks that a bucket the gateway doesn't have is no miss: an open
-// fails, never matching fs.ErrNotExist, and a put fails too.
 func TestLive_MissingContainer(t *testing.T) {
 	cfg := liveConfig(t)
 	c, err := storage.New(storage.Config{Client: liveClient(t, cfg), Prefix: "docproc/", Renew: time.Hour})

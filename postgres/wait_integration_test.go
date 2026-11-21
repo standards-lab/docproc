@@ -21,11 +21,6 @@ import (
 	"github.com/standards-lab/sqlate/postgres/pgtest"
 )
 
-// The wake tests' timings. A claim the waiter is woken from by a notification lasts held, so a
-// waiter that returns within prompt was woken by the notification, not the lease's expiry; quiet
-// is how long a waiter is given to return early, wrongly, before the claim ends, and unprompted
-// how long one whose claim ended without a notification is watched for a return no notification
-// caused.
 const (
 	held       = time.Minute
 	prompt     = 10 * time.Second
@@ -33,8 +28,6 @@ const (
 	unprompted = 2 * time.Second
 )
 
-// hosts returns two sessions on one migrated database, each over a pool of its own, as two hosts
-// sharing an index have, and the database's DSN.
 func hosts(t *testing.T) (a, b *sqlate.DB, dsn string) {
 	t.Helper()
 	d := pgtest.Migrated(t, dsnEnv, prefix, docprocSet(t))
@@ -46,15 +39,12 @@ func hosts(t *testing.T) (a, b *sqlate.DB, dsn string) {
 	return d.Session(), sqlate.Wrap(pool, pgdialect.Dialect{}), d.DSN
 }
 
-// waited is a Wait's result.
 type waited struct {
 	e   dispatch.Entry
 	ok  bool
 	err error
 }
 
-// waitOn starts idx's Wait for fixtureKey under ctx and returns where its result arrives,
-// checking that it is still waiting after quiet.
 func waitOn(t *testing.T, ctx context.Context, idx *postgres.Index) <-chan waited {
 	t.Helper()
 	done := make(chan waited, 1)
@@ -70,7 +60,6 @@ func waitOn(t *testing.T, ctx context.Context, idx *postgres.Index) <-chan waite
 	return done
 }
 
-// result returns the Wait's result, failing the test unless it arrives within prompt.
 func result(t *testing.T, done <-chan waited) waited {
 	t.Helper()
 	select {
@@ -82,9 +71,6 @@ func result(t *testing.T, done <-chan waited) waited {
 	}
 }
 
-// A waiter on one host wakes at once when the claimant on another records, releases, or its key
-// is dropped: each is notified, since the claim's lease of a minute is far from running out.
-// Record's waiter returns the entry; the others return none.
 func TestLive_WaitWakesAtTheClaimsEnd(t *testing.T) {
 	for _, end := range []string{"record", "release", "drop"} {
 		t.Run(end, func(t *testing.T) {
@@ -116,8 +102,6 @@ func TestLive_WaitWakesAtTheClaimsEnd(t *testing.T) {
 	}
 }
 
-// A claimant that died, its claim never renewed nor ended, is waited out: the waiter wakes at
-// the lease's expiry, which no notification marks, and returns no entry.
 func TestLive_WaitOutlastsADeadClaimant(t *testing.T) {
 	a, b, _ := hosts(t)
 	ctx := t.Context()
@@ -133,7 +117,6 @@ func TestLive_WaitOutlastsADeadClaimant(t *testing.T) {
 	}
 }
 
-// A Wait whose context ends returns the context's error.
 func TestLive_WaitEndsWithItsContext(t *testing.T) {
 	a, b, _ := hosts(t)
 	claimant, waiter := indexLeased(t, a, 1, held), indexLeased(t, b, 1, held)
@@ -146,7 +129,6 @@ func TestLive_WaitEndsWithItsContext(t *testing.T) {
 	}
 }
 
-// claimAny claims fixtureKey in idx, whatever its lease, failing the test unless it is claimed.
 func claimAny(t *testing.T, idx *postgres.Index) string {
 	t.Helper()
 	token, _, ok, err := idx.Claim(t.Context(), fixtureKey)
@@ -156,8 +138,6 @@ func claimAny(t *testing.T, idx *postgres.Index) string {
 	return token
 }
 
-// listenerPID polls until exactly one backend of db's database other than except is listening
-// on docproc_index, and returns its pid, failing the test unless one is within prompt.
 func listenerPID(t *testing.T, db *sqlate.DB, except int) int {
 	t.Helper()
 	for deadline := time.Now().Add(prompt); ; time.Sleep(quiet / 10) {
@@ -172,9 +152,6 @@ func listenerPID(t *testing.T, db *sqlate.DB, except int) int {
 	}
 }
 
-// A waiter whose listener's connection is ended by the server subscribes again on a new one, and
-// still wakes at the claim's record rather than at its lease's expiry. The new listener is told
-// from the old by its pid, since a terminated backend can linger in pg_stat_activity.
 func TestLive_WaitSurvivesItsListenersEnd(t *testing.T) {
 	a, b, _ := hosts(t)
 	ctx := t.Context()
@@ -194,9 +171,6 @@ func TestLive_WaitSurvivesItsListenersEnd(t *testing.T) {
 	}
 }
 
-// A waiter wakes at a notification, never by reading the row again unprompted: a claim ended
-// under it without one, its row deleted by hand, leaves it waiting until the key's payload is
-// notified, though its lease is far from running out.
 func TestLive_WaitWakesOnlyWhenNotified(t *testing.T) {
 	a, b, _ := hosts(t)
 	ctx := t.Context()
@@ -215,16 +189,11 @@ func TestLive_WaitWakesOnlyWhenNotified(t *testing.T) {
 	}
 }
 
-// payloadOf is k's notification payload, the lowercase hex SHA-256 of its SHA-256, name,
-// version, and config joined by NUL bytes, computed here apart from the package, as a listener
-// of the host's own would.
 func payloadOf(k dispatch.Key) string {
 	h := sha256.Sum256([]byte(strings.Join([]string{k.SHA256, k.Stage.Name, k.Stage.Version, k.Stage.Config}, "\x00")))
 	return hex.EncodeToString(h[:])
 }
 
-// Close ends a Wait in flight with an error, and a Wait after it fails; the Index's other
-// methods still work.
 func TestLive_CloseEndsTheWaits(t *testing.T) {
 	a, b, _ := hosts(t)
 	ctx := t.Context()
@@ -248,8 +217,6 @@ func TestLive_CloseEndsTheWaits(t *testing.T) {
 	}
 }
 
-// Release, Record, and Drop notify docproc_index with the key's payload, the lowercase hex
-// SHA-256 of its SHA-256, name, version, and config joined by NUL bytes, as payloadOf computes it.
 func TestLive_NotifyPayload(t *testing.T) {
 	a, _, dsn := hosts(t)
 	ctx := t.Context()
@@ -287,7 +254,6 @@ func TestLive_NotifyPayload(t *testing.T) {
 		t.Fatal(err)
 	}
 	next("drop")
-	// A release of a token that holds no claim, and a drop of a key with no row, notify no one.
 	if err := idx.Release(ctx, fixtureKey, "absent"); err != nil {
 		t.Fatal(err)
 	}

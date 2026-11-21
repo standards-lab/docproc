@@ -21,19 +21,13 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/integration"
 )
 
-// docproc's report as the built binary renders it, over a run directory a built run wrote: its
-// pages read back from the run's report directory, every link on them followed to a file.
-
-// indexPage is the report's index page's file name, report.IndexPage's.
 const indexPage = "index.html"
 
-// lastLine returns the last line of out, which ends in a newline; "" when out holds none.
 func lastLine(out string) string {
 	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
 	return lines[len(lines)-1]
 }
 
-// reportDir returns the absolute report directory of the run id of the run directory d at out.
 func reportDir(t *testing.T, d *rundir.Dir, out, id string) string {
 	t.Helper()
 	rel, err := d.ReportDir(id)
@@ -43,10 +37,6 @@ func reportDir(t *testing.T, d *rundir.Dir, out, id string) string {
 	return filepath.Join(out, filepath.FromSlash(rel))
 }
 
-// recorded returns, from the run id's record, the inputs it names and the distinct contents the
-// inputs that reached their own event hold, each by its own part's SHA-256: the contents the
-// report gives a page each. An input whose dispatch stopped with an error line holds none, as the
-// report counts it. A record that ends unended, rundir.ErrNotEnded, ends the read and no more.
 func recorded(t *testing.T, d *rundir.Dir, id string) (inputs map[string]bool, contents map[string]bool) {
 	t.Helper()
 	own := map[string]string{}
@@ -76,13 +66,8 @@ func recorded(t *testing.T, d *rundir.Dir, id string) (inputs map[string]bool, c
 	return inputs, contents
 }
 
-// linkAttr matches a page's href and src attributes, their values quoted as html/template quotes
-// them.
 var linkAttr = regexp.MustCompile(`\s(?:href|src)="([^"]*)"`)
 
-// checkLinks reads the page at path and follows every href and src on it: a relative link
-// resolves against the page's directory to a regular file, and a file URL, an input's source,
-// names one of inputs. It returns how many links the page holds.
 func checkLinks(t *testing.T, path string, inputs map[string]bool) int {
 	t.Helper()
 	b, err := os.ReadFile(path)
@@ -122,11 +107,6 @@ func checkLinks(t *testing.T, path string, inputs map[string]bool) int {
 	return len(links)
 }
 
-// docproc run --report over every committed fixture renders the run's report once it has ended
-// and prints its index's path, as the last line of its stdout: the report directory holds the
-// index and one page for each distinct content the run's inputs hold, as its record counts them,
-// and every link on every page resolves to a file, a relative one against the page's directory,
-// an input's file URL to that input.
 func TestRun_Report(t *testing.T) {
 	fixtures := integration.Fixtures(t)
 	out := filepath.Join(t.TempDir(), "out")
@@ -167,12 +147,11 @@ func TestRun_Report(t *testing.T) {
 			t.Errorf("%s holds no link", page)
 		}
 	}
-	// Each content page links each input holding it to its source.
 	sources := 0
 	for sha := range contents {
 		b, err := os.ReadFile(filepath.Join(dir, sha+".html"))
 		if err != nil {
-			continue // its absence is reported above
+			continue
 		}
 		sources += strings.Count(string(b), `href="file://`)
 	}

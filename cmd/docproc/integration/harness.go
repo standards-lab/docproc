@@ -18,12 +18,8 @@ import (
 	"github.com/standards-lab/go-core/process/processtest"
 )
 
-// envPrefix opens the name of every variable docproc reads.
 const envPrefix = "DOCPROC_"
 
-// hostBounds are the bounds every run takes over docproc's starting values: the stages tier's
-// bomb rule and entry bound, under which a bomb fixture is held to 64 MiB rather than expanded to
-// the starting 1 GiB in the run directory's working directory.
 var hostBounds = []string{
 	"DOCPROC_BOMB_RATIO=100",
 	"DOCPROC_BOMB_SIZE=67108864",
@@ -34,15 +30,11 @@ var hostBounds = []string{
 // run still going after it is a stall, killed, failing its test with its output.
 const Bound = 10 * processtest.Failsafe
 
-// fixtureList is the repository's list of its committed fixtures, relative to its root: the
-// stages tier's golden, one line per fixture, its path from the root first, tab-separated.
 const fixtureList = "stages/testdata/fixtures.tsv"
 
 // ErrNoFixtures is what [ReadFixtures] fails with when the fixture tree is absent.
 var ErrNoFixtures = errors.New("integration: no fixture tree")
 
-// The build Main produced for the run: the binary's path and the module root, the working
-// directory the program runs in.
 var (
 	binary string
 	root   string
@@ -66,7 +58,6 @@ func Main(m *testing.M) {
 	os.Exit(code)
 }
 
-// build builds the module's main package, at its root, into a temporary directory, and runs m.
 func build(m *testing.M) (int, error) {
 	out, err := exec.Command("go", "list", "-f", "{{.Module.Dir}}", ".").Output()
 	if err != nil {
@@ -94,12 +85,15 @@ type Process struct {
 	args           []string
 	stdout, stderr bytes.Buffer
 	exited         chan struct{}
-	err            error // Wait's, read once exited is closed
+	err            error
 }
 
 // Start starts the binary Main built in the module root with args, the arguments without the
 // program name, on empty standard input, with the parent's environment and the host bounds, and
-// returns without waiting. At test cleanup, a process still running is killed.
+// returns without waiting. At test cleanup, a process still running is killed. Its race runtime
+// skips the one-second sleep at exit, since races report as they happen, keeping the parent's
+// GORACE options, and Wait stops copying its output [processtest.Failsafe] after it exits, so a
+// tool docproc leaves holding the output open can't keep the run going.
 func Start(t testing.TB, args ...string) *Process {
 	t.Helper()
 	if binary == "" {
@@ -108,12 +102,9 @@ func Start(t testing.TB, args ...string) *Process {
 	p := &Process{args: args, exited: make(chan struct{})}
 	p.cmd = exec.Command(binary, args...)
 	p.cmd.Dir = root
-	// Races report as they happen, so the race runtime's one-second sleep at exit only slows
-	// every run; the parent's GORACE options stay.
 	gorace := strings.TrimSpace(os.Getenv("GORACE") + " atexit_sleep_ms=0")
 	p.cmd.Env = append(append(os.Environ(), hostBounds...), "GORACE="+gorace)
 	p.cmd.Stdout, p.cmd.Stderr = &p.stdout, &p.stderr
-	// A tool docproc leaves holding its output open would keep Wait copying forever.
 	p.cmd.WaitDelay = processtest.Failsafe
 	if err := p.cmd.Start(); err != nil {
 		t.Fatalf("start docproc: %v", err)
@@ -182,8 +173,6 @@ func (p *Process) Kill(t testing.TB) processtest.Result {
 	return res
 }
 
-// line renders the run as the command a reader would type, the program named, not pathed, since
-// Main removes its build when the run ends.
 func (p *Process) line() string {
 	words := append(slices.Clone(hostBounds), "docproc")
 	return "$ " + strings.Join(append(words, p.args...), " ")
@@ -259,7 +248,7 @@ func ReadFixtures(repo string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("integration: %w", err)
 	}
-	defer func() { _ = f.Close() }() // read only: a close error loses nothing
+	defer func() { _ = f.Close() }()
 	var paths, missing []string
 	s := bufio.NewScanner(f)
 	for s.Scan() {

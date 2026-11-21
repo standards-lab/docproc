@@ -9,8 +9,6 @@ import (
 	"github.com/standards-lab/docproc/postgres"
 )
 
-// NewRetention panics on a nil db, naming it, and refuses an age that isn't positive, which
-// would drop an entry as soon as it is recorded.
 func TestNewRetentionRefusesItsArguments(t *testing.T) {
 	func() {
 		defer func() {
@@ -30,8 +28,6 @@ func TestNewRetentionRefusesItsArguments(t *testing.T) {
 	}
 }
 
-// A pass refuses a budget below 1 before it reaches the database, whose driver here prepares
-// nothing.
 func TestPassRefusesABudgetBelowOne(t *testing.T) {
 	r, err := postgres.NewRetention(fake(t), time.Hour)
 	if err != nil {

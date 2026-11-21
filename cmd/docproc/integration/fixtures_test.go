@@ -11,7 +11,6 @@ import (
 	"github.com/standards-lab/docproc/cmd/docproc/integration"
 )
 
-// writeTree writes each of files, a path under dir then its content, making its directories.
 func writeTree(t *testing.T, dir string, files ...string) {
 	t.Helper()
 	for i := 0; i < len(files); i += 2 {
@@ -25,7 +24,6 @@ func writeTree(t *testing.T, dir string, files ...string) {
 	}
 }
 
-// ReadFixtures returns the fixtures the list names, as absolute paths, in its order.
 func TestReadFixtures(t *testing.T) {
 	repo := t.TempDir()
 	writeTree(t, repo,
@@ -40,7 +38,6 @@ func TestReadFixtures(t *testing.T) {
 	}
 }
 
-// With no list, the fixture tree is absent: the error matches ErrNoFixtures and names the list.
 func TestReadFixtures_NoTree(t *testing.T) {
 	repo := t.TempDir()
 
@@ -52,8 +49,6 @@ func TestReadFixtures_NoTree(t *testing.T) {
 	}
 }
 
-// A fixture the list names that is missing from the tree is an error naming it, not an absent
-// tree.
 func TestReadFixtures_MissingFixture(t *testing.T) {
 	repo := t.TempDir()
 	writeTree(t, repo,
