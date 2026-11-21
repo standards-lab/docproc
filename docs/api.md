@@ -8,7 +8,7 @@ no model client, no inference, no embedding. Inference is docinfer's
 docproc package imports docinfer. The base module is built (`library`): each package's doc comment
 is the reference for its exported names, and the signatures below are the boundary other layers
 build against. The providers are built (`providers`), each module's README and package doc their
-reference; `rundir` and `cmd/docproc` are built (`docproc`), the README's "The command" and each
+reference; `rundir` and `cmd/docproc` are built (`docproc`), `command.md` and each
 package's doc their reference, and `cmd/docproc`'s report is built (`reports`), `internal/report`'s
 package doc its reference.
 

@@ -9,7 +9,7 @@ a mature implementation lives in another language sit beside it under `tools/`, 
 toolchain and tagged `tools/<format>/v<version>`, so a tool's contract changes with its decoder in
 one pull request.
 
-Its goals live in the coordinator's roadmap (`standards-lab/context/roadmap.toml`,
+Its goals live in the coordinator's roadmap (`standards-lab/roadmap/index.toml`,
 v1.ai.processing). It is built from spike-ai-pipeline-processing, spike-ai-pipeline's docproc, and
 spike-ai-pipeline-office, -mail, and -onenote. [`docs/layers.md`](../docs/layers.md) and the pages
 it lists state docproc's boundaries with the system tools and its callers as signatures and schemas,
@@ -18,44 +18,29 @@ the tool contract on its own page, and what each promotion changes from its spik
 [`docs/design-review.md`](../docs/design-review.md) holds the design review of all five promoted
 artifacts: how it changes the goal's tasks, the settled design and disposition of every finding, the
 one home of each shape and vocabulary the artifacts share, and each artifact's tags and the task
-that releases each. [`acceptance.md`](acceptance.md), dated 2026-11-19, holds the acceptance task's
-results: the bench reruns, the ~/docs run and its failures by class, each tool's peak memory, the
-bombs, and the shared gs processes' timing. The built base module is stated by the repository's
-[README](../README.md) and each package's documentation.
+that releases each. [`docs/acceptance.md`](../docs/acceptance.md), dated 2026-11-19, holds the
+acceptance task's results: the bench reruns, the ~/docs run and its failures by class, each tool's
+peak memory, the bombs, and the shared gs processes' timing. The built base module is stated by the
+repository's [README](../README.md) and each package's documentation.
 
 ## Capability map
 
-- **Inspection and routing**: what a file is, whether it is safe to open, and which stage reads it
-  ([`docs/api.md`](../docs/api.md), "Inspection and routing").
-- **System tools**: docproc-ooxml (docx, xlsx, pptx), docproc-mail (.pst, .msg, .eml, mbox), and
-  docproc-onenote (sections, .onepkg, notebooks), each writing JSON Lines under schema "2" with
-  Markdown inside as the text layer ([`docs/tool-contract.md`](../docs/tool-contract.md)).
-  docproc-ooxml is [`tools/ooxml/`](../tools/ooxml/README.md), docproc-mail
-  [`tools/mail/`](../tools/mail/README.md), and docproc-onenote
-  [`tools/onenote/`](../tools/onenote/README.md). The Rust tools share the docproc-envelope crate,
-  [`tools/envelope/`](../tools/envelope/src/lib.rs), and every tool reads the envelope's cases from
-  [`tools/envelope/cases.json`](../tools/envelope/cases.json).
-- **Media**: audio windows and pictures prepared for transcription and vision, and a PDF's pages
-  rendered in gs processes they share ([`docs/changes.md`](../docs/changes.md), "docproc's
-  packages").
-- **Dispatch**: each part of an input walked through its stage, its outputs, warnings, and found
-  parts yielded as events, the bytes cap bounding what a stage writes
-  ([`docs/api.md`](../docs/api.md), "Dispatch", "Event shapes").
-- **Stores**: the content store and the content-addressed index, interfaces with filesystem and
-  memory implementations ([`docs/api.md`](../docs/api.md), "Content", "Index"). Two nested modules
-  provide them over stack libraries: `docproc/storage`, the content store over go-storage
-  ([`storage/`](../storage/README.md)), and `docproc/postgres`, the index over sqlate on PostgreSQL
-  ([`postgres/`](../postgres/README.md)). Their live tiers run against the compose harness through
-  `mise run integration` (the root [README](../README.md), "Development").
-- **Run directory**: `cmd/docproc`'s, read and written by the `rundir` and `rundir/schema`
-  packages, whose package docs state its layout, a run's report directory among it, and schema
-  "2" ([`docs/changes.md`](../docs/changes.md), "The nested modules").
-- **Command**: `cmd/docproc`, a thin composition of the library, with three commands: `version`,
-  `run`, and `report`. The root [README](../README.md#the-command), "The command", states its
-  commands, exit statuses, and configuration, `DOCPROC_AUDIO_LIMIT`, the longest audio window, among
-  it ([`docs/changes.md`](../docs/changes.md), "The nested modules";
-  [`docs/design-review.md`](../docs/design-review.md), "cmd/docproc").
-- **Cerebro** (planned): the capstone's processing service over docproc and docinfer
-  ([`cerebro.md`](cerebro.md)).
-- **Releases**: each artifact's tags and the task that releases each, the tools on linux-x64 and
-  linux-arm64 ([`docs/design-review.md`](../docs/design-review.md), "Releases").
+- **Inspection and routing** (built): [route/doc.go](../route/doc.go),
+  [inspect/doc.go](../inspect/doc.go).
+- **System tools** (built): [tool/doc.go](../tool/doc.go),
+  [tools/ooxml/README.md](../tools/ooxml/README.md),
+  [tools/mail/README.md](../tools/mail/README.md),
+  [tools/onenote/README.md](../tools/onenote/README.md),
+  [tools/envelope/src/lib.rs](../tools/envelope/src/lib.rs).
+- **Readers** (built): [office/doc.go](../office/doc.go), [email/doc.go](../email/doc.go),
+  [onenote/doc.go](../onenote/doc.go), [sevenzip/doc.go](../sevenzip/doc.go).
+- **Media** (built): [audio/doc.go](../audio/doc.go), [media/doc.go](../media/doc.go),
+  [picture/doc.go](../picture/doc.go), [document/doc.go](../document/doc.go).
+- **Dispatch** (built): [dispatch/doc.go](../dispatch/doc.go), [stages/doc.go](../stages/doc.go).
+- **Stores** (built): [dispatch/dispatchtest/doc.go](../dispatch/dispatchtest/doc.go),
+  [storage/doc.go](../storage/doc.go), [postgres/doc.go](../postgres/doc.go).
+- **Run directory** (built): [rundir/doc.go](../rundir/doc.go),
+  [rundir/schema/doc.go](../rundir/schema/doc.go).
+- **Command** (built): [cmd/docproc/main.go](../cmd/docproc/main.go).
+- **Cerebro** (planned): [cerebro.md](cerebro.md).
+- **Releases** (built): [.github/workflows/release.yml](../.github/workflows/release.yml).

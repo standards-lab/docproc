@@ -5,7 +5,7 @@ The extraction library adjacent to Go Elemental, with the system tools it runs n
 
 - [`README.md`](README.md): the base module, `github.com/standards-lab/docproc`: its packages,
   the system tools each stage needs, its limits, and its development tasks.
-- [`README.md`, "The command"](README.md#the-command): docproc/cmd/docproc, the docproc command,
+- [`docs/command.md`](docs/command.md): docproc/cmd/docproc, the docproc command,
   a nested module on its own tags; its changelog is
   [`cmd/docproc/CHANGELOG.md`](cmd/docproc/CHANGELOG.md).
 - [`storage/README.md`](storage/README.md): docproc/storage, the content store over go-storage, a

@@ -1,0 +1,58 @@
+# Limits
+
+docproc reads no ODF, WordPerfect, `.xlsb`, ODG, RAR, ISO, xz, bzip2, HTML, or bare RFC 822 file:
+each routes to no stage. It runs no virus scan and flags no macro in an OLE2 file. It detects
+no text's encoding: text is read by its byte order mark, as UTF-8, or else as windows-1252.
+Beyond that, each stage inherits its tool's
+limits, as the tools' READMEs state them in full; these are the ones a host sizes or routes by.
+
+- **office.** Pictures are listed with no layout, so a picture another covers, that sits off the
+  slide or page, or that is cropped away is still listed and handed onward. Text boxes,
+  equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read; no formula is
+  evaluated, a cell's value being the one the file caches; tracked changes are read accepted
+  only. An EMF or WMF is rendered on an A4 page and trimmed to what differs from the page's
+  white, so a picture framed in white loses its frame, and an all-white picture is one pixel.
+  docproc-ooxml links glibc, 2.34 or newer. Under a memory bound on x64 it aborts by SIGABRT in
+  about 1 run in 20 at 256 MiB, its last stderr line naming libssl, not memory, and converts in
+  20 of 20 at 512 MiB and above; arm64 is unmeasured.
+- **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is
+  refused; TNEF and opaque S/MIME parts are not read; an attachment by reference has no file;
+  every mbox is read as an mboxrd. docproc-mail's memory is a small multiple of the largest
+  single attachment, and of the file for an `.eml`, which is read whole. The Threader keeps each
+  message's threading keys alone: the spike measured it over 200,000 messages at 362 bytes a
+  message held, 435 while Threads runs, and the keys are unchanged since. It holds them in
+  memory; it doesn't spill.
+- **onenote.** A password-protected section is refused as an input and skipped inside a
+  notebook; a page is read at its latest revision only; merged table cells are read as their
+  own; a section that fails inside a section group is lost with no warning. docproc-onenote holds
+  a notebook whole in memory before its first line, so size a host by the largest notebook or
+  section it is given. Its read thread's stack is an address-space reservation of a quarter of
+  the memory bound, at least 8 MiB and at most 256 MiB, which counts against the bound.
+- **archive.** A listing past `inspect.Options.Entries` fails its part; an entry flagged by name
+  or type (a traversal, an absolute name, a link, a device), an encrypted one, and a bomb as
+  written are unread children, not read. An archive's entry, or a PDF's attachment, is stopped at
+  the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file removed,
+  and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
+  docproc-mail, and docproc-onenote write are held to the cap only once written.
+- **document.** A PDF that needs a password is flagged and not read. A page past the request's
+  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
+  share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
+  `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
+  writes their text layers to a temporary directory of the stream's own, never the input's. Under
+  the container runner, which mounts only the PDF's directory, each page's text is read by a process
+  of its own while the renders still share. The run that counts the pages and the shared
+  processes work in that directory. A process's pages go to gs as a page list, each run of
+  consecutive pages a range, such as 1-8, and a batch ends early where its list would pass the
+  2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its own, as does a
+  batch of one page, and so does every page of a PDF portfolio, since a shared process would
+  render the portfolio's embedded documents in place of its pages; a portfolio page's own process
+  renders the cover's page. Every page's PNG and text are byte for byte what a process of its own
+  gives. A page's own processes work in the PDF's directory, as every tool's runs do, but keep
+  their temporary files in their run's own `TMPDIR`, so one ended early, by its bound or by the
+  stream stopping, leaves nothing beside the PDF. A shared process's bound is
+  `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
+  consumer not counted. When one fails on the content, the pages it handed over stand and each
+  other page gets processes of its own, each bounded by the whole timeout, so only a page that
+  fails there fails.
+- **audio and media.** A source ffprobe reports no duration for is refused. media reads files
+  alone: no live source, stream URL, or capture.

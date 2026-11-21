@@ -159,7 +159,7 @@ belongs to the tool package and is on the backlog.
 
 Since v0.4.1, every exec-runner run's `TMPDIR` is a directory of the run's own under the host's
 `TMPDIR`, removed once gs is reaped, so a page's own process ended early leaves nothing beside the
-PDF either ([`docs/api.md`](../docs/api.md), "Running the tools").
+PDF either ([`docs/api.md`](api.md), "Running the tools").
 
 ### Recipe
 

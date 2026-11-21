@@ -268,7 +268,7 @@ fixtures scripts stay in the spike.
 
 ### Known limits
 
-The [README](README.md#limits) states them: each stage's tool's limits, docproc-ooxml's
+The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
 [Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.1...HEAD
