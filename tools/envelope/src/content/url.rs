@@ -134,9 +134,9 @@ fn trimmed(link: &str) -> usize {
         let Some(last) = text.chars().next_back() else {
             return 0;
         };
-        if matches!(last, '?' | '!' | '.' | ',' | ':' | '*' | '_' | '~') {
-            end -= 1;
-        } else if last == ')' && text.matches(')').count() > text.matches('(').count() {
+        if matches!(last, '?' | '!' | '.' | ',' | ':' | '*' | '_' | '~')
+            || last == ')' && text.matches(')').count() > text.matches('(').count()
+        {
             end -= 1;
         } else if last == ';' {
             let name = text[..end - 1]

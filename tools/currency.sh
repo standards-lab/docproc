@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# currency reports, or upgrades, one Rust system tool's pins: its crates, direct and indirect, the
-# crates of its locked graph with a RustSec advisory, and the mise tools its directory's mise files
-# pin. A pin the tool's HOLDS list names is reported as held and never moved. report prints each
+# currency reports, or upgrades, one Rust system tool's pins: its crates, direct and indirect, in
+# its Cargo.lock and the shared envelope's, the crates of both locked graphs with a RustSec
+# advisory, and the mise tools its directory's mise files pin. A pin the tool's HOLDS list names is reported as held and never moved. report prints each
 # line prefixed with the tool's directory and exits 1 when it reports any pin that isn't held. Each
 # Rust tool's currency and upgrade tasks run it by the tool's name.
 #
@@ -25,6 +25,7 @@ if [ ! -f "$tool/mise.toml" ] || [ ! -f "$tool/Cargo.toml" ]; then
 	exit 2
 fi
 holds=$(mise -C "$tool" env --json | jq -r '.HOLDS // empty')
+envelope=(--manifest-path ../envelope/Cargo.toml)
 
 held() {
 	grep -m1 "^$1 $2: " <<<"$holds" | cut -d: -f2- | sed 's/^ //' || true
@@ -64,17 +65,17 @@ outdated_mise_tools() {
 }
 
 outdated_crates() {
-	cargo update --dry-run --verbose 2>&1 |
+	cargo update --dry-run --verbose "$@" 2>&1 |
 		sed -nE 's/^ *(Updating|Unchanged) +([^ ]+) +v([^ ]+)( -> v([^ ]+)| \(available: v([^)]+)\))$/\2 \3 \5\6/p'
 }
 
 crates_beyond_requirements() {
-	cargo update --dry-run --verbose 2>&1 |
+	cargo update --dry-run --verbose "$@" 2>&1 |
 		sed -nE 's/^ *Unchanged +([^ ]+) +v([^ ]+) \(available: v([^)]+)\)$/\1 \2 \3/p'
 }
 
 crates_within_requirements() {
-	cargo update --dry-run --verbose 2>&1 |
+	cargo update --dry-run --verbose "$@" 2>&1 |
 		sed -nE 's/^ *Updating +([^ ]+) +v([^ ]+) -> v[^ ]+$/\1 \2/p'
 }
 
@@ -83,9 +84,9 @@ direct_requirements() {
 	local requires='.packages[] | .manifest_path as $manifest | .dependencies[] | select(.path == null) |
 		"\(.name) \($manifest)"'
 	local paths manifest
-	paths=$(cargo metadata --format-version 1 --no-deps |
+	paths=$(cargo metadata --format-version 1 --no-deps "$@" |
 		jq -r '.packages[].dependencies[] | select(.path != null) | "\(.path)/Cargo.toml"') || return
-	cargo metadata --format-version 1 --no-deps | jq -r "$requires" || return
+	cargo metadata --format-version 1 --no-deps "$@" | jq -r "$requires" || return
 	while read -r manifest; do
 		if [ -n "$manifest" ]; then
 			cargo metadata --format-version 1 --no-deps --manifest-path "$manifest" | jq -r "$requires" || return
@@ -110,20 +111,23 @@ trailing() {
 }
 
 report_crates() {
-	local scanned name pinned latest
-	scanned=$(outdated_crates) || return
+	local lock=$1 scanned name pinned latest
+	shift
+	scanned=$(outdated_crates "$@") || return
 	while read -r name pinned latest; do
-		if [ -n "$name" ]; then trailing Cargo.lock "$name" "$pinned" "$latest"; fi
+		if [ -n "$name" ]; then trailing "$lock" "$name" "$pinned" "$latest"; fi
 	done <<<"$scanned"
 }
 
 report_advisories() {
-	local advisories line
+	local lock=$1 advisories line
+	shift
 	# shellcheck disable=SC2016 # $CARGO_HOME expands in mise's environment, not this one
 	if ! advisories=$(mise -C "$tool" exec -- bash -c \
-		'export PATH="$CARGO_HOME/bin:$PATH"; cargo deny --color never check advisories' 2>&1); then
+		'export PATH="$CARGO_HOME/bin:$PATH"; cargo deny --color never "$@" check --config deny.toml advisories' \
+		bash "$@" 2>&1); then
 		while read -r line; do
-			if [ -n "$line" ]; then report_line "Cargo.lock: $line"; fi
+			if [ -n "$line" ]; then report_line "$lock: $line"; fi
 		done < <(grep -E '^(error|warning)\[' <<<"$advisories")
 	fi
 }
@@ -150,8 +154,8 @@ upgrade_mise_tools() {
 
 raise_requirements_beyond() {
 	local direct beyond name pinned latest manifest
-	direct=$(direct_requirements) || return
-	beyond=$(crates_beyond_requirements) || return
+	direct=$(direct_requirements "$@") || return
+	beyond=$(crates_beyond_requirements "$@") || return
 	while read -r name pinned latest; do
 		if [ -z "$name" ] || [ -n "$(held "$name" "$pinned")" ]; then
 			continue
@@ -164,24 +168,28 @@ raise_requirements_beyond() {
 
 update_crates_within() {
 	local within name pinned
-	within=$(crates_within_requirements) || return
+	within=$(crates_within_requirements "$@") || return
 	while read -r name pinned; do
 		if [ -z "$name" ] || [ -n "$(held "$name" "$pinned")" ]; then
 			continue
 		fi
-		if ! cargo pkgid --quiet "$name@$pinned" >/dev/null 2>&1; then
+		if ! cargo pkgid --quiet "$@" "$name@$pinned" >/dev/null 2>&1; then
 			continue
 		fi
-		cargo update --quiet "$name@$pinned"
+		cargo update --quiet "$@" "$name@$pinned"
 	done <<<"$within"
 }
 
 if [ "$action" = report ]; then
-	report_crates
-	report_advisories
+	report_crates Cargo.lock
+	report_crates ../envelope/Cargo.lock "${envelope[@]}"
+	report_advisories Cargo.lock
+	report_advisories ../envelope/Cargo.lock "${envelope[@]}"
 	report_mise_tools
 	exit "$stale"
 fi
 upgrade_mise_tools
 raise_requirements_beyond
+raise_requirements_beyond "${envelope[@]}"
 update_crates_within
+update_crates_within "${envelope[@]}"

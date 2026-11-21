@@ -94,17 +94,19 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   reports, instead of wrapping silently into a wrong offset or length. Every test runs the
   release musl binary, so no debug build is made.
 - **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and
-  unpublished, with no lock or toolchain of its own: each Rust tool depends on it by path, and
-  each Rust tool's check formats, lints, and tests it with the tool's toolchain, against the tool's
-  Cargo.lock, so it is tested in every graph that links it (docproc-onenote's without its
-  `markdown` feature), and docproc's root check reaches it through `TOOLS`. Its manifest is
-  formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the build
-  output of a cargo run in its directory, and a Cargo.lock, which it has none of. Its features:
-  `markdown`, the content rule's Markdown-to-plain reader, which docproc-mail enables.
+  unpublished, with no toolchain of its own: each Rust tool depends on it by path, and each Rust
+  tool's check formats and tests it with the tool's toolchain, against the tool's Cargo.lock, so
+  it is tested in every graph that links it (docproc-onenote's without its `markdown` feature),
+  and docproc's root check reaches it through `TOOLS`. clippy lints only a workspace member, which
+  the envelope is in no tool's graph, so each Rust tool's check also lints it by its own manifest,
+  with every feature and warnings denied, against its own `tools/envelope/Cargo.lock`. Its
+  manifest is formatted by path, which reads no lock and writes none. Its `.gitignore` ignores the
+  build output of a cargo run in its directory. Its features: `markdown`, the content rule's
+  Markdown-to-plain reader, which docproc-mail enables.
 - **Currency and upgrade.** `tools/currency.sh` reports the crates, their RustSec advisories, and
   the mise tools, as it does for every Rust tool, and moves every mise tool and every crate,
   raising the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking
-  the tool's graph; [Rust tools' currency](#rust-tools-currency) gives the detail.
+  the tool's graph and the envelope's; [Rust tools' currency](#rust-tools-currency) gives the detail.
 - **cargo-about** is not in mise's registry, so it comes from its GitHub release. `tools/notices.sh`
   runs it, in the tool's environment, for the release's third-party notices and their license
   check, under the tool's `about.toml`. Each crate's notice is given under licenses from the
@@ -174,10 +176,12 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   is within now, so this re-locks the tool's graph to it. An update can move other crates with
   the one it names, as re-locking regex moves regex-automata, so a crate whose pin an earlier
   update already moved is no longer locked at that pin, and is passed over.
-- **The envelope.** It has no lock of its own, so each Rust tool's upgrade raises its requirements
-  by the same rules as the tool's and then re-locks the tool's own graph. Run in turn, the second
-  tool finds the envelope's requirements already at their latest and only re-locks to them, so no
-  tool's locked check trails the crate. A bump of the envelope's ICU4X crates that moves the
+- **The envelope.** Each Rust tool's currency reports the envelope's lock, its crates and their
+  advisories, beside the tool's own, under the tool's holds and `deny.toml`. Each Rust tool's
+  upgrade raises the envelope's requirements by the same rules as the tool's, from both graphs,
+  and then re-locks the tool's own graph and the envelope's. Run in turn, the second tool finds
+  the envelope's requirements already at their latest and only re-locks to them, so no locked
+  check trails the crate. A bump of the envelope's ICU4X crates that moves the
   Unicode version fails its unit test asserting it, so it stays a reviewed change.
 
 ### The envelope's dependencies
@@ -197,6 +201,8 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
 - pulldown-cmark, a CommonMark reader (`src/content/markdown.rs`), for a tool that compares a
   source text with its Markdown; behind the `markdown` feature, so a tool comparing two plain texts
   links none.
+- Its own `Cargo.lock`, the graph clippy lints it on, pins each of these at the version
+  docproc-mail's lock does, the ICU4X crates and pulldown-cmark at their exact requirements.
 
 ### docproc-mail
 

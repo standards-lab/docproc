@@ -13,7 +13,7 @@ typed-path 0.12.4: onenote_parser 2.1.0 requires ^0.12.3; it moves only with one
 '''
 
 [tasks.check]
-description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, then print its version; writes only target/"
+description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, lint the envelope with all its features on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -22,6 +22,7 @@ target="$(uname -m)-unknown-linux-musl"
 cargo fmt --check
 cargo fmt --check --manifest-path ../envelope/Cargo.toml
 cargo clippy --all-targets --locked --target "$target" -p docproc-onenote -p docproc-envelope -- -D warnings
+cargo clippy --all-targets --all-features --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
 cargo test --release --locked --target "$target" -p docproc-onenote -p docproc-envelope
 "target/$target/release/docproc-onenote" --version
 '''
@@ -50,11 +51,11 @@ UPDATE_GOLDEN=1 cargo test --release --locked --target "$target" -p docproc-onen
 '''
 
 [tasks.currency]
-description = "Report every crate behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, and every mise tool behind its latest, a held one as held; writes only cargo-deny's advisory database"
+description = "Report every crate in Cargo.lock and tools/envelope/Cargo.lock behind its latest, within its requirement or beyond it, every crate with a RustSec advisory, and every mise tool behind its latest, a held one as held; writes only cargo-deny's advisory database"
 dir = "{{config_root}}"
 run = "../currency.sh onenote report"
 
 [tasks.upgrade]
-description = "Bump every mise tool here and every crate to its latest, but a held one, rewriting mise.toml, Cargo.toml, tools/envelope/Cargo.toml, and Cargo.lock"
+description = "Bump every mise tool here and every crate to its latest, but a held one, rewriting mise.toml, Cargo.toml, tools/envelope/Cargo.toml, Cargo.lock, and tools/envelope/Cargo.lock"
 dir = "{{config_root}}"
 run = "../currency.sh onenote upgrade"
