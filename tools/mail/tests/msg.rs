@@ -8,7 +8,6 @@ use common::msg::{Attachment, Child, Message, Object, Prop, build};
 use common::{assert_no_nulls, fixture, names, run, scratch, sha256};
 use serde_json::{Value, json};
 
-/// The committed public messages, by path under tests/fixtures/msg.
 const MESSAGES: &[&str] = &[
     "tika/testMSG_att_msg.msg",
     "tika/testMSG_chinese.msg",
@@ -20,7 +19,6 @@ const MESSAGES: &[&str] = &[
     "poi/outlook_30_msg.msg",
 ];
 
-/// The committed messages from one source, by its directory.
 fn from(source: &str) -> Vec<&'static str> {
     let mut messages: Vec<&str> = MESSAGES
         .iter()
@@ -31,7 +29,6 @@ fn from(source: &str) -> Vec<&'static str> {
     messages
 }
 
-/// The files a truth file writes truth for, sorted.
 fn truth_files(truth: &Value) -> Vec<&str> {
     let mut files: Vec<&str> = truth["messages"]
         .as_object()
@@ -49,7 +46,6 @@ fn message(path: &str) -> Value {
     out.lines().remove(1)
 }
 
-/// The same input always gives byte-identical output.
 #[test]
 fn output_is_byte_identical_across_runs() {
     for path in MESSAGES {
@@ -63,8 +59,6 @@ fn output_is_byte_identical_across_runs() {
     }
 }
 
-/// A .msg is a store line of format "msg" and one message line; no field is null, and a nested
-/// message, which is no line, has no "line".
 #[test]
 fn a_msg_is_a_store_line_and_a_message_line() {
     for path in MESSAGES {
@@ -81,7 +75,6 @@ fn a_msg_is_a_store_line_and_a_message_line() {
     }
 }
 
-/// Asserts that no message nested in `message`, at any depth, has a "line".
 fn assert_nested(message: &Value, path: &str) {
     for attachment in message["attachments"].as_array().into_iter().flatten() {
         if let Some(nested) = attachment.get("message") {
@@ -91,9 +84,6 @@ fn assert_nested(message: &Value, path: &str) {
     }
 }
 
-/// Tika's testMSG_att_msg.msg carries a message and a PDF. The message is nested under its
-/// attachment record with every field a message line has, its bodies included, as Tika's
-/// OutlookParserTest reads it: "Test Attachment", "Blah blah blah".
 #[test]
 fn an_embedded_message_is_nested_under_its_attachment() {
     let message = message("tika/testMSG_att_msg.msg");
@@ -120,8 +110,6 @@ fn an_embedded_message_is_nested_under_its_attachment() {
     assert_eq!(attachments[1]["size"], 13539);
 }
 
-/// Tika's testMSG_chinese.msg is ANSI: its strings are PT_STRING8 in a Chinese code page, and
-/// read in it they are what Tika's test asserts.
 #[test]
 fn an_ansi_message_is_decoded_by_its_code_page() {
     let message = message("tika/testMSG_chinese.msg");
@@ -137,9 +125,6 @@ fn an_ansi_message_is_decoded_by_its_code_page() {
     );
 }
 
-/// Tika's testMSG_forwarded.msg stores its body as RTF that encapsulates HTML (\fromhtml1) and as
-/// plain text, with no HTML: the HTML is recovered from the RTF, and the Markdown made from it,
-/// not from the text, so it has the HTML's bold header names. Its threading fields are as stored.
 #[test]
 fn html_is_recovered_from_a_fromhtml1_rtf() {
     let message = message("tika/testMSG_forwarded.msg");
@@ -156,8 +141,6 @@ fn html_is_recovered_from_a_fromhtml1_rtf() {
     assert!(message["conversation_index"].is_string());
 }
 
-/// Tika's test-outlook2003.msg carries eleven pictures, each written once by content and each
-/// linked by the Markdown, so inline.
 #[test]
 fn attachments_are_written_by_content() {
     let dir = scratch("msg-attachments");
@@ -180,8 +163,6 @@ fn attachments_are_written_by_content() {
     }
 }
 
-/// Every committed message has a sources entry whose SHA-256 matches it, and the license
-/// notices it names are committed.
 #[test]
 fn every_message_has_a_matching_sources_entry() {
     let sources: Value =
@@ -212,10 +193,6 @@ fn every_message_has_a_matching_sources_entry() {
     }
 }
 
-/// What Tika's OutlookParserTest asserts of its .msg files, as tika-truth.json writes it, is in
-/// the CLI's message lines, every field. testMSG_chinese.msg's To recipient is an Exchange
-/// recipient, whose address Tika reports as its SMTP address (PidTagSmtpAddress): the CLI writes
-/// that as its `smtp_address`, beside its address as stored (PidTagEmailAddress).
 #[test]
 fn fields_match_the_tika_truth() {
     let truth: Value =
@@ -245,11 +222,6 @@ fn fields_match_the_tika_truth() {
     assert_eq!(checked, 22);
 }
 
-/// What Apache POI's HSMF tests assert of its .msg files, as poi-truth.json writes it, is in the
-/// CLI's message lines: equal fields, and the lengths of the recipient lists. Its assertions on
-/// the stored bodies, written as pointers under /body (equal values and Java String.hashCodes),
-/// name a field schema "2" cuts: the message's Markdown is made from the bodies, and no body is
-/// written, so those are passed over, and counted.
 #[test]
 fn fields_match_the_poi_truth() {
     let truth: Value =
@@ -302,14 +274,11 @@ fn fields_match_the_poi_truth() {
     assert_eq!((checked, bodies), (27, 4));
 }
 
-/// Java's String.hashCode: s[0]*31^(n-1) + ... + s[n-1] over UTF-16 code units, wrapping.
 fn java_hash(text: &str) -> i32 {
     text.encode_utf16().fold(0i32, |hash, unit| {
         hash.wrapping_mul(31).wrapping_add(i32::from(unit))
     })
 }
-
-// Messages built in the test.
 
 const SUBJECT: u16 = 0x0037;
 const MESSAGE_CODEPAGE: u16 = 0x3FFD;
@@ -355,11 +324,8 @@ fn embedded(message: Message) -> Attachment {
     }
 }
 
-/// PT_STRING8 is read in the message's code page: PidTagMessageCodepage, else
-/// PidTagInternetCodepage, else, in an embedded message, its parent's, else 1252.
 #[test]
 fn string8_is_read_in_the_messages_code_page() {
-    // "Привет" in windows-1251, and "Grüße" in windows-1252.
     let cyrillic = b"\xCF\xF0\xE8\xE2\xE5\xF2".to_vec();
     let latin = b"Gr\xFC\xDFe".to_vec();
     let inherits = Message {
@@ -403,8 +369,6 @@ fn string8_is_read_in_the_messages_code_page() {
     assert_eq!(run(&[&plain]).lines()[1]["subject"], "Grüße");
 }
 
-/// A nested message has its own recipients and attachments, recursively, and its attachments'
-/// files are written by content like any other.
 #[test]
 fn nested_attachments_are_written_by_content() {
     let inner = Message {
@@ -451,8 +415,6 @@ fn nested_attachments_are_written_by_content() {
     );
 }
 
-/// Embedded messages are read 16 deep; one nested deeper is listed without its message, with a
-/// warning.
 #[test]
 fn nesting_is_capped_at_16() {
     let mut message = Message {
@@ -489,10 +451,6 @@ fn nesting_is_capped_at_16() {
     );
 }
 
-/// An attachment that can't be read is a skipped line after the message line, with a warning;
-/// inside an embedded message, which has no line, it is left out with a warning. A recipient that
-/// can't be read is left out with a warning, and an embedded message that can't be read leaves
-/// its attachment listed without it. The run exits 0.
 #[test]
 fn records_that_cant_be_read_are_skipped() {
     let short = vec![0; 4];
@@ -569,8 +527,6 @@ fn records_that_cant_be_read_are_skipped() {
     );
 }
 
-/// An afStorage attachment's storage is written as stored: a compound file of its own holding
-/// its streams, the same bytes on every run.
 #[test]
 fn an_af_storage_attachment_is_written_as_a_compound_file() {
     let msg = build(
@@ -608,21 +564,16 @@ fn an_af_storage_attachment_is_written_as_a_compound_file() {
     assert_eq!(contents, b"stored bytes");
 }
 
-/// PidTagRtfCompressed holding `rtf`, compressed as Outlook stores it.
 fn rtf(rtf: &str) -> Prop {
     Prop::Binary(compressed_rtf::compress_rtf(rtf).unwrap())
 }
 
-/// The message line of the built message `message`, with its stderr, run with no media directory.
 fn read_built(name: &str, message: &Message) -> (Value, String) {
     let out = run(&[build(name, message)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     (out.lines()[1].clone(), out.stderr)
 }
 
-/// A message whose only body is plain RTF has the RTF's own text as its Markdown, read as a text
-/// body is: control words, the font table and ignorable groups stripped, `\par` and `\line` as
-/// line breaks, a symbol word as its character, and `\'hh` in the `\ansicpg` code page.
 #[test]
 fn a_plain_rtf_only_message_has_the_rtfs_text() {
     let mut props = subject("plain rtf");
@@ -648,8 +599,6 @@ fn a_plain_rtf_only_message_has_the_rtfs_text() {
     );
 }
 
-/// A `\fromtext` RTF is read as plain RTF is, its `\*\htmltag` groups skipped, when the message
-/// has no text body; with one, the Markdown is made from the text body, which comes first.
 #[test]
 fn a_fromtext_rtf_gives_way_to_the_text_body() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\fromtext \\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\
@@ -680,9 +629,6 @@ fn a_fromtext_rtf_gives_way_to_the_text_body() {
     assert_eq!(message["markdown"], "The text body");
 }
 
-/// Beside a stored HTML body and no text body, a plain RTF body's own text is the source text the
-/// content rule compares the HTML's Markdown with: its sentence the HTML lacks is appended. With a
-/// text body, the text body is the source text, and the RTF is not read.
 #[test]
 fn a_plain_rtf_beside_html_is_the_source_text() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\deff0 We found a moth.\\par It is taped in.\\par}";
@@ -717,9 +663,6 @@ fn a_plain_rtf_beside_html_is_the_source_text() {
     assert_eq!(message["markdown"], "We found a **moth**.");
 }
 
-/// An Exchange address's SMTP address: the sender's from PidTagSenderSmtpAddress, a recipient's
-/// from PidTagSmtpAddress. An SMTP address has none written, its address being the one to write
-/// to, and an Exchange address without one has none.
 #[test]
 fn an_exchange_address_has_its_smtp_address() {
     let ex = "/O=EXAMPLE/OU=EXCHANGE ADMINISTRATIVE GROUP/CN=RECIPIENTS/CN=ANN";
@@ -769,7 +712,6 @@ fn an_exchange_address_has_its_smtp_address() {
     );
 }
 
-/// An attachment that is an image of the HTML body, with its content-id and its location.
 fn picture(name: &str, content: &[u8], extra: Vec<(u16, Prop)>) -> Attachment {
     let mut attachment = by_value(name, content);
     let Child::Props(props) = &mut attachment.props else {
@@ -779,14 +721,8 @@ fn picture(name: &str, content: &[u8], extra: Vec<(u16, Prop)>) -> Attachment {
     attachment
 }
 
-/// The PNG signature, the payload of the `data:` image below.
 const PNG: &[u8] = b"\x89PNG\r\n\x1a\n";
 
-/// An image's source is rewritten to its media name: a percent-decoded `cid:` matches an
-/// attachment's content-id, another source its PidTagAttachContentLocation, and a `data:` image is
-/// written as media and listed in `media`, with no attachment. A source that matches nothing is
-/// kept, with one warning. `inline` says the Markdown links the attachment, whatever its stored
-/// flags say.
 #[test]
 fn images_link_their_media_names() {
     let html = "<p>Pictures</p><img src=\"cid:one%2Bimg@example.com\" alt=\"one\">\
@@ -812,7 +748,6 @@ fn images_link_their_media_names() {
                     b"two",
                     vec![(ATTACH_CONTENT_LOCATION, Prop::Unicode("pic2.png".into()))],
                 ),
-                // ATT_MHTML_REF says the HTML refers to it, but the Markdown doesn't link it.
                 picture(
                     "three.png",
                     b"three",
@@ -862,7 +797,6 @@ fn images_link_their_media_names() {
     assert_eq!(names(&dir), expected);
 }
 
-/// An embedded message's images link its own attachments, read before its Markdown is made.
 #[test]
 fn an_embedded_messages_images_link_its_own_attachments() {
     let mut inner = subject("inner");

@@ -7,6 +7,16 @@
 //! with records skipped; 1 output that can't be written, to stdout or to the media directory; 2 a
 //! usage error; 3 an input refused; 4 a fault of the CLI's own. The envelope, those lines and
 //! codes, the guard, and the media directory's store, is docproc-envelope's.
+//!
+//! The arguments are read as OS strings, since a path needn't be UTF-8, and parsed by hand:
+//! `--version` or `--help` alone, or one input and an optional `--media <dir>` and `--after <id>`,
+//! in any order. `--version` writes the bare version, which the release compares with its tag's,
+//! and `--help` the usage, each to stdout with exit 0, a stdout that can't take it an output fault;
+//! a usage error's line on stderr is followed by the usage. `--after`'s id is decimal digits alone
+//! naming a u32 from 1: a .pst's node ids and an mbox's ordinals both start at 1, so 0 names no
+//! message and is a usage error, not "resume from the start". `--after` on an input that is a
+//! single message is a usage error too, given once the input is sniffed, so a missing or foreign
+//! input is still refused as such.
 
 mod codepage;
 mod eml;
@@ -30,10 +40,8 @@ use std::process::ExitCode;
 use docproc_envelope::{Fault, Lines, Media, stderr};
 use sniff::Format;
 
-/// The binary's name, which Cargo.toml's package gives, leading every stderr line.
 const NAME: &str = env!("CARGO_BIN_NAME");
 
-/// The usage: on stdout for `--help`, and on stderr after a usage error's line.
 const USAGE: &str = concat!(
     "usage: ",
     env!("CARGO_BIN_NAME"),
@@ -47,7 +55,6 @@ const USAGE: &str = concat!(
 /// The reason an input of none of the four formats is refused, alone or leading the reason why.
 pub const NO_MAIL: &str = "neither a .pst, a .msg, an .eml nor an mbox";
 
-/// The parsed command line.
 enum Command {
     Version,
     Help,
@@ -56,26 +63,20 @@ enum Command {
 
 struct Args {
     input: PathBuf,
-    /// `--media <dir>`: where the attachments' contents are written.
     media: Option<PathBuf>,
-    /// `--after <id>`: the message a .pst's or an mbox's read resumes after.
     after: Option<u32>,
 }
 
 fn main() -> ExitCode {
-    // args_os: a path needn't be UTF-8, and std::env::args panics on one that isn't.
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     docproc_envelope::run(NAME, USAGE, || run(&args))
 }
 
 fn run(args: &[OsString]) -> Result<(), Fault> {
     let args = match parse(args)? {
-        // The bare version, which the release compares with its tag's.
         Command::Version => {
             return docproc_envelope::version(env!("CARGO_PKG_VERSION"), model::SCHEMA);
         }
-        // The usage, asked for, so on stdout and exit 0; a stdout that can't take it is an
-        // output fault, exit 1, as for --version.
         Command::Help => {
             let mut out = io::stdout().lock();
             return writeln!(out, "{USAGE}")
@@ -136,9 +137,6 @@ pub fn unreadable(path: &Path) -> impl Fn(io::Error) -> Fault + '_ {
     }
 }
 
-/// Refuses `--after` for an input that is a single message, `kind`, as a usage error: there is no
-/// message to resume after. The input has been sniffed first, so a missing or foreign input is
-/// still refused as such.
 fn single(after: Option<u32>, kind: &str) -> Result<(), Fault> {
     match after {
         Some(_) => Err(Fault::Usage(format!(
@@ -148,8 +146,6 @@ fn single(after: Option<u32>, kind: &str) -> Result<(), Fault> {
     }
 }
 
-/// Parses the arguments by hand: `--version` or `--help` alone, or one input and an optional
-/// `--media <dir>` and `--after <id>`, in any order.
 fn parse(args: &[OsString]) -> Result<Command, Fault> {
     if let [flag] = args {
         if flag == "--version" {
@@ -217,9 +213,6 @@ fn parse(args: &[OsString]) -> Result<Command, Fault> {
     }))
 }
 
-/// `--after`'s id: decimal digits alone, no sign, naming a u32 from 1. A .pst's node ids and an
-/// mbox's ordinals both start at 1, so 0 names no message and is a usage error, like an id that
-/// isn't a number, rather than "resume from the start".
 fn message_id(arg: &OsString) -> Option<u32> {
     let digits = arg.to_str()?;
     if !digits.bytes().all(|byte| byte.is_ascii_digit()) {

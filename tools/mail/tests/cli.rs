@@ -9,8 +9,6 @@ const USAGE: &str = "usage: docproc-mail [--media <dir>] [--after <id>] <input>
        docproc-mail --help
 ";
 
-/// The bare crate version on the first line, which a release compares with its tag's, and the
-/// schema on the second.
 #[test]
 fn version_prints_the_bare_crate_version_then_the_schema() {
     let out = run(&["--version"]);
@@ -22,7 +20,6 @@ fn version_prints_the_bare_crate_version_then_the_schema() {
     assert_eq!(out.stderr, "");
 }
 
-/// `--help` prints the usage to stdout, nothing to stderr, and exits 0.
 #[test]
 fn help_prints_the_usage_to_stdout() {
     let out = run(&["--help"]);
@@ -31,8 +28,6 @@ fn help_prints_the_usage_to_stdout() {
     assert_eq!(out.stderr, "");
 }
 
-/// A stdout that can't take the version, or the usage, is an output fault, exit 1, with its
-/// error line.
 #[test]
 fn version_and_help_to_a_full_stdout_exit_1() {
     for flag in ["--version", "--help"] {
@@ -54,7 +49,6 @@ fn version_and_help_to_a_full_stdout_exit_1() {
     }
 }
 
-/// Each usage error exits 2 with its error line and the usage on stderr, and nothing on stdout.
 #[test]
 fn usage_errors_exit_2_with_usage() {
     let store = fixture("pst/libyal/outlook.pst");
@@ -97,9 +91,6 @@ fn usage_errors_exit_2_with_usage() {
     }
 }
 
-/// `--after` takes decimal digits alone naming a whole number from 1: 0, which names no message
-/// since node ids and ordinals start at 1, is a usage error, as are a sign, a non-digit, and a
-/// number past u32.
 #[test]
 fn a_malformed_after_id_is_a_usage_error() {
     let store = fixture("pst/libyal/outlook.pst");
@@ -128,8 +119,6 @@ fn a_malformed_after_id_is_a_usage_error() {
     }
 }
 
-/// A .msg or an .eml is a single message, with nothing to resume after: `--after` with one is a
-/// usage error, given once the input is sniffed; a missing input is still refused as missing.
 #[test]
 fn after_with_a_single_message_is_a_usage_error() {
     for (input, kind) in [
@@ -155,8 +144,6 @@ fn after_with_a_single_message_is_a_usage_error() {
     assert_eq!(out.code, Some(3), "{}", out.stderr);
 }
 
-/// --media is accepted before or after the input, and a directory that doesn't exist yet
-/// is accepted: it is created once the input is read.
 #[test]
 fn media_is_accepted_with_the_input() {
     let store = fixture("pst/libyal/outlook.pst");
@@ -166,7 +153,6 @@ fn media_is_accepted_with_the_input() {
         [store.as_os_str(), "--media".as_ref(), dir.as_os_str()],
         ["--media".as_ref(), dir.as_os_str(), store.as_os_str()],
     ] {
-        // Removed before each run, so each creates it, whatever a run before it left.
         if dir.exists() {
             std::fs::remove_dir_all(&dir).unwrap();
         }
@@ -177,8 +163,6 @@ fn media_is_accepted_with_the_input() {
     }
 }
 
-/// The media directory follows the envelope's rule: created once the input is read, with
-/// no attachment to write in it, and never for an input that is refused.
 #[test]
 fn the_media_directory_is_created_once_the_input_is_read() {
     let tmp = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
@@ -197,8 +181,6 @@ fn the_media_directory_is_created_once_the_input_is_read() {
     assert!(!refused.exists());
 }
 
-/// A PST header with the given client magic and version, padded to the header's size, with
-/// nothing valid after its first 12 bytes.
 fn pst_header(client: &[u8; 2], version: u16) -> Vec<u8> {
     let mut bytes = b"!BDN\0\0\0\0".to_vec();
     bytes.extend_from_slice(client);
@@ -207,7 +189,6 @@ fn pst_header(client: &[u8; 2], version: u16) -> Vec<u8> {
     bytes
 }
 
-/// Asserts a refusal: exit 3, nothing on stdout, and one reason line on stderr.
 fn assert_refused(args: &[&std::path::Path], reason: &str) {
     let out = run(args);
     assert_eq!(out.code, Some(3), "{}", out.stderr);
@@ -225,7 +206,6 @@ fn an_ost_is_refused_with_how_to_export_it() {
     );
 }
 
-/// The format is sniffed, never taken from the name: an .ost header named .pst is still an .ost.
 #[test]
 fn the_format_is_sniffed_not_named() {
     let ost = built("named.pst", &pst_header(b"SO", 23));
@@ -258,7 +238,6 @@ fn an_unreadable_pst_header_is_refused() {
     assert_eq!(out.stderr.lines().count(), 1);
 }
 
-/// A store cut short after its header: the header reads, the store's root doesn't.
 #[test]
 fn an_unreadable_store_root_is_refused() {
     let whole = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
@@ -275,8 +254,6 @@ fn an_unreadable_store_root_is_refused() {
     assert_eq!(out.stderr.lines().count(), 1);
 }
 
-/// A store whose header and root read but whose IPM subtree doesn't: the byte flipped here is
-/// in the data block of libyal's store's IPM subtree folder, so its block trailer's CRC fails.
 #[test]
 fn an_unreadable_ipm_subtree_is_refused() {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
@@ -288,7 +265,6 @@ fn an_unreadable_ipm_subtree_is_refused() {
     );
 }
 
-/// A compound file cfb can't read is refused: here, a bare header, its sectors all zero.
 #[test]
 fn an_unreadable_compound_file_is_refused() {
     let mut bytes = vec![0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
@@ -306,8 +282,6 @@ fn an_unreadable_compound_file_is_refused() {
     assert_eq!(out.stderr.lines().count(), 1);
 }
 
-/// A compound file that holds no MS-OXMSG message, here one with a Word document's stream, is
-/// refused, though it is named .msg.
 #[test]
 fn a_compound_file_that_is_not_a_message_is_refused() {
     let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("not-a-message.msg");
@@ -321,8 +295,6 @@ fn a_compound_file_that_is_not_a_message_is_refused() {
     );
 }
 
-/// What is none of the four formats is refused before any output: no mail at all, a short or
-/// foreign PST header, and text whose header block fails the header-shape check.
 #[test]
 fn none_of_the_four_formats_is_refused() {
     for (name, bytes) in [
@@ -352,8 +324,6 @@ fn none_of_the_four_formats_is_refused() {
     }
 }
 
-/// A missing input, a directory, and a file that can't be opened are each refused, the reason
-/// saying which and naming the input's path after it, never leading with it.
 #[test]
 fn an_input_that_is_missing_a_directory_or_unreadable_is_refused_by_its_path() {
     let missing = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("missing.pst");
@@ -371,13 +341,10 @@ fn an_input_that_is_missing_a_directory_or_unreadable_is_refused_by_its_path() {
     );
 }
 
-/// A message file under Cargo's temporary directory with no permission at all, given its
-/// permissions back when dropped, so nothing that walks the tree is stopped by it.
 struct Locked(std::path::PathBuf);
 
 impl Locked {
     fn new(name: &str) -> Self {
-        // A previous run's file has no write permission, so it is replaced, not written over.
         let _ = std::fs::remove_file(std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(name));
         let locked = Self(built(name, b"Subject: locked\r\n\r\nbody\r\n"));
         locked.set(0o000);
@@ -396,7 +363,6 @@ impl Drop for Locked {
     }
 }
 
-/// A path needn't be UTF-8: one that isn't is read like any other, here refused as missing.
 #[test]
 fn a_path_that_is_not_utf8_is_read_as_a_path() {
     use std::os::unix::ffi::OsStrExt;

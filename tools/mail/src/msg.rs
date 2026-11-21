@@ -24,6 +24,15 @@
 //! message's skipped line, or for an embedded message, a warning on its attachment, and a panic
 //! in an attachment's is that attachment's. A message's Markdown is made once its attachments,
 //! embedded messages included, are read, so that its images link their media names.
+//!
+//! The property types read are MS-OXCDATA 2.11.1's PT_SHORT, PT_LONG, PT_BOOLEAN, PT_I8,
+//! PT_SYSTIME, PT_BINARY, PT_STRING8 and PT_UNICODE; a string's stream may end in its terminating
+//! null, and the string ends at its first. An empty stream is read from its directory entry alone:
+//! OpenMcdf, which MsgKit writes through, starts one at sector 0xFFFFFFFF, where MS-CFB has
+//! ENDOFCHAIN (0xFFFFFFFE), and cfb 0.16.0 fails to follow that chain. An attachment's content is
+//! kept apart from its properties, as stored: PidTagAttachDataBinary for afByValue, and for
+//! afStorage the storage beside them as a compound file of its own, its storages and streams,
+//! CLSIDs, state bits and storage times, in the source's CFB version.
 
 use std::convert::Infallible;
 use std::fs::File;
@@ -38,12 +47,9 @@ use crate::model::{Message, Skipped, Store};
 use crate::props::{AF_EMBEDDED_MESSAGE, AF_STORAGE, Bag, Value, integer, tag};
 use crate::{mapping, markdown, warn, warn_all};
 
-/// The stream of a message's, a recipient's or an attachment's properties.
 const PROPERTIES: &str = "__properties_version1.0";
-/// The prefixes of a recipient's and an attachment's storage, before its number in hex.
 const RECIPIENT: &str = "__recip_version1.0_#";
 const ATTACHMENT: &str = "__attach_version1.0_#";
-/// The storage of PidTagAttachDataObject: an embedded message, or afStorage's storage.
 const ATTACH_OBJECT: &str = "__substg1.0_3701000D";
 
 /// How deep embedded messages are read: an embedded message nested deeper is listed without
@@ -57,8 +63,6 @@ pub fn too_deep() -> String {
     format!("an embedded message nested deeper than {DEPTH_MAX} messages; listed without it")
 }
 
-/// Property types (MS-OXCDATA 2.11.1) the reader reads; any other, a multi-valued one among them,
-/// is kept as [`Value::Other`].
 const PT_SHORT: u16 = 0x0002;
 const PT_LONG: u16 = 0x0003;
 const PT_BOOLEAN: u16 = 0x000B;
@@ -149,10 +153,6 @@ struct Walk<'a> {
 }
 
 impl Walk<'_> {
-    /// Maps the message whose storage is `storage` and whose properties are `props` to its
-    /// model, its recipients and its attachments read, embedded messages recursively, and its
-    /// attachments' files written. Returns it with the attachments that couldn't be read, by
-    /// number and reason; each has had its warning.
     fn message(
         &mut self,
         storage: &Path,
@@ -202,8 +202,6 @@ impl Walk<'_> {
                     }
                 };
             warn_all(&here, notes);
-            // The content is kept apart from the properties, as stored: PidTagAttachDataBinary
-            // for afByValue; PidTagAttachDataObject is the storage beside them.
             let mut content = match props.remove(&tag::ATTACH_DATA) {
                 Some(Value::Binary(bytes)) => Some(bytes),
                 _ => None,
@@ -254,9 +252,6 @@ impl Walk<'_> {
         Ok((message, skipped))
     }
 
-    /// The message embedded in the storage `object`, at `depth`, or None, with a warning, when
-    /// it is nested too deep or can't be read. What can't be read inside it is left out with a
-    /// warning; it has no line of its own to be skipped from.
     fn embedded(
         &mut self,
         object: &Path,
@@ -300,8 +295,6 @@ impl Walk<'_> {
         Ok(Some(message))
     }
 
-    /// Runs one read against the file inside [`guarded`]. A panic may have poisoned cfb's
-    /// lock, so after one the file is reopened for the reads that follow.
     fn read<T>(
         &mut self,
         read: impl FnOnce(&mut CompoundFile<File>) -> io::Result<T>,
@@ -330,7 +323,6 @@ impl Walk<'_> {
     }
 }
 
-/// A storage's recipient and attachment storages, each by number, in number order.
 #[derive(Default)]
 struct Children {
     recipients: Vec<(u32, PathBuf)>,
@@ -364,9 +356,6 @@ fn children(file: &CompoundFile<File>, storage: &Path) -> io::Result<Children> {
     Ok(children)
 }
 
-/// A stream's bytes. An empty stream is read from its directory entry alone: OpenMcdf, which
-/// MsgKit writes through, starts one at sector 0xFFFFFFFF, where MS-CFB has ENDOFCHAIN
-/// (0xFFFFFFFE), and cfb 0.16.0 fails to follow that chain.
 fn read_stream(file: &mut CompoundFile<File>, path: &Path) -> io::Result<Vec<u8>> {
     if file.entry(path)?.is_empty() {
         return Ok(Vec::new());
@@ -376,8 +365,6 @@ fn read_stream(file: &mut CompoundFile<File>, path: &Path) -> io::Result<Vec<u8>
     Ok(bytes)
 }
 
-/// The properties of the storage `storage`, whose property stream has `header`, with the
-/// notes of the values left out.
 fn properties_at(
     file: &mut CompoundFile<File>,
     storage: &Path,
@@ -422,7 +409,6 @@ pub fn properties(
     let mut notes = Vec::new();
     let (entries, _) = entries.as_chunks::<16>();
     for entry in entries {
-        // The property tag, the flags, which the reader doesn't need, and the value.
         let [t0, t1, t2, t3, _, _, _, _, inline @ ..] = *entry;
         let tag = u32::from_le_bytes([t0, t1, t2, t3]);
         let (id, kind) = ((tag >> 16) as u16, tag as u16);
@@ -439,8 +425,6 @@ pub fn properties(
     Ok((bag, notes))
 }
 
-/// One property's value, or why it can't be read, worded to follow its name. A multi-valued
-/// property, whose values no field reads, is [`Value::Other`], its streams unread.
 fn value(
     id: u16,
     kind: u16,
@@ -462,7 +446,6 @@ fn value(
     }
 }
 
-/// A fixed-size value from its first bytes, when `kind` is a fixed-size type the reader reads.
 fn fixed(kind: u16, bytes: &[u8]) -> Option<Value> {
     let le = |n: usize| bytes.get(..n);
     Some(match kind {
@@ -475,8 +458,6 @@ fn fixed(kind: u16, bytes: &[u8]) -> Option<Value> {
     })
 }
 
-/// A variable-size value from its stream. A string's stream may end in its terminating null;
-/// it ends at its first.
 fn variable(kind: u16, mut bytes: Vec<u8>) -> Value {
     match kind {
         PT_STRING8 => {
@@ -498,8 +479,6 @@ fn variable(kind: u16, mut bytes: Vec<u8>) -> Value {
     }
 }
 
-/// An attachment's afStorage storage as a compound file of its own, as stored: its storages
-/// and streams, CLSIDs, state bits and storage times, in the source's CFB version.
 fn storage_bytes(file: &mut CompoundFile<File>, storage: &Path) -> io::Result<Vec<u8>> {
     let mut copy = CompoundFile::create_with_version(file.version(), Cursor::new(Vec::new()))?;
     let root = Path::new("/");
@@ -536,7 +515,6 @@ mod tests {
 
     use super::*;
 
-    /// A property stream: `header` zero bytes, then one entry per (tag, value).
     fn stream(header: Header, entries: &[(u32, [u8; 8])]) -> Vec<u8> {
         let mut bytes = vec![0; header.size()];
         for (tag, value) in entries {
@@ -579,7 +557,6 @@ mod tests {
             assert_eq!(bag, Bag::from([(0x0017, Value::Integer(2))]), "{header:?}");
             assert!(notes.is_empty());
         }
-        // Read with the wrong header, the entries are misaligned.
         let embedded = stream(Header::Embedded, &entry);
         assert!(read(&embedded, Header::TopLevel, &[]).is_err());
     }
@@ -667,8 +644,6 @@ mod tests {
         );
     }
 
-    /// A multi-valued property is kept unread, as Other, its streams never opened: a missing
-    /// one is no note.
     #[test]
     fn multi_valued_values_are_other() {
         let bytes = stream(

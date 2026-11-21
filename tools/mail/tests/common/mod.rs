@@ -13,7 +13,6 @@ use std::process::Command;
 
 const BIN: &str = env!("CARGO_BIN_EXE_docproc-mail");
 
-/// One run of the binary: its exit code, stdout and stderr.
 pub struct Run {
     pub code: Option<i32>,
     pub stdout: String,
@@ -21,7 +20,6 @@ pub struct Run {
 }
 
 impl Run {
-    /// stdout's lines, each parsed as JSON.
     pub fn lines(&self) -> Vec<serde_json::Value> {
         self.stdout
             .lines()
@@ -34,7 +32,6 @@ pub fn run<S: AsRef<std::ffi::OsStr>>(args: &[S]) -> Run {
     finish(Command::new(BIN).args(args))
 }
 
-/// One run of the binary with `dir` as its working directory.
 pub fn run_in<S: AsRef<std::ffi::OsStr>>(dir: &Path, args: &[S]) -> Run {
     finish(Command::new(BIN).current_dir(dir).args(args))
 }
@@ -48,8 +45,6 @@ fn finish(command: &mut Command) -> Run {
     }
 }
 
-/// Asserts that no value in `value`, at any depth, is null: a property with no value is left
-/// out of a line, never written as null.
 pub fn assert_no_nulls(value: &serde_json::Value, what: &str) {
     match value {
         serde_json::Value::Null => panic!("{what}: a null was written"),
@@ -63,17 +58,12 @@ pub fn assert_no_nulls(value: &serde_json::Value, what: &str) {
     }
 }
 
-/// A committed fixture, by its path under tests/fixtures.
 pub fn fixture(path: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(path)
 }
 
-/// Runs the binary over the committed input `input`, by its path under tests/fixtures, asserts
-/// that it exits 0, and compares its stdout and stderr, byte for byte, with its goldens: the
-/// input's path under tests/golden, its extension `.jsonl` and `.stderr`. With UPDATE_GOLDEN set
-/// (the `golden` task), it writes the goldens instead; their diff is reviewed before committing.
 pub fn golden(input: &str) {
     let out = run(&[fixture(input)]);
     assert_eq!(out.code, Some(0), "{input}: {}", out.stderr);
@@ -99,13 +89,6 @@ pub fn golden(input: &str) {
     assert_eq!(out.stderr, read(&stderr), "{input}: stderr");
 }
 
-/// What a truth's `body` (its `text` and `html`, as a source holds them) says of a message
-/// line's `markdown`, schema "2" carrying no body of its own: with an HTML body, it is htmd's
-/// rendering of that HTML, each `cid:` image source naming an attachment of the line, by its
-/// content_id, read as that attachment's file, then, when the text body holds sentences that
-/// rendering lacks, a paragraph of the content rule's appended sentences, whose words are the
-/// text body's, in its order; with a text body alone, it reads as that text, word for word, once
-/// its backslash escapes are read; with neither, there is none.
 pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source: &str) {
     assert_eq!(got.get("body"), None, "{source}: no body");
     let markdown = got.get("markdown").map(|text| text.as_str().unwrap());
@@ -159,9 +142,6 @@ pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source
     }
 }
 
-/// A Markdown text's words, read as plain text: each backslash escape (a backslash before ASCII
-/// punctuation, CommonMark 2.4) read as the character it escapes, then split at whitespace, so a
-/// hard line break's trailing spaces are no word.
 pub fn words_of_markdown(markdown: &str) -> Vec<String> {
     let mut text = String::with_capacity(markdown.len());
     let mut chars = markdown.chars().peekable();
@@ -177,15 +157,12 @@ pub fn words_of_markdown(markdown: &str) -> Vec<String> {
     text.split_whitespace().map(str::to_owned).collect()
 }
 
-/// A test-built input, written under Cargo's temporary directory for integration tests.
 pub fn built(name: &str, bytes: &[u8]) -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     std::fs::write(&path, bytes).unwrap();
     path
 }
 
-/// An empty directory under Cargo's temporary directory for integration tests, emptied if a
-/// previous run left it.
 pub fn scratch(name: &str) -> PathBuf {
     let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join(name);
     if path.exists() {
@@ -195,7 +172,6 @@ pub fn scratch(name: &str) -> PathBuf {
     path
 }
 
-/// The names of the files in `dir`, sorted.
 pub fn names(dir: &Path) -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(dir)
         .unwrap()
@@ -205,7 +181,6 @@ pub fn names(dir: &Path) -> Vec<String> {
     names
 }
 
-/// A file's lowercase hex SHA-256, by sha256sum, so the tests take no hashing crate.
 pub fn sha256(path: &Path) -> String {
     let out = Command::new("sha256sum").arg(path).output().unwrap();
     assert!(out.status.success(), "sha256sum {}", path.display());

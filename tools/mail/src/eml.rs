@@ -1,10 +1,10 @@
 //! The .eml reader: one RFC 5322 message, parsed whole by mail-parser and mapped by
-//! [`crate::mime`], then a skipped line for each of its attachments that can't be read. The
-//! input has passed the header-shape check before it gets here, a leading byte-order mark
-//! skipped, as it is here; one that mail-parser still can't parse, or one of 4 GiB or more,
-//! which it never parses, is refused. The parse and the mapping run inside the record guard, so
-//! a panic in either, the Markdown's derivation included, is the message's skipped line, after
-//! the store line, with a warning.
+//! [`crate::mime`], then a skipped line for each of its attachments that can't be read. The input
+//! has passed the header-shape check before it gets here, a leading byte-order mark skipped, as it
+//! is here; one that mail-parser still can't parse, or one of 4 GiB or more, which it never parses,
+//! its offsets being 32-bit, is refused. The parse and the mapping run inside the record guard, so
+//! a panic in either, the Markdown's derivation included, is the message's skipped line, after the
+//! store line, with a warning.
 
 use std::convert::Infallible;
 use std::io::Write;
@@ -15,7 +15,6 @@ use docproc_envelope::{Fault, Lines, Media, guarded};
 use crate::model::{Skipped, Store};
 use crate::{mime, sniff, unreadable, warn, warn_below};
 
-/// The size mail-parser parses up to: its offsets are 32-bit.
 const SIZE_MAX: u64 = 1 << 32;
 
 /// Reads the .eml at `path` and writes its store line, its message line and its skipped

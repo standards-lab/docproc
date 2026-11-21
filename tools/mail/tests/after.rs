@@ -14,7 +14,6 @@ use std::path::Path;
 use common::{built, fixture, names, run, scratch};
 use serde_json::Value;
 
-/// Every committed .pst and mbox, under tests/fixtures.
 const INPUTS: &[&str] = &[
     "pst/java-libpst/dist-list.pst",
     "pst/java-libpst/passworded.pst",
@@ -26,9 +25,6 @@ const INPUTS: &[&str] = &[
     "mime/rlug/mbox.rlug",
 ];
 
-/// The message a line belongs to, by the message's id, or None for a line that isn't a
-/// message's: a message line, a skipped message's, or a skipped attachment's, which names its
-/// message.
 fn owner(line: &Value) -> Option<u64> {
     match (line["line"].as_str(), line["kind"].as_str()) {
         (Some("message"), _) | (Some("skipped"), Some("message")) => line["id"].as_u64(),
@@ -37,7 +33,6 @@ fn owner(line: &Value) -> Option<u64> {
     }
 }
 
-/// The message ids of a whole read, in its order.
 fn messages(stdout: &str) -> Vec<u64> {
     let mut ids = Vec::new();
     for line in stdout.lines() {
@@ -51,8 +46,6 @@ fn messages(stdout: &str) -> Vec<u64> {
     ids
 }
 
-/// The whole read's tail after message `cursor`: its lines that are no message's, and the lines
-/// of the messages after the cursor's.
 fn tail(stdout: &str, cursor: u64) -> String {
     let mut seen = false;
     let mut passed = false;
@@ -80,7 +73,6 @@ fn tail(stdout: &str, cursor: u64) -> String {
     kept
 }
 
-/// The attachment files a read's lines name, nested messages' too.
 fn files(stdout: &str) -> BTreeSet<String> {
     fn walk(message: &Value, files: &mut BTreeSet<String>) {
         for attachment in message["attachments"].as_array().into_iter().flatten() {
@@ -97,10 +89,6 @@ fn files(stdout: &str) -> BTreeSet<String> {
     files
 }
 
-/// For each committed .pst and mbox, resumed after its first, middle and last message: the
-/// resumed stdout is the whole read's tail byte for byte; the media directory holds the
-/// tail's files, each as the whole read wrote it, and none of the passed-over messages' alone;
-/// and no warning names a passed-over message, since none is read.
 #[test]
 fn a_resumed_read_is_the_whole_reads_tail() {
     for (n, input) in INPUTS.iter().enumerate() {
@@ -149,8 +137,6 @@ fn a_resumed_read_is_the_whole_reads_tail() {
     }
 }
 
-/// The last message's cursor leaves every folder line and no message line, and writes no
-/// attachment: here the generated store, whose last message has one.
 #[test]
 fn after_the_last_message_only_the_folders_are_written() {
     let path = fixture("generated/pst/mailbox.pst");
@@ -176,8 +162,6 @@ fn after_the_last_message_only_the_folders_are_written() {
     assert!(names(&dir).is_empty());
 }
 
-/// An mbox's ordinal counts a separator line with nothing after it: resumed after it, the read
-/// gives the messages after it, and its last ordinal is the mbox's last message.
 #[test]
 fn an_mbox_cursor_counts_an_empty_entry() {
     let mbox = built(
@@ -201,7 +185,6 @@ fn an_mbox_cursor_counts_an_empty_entry() {
     }
 }
 
-/// An mbox's tail by ordinal, for one whose empty entries write no line.
 fn tail_after_ordinal(stdout: &str, cursor: u64) -> String {
     stdout
         .lines()
@@ -213,7 +196,6 @@ fn tail_after_ordinal(stdout: &str, cursor: u64) -> String {
         .collect()
 }
 
-/// Asserts a refusal: exit 3, nothing on stdout, and one reason line on stderr.
 fn assert_refused(input: &Path, after: &str, reason: &str) {
     let out = run(&[input.as_os_str(), "--after".as_ref(), after.as_ref()]);
     assert_eq!(out.code, Some(3), "{}", out.stderr);
@@ -221,8 +203,6 @@ fn assert_refused(input: &Path, after: &str, reason: &str) {
     assert_eq!(out.stderr, format!("docproc-mail: error: {reason}\n"));
 }
 
-/// A node id no message in the store has is refused before any output, the node id of a
-/// folder included; so is an ordinal past an mbox's last.
 #[test]
 fn an_id_not_in_the_store_is_refused() {
     let pst = fixture("generated/pst/mailbox.pst");
@@ -236,7 +216,6 @@ fn an_id_not_in_the_store_is_refused() {
     }
     let mboxrd = fixture("mime/nine.mboxrd");
     assert_refused(&mboxrd, "10", "--after 10: the mbox's last message is 9");
-    // A lone separator line is one empty entry: ordinal 1, the store line alone after it.
     let empty = built(
         "after-empty.mbox",
         b"From a@example.com Mon Jan  1 00:00:00 2024\n",
@@ -247,8 +226,6 @@ fn an_id_not_in_the_store_is_refused() {
     assert_refused(&empty, "2", "--after 2: the mbox's last message is 1");
 }
 
-/// An id's leading zeros are read: `--after 005` resumes an mbox as `--after 5` does, and
-/// `--after 0002097284` a .pst as `--after 2097284` does, byte for byte.
 #[test]
 fn leading_zeros_are_read() {
     for (input, padded, plain) in [

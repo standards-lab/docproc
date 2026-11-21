@@ -35,6 +35,15 @@
 //! adds what it adds to an .eml's message: no sender address type, normal importance and
 //! sensitivity, and the subject as the conversation topic; the generator gives each recipient the
 //! address type SMTP.
+//!
+//! PST Builder makes Deleted Items under the IPM subtree's root, "Top of Personal Folders", before
+//! the layout's folders, and a store's folders are read in the order they were made. EmlMapper
+//! takes the Received date the generator passes for the delivery, creation and modification times,
+//! and the Date header for the submit time, and names a recipient without a display name by its
+//! address. A method-rewritten store patches mailbox.pst's note-g.txt attachment object: its
+//! property record is in the data block at 28864, 232 bytes, its PidTagAttachMethod value at 29039
+//! and the block's CRC at 29108, while its attachment table row keeps method 1, so the CLI opens
+//! it.
 
 mod common;
 
@@ -44,8 +53,6 @@ use std::path::Path;
 use common::{assert_markdown, built, fixture, names, run, run_in, scratch, sha256};
 use serde_json::{Value, json};
 
-/// The folders PST Builder 1.3.0 makes in every store before the layout's, under the IPM
-/// subtree's root, "Top of Personal Folders".
 const BUILDER_FOLDERS: &[&str] = &["Deleted Items"];
 
 fn generated(path: &str) -> std::path::PathBuf {
@@ -56,7 +63,6 @@ fn json_file(path: &str) -> Value {
     serde_json::from_slice(&std::fs::read(generated(path)).unwrap()).unwrap()
 }
 
-/// A layout folder's list of sources, empty when it is left out.
 fn optional_strings(value: &Value) -> Vec<String> {
     if value.is_null() {
         vec![]
@@ -74,9 +80,6 @@ fn strings(value: &Value) -> Vec<String> {
         .collect()
 }
 
-/// Each store's folder paths, under the root, depth-first: a folder's subfolders in the order
-/// they were made, which is PST Builder's folders first, then the layout's, each path's parents
-/// made before it.
 fn expected_folders(store: &Value) -> Vec<Vec<String>> {
     let mut made: Vec<Vec<String>> = vec![vec![]];
     let paths = BUILDER_FOLDERS
@@ -96,7 +99,6 @@ fn expected_folders(store: &Value) -> Vec<Vec<String>> {
             }
         }
     }
-    // Depth-first is the order of each path's parents' creation indexes, then its own.
     let order = |path: &Vec<String>| -> Vec<usize> {
         (1..=path.len())
             .map(|depth| made.iter().position(|p| p[..] == path[..depth]).unwrap())
@@ -107,8 +109,6 @@ fn expected_folders(store: &Value) -> Vec<Vec<String>> {
     folders
 }
 
-/// What the store holds of one recipient list: EmlMapper names a recipient without a display
-/// name by its address, and gives every recipient the address type SMTP.
 fn recipients(truth: Option<&Value>) -> Option<Value> {
     let list = truth?.as_array().unwrap();
     let mapped = list
@@ -124,8 +124,6 @@ fn recipients(truth: Option<&Value>) -> Option<Value> {
     (!mapped.is_empty()).then_some(Value::Array(mapped))
 }
 
-/// What the store holds of a source's attachments, embedded messages left out: each by value,
-/// its file named by its SHA-256 and its filename's extension.
 fn attachments(truth: &Value) -> Option<Value> {
     let list = truth.get("attachments")?.as_array().unwrap();
     let mapped = list
@@ -150,7 +148,6 @@ fn attachments(truth: &Value) -> Option<Value> {
     Some(Value::Array(mapped))
 }
 
-/// One message line against its source's truth, as the header comment says a store carries it.
 fn assert_message(got: &Value, truth: &Value, source: &str) {
     let expect = |field: &str, value: Option<&Value>| {
         assert_eq!(got.get(field), value, "{source}: {field}");
@@ -161,8 +158,6 @@ fn assert_message(got: &Value, truth: &Value, source: &str) {
     expect("to", recipients(truth.get("to")).as_ref());
     expect("cc", recipients(truth.get("cc")).as_ref());
     expect("bcc", None);
-    // The generator passes the Received date as the delivery time; EmlMapper uses it for the
-    // creation and modification times too, and the Date header for the submit time.
     let date = &truth["date"];
     let received = truth.get("received").unwrap_or(date);
     expect("submit_time", Some(date));
@@ -185,8 +180,6 @@ fn assert_message(got: &Value, truth: &Value, source: &str) {
     assert_markdown(got, &truth["body"], source);
 }
 
-/// One item line against its item source's truth, every field the truth states, and nothing the
-/// generator doesn't write.
 fn assert_item(got: &Value, truth: &Value, source: &str) {
     let expect = |field: &str, value: Option<&Value>| {
         assert_eq!(got.get(field), value, "{source}: {field}");
@@ -222,7 +215,6 @@ fn assert_item(got: &Value, truth: &Value, source: &str) {
     assert_eq!(got["markdown"], truth["markdown"], "{source}: markdown");
 }
 
-/// The message line `source` became in mailbox.pst.
 fn message_from(source: &str) -> Value {
     let layout = json_file("layout.json");
     let store = &layout["stores"][0];
@@ -245,7 +237,6 @@ fn markdown(message: &Value) -> &str {
     message["markdown"].as_str().unwrap()
 }
 
-/// The Markdown body of an HTML message is htmd's rendering of its stored HTML.
 #[test]
 fn markdown_is_made_from_the_html() {
     let message = message_from("07-html-only-bcc.eml");
@@ -255,9 +246,6 @@ fn markdown_is_made_from_the_html() {
     );
 }
 
-/// An inline picture's cid: source, which names the content_id of the attachment it is, links
-/// that attachment's file in the Markdown, and the attachment is inline. The text body's sentence
-/// the HTML shows as the picture follows, appended by the content rule.
 #[test]
 fn markdown_links_cid_images_to_their_files() {
     let message = message_from("03-html-inline-image.eml");
@@ -274,8 +262,6 @@ fn markdown_links_cid_images_to_their_files() {
     );
 }
 
-/// Without HTML, the Markdown is the plain text, escaped to read literally: the quoted line is
-/// no Markdown quote.
 #[test]
 fn markdown_from_plain_text_reads_literally() {
     let message = message_from("02-reply-latin1.eml");
@@ -286,9 +272,6 @@ fn markdown_from_plain_text_reads_literally() {
     );
 }
 
-/// Each generated store, read through the binary, holds the layout's folder tree, and in each
-/// folder its .eml sources' messages, then its item sources' items, in order, each matching its
-/// source's truth.
 #[test]
 fn stores_match_the_truth() {
     let layout = json_file("layout.json");
@@ -347,8 +330,6 @@ fn stores_match_the_truth() {
     }
 }
 
-/// The truth's attachments cover what the attachment record has to get right: an inline picture
-/// with a content-id, and a filename in non-ASCII, which its source gives in RFC 2231's encoding.
 #[test]
 fn the_truth_covers_inline_and_non_ascii_attachments() {
     let truth = json_file("truth.json");
@@ -373,7 +354,6 @@ fn the_truth_covers_inline_and_non_ascii_attachments() {
     assert!(source.contains("filename*="), "an RFC 2231 filename");
 }
 
-/// The store's records, every attachment's file name across its message lines.
 fn files_named(lines: &[Value]) -> Vec<String> {
     lines
         .iter()
@@ -383,9 +363,6 @@ fn files_named(lines: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// With --media, each record's file is in the directory, created as it was missing, its
-/// bytes those its name hashes, and a store without attachments leaves it empty; stdout is the
-/// same as without the flag.
 #[test]
 fn attachments_are_written_by_content() {
     let mut written = 0;
@@ -409,7 +386,6 @@ fn attachments_are_written_by_content() {
     assert!(written > 0, "some store has attachments");
 }
 
-/// Without --media, a run writes nothing to disk: its working directory stays empty.
 #[test]
 fn nothing_is_written_without_the_flag() {
     let cwd = scratch("generated-no-flag");
@@ -419,8 +395,6 @@ fn nothing_is_written_without_the_flag() {
     assert_eq!(names(&cwd), Vec::<String>::new());
 }
 
-/// Content that can't be written exits 1 with one error line: a directory that can't be
-/// created, and a file name already taken by a directory, which no user's permissions bypass.
 #[test]
 fn content_that_cant_be_written_exits_1() {
     let store = generated("pst/mailbox.pst");
@@ -457,7 +431,6 @@ fn content_that_cant_be_written_exits_1() {
     assert_eq!(out.stderr.lines().count(), 1);
 }
 
-/// MS-PST's CRC (MS-PST 5.3): CRC-32's reflected polynomial from 0, without a final inversion.
 fn pst_crc(bytes: &[u8]) -> u32 {
     let mut crc = 0u32;
     for byte in bytes {
@@ -473,10 +446,6 @@ fn pst_crc(bytes: &[u8]) -> u32 {
     crc
 }
 
-/// mailbox.pst with note-g.txt's PidTagAttachMethod rewritten to `method` on the attachment
-/// object, and its block's CRC made good. The store is unencrypted: the property's record is in
-/// the data block at 28864, 232 bytes long, its value at 29039, the CRC in its trailer at 29108.
-/// Its attachment table row keeps method 1, so the CLI opens it.
 fn with_attach_method(method: u8) -> std::path::PathBuf {
     let mut bytes = std::fs::read(generated("pst/mailbox.pst")).unwrap();
     let (block, value, crc) = (28864..28864 + 232, 29039, 29108..29112);
@@ -494,10 +463,8 @@ fn with_attach_method(method: u8) -> std::path::PathBuf {
     built(&format!("mailbox-method-{method}.pst"), &bytes)
 }
 
-/// The message 08-forward-attached-message.eml became, in mailbox.pst.
 const NOTE_G_MESSAGE: u64 = 2097380;
 
-/// A by-reference attachment is listed with no file and no size, and nothing is written for it.
 #[test]
 fn a_by_reference_attachment_has_no_file() {
     let dir = scratch("by-reference");
@@ -519,8 +486,6 @@ fn a_by_reference_attachment_has_no_file() {
     assert_eq!(names(&dir).len(), files_named(&lines).len());
 }
 
-/// An attachment outlook-pst can't read, here an afStorage one whose data isn't a storage, is a
-/// skipped line after its message's line, with a warning, and the run exits 0.
 #[test]
 fn an_attachment_that_cant_be_read_is_skipped() {
     let out = run(&[with_attach_method(6)]);
@@ -553,7 +518,6 @@ fn an_attachment_that_cant_be_read_is_skipped() {
     );
 }
 
-/// The non-ASCII sources cover more than one charset, and a non-ASCII folder name is in a layout.
 #[test]
 fn the_truth_covers_several_charsets() {
     let truth = json_file("truth.json");
@@ -575,8 +539,6 @@ fn the_truth_covers_several_charsets() {
     );
 }
 
-/// Every source and output the manifest lists has the SHA-256 it records, every committed
-/// source and output is listed, and every source has its truth.
 #[test]
 fn the_manifest_matches_the_committed_files() {
     let manifest = json_file("manifest.json");
@@ -628,10 +590,6 @@ fn the_manifest_matches_the_committed_files() {
     assert_eq!(truths, sources, "every source has its truth");
 }
 
-/// The conversation store holds what the email package's conversation records are tested over: in
-/// its Conversation History folder, a one-to-one and a multi-party Skype for Business chat, a
-/// missed IM, and an ordinary IPM.Note for contrast, each item with a sender, a recipient and an
-/// HTML body, and its end no earlier than its start.
 #[test]
 fn the_conversation_truth_covers_its_classes() {
     let layout = json_file("layout.json");
@@ -669,8 +627,6 @@ fn the_conversation_truth_covers_its_classes() {
     }
 }
 
-/// The manifest's package versions are the ones generator/Generator.csproj pins, so the committed
-/// outputs were built by the pinned generator.
 #[test]
 fn the_manifest_records_the_pinned_tools() {
     let manifest = json_file("manifest.json");
@@ -701,7 +657,6 @@ fn the_manifest_records_the_pinned_tools() {
     }
 }
 
-/// The generated .msg files, by path under tests/fixtures/generated, one per layout.json source.
 fn msg_files() -> Vec<String> {
     strings(&json_file("layout.json")["msg"])
         .iter()
@@ -709,18 +664,12 @@ fn msg_files() -> Vec<String> {
         .collect()
 }
 
-/// An Internet message ID as MsgKit stores it: without its angle brackets.
 fn bare(id: &str) -> Value {
     json!(id.trim_start_matches('<').trim_end_matches('>'))
 }
 
-/// The attachment types MsgKit 3.0.6 writes in place of the source's, by filename: it types an
-/// attachment by its own table of extensions, which has no .csv.
 const MSGKIT_MIME_TYPES: &[(&str, &str)] = &[("отчёт.csv", "application/octet-stream")];
 
-/// One .msg message line against its source's truth, as the header comment says MsgKit carries
-/// it. The attached message's .eml file is checked by its own test, so its record is taken as
-/// read here but for its name, type and method.
 fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
     let expect = |field: &str, value: Option<&Value>| {
         assert_eq!(got.get(field), value, "{source}: {field}");
@@ -736,8 +685,6 @@ fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
     expect("to", recipients(truth.get("to")).as_ref());
     expect("cc", recipients(truth.get("cc")).as_ref());
     expect("bcc", recipients(truth.get("bcc")).as_ref());
-    // MsgKit takes the Date header for both the submit and the delivery time, and its time of
-    // conversion for the creation and modification times.
     let date = &truth["date"];
     expect("submit_time", Some(date));
     expect("delivery_time", Some(date));
@@ -765,7 +712,6 @@ fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
         )
     });
     expect("references", last_reference.as_ref());
-    // The conversation topic is the subject less its reply or forward prefix.
     let subject = truth["subject"].as_str().unwrap();
     let topic = ["Re: ", "Fwd: "]
         .iter()
@@ -773,7 +719,6 @@ fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
         .unwrap_or(subject);
     expect("conversation_topic", Some(&json!(topic)));
     expect("conversation_index", None);
-    // MimeKit rewrites the transport headers, so only the Message-ID's line is checked.
     let headers = got["transport_headers"].as_str().unwrap();
     let message_id = truth["message_id"].as_str().unwrap();
     assert!(
@@ -814,8 +759,6 @@ fn assert_msg_message(got: &Value, truth: &Value, source: &str) {
     assert_markdown(got, &truth["body"], source);
 }
 
-/// Each generated .msg, read through the binary, is a store line and one message line that
-/// matches its source's truth, without a warning.
 #[test]
 fn msg_files_match_the_eml_truth() {
     let truth = json_file("truth.json");
@@ -836,14 +779,9 @@ fn msg_files_match_the_eml_truth() {
         assert_msg_message(&lines[1], &truth["messages"][source], source);
         created.insert(lines[1]["creation_time"].as_str().unwrap().to_owned());
     }
-    // One generator run converted them all, within a second.
     assert_eq!(created.len(), 1, "{created:?}");
 }
 
-/// MsgKit 3.0.6 attaches a forwarded message (message/rfc822) as a by-value .eml file named by
-/// its subject, not as an embedded message, so a generated .msg has none: the file holds the
-/// source's attached message, which the truth's embedded entry describes. With --media,
-/// each record's file is written by content.
 #[test]
 fn msgkit_attaches_a_forwarded_message_as_an_eml_file() {
     let truth = &json_file("truth.json")["messages"]["08-forward-attached-message.eml"];

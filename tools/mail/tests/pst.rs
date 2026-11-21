@@ -1,12 +1,23 @@
 //! Reading .pst stores: the committed public stores against the hand truth (tests/golden.rs holds
 //! their goldens), their attachments, and the skip policy on stores corrupted in the test.
+//!
+//! The stores corrupted in the test are copies of libyal's outlook.pst, its data blocks encoded by
+//! MS-PST 5.1's permutation, each with its block trailer's CRC (MS-PST 5.3: CRC-32's polynomial,
+//! reflected, from 0 and with no final complement), which outlook-pst checks. At 18944 is a node
+//! B-tree page, whose loss costs two folders and the message under Inbox; at 29696 a message's data
+//! block; at 40000 the root's hierarchy table, and at 40704 Inbox's contents table. The cycle
+//! rewrites Recovered_Group2's (33410) hierarchy row for its Inbox (33442) to name the root
+//! (32802): the row matrix is the data block at 42624, 158 bytes, the row's dwRowID at 42730,
+//! encoded EE 27 for 33442 and 84 E2 for 32802 (0 encodes to 0x41), and the CRC in its trailer at
+//! 42804. The bytes flipped at 29699 and 29763 make outlook-pst multiply past u32, reading Inbox's
+//! message and the first of its eleven pictures, which the release binary's overflow checks
+//! (Cargo.toml) make a panic.
 
 mod common;
 
 use common::{assert_no_nulls, built, fixture, names, run, scratch, sha256};
 use serde_json::Value;
 
-/// The committed public stores, by path under tests/fixtures/pst.
 const STORES: &[&str] = &[
     "tika/testPST.pst",
     "tika/testPST_variousBodyTypes.pst",
@@ -15,7 +26,6 @@ const STORES: &[&str] = &[
     "java-libpst/passworded.pst",
 ];
 
-/// The same input always gives byte-identical output.
 #[test]
 fn output_is_byte_identical_across_runs() {
     for store in STORES {
@@ -24,8 +34,6 @@ fn output_is_byte_identical_across_runs() {
     }
 }
 
-/// The shape of schema "2": the store line first with its facts, then folders depth-first, each
-/// before its messages; every message names a folder already written; no field is null.
 #[test]
 fn lines_follow_schema_2() {
     for store in STORES {
@@ -42,7 +50,6 @@ fn lines_follow_schema_2() {
                 "folder" => {
                     let path = line["path"].as_array().unwrap().clone();
                     if let Some(parent) = line.get("parent") {
-                        // Depth-first: the parent is on the path back from the last folder.
                         let (_, parent_path) = folders
                             .iter()
                             .rev()
@@ -56,8 +63,6 @@ fn lines_follow_schema_2() {
                     }
                     folders.push((line["id"].as_u64().unwrap(), path));
                 }
-                // A skipped folder names its parent, whose line is written but may not be the
-                // last: the parent's earlier subfolders come between.
                 "skipped" if line["kind"] == "folder" => {
                     assert!(
                         folders
@@ -80,7 +85,6 @@ fn lines_follow_schema_2() {
     }
 }
 
-/// The CLI's threading fields equal the hand truth, message by message, in store order.
 #[test]
 fn threading_fields_match_the_tika_truth() {
     let truth: Value =
@@ -100,8 +104,6 @@ fn threading_fields_match_the_tika_truth() {
     }
 }
 
-/// The first message of Tika's testPST.pst, against what Tika's own test asserts of it
-/// (OutlookPSTParserTest at apache/tika 48010f8).
 #[test]
 fn the_first_tika_message_matches_tikas_assertions() {
     let lines = run(&[fixture("pst/tika/testPST.pst")]).lines();
@@ -117,7 +119,6 @@ fn the_first_tika_message_matches_tikas_assertions() {
     assert_eq!(first["delivery_time"], "2014-02-26T07:51:02Z");
     assert_eq!(first["creation_time"], "2014-02-26T07:51:02Z");
     assert_eq!(first["modification_time"], "2014-02-26T12:37:43Z");
-    // A folder's display name is its path's last, the folder line holding no other.
     let folder = &lines[1];
     assert_eq!(
         folder["path"],
@@ -137,8 +138,6 @@ fn the_store_line_records_the_password() {
     }
 }
 
-/// outlook-pst 1.2.0 can't read a message node without a sub-node tree; the contact in
-/// java-libpst's stores that has none becomes a skipped line and a warning, and the run exits 0.
 #[test]
 fn a_message_outlook_pst_cannot_read_is_skipped() {
     for store in ["java-libpst/dist-list.pst", "java-libpst/passworded.pst"] {
@@ -173,7 +172,6 @@ fn a_message_outlook_pst_cannot_read_is_skipped() {
     }
 }
 
-/// Each message line's attachment records, by message id.
 fn attachments(lines: &[Value]) -> Vec<(u64, Vec<Value>)> {
     lines
         .iter()
@@ -185,11 +183,6 @@ fn attachments(lines: &[Value]) -> Vec<(u64, Vec<Value>)> {
         .collect()
 }
 
-/// An embedded message in a .pst is never opened: outlook-pst 1.2.0 deadlocks on one, and these
-/// stores' attachment objects omit PidTagAttachMethod. Each is known by its attachment table
-/// row, which does give method 5, and is listed from that row with no content and a warning
-/// naming it. These rows hold no filename, mime tag or content-id, so the record is its method
-/// and inline flag alone.
 #[test]
 fn embedded_messages_are_listed_with_a_warning() {
     let embedded = serde_json::json!({ "inline": false, "method": "embedded_message" });
@@ -227,8 +220,6 @@ fn embedded_messages_are_listed_with_a_warning() {
     }
 }
 
-/// libyal's store has two messages with the same eleven pictures: 22 records, and with
-/// --media, eleven files, each content written once.
 #[test]
 fn each_distinct_content_is_written_once() {
     let dir = scratch("dedup");
@@ -262,10 +253,6 @@ fn each_distinct_content_is_written_once() {
     }
 }
 
-/// A panic inside outlook-pst while it holds its file's mutex poisons the mutex; the store is
-/// reopened, so the records after the panic are still read. The byte flipped here makes
-/// outlook-pst multiply past u32 while reading Inbox's message; the release binary's overflow
-/// checks (Cargo.toml) make that a panic.
 #[test]
 fn records_after_a_reader_panic_are_still_read() {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
@@ -277,7 +264,6 @@ fn records_after_a_reader_panic_are_still_read() {
         "docproc-mail: warning: folder 33090, message 2097188: \
          skipped: the reader panicked: attempt to multiply with overflow\n"
     );
-    // Every line but the panicked message's is the intact store's.
     let intact = run(&[fixture("pst/libyal/outlook.pst")]).lines();
     let lines = out.lines();
     assert_eq!(lines.len(), intact.len());
@@ -290,18 +276,14 @@ fn records_after_a_reader_panic_are_still_read() {
     }
 }
 
-/// A copy of libyal's store with 32 bytes overwritten at `offset`.
 fn corrupted(name: &str, offset: usize) -> std::path::PathBuf {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
     bytes[offset..offset + 32].fill(0xFF);
     built(name, &bytes)
 }
 
-/// A corrupt record inside a readable store is skipped, never fatal: each skipped line has its
-/// warning, and the records around it are still written.
 #[test]
 fn corrupt_records_are_skipped_and_the_run_exits_0() {
-    // A node B-tree page: two folders and the message under Inbox can't be found.
     let out = run(&[corrupted("corrupt-btree.pst", 18944)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let lines = out.lines();
@@ -335,7 +317,6 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
             .any(|l| l["line"] == "message" && l["id"] == 2097220)
     );
 
-    // A message's data block: only that message is skipped.
     let out = run(&[corrupted("corrupt-message.pst", 29696)]);
     assert_eq!(out.code, Some(0));
     assert_eq!(
@@ -351,11 +332,6 @@ fn corrupt_records_are_skipped_and_the_run_exits_0() {
     assert_eq!(messages, 1);
 }
 
-/// A copy of libyal's store whose folder Recovered_Group2 (33410) lists the root (32802) as its
-/// subfolder, in place of its Inbox (33442): a folder cycle. The hierarchy table's row matrix is
-/// in the data block at 42624, 158 bytes, its trailer at 42800, whose CRC (MS-PST 5.3) outlook-pst
-/// checks; the row's dwRowID is at 42730. The store's data blocks are encoded by MS-PST 5.1's
-/// permutation, which takes 0x82A2 (33442) to EE 27 and 0x8022 (32802) to 84 E2, and 0 to 0x41.
 fn cyclic() -> std::path::PathBuf {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
     assert_eq!(bytes[42730..42734], [0xEE, 0x27, 0x41, 0x41], "Inbox's row");
@@ -365,7 +341,6 @@ fn cyclic() -> std::path::PathBuf {
     built("cyclic.pst", &bytes)
 }
 
-/// MS-PST 5.3's CRC: CRC-32's polynomial, reflected, from 0 and with no final complement.
 fn crc(data: &[u8]) -> u32 {
     let mut crc = 0u32;
     for &byte in data {
@@ -381,10 +356,6 @@ fn crc(data: &[u8]) -> u32 {
     crc
 }
 
-/// A hierarchy row naming a folder already entered, here the root under one of its own
-/// subfolders, is a skipped folder, "already read", with a warning, never a walk without end;
-/// every other folder and message is read as from the whole store. The `--after` pre-walk passes
-/// it over, so a cursor in the store is found and one outside it refused.
 #[test]
 fn a_folder_cycle_is_read_once() {
     let store = cyclic();
@@ -402,7 +373,6 @@ fn a_folder_cycle_is_read_once() {
         "id": 32802,
         "reason": "already read",
     });
-    // The whole store's lines, Recovered_Group2's Inbox replaced by the skipped line.
     let expected: Vec<Value> = whole
         .into_iter()
         .map(|line| {
@@ -426,16 +396,12 @@ fn a_folder_cycle_is_read_once() {
     );
 }
 
-/// A copy of libyal's store with the byte at `offset` set to 0xAA.
 fn flipped(name: &str, offset: usize) -> std::path::PathBuf {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
     bytes[offset] = 0xAA;
     built(name, &bytes)
 }
 
-/// outlook-pst gives a folder's table it can't read as no table at all. A folder whose count
-/// says it has items or subfolders, and whose table is missing, gets a skipped line where the
-/// table's records would be, and a warning; the rest of the store is still read.
 #[test]
 fn a_folder_table_that_cannot_be_read_is_skipped() {
     let reason = |table: &str, count: &str| {
@@ -444,7 +410,6 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
         )
     };
 
-    // The root's hierarchy table: every folder under the root is lost, but not silently.
     let out = run(&[flipped("lost-hierarchy.pst", 40000)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let lost = reason("hierarchy", "PidTagSubfolders says it has subfolders");
@@ -467,8 +432,6 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
         })
     );
 
-    // Inbox's contents table: its one message gives way to the skipped line, and every other
-    // line is the intact store's.
     let out = run(&[flipped("lost-contents.pst", 40704)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let lost = reason("contents", "PidTagContentCount gives it items");
@@ -490,10 +453,6 @@ fn a_folder_table_that_cannot_be_read_is_skipped() {
     assert_eq!(out.lines(), intact);
 }
 
-/// A panic reading an attachment poisons the mutex too. The store is reopened, and the open
-/// message, which holds the poisoned store, is opened again from it, so the message's other
-/// attachments are still read. The byte flipped here makes outlook-pst overflow on the first of
-/// Inbox's message's eleven pictures, a panic by the overflow checks as above.
 #[test]
 fn attachments_after_a_reader_panic_are_still_read() {
     let mut bytes = std::fs::read(fixture("pst/libyal/outlook.pst")).unwrap();
@@ -501,7 +460,6 @@ fn attachments_after_a_reader_panic_are_still_read() {
     let out = run(&[built("attachment-panic.pst", &bytes)]);
     assert_eq!(out.code, Some(0), "{}", out.stderr);
     let reason = "the reader panicked: attempt to multiply with overflow";
-    // The skipped picture's image keeps its source as written, with a warning.
     assert_eq!(
         out.stderr,
         format!(
@@ -513,8 +471,6 @@ fn attachments_after_a_reader_panic_are_still_read() {
     );
     let mut intact = run(&[fixture("pst/libyal/outlook.pst")]).lines();
     let at = intact.iter().position(|l| l["id"] == 2097188).unwrap();
-    // The intact store's lines, less the first attachment, its image's source as written, with
-    // its skipped line after.
     let first = intact[at]["attachments"].as_array_mut().unwrap().remove(0);
     let markdown = intact[at]["markdown"].as_str().unwrap();
     let markdown = markdown.replace(first["file"].as_str().unwrap(), "1.jpg");
@@ -534,7 +490,6 @@ fn attachments_after_a_reader_panic_are_still_read() {
     assert_eq!(out.lines(), intact);
 }
 
-/// Every committed store has a sources entry whose SHA-256 matches it.
 #[test]
 fn every_store_has_a_matching_sources_entry() {
     let sources: Value =
@@ -562,9 +517,6 @@ fn every_store_has_a_matching_sources_entry() {
     }
 }
 
-/// Tika's testPST_variousBodyTypes.pst forwards one message as HTML, as RTF and as plain text.
-/// The Markdown comes from the HTML where there is some, else from the plain text: its RTF is
-/// Word's own, not \fromhtml1, so no HTML is recovered from it. No body is written.
 #[test]
 fn markdown_comes_from_the_html_else_the_text() {
     let lines = run(&[fixture("pst/tika/testPST_variousBodyTypes.pst")]).lines();
@@ -590,8 +542,6 @@ fn markdown_comes_from_the_html_else_the_text() {
     );
 }
 
-/// Markdown from plain text escapes what Markdown would read in it: a JIRA notice's bracketed
-/// link, its underline (a heading, unescaped), its quoted lines and an ampersand.
 #[test]
 fn markdown_from_plain_text_escapes_markup() {
     let lines = run(&[fixture("pst/tika/testPST.pst")]).lines();

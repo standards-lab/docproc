@@ -4,10 +4,18 @@
 //! [`msg_code_page`] falls back to. A string that isn't valid in its code page, or whose code page
 //! codepage doesn't know, is decoded lossily and noted, and the caller turns each note into a
 //! warning.
+//!
+//! US-ASCII, code page 20127, which Outlook names for messages and HTML bodies in plain ASCII, as
+//! Apache POI's example_sent_regular.msg does, is one codepage doesn't know, so [`decode`] reads it
+//! itself, a byte past 0x7F as U+FFFD. A locale id's ANSI code page is Windows' locale table's, by
+//! its language, as Apache POI's LocaleID transcribes it: Chinese is Traditional, 950, in Taiwan,
+//! Hong Kong, Macao and zh-Hant, and Simplified elsewhere; Serbian and Bosnian are 1251 in Cyrillic
+//! and 1250 in Latin, as Croatian is; Azerbaijani and Uzbek are 1251 in Cyrillic and 1254 in Latin.
+//! A language Windows writes only in Unicode has none, and no Unicode code page is ever
+//! PT_STRING8's.
 
 use crate::props::{Bag, Value, integer, tag};
 
-/// UTF-16LE, the encoding of PT_UNICODE.
 const UTF16LE: u16 = 1200;
 
 /// UTF-8.
@@ -17,8 +25,6 @@ pub const UTF8: u16 = 65001;
 /// for lossy decoding when codepage doesn't know the named code page.
 pub const FALLBACK: u16 = 1252;
 
-/// US-ASCII, which Outlook names for messages and HTML bodies in plain ASCII, as Apache POI's
-/// example_sent_regular.msg does, and codepage doesn't know; [`decode`] reads it itself.
 const US_ASCII: u16 = 20127;
 
 /// The store's code page: PidTagMessageCodepage, else PidTagCodePageId, on the store's own
@@ -55,22 +61,16 @@ pub fn msg_code_page(message: &Bag, parent: Option<u16>) -> u16 {
         .unwrap_or(FALLBACK)
 }
 
-/// Whether `code_page` is a Unicode encoding, which no ANSI client keeps PT_STRING8 in.
 fn unicode(code_page: u16) -> bool {
     matches!(code_page, UTF16LE | 1201 | 12000 | 12001 | 65000 | UTF8)
 }
 
-/// The Windows ANSI code page of a locale id, by its language, as Windows' locale table gives
-/// it (here as Apache POI's LocaleID transcribes it); none for a language Windows writes only
-/// in Unicode, or one this table doesn't know.
 fn locale_code_page(lcid: u32) -> Option<u16> {
     let lcid = lcid & 0xFFFF;
     let language = lcid & 0x3FF;
     Some(match language {
-        // Chinese: Traditional in Taiwan, Hong Kong, Macao, and zh-Hant; Simplified elsewhere.
         0x04 if matches!(lcid, 0x0404 | 0x0C04 | 0x1404 | 0x7C04) => 950,
         0x04 => 936,
-        // Serbian and Bosnian in Cyrillic; Croatian, and both in Latin, are 1250.
         0x1A if matches!(
             lcid,
             0x0C1A | 0x1C1A | 0x201A | 0x281A | 0x301A | 0x641A | 0x6C1A
@@ -78,7 +78,6 @@ fn locale_code_page(lcid: u32) -> Option<u16> {
         {
             1251
         }
-        // Azerbaijani and Uzbek in Cyrillic; in Latin, 1254.
         0x2C if matches!(lcid, 0x082C | 0x742C) => 1251,
         0x43 if matches!(lcid, 0x0843 | 0x7843) => 1251,
         0x1A | 0x05 | 0x0E | 0x15 | 0x18 | 0x1B | 0x1C | 0x24 | 0x42 => 1250,
@@ -204,12 +203,11 @@ pub fn decode(bytes: &[u8], code_page: u16) -> (String, Option<String>) {
     (text.into_owned(), note)
 }
 
-/// How far into an HTML document its `<meta>` charset is looked for, as the HTML standard's
-/// prescan looks (HTML 13.2.3.2).
 const PRESCAN: usize = 1024;
 
 /// The code page of the charset an HTML document's own `<meta>` declares in its first
-/// [`PRESCAN`] bytes, by a `charset` attribute or an `http-equiv` content type's `charset=`.
+/// [`PRESCAN`] bytes, as far as the HTML standard's prescan looks (HTML 13.2.3.2), by a `charset`
+/// attribute or an `http-equiv` content type's `charset=`, extracted as the standard extracts it.
 /// A label is read as the WHATWG Encoding Standard reads it; a UTF-16 label is UTF-8, as the
 /// prescan has it, since bytes it can read as ASCII aren't UTF-16.
 pub fn meta_charset(html: &[u8]) -> Option<u16> {
@@ -237,7 +235,6 @@ pub fn meta_charset(html: &[u8]) -> Option<u16> {
     None
 }
 
-/// The charset label of one `<meta>` tag's attributes, and how far they run.
 fn meta_label(tag: &[u8]) -> (Option<&[u8]>, usize) {
     let (mut charset, mut content, mut pragma) = (None, None, false);
     let mut at = 0;
@@ -307,7 +304,6 @@ fn meta_label(tag: &[u8]) -> (Option<&[u8]>, usize) {
     (label, at)
 }
 
-/// The value of `charset=` in a content type, as the HTML standard extracts it.
 fn content_charset(content: &[u8]) -> Option<&[u8]> {
     let lower = content.to_ascii_lowercase();
     let at = find(&lower, b"charset")? + 7;
@@ -346,7 +342,6 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-/// `bytes` as US-ASCII: a byte past 0x7F is U+FFFD, and makes the decoding lossy.
 fn ascii(bytes: &[u8]) -> (String, Option<String>) {
     let text = bytes
         .iter()
@@ -423,9 +418,6 @@ mod tests {
         );
     }
 
-    /// A code page codepage doesn't know reads as 1252, with a note naming it: a DOS code page
-    /// among them, and ISO-2022-KR, the replacement encoding to WHATWG, read as 1252, not as one
-    /// U+FFFD.
     #[test]
     fn an_unknown_code_page_reads_as_the_fallback_with_a_note() {
         let note = |code_page: u16| {
@@ -441,7 +433,6 @@ mod tests {
         assert_eq!(decode(b"\x80", 437), ("€".to_owned(), Some(note(437))));
     }
 
-    /// Bytes are read in their code page, never sniffed for a byte-order mark.
     #[test]
     fn a_leading_byte_order_mark_is_text_of_the_code_page() {
         assert_eq!(decode(b"\xFF\xFEa\0", 1252), ("ÿþa\0".to_owned(), None));
@@ -466,9 +457,7 @@ mod tests {
                 Some(65001),
             ),
             (b"<meta charset=utf-16>", Some(65001)),
-            // ISO-8859-1 is windows-1252 to the Encoding Standard.
             (b"<meta charset=iso-8859-1>", Some(1252)),
-            // A content type without the pragma names no charset.
             (b"<meta content=\"text/html; charset=koi8-r\">", None),
             (b"<!-- <meta charset=big5> --><p>hi</p>", None),
             (
@@ -505,7 +494,6 @@ mod tests {
             (tag::INTERNET_CODEPAGE, 1251),
         ]);
         assert_eq!(msg_code_page(&all, None), 936);
-        // POI's HTMLBodyBinary_CP1251.msg: German strings, received in 1251.
         let german = props(&[
             (tag::MESSAGE_LOCALE_ID, 1031),
             (tag::INTERNET_CODEPAGE, 1251),
@@ -527,13 +515,11 @@ mod tests {
             msg_code_page(&props(&[(tag::MESSAGE_LOCALE_ID, 0x041A)]), None),
             1250
         );
-        // Hindi has no ANSI code page; the internet code page stands in.
         let hindi = props(&[
             (tag::MESSAGE_LOCALE_ID, 0x0439),
             (tag::INTERNET_CODEPAGE, 1252),
         ]);
         assert_eq!(msg_code_page(&hindi, None), 1252);
-        // A UTF-8 internet code page is never PT_STRING8's: the parent's, else the fallback.
         let utf8 = props(&[(tag::INTERNET_CODEPAGE, 65001)]);
         assert_eq!(msg_code_page(&utf8, Some(1251)), 1251);
         assert_eq!(msg_code_page(&utf8, None), FALLBACK);

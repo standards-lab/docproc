@@ -15,21 +15,31 @@
 //!   per-font code pages of the font table are not tracked;
 //! - an `\*\mhtmltag` group is skipped (2.1.3.1.5): it holds a rewritten copy of a tag whose
 //!   original, its `cid:` reference included, is in an `\*\htmltag` group (footnote 8).
+//!
+//! Compressed RTF's header is 16 bytes (MS-OXRTFCP 2.1.3.1.1): COMPSIZE, RAWSIZE, COMPTYPE and CRC,
+//! a COMPTYPE of "MELA" naming uncompressed RTF. A run of compressed data is a control byte and
+//! eight tokens, each a literal byte or a two-byte dictionary reference yielding at most 17 bytes
+//! (MS-OXRTFCP 2.1.3.1.4), so 17 bytes of data yield at most 136, and one byte of data at most
+//! [`RATIO_MAX`], 9, rounded up.
+//!
+//! The encapsulation, `\fromhtml1` or `\fromtext`, is looked for in the document's first ten tokens
+//! (MS-OXRTFEX 2.2.3.1). The lexer follows RTF 1.9.1's "Conventions of an RTF reader": line ends
+//! are not text, one space after a control word delimits it and is part of it, a lone `-` after one
+//! is text, a malformed `\'` escape is dropped, and the bytes of `\binN` are data, never text. A
+//! `\uN` is a signed 16-bit value, a surrogate pair two of them, and the `\ucN` characters after
+//! it, one by default, are skipped, one per byte of text or escape, or per control word; `\ucN` and
+//! `\htmlrtf` are each restored when their group ends, which also stops the skipping. A destination
+//! nested in a tag's fragment is not part of it, and the header's `\ansicpgN` is read up to the
+//! font table or the text.
 
 use docproc_envelope::guarded;
 
 use crate::codepage::{self, FALLBACK};
 
-/// The header of compressed RTF (MS-OXRTFCP 2.1.3.1.1): COMPSIZE, RAWSIZE, COMPTYPE and CRC.
 const HEADER: usize = 16;
 
-/// COMPTYPE of uncompressed RTF, "MELA".
 const UNCOMPRESSED: u32 = 0x414C_454D;
 
-/// How many bytes of RTF one byte of compressed data can yield, at most, rounded up. A run of
-/// compressed data is a control byte and eight tokens, each a literal byte or a two-byte
-/// dictionary reference yielding at most 17 bytes (MS-OXRTFCP 2.1.3.1.4), so 17 bytes of data
-/// yield at most 136.
 const RATIO_MAX: u64 = 9;
 
 /// Decompresses PidTagRtfCompressed, or says why it can't. compressed-rtf 1.0.1 slices its
@@ -65,12 +75,10 @@ pub fn decompress(compressed: &[u8]) -> Result<String, String> {
              can yield; not decompressed"
         ));
     }
-    // The envelope's guard, so a panic is worded as every other reader's: "the reader panicked".
     guarded(|| compressed_rtf::decompress_rtf(compressed))
         .map_err(|failure| format!("can't be decompressed ({})", failure.reason))
 }
 
-/// What an RTF document encapsulates (MS-OXRTFEX 2.2.3.1).
 #[derive(Debug, PartialEq)]
 enum Encapsulated {
     Html,
@@ -78,7 +86,6 @@ enum Encapsulated {
     None,
 }
 
-/// How many tokens from the start the encapsulation is looked for in (MS-OXRTFEX 2.2.3.1).
 const RECOGNIZE_TOKENS: usize = 10;
 
 fn recognize(rtf: &[u8]) -> Encapsulated {
@@ -116,34 +123,26 @@ pub fn text(rtf: &str) -> Option<(String, Vec<String>)> {
         .then(|| Deencapsulator::new(&bytes, Sink::Text).run())
 }
 
-/// The RTF's bytes, from compressed-rtf's string of one char per byte.
 fn bytes_of(rtf: &str) -> Vec<u8> {
     rtf.chars()
         .map(|c| u8::try_from(u32::from(c)).unwrap_or(b'?'))
         .collect()
 }
 
-/// What the reader writes: the encapsulated HTML, tags and text, or the document's text alone.
 #[derive(Clone, Copy, PartialEq)]
 enum Sink {
     Html,
     Text,
 }
 
-/// One RTF token (RTF 1.9.1, "Conventions of an RTF reader").
 #[derive(Debug, PartialEq)]
 enum Token<'a> {
     Open,
     Close,
-    /// A control word and its numeric parameter.
     Word(&'a [u8], Option<i32>),
-    /// A control symbol other than `\'`: `\{`, `\~`, `\*` and the like.
     Symbol(u8),
-    /// `\'hh`.
     Hex(u8),
-    /// One byte of text.
     Text(u8),
-    /// The bytes of `\binN`, which are data and never text.
     Binary,
 }
 
@@ -160,7 +159,6 @@ impl<'a> Lexer<'a> {
             return Some(match byte {
                 b'{' => Token::Open,
                 b'}' => Token::Close,
-                // Line ends in RTF are not text.
                 b'\r' | b'\n' => continue,
                 b'\\' => self.control(),
                 _ => Token::Text(byte),
@@ -172,7 +170,6 @@ impl<'a> Lexer<'a> {
         self.rtf.get(self.at).copied()
     }
 
-    /// The token after a backslash.
     fn control(&mut self) -> Token<'a> {
         let Some(first) = self.peek() else {
             return Token::Text(b'\\');
@@ -192,7 +189,6 @@ impl<'a> Lexer<'a> {
                     self.at += 2;
                     Token::Hex(byte)
                 }
-                // A malformed escape is dropped.
                 None => Token::Symbol(b'\''),
             };
         }
@@ -212,10 +208,8 @@ impl<'a> Lexer<'a> {
             .ok()
             .and_then(|digits| digits.parse::<i32>().ok());
         if parameter.is_none() {
-            // A lone '-' is text, not part of the word.
             self.at = digits;
         }
-        // One space delimits a control word and is part of it.
         if self.peek() == Some(b' ') {
             self.at += 1;
         }
@@ -228,28 +222,20 @@ impl<'a> Lexer<'a> {
     }
 }
 
-/// What a group's content is to the de-encapsulator.
 #[derive(Clone, Copy, PartialEq)]
 enum Destination {
-    /// The document's own text: copied unless \htmlrtf suppresses it.
     Text,
-    /// An `\*\htmltag` group's HTML fragment: always copied.
     HtmlTag,
-    /// A destination that is not visible text: skipped.
     Skip,
 }
 
-/// The state a group starts with, a copy of its parent's, restored when it ends.
 #[derive(Clone, Copy)]
 struct State {
     destination: Destination,
-    /// Whether \htmlrtf suppresses text and control words.
     suppressed: bool,
-    /// \ucN: how many characters stand in for each \uN that follows.
     uc: usize,
 }
 
-/// Destinations that are standard RTF, not `\*`, and never visible text (RTF 1.9.1).
 const INVISIBLE: &[&[u8]] = &[
     b"fonttbl",
     b"colortbl",
@@ -282,23 +268,17 @@ struct Deencapsulator<'a> {
     sink: Sink,
     state: State,
     stack: Vec<State>,
-    /// Whether the next token is the first in its group, where a destination is named.
     group_start: bool,
-    /// Whether the group was opened with `\*`, an ignorable destination.
     starred: bool,
-    /// How many characters after a \uN are still to be skipped.
     skip: usize,
     out: Out,
 }
 
-/// The HTML or text being written, with the bytes and UTF-16 units of the current run not yet
-/// decoded.
 struct Out {
     html: String,
     bytes: Vec<u8>,
     units: Vec<u16>,
     code_page: u16,
-    /// What a lossy note names: the encapsulated HTML, or the RTF body's text.
     what: &'static str,
     notes: Vec<String>,
 }
@@ -394,7 +374,6 @@ impl<'a> Deencapsulator<'a> {
                 }
                 Token::Symbol(b'*') if first => {
                     self.starred = true;
-                    // The destination's word still comes first.
                     self.group_start = true;
                 }
                 Token::Word(word, _) if first && self.opens(word) => {}
@@ -405,13 +384,10 @@ impl<'a> Deencapsulator<'a> {
         (self.out.html, self.out.notes)
     }
 
-    /// Names the group's destination by its first word; true when the word did.
     fn opens(&mut self, word: &[u8]) -> bool {
         let inside_tag = self.state.destination == Destination::HtmlTag;
         let destination = match word {
-            // The text sink skips a tag's fragment, as any other ignorable group.
             b"htmltag" if self.starred && self.sink == Sink::Html => Destination::HtmlTag,
-            // \*\mhtmltag among them: MS-OXRTFEX 2.1.3.1.5 has it skipped.
             _ if self.starred => Destination::Skip,
             _ if INVISIBLE.contains(&word) => Destination::Skip,
             _ => return false,
@@ -419,13 +395,11 @@ impl<'a> Deencapsulator<'a> {
         if self.state.destination != Destination::Skip && !inside_tag {
             self.state.destination = destination;
         } else if inside_tag && destination != Destination::HtmlTag {
-            // A destination nested in a tag's fragment is not part of it.
             self.state.destination = Destination::Skip;
         }
         true
     }
 
-    /// One token of a group's content.
     fn content(&mut self, token: Token) {
         let destination = self.state.destination;
         if destination == Destination::Skip {
@@ -445,8 +419,6 @@ impl<'a> Deencapsulator<'a> {
         if !in_tag && self.state.suppressed {
             return;
         }
-        // The characters standing in for a \uN are skipped: one per byte of text or escape,
-        // or per control word.
         if self.skip > 0 && matches!(token, Token::Text(_) | Token::Hex(_) | Token::Word(..)) {
             self.skip -= 1;
             return;
@@ -457,7 +429,6 @@ impl<'a> Deencapsulator<'a> {
             Token::Symbol(b'~') => self.out.text("\u{A0}"),
             Token::Symbol(b'_') => self.out.text("\u{AD}"),
             Token::Word(b"u", Some(n)) => {
-                // \uN is a signed 16-bit value.
                 self.out.unit(n as u16);
                 self.skip = self.state.uc;
             }
@@ -479,13 +450,11 @@ impl<'a> Deencapsulator<'a> {
     }
 }
 
-/// The header's \ansicpgN, the default code page of the document's text.
 fn ansicpg(rtf: &[u8]) -> Option<u16> {
     let mut lexer = Lexer { rtf, at: 0 };
     while let Some(token) = lexer.next() {
         match token {
             Token::Word(b"ansicpg", Some(n)) => return u16::try_from(n).ok(),
-            // The header ends where the font table, or the text, starts.
             Token::Word(b"fonttbl", _) | Token::Text(_) => return None,
             _ => {}
         }
@@ -497,7 +466,6 @@ fn ansicpg(rtf: &[u8]) -> Option<u16> {
 mod tests {
     use super::*;
 
-    /// The HTML recovered from `rtf`, given as the bytes of the RTF, with its notes.
     fn recover(rtf: &[u8]) -> Option<(String, Vec<String>)> {
         html(&rtf.iter().map(|&byte| char::from(byte)).collect::<String>())
     }
@@ -508,7 +476,6 @@ mod tests {
         html
     }
 
-    /// An HTML-encapsulating document around `body`, with its header and font table.
     fn document(code_page: u16, body: &str) -> Vec<u8> {
         format!(
             "{{\\rtf1\\ansi\\ansicpg{code_page}\\fromhtml1 \\deff0{{\\fonttbl\r\n\
@@ -528,7 +495,6 @@ mod tests {
         assert_eq!(recover(b"{\\rtf1\\ansi\\deff0 Hello\\par }"), None);
         assert_eq!(recover(b"{\\rtf1\\ansi\\fromhtml0 Hello}"), None);
         assert_eq!(recover(b"<html>{\\rtf1\\fromhtml1 }"), None);
-        // Past the first ten tokens, \fromhtml1 is not looked for.
         let late = b"{\\rtf1\\a\\b\\c\\d\\e\\f\\g\\h\\i\\j\\fromhtml1 x}";
         assert_eq!(recover(late), None);
         assert!(recover(b"{\\rtf1\\ansi\\fromhtml1 x}").is_some());
@@ -553,7 +519,6 @@ mod tests {
 
     #[test]
     fn htmlrtf_state_is_restored_when_a_group_ends() {
-        // Suppression begun inside a group ends with it; ended inside one, it resumes after.
         let rtf = document(
             1252,
             "a{\\htmlrtf b}c\\htmlrtf d{\\htmlrtf0 e{f}}g\\htmlrtf0 h{{{\\htmlrtf i}j}k}",
@@ -585,16 +550,13 @@ mod tests {
 
     #[test]
     fn hex_escapes_are_decoded_in_the_ansicpg() {
-        // Windows-1251 Cyrillic, in a tag and in text.
         let rtf = document(
             1251,
             "{\\*\\htmltag <p title=\"\\'cf\">}\\'cf\\'f0\\'e8\\'e2\\'e5\\'f2",
         );
         assert_eq!(recovered(&rtf), "<p title=\"П\">Привет");
-        // GBK: the bytes of one character are decoded together.
         let rtf = document(936, "\\'b4\\'b2\\'c7\\'b0");
         assert_eq!(recovered(&rtf), "床前");
-        // No \ansicpg: Windows-1252.
         let rtf = b"{\\rtf1\\ansi\\fromhtml1 caf\\'e9}";
         assert_eq!(recovered(rtf), "café");
     }
@@ -611,19 +573,14 @@ mod tests {
 
     #[test]
     fn unicode_escapes_skip_their_uc_fallbacks() {
-        // \uc1 by default: one fallback character, here an escape.
         let rtf = document(1252, "\\u1055\\'3f\\u1088?x");
         assert_eq!(recovered(&rtf), "Прx");
-        // \uc2 skips two; \uc0 none. A negative \uN is its 16-bit value.
         let rtf = document(1252, "\\uc2\\u8364??a\\uc0\\u-3913b");
         assert_eq!(recovered(&rtf), "€a\u{F0B7}b");
-        // A surrogate pair in two \uN.
         let rtf = document(1252, "\\u-10179?\\u-8701?");
         assert_eq!(recovered(&rtf), "😃");
-        // \ucN is restored when its group ends; a group's end stops the skipping.
         let rtf = document(1252, "{\\uc3 \\u1055???}\\u1088?{\\u1080}x");
         assert_eq!(recovered(&rtf), "Приx");
-        // In a tag too.
         let rtf = document(1252, "{\\*\\htmltag <p title=\"\\u1055?\">}");
         assert_eq!(recovered(&rtf), "<p title=\"П\">");
     }
@@ -665,7 +622,6 @@ mod tests {
                 .starts_with("can't be decompressed (")
         );
 
-        // Uncompressed ("MELA") RTF is read as it is, unless its size runs past its end.
         let mut mela = Vec::new();
         for word in [12 + 4, 4, UNCOMPRESSED, 0] {
             mela.extend_from_slice(&u32::to_le_bytes(word));
@@ -679,8 +635,6 @@ mod tests {
         );
     }
 
-    /// A raw size past nine times the data after the header is refused before the decompressor
-    /// allocates it; nine times is still decompressed.
     #[test]
     fn a_raw_size_past_what_the_data_can_yield_is_refused() {
         let compressed = compressed_rtf::compress_rtf("{\\rtf1 Hi}").unwrap();
@@ -691,7 +645,6 @@ mod tests {
             decompress(&stated)
         };
         let at_most = u32::try_from(9 * data).unwrap();
-        // Passed to the decompressor, which may still find the size wrong.
         assert!(
             !matches!(with_raw_size(at_most), Err(reason) if reason.ends_with("not decompressed"))
         );
@@ -710,14 +663,10 @@ mod tests {
         );
     }
 
-    /// The text read from `rtf`, given as the bytes of the RTF, with its notes.
     fn read_text(rtf: &[u8]) -> Option<(String, Vec<String>)> {
         text(&rtf.iter().map(|&byte| char::from(byte)).collect::<String>())
     }
 
-    /// Plain RTF's visible text: the header, font and color tables, ignorable groups, pictures
-    /// and control words stripped; `\par` and `\line` as line breaks; symbol words and `\~` as
-    /// their characters; `\'hh` in the `\ansicpg` code page; `\uN` with its fallback skipped.
     #[test]
     fn plain_rtf_is_read_as_its_text() {
         let rtf = b"{\\rtf1\\ansi\\ansicpg1251\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\r\n\
@@ -736,9 +685,6 @@ mod tests {
         );
     }
 
-    /// A `\fromtext` RTF is read as plain RTF is, its HTML tags' groups skipped and `\htmlrtf`
-    /// honored; a `\fromhtml1` RTF's text is its HTML's, so it has none here, and bytes that are
-    /// no RTF have none.
     #[test]
     fn fromtext_is_read_as_text_and_fromhtml1_is_not() {
         let rtf = b"{\\rtf1\\ansi\\fromtext \\deff0{\\*\\htmltag64 <p>}Hi\\htmlrtf  no\\htmlrtf0 \
