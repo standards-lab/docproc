@@ -10,6 +10,11 @@ covers docproc-onenote only.
 
 ## [Unreleased]
 
+### Changed
+
+- The crate graph locks hashbrown 0.17.2, a patch release through lru, in place of 0.17.1. The
+  output is unchanged.
+
 ## [v0.1.1] - 2026-11-19
 
 ### Changed

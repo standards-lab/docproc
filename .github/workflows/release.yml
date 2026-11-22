@@ -57,7 +57,7 @@ jobs:
         if: hashFiles(format('tools/{0}/*.slnx', needs.tag.outputs.format)) != ''
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
 
-      - uses: jdx/mise-action@v5.2.10
+      - uses: jdx/mise-action@v5.3.0
         with:
           working_directory: tools/${{ needs.tag.outputs.format }}
 
