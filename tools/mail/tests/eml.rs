@@ -1,7 +1,7 @@
 //! .eml messages through the binary: the eight generated sources under
 //! tests/fixtures/generated/eml against their hand truth (truth.json), the MIME group's
 //! hand-written sources under tests/fixtures/mime/eml against theirs, and test-built messages
-//! for what those don't carry.
+//! for what those don't carry. The MIME and Markdown groups match their SHA-256 lists.
 
 mod common;
 
@@ -199,15 +199,15 @@ fn the_mime_group_matches_its_truth() {
     assert_group_matches_its_truth("mime", MIME_SOURCES);
 }
 
-#[test]
-fn the_mime_group_matches_its_sha256_list() {
+fn assert_group_matches_its_sha256_list(group: &str) {
     let list: Value =
-        serde_json::from_slice(&std::fs::read(fixture("mime/sha256.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(fixture(&format!("{group}/sha256.json"))).unwrap())
+            .unwrap();
     let mut listed = Vec::new();
     for entry in list.as_array().unwrap() {
         let file = entry["file"].as_str().unwrap();
         assert_eq!(
-            Some(sha256(&fixture(&format!("mime/{file}"))).as_str()),
+            Some(sha256(&fixture(&format!("{group}/{file}"))).as_str()),
             entry["sha256"].as_str(),
             "{file}"
         );
@@ -217,7 +217,7 @@ fn the_mime_group_matches_its_sha256_list() {
     let mut committed = Vec::new();
     let mut dirs = vec![String::new()];
     while let Some(dir) = dirs.pop() {
-        for entry in std::fs::read_dir(fixture(&format!("mime/{dir}"))).unwrap() {
+        for entry in std::fs::read_dir(fixture(&format!("{group}/{dir}"))).unwrap() {
             let entry = entry.unwrap();
             let name = format!("{dir}{}", entry.file_name().into_string().unwrap());
             if entry.file_type().unwrap().is_dir() {
@@ -229,6 +229,16 @@ fn the_mime_group_matches_its_sha256_list() {
     }
     committed.sort_unstable();
     assert_eq!(listed, committed, "the list names every file of the group");
+}
+
+#[test]
+fn the_mime_group_matches_its_sha256_list() {
+    assert_group_matches_its_sha256_list("mime");
+}
+
+#[test]
+fn the_markdown_group_matches_its_sha256_list() {
+    assert_group_matches_its_sha256_list("markdown");
 }
 
 #[test]
