@@ -120,9 +120,9 @@ body (`\fromhtml1`), its text body, then its RTF body's own text. Its images lin
 `cid:` source names the attachment whose `content_id` it is, any other source the attachment
 whose Content-Location it is, and a `data:` image is written as media and listed in the message's
 `media`, with no attachment record. A source that names nothing is kept as written, with a
-warning. When the Markdown is made from HTML, the sentences of the message's text body, or of its
-RTF body's text, that the Markdown lacks are appended to it, in order, as one paragraph, by the
-content rule docproc's tools share (Unicode 18.0.0).
+warning. Markdown made from HTML is the HTML's alone: nothing of the text body or the RTF body's
+text is appended, as the parts of a `multipart/alternative` are each an alternative version of the
+same information (RFC 2046 §5.1.4).
 
 A field with no value is left out, never `null`, and so is an empty list. The same input gives
 byte-identical stdout and media. The contract, field by field, is docproc's:
@@ -235,8 +235,9 @@ tool's check. The reasoning behind its configuration is on
 [`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: shellchecks the scripts, verifies formatting, lints with warnings as errors, and runs
-  the tests of docproc-mail and of the shared crate, [`tools/envelope`](../envelope), against the
-  static musl release binary, overflow checks on, from the locked crate graph. The tests compare
+  the tests of docproc-mail against the static musl release binary, overflow checks on, from the
+  locked crate graph, and those of the shared crate, [`tools/envelope`](../envelope), with every
+  feature, from its own. The tests compare
   that binary's stdout and stderr, at exit code 0, for every committed input under
   `tests/fixtures/` against its `.jsonl` and `.stderr` goldens under `tests/golden/`.
 - `golden`: re-records the goldens from the release binary. The check never writes them, so a

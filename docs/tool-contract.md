@@ -311,15 +311,16 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   first of these the message holds: its stored HTML, the HTML recovered from an RTF that
   encapsulates it (`\fromhtml`), its text body, then the RTF's text, read as below and made Markdown
   as a text body is. An HTML nested deeper than 512 open elements gives way to the text body, else
-  to the HTML's text with its tags stripped, with a warning. When the Markdown is made from HTML,
-  stored or recovered from the RTF, the tool appends the sentences of the message's source text that
-  the Markdown lacks, by the content rule below, in order, as a paragraph escaped as a text body's
-  Markdown is. The source text is the text body; a message with an RTF body and no text body has the
-  RTF's text, read by the RTF specification: the body decompressed, control words and ignorable
-  groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as line breaks,
-  `\tab` as a tab, symbol words (`\rquote`, `\emdash`, …) as their characters, and `\'hh` decoded in
-  the `\ansicpg` code page; nothing separates a table's cells. An RTF that encapsulates HTML
-  (`\fromhtml`) has that HTML's text.
+  to the HTML's text with its tags stripped, with a warning. Markdown made from HTML, stored or
+  recovered from the RTF, is the HTML's alone: nothing of the text body or the RTF's text is
+  appended to it, as the parts of a `multipart/alternative` are each an alternative version of the
+  same information (RFC 2046 §5.1.4), and the content rule below is docproc-onenote's, not
+  docproc-mail's. The RTF's text is read only for a message with neither HTML nor a text body, by
+  the RTF specification: the body decompressed, control words and ignorable groups (`\*`, the
+  font, color, and style tables) stripped, `\par` and `\line` as line breaks, `\tab` as a tab, a
+  table's `\cell` as a tab and its `\row` as a line break, symbol words (`\rquote`, `\emdash`, …)
+  as their characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates
+  HTML (`\fromhtml`) has that HTML's text.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
   its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6
@@ -330,14 +331,14 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   through the envelope's destination and title rules, an alt text's lines through the
   literal-text escape. `tools/mail/src/markdown.rs` holds the rules, and the tool's CHANGELOG,
   v0.1.2, lists where its output differs from htmd 0.5.6's.
-- The content rule compares a source text with a Markdown text by standards alone, so no
-  fixture tunes it; docproc-onenote's OCR text follows it too. It is written once, in the
-  docproc-envelope crate at `tools/envelope` (`src/content.rs`), which docproc-mail and
-  docproc-onenote depend on. Its Unicode version, 18.0.0, the one its exactly pinned
-  ICU4X 2.4.0 crates carry, is part of schema "2": the normalization, the word and sentence
-  boundaries, and the general categories are that version's, a unit test asserts it, and another
-  version is a change of meaning, so a crate bump that moves it fails the check and becomes a
-  reviewed change, the goldens re-recorded and the CHANGELOG naming the version.
+- The content rule compares a source text with a Markdown or plain text by standards alone, so
+  no fixture tunes it; docproc-onenote's OCR text follows it, and docproc-mail, whose Markdown
+  appends nothing, doesn't. It is written once, in the docproc-envelope crate at `tools/envelope`
+  (`src/content.rs`), which docproc-onenote depends on. Its Unicode version, 18.0.0, the one its
+  exactly pinned ICU4X 2.4.0 crates carry, is part of schema "2": the normalization, the word and
+  sentence boundaries, and the general categories are that version's, a unit test asserts it, and
+  another version is a change of meaning, so a crate bump that moves it fails the check and becomes
+  a reviewed change, the goldens re-recorded and the CHANGELOG naming the version.
   - **Plain text.** Both are normalized to Unicode NFC. The Markdown is read by CommonMark's
     semantics: a link as its text followed by its destination as one URL token, an image as its
     alt text followed by its destination, emphasis and backslash escapes removed.
@@ -356,7 +357,7 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
     aligns the rest, for n source and m Markdown tokens and D edits between them. Where several
     longest common subsequences tie, the rule's is the one that algorithm returns. The shared
     crate is the rule's one normative implementation, pinned by the goldens, so every tool
-    appends the same sentences.
+    following it appends the same sentences.
   - **Units.** The source's sentences by Unicode sentence boundaries (UAX #29), a line break also
     ending one. Each sentence holding a token outside the alignment is appended, in order; the
     rest is already in the Markdown, so overlap is never written twice.
@@ -404,8 +405,8 @@ ink_alternatives[]  word (its index among the page's recognized ink words, from 
   `ink_text` are cut: their text is in `markdown`, and the media they hold move to `media`.
 - The Markdown gains the text the spike reads but leaves out of it. The title's date and time
   paragraphs (`PageDateTime`) follow the title heading as one line, the paragraphs joined by one
-  space. An image's `ocr_text` sentences that its `alt_text` lacks, by docproc-mail's content
-  rule, follow the alt text in the image's Markdown text; OneNote's own alt text holds most of it
+  space. An image's `ocr_text` sentences that its `alt_text` lacks, by the content rule above,
+  follow the alt text in the image's Markdown text; OneNote's own alt text holds most of it
   (4,926 of 5,572 B). An image's `hyperlink` makes the image a link, `[![alt](file)](hyperlink)`.
   Every tag's label is written the same way, as `[Label]` before its item's text, a task tag's
   after its task box (`- [ ] [To Do] …`): the box carries the task state, not the label's

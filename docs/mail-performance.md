@@ -376,3 +376,30 @@ sampling, not new work.
   rule needs, and none copies or repeats work. A faster hash would trade away SipHash's
   resistance to inputs crafted to collide, and mail input is untrusted.
 - **htmd's conversion and reading the input** remain as "What is not waste" describes.
+
+## The HTML-only Markdown
+
+docproc-mail no longer runs the content rule. On plaso's store the rule appended 2.1 M characters
+to 513 of the 538 messages it compared, and the median message's Markdown grew 27%. Most of
+it was sentences whose words the Markdown already held, flagged because the alignment depends on
+order and one unmatched token flags a whole sentence, and tracking URLs that differ between the
+text and HTML parts. The architect chose the HTML alone: a message's Markdown is made from its HTML
+body when it has one, else from its text body, else from its RTF body's own text, and nothing of
+one body is appended to another's, as the parts of a `multipart/alternative` are each an
+alternative version of the same information (RFC 2046 §5.1.4). The alignment's cost in "What is
+left" no longer applies to mail; the content rule is docproc-onenote's, and the `alignment` and
+`tokens` rows above stay as the record of before.
+
+Medians of 10 runs, both binaries timed in one sitting, by the method's `hyperfine` line, the
+tool's plain static musl release build against the spike's 0.3.1:
+
+| Input | Binary | Wall | Range | User | System | Instructions |
+| --- | --- | --- | --- | --- | --- | --- |
+| plaso's store | spike 0.3.1 | 1.484 s | 1.473–1.494 s | 1.265 s | 0.206 s | 7.86 G |
+| plaso's store | HTML-only | 1.495 s | 1.486–1.501 s | 1.288 s | 0.198 s | 8.36 G |
+| scale.mboxrd | spike 0.3.1 | 5.473 s | 5.465–5.516 s | 3.597 s | 1.839 s | 25.90 G |
+| scale.mboxrd | HTML-only | 4.066 s | 4.050–4.137 s | 2.687 s | 1.353 s | 18.78 G |
+
+On plaso's store the tool now runs as fast as the spike, where it took 2.495 s in "After the
+fixes"; on scale.mboxrd it runs 26% faster than the spike, where it took 5.463 s. No profile was
+taken.

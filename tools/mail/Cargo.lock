@@ -127,7 +127,6 @@ dependencies = [
  "icu_properties_data",
  "icu_segmenter",
  "icu_segmenter_data",
- "pulldown-cmark",
  "serde",
  "serde_json",
  "sha2",

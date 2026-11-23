@@ -8,7 +8,7 @@ description = "docproc's mail tool: Outlook .pst stores, .msg messages, .eml mes
 publish = false
 
 [dependencies]
-docproc-envelope = { path = "../envelope", features = ["markdown"] }
+docproc-envelope = { path = "../envelope" }
 # Pinned exactly: the CLI works around known faults of this release, in src/pst.rs.
 outlook-pst = "=1.2.0"
 codepage = "0.1.3"
@@ -18,8 +18,7 @@ serde_json = "1.0.154"
 # Pinned exactly: the CLI works around its panics on short or oversized input (src/rtf.rs).
 compressed-rtf = "=1.0.1"
 htmd = "0.6.0"
-# Required exactly as the envelope requires it: the same reader its `markdown` feature links.
-pulldown-cmark = { version = "=0.13.6", default-features = false }
+pulldown-cmark = { version = "0.13.6", default-features = false }
 cfb = "0.16.0"
 mail-parser = { version = "1.0.1", features = ["full_encoding"] }
 

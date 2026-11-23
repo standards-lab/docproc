@@ -4,13 +4,13 @@
 //!
 //! A message's bodies are read in the order its Markdown is made from them: its stored HTML, the
 //! HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
-//! only when there is no text body and is then the Markdown's, or beside HTML the content rule's
-//! source text; an RTF that encapsulates HTML has none of its own. Each body is still read and
-//! decoded, and one that can't be is passed over with a note. The stored HTML, PidTagHtml or
-//! PidTagBodyHtml in PT_STRING8, the same bytes, is decoded in the code page PidTagInternetCodepage
-//! names, else the one its own `<meta>` declares, else UTF-8 when it is valid UTF-8, else the
-//! message's: Apache POI's ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other strings in 1252 and
-//! its HTML in UTF-8, its internet code page. In PT_UNICODE it is UTF-16.
+//! only when there is neither HTML nor a text body, and is then the Markdown's; an RTF that
+//! encapsulates HTML has none of its own. Each body is still read and decoded, and one that can't
+//! be is passed over with a note. The stored HTML, PidTagHtml or PidTagBodyHtml in PT_STRING8, the
+//! same bytes, is decoded in the code page PidTagInternetCodepage names, else the one its own
+//! `<meta>` declares, else UTF-8 when it is valid UTF-8, else the message's: Apache POI's
+//! ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other strings in 1252 and its HTML in UTF-8, its
+//! internet code page. In PT_UNICODE it is UTF-16.
 //!
 //! An address's SMTP address is read only for an Exchange (`EX`) address type: on any other type
 //! the address is already the one to write to. A .pst stores a PidTagSubject that starts with
@@ -154,7 +154,7 @@ const MULTIPART_SIGNED: &str = "IPM.Note.SMIME.MultipartSigned";
 pub fn signed(class: Option<&str>, bodies: &mut Bodies, content: &[u8]) -> Vec<String> {
     let mut notes = Vec::new();
     let clear_signed = class.is_some_and(|class| class.eq_ignore_ascii_case(MULTIPART_SIGNED));
-    let bodiless = bodies.html.is_none() && bodies.text.is_none() && bodies.rtf_text.is_none();
+    let bodiless = bodies.html.is_none() && bodies.text.is_none();
     if !clear_signed || !bodiless {
         return notes;
     }
@@ -185,25 +185,14 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
         html
     });
     let html = html.or(from_rtf);
-    let rtf_text = match text {
-        Some(_) => None,
-        None => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
+    let text = match (&html, text) {
+        (None, None) => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
             notes.append(&mut lossy);
             text
         }),
+        (_, text) => text,
     };
-    match html {
-        Some(_) => Bodies {
-            html,
-            text,
-            rtf_text,
-        },
-        None => Bodies {
-            html,
-            text: text.or(rtf_text),
-            rtf_text: None,
-        },
-    }
+    Bodies { html, text }
 }
 
 fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {

@@ -658,12 +658,14 @@ fn a_fromtext_rtf_gives_way_to_the_text_body() {
 }
 
 #[test]
-fn a_plain_rtf_beside_html_is_the_source_text() {
+fn a_plain_rtf_beside_html_gives_way_to_the_html() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\deff0 We found a moth.\\par It is taped in.\\par}";
-    let html = || Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec());
     let mut props = subject("html and rtf");
     props.push((RTF_COMPRESSED, rtf(body)));
-    props.push((HTML, html()));
+    props.push((
+        HTML,
+        Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec()),
+    ));
     let (message, stderr) = read_built(
         "html-rtf.msg",
         &Message {
@@ -672,22 +674,28 @@ fn a_plain_rtf_beside_html_is_the_source_text() {
         },
     );
     assert_eq!(stderr, "");
-    assert_eq!(
-        message["markdown"],
-        "We found a **moth**.\n\nIt is taped in."
-    );
+    assert_eq!(message["markdown"], "We found a **moth**.");
+}
 
-    let mut props = subject("html, rtf and text");
-    props.push((RTF_COMPRESSED, rtf(body)));
-    props.push((HTML, html()));
-    props.push((BODY, Prop::Unicode("We found a moth.".into())));
-    let (message, _) = read_built(
-        "html-rtf-text.msg",
+#[test]
+fn differing_text_and_html_bodies_give_the_htmls_markdown_alone() {
+    let mut props = subject("html and text");
+    props.push((
+        HTML,
+        Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec()),
+    ));
+    props.push((
+        BODY,
+        Prop::Unicode("We found a moth.\r\nIt is taped in. https://example.net/t?id=1".into()),
+    ));
+    let (message, stderr) = read_built(
+        "html-text.msg",
         &Message {
             props,
             ..Message::default()
         },
     );
+    assert_eq!(stderr, "");
     assert_eq!(message["markdown"], "We found a **moth**.");
 }
 
@@ -943,7 +951,7 @@ const SIGNED: &[u8] = b"Content-Type: multipart/signed; protocol=\"application/p
                         boundary=s\r\n\r\n\
                         --s\r\nContent-Type: multipart/mixed; boundary=m\r\n\r\n\
                         --m\r\nContent-Type: multipart/alternative; boundary=a\r\n\r\n\
-                        --a\r\nContent-Type: text/plain\r\n\r\nSigned HTML.\r\n\
+                        --a\r\nContent-Type: text/plain\r\n\r\nSigned text, not read.\r\n\
                         --a\r\nContent-Type: text/html\r\n\r\n<p>Signed <b>HTML</b>.</p>\r\n\
                         --a--\r\n\
                         --m\r\nContent-Type: text/csv\r\n\

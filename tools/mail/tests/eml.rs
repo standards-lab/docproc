@@ -249,15 +249,31 @@ fn markdown_is_made_from_the_html_else_the_text() {
     };
     assert_eq!(
         markdown("03-html-inline-image.eml"),
-        format!(
-            "We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})\n\n\
-             It is taped into the log book."
-        )
+        format!("We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})")
     );
     assert_eq!(
         markdown("02-reply-latin1.eml"),
         "Ada,\n\nSplendid. The café in Zürich serves crème brûlée; we shall  \n\
          discuss Note G there.\n\n\\> I have finished the notes on the engine.\n\nCharles"
+    );
+}
+
+#[test]
+fn differing_text_and_html_bodies_give_the_htmls_markdown_alone() {
+    let (message, stderr) = read(
+        "alternative.eml",
+        b"From: ann@example.com\r\n\
+          Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n\
+          --b\r\nContent-Type: text/plain\r\n\r\n\
+          We found a moth. Track it at https://example.net/t?id=1\r\n\
+          --b\r\nContent-Type: text/html\r\n\r\n\
+          <p>We found a <b>moth</b>.</p><p>It is taped in.</p>\r\n\
+          --b--\r\n",
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "We found a **moth**.\n\nIt is taped in."
     );
 }
 
@@ -679,7 +695,7 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     );
     assert_eq!(stderr, "");
     assert_eq!(message["subject"], "€5café");
-    assert_eq!(message["markdown"], "\u{201c}café\u{201d}\n\ncafé € Ÿ");
+    assert_eq!(message["markdown"], "\u{201c}café\u{201d}");
     let (message, stderr) = read(
         "latin1-text.eml",
         b"From: ann@example.com\r\n\

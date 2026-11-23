@@ -351,11 +351,7 @@ pub fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
         "HTML body",
         notes,
     );
-    Bodies {
-        html,
-        text,
-        rtf_text: None,
-    }
+    Bodies { html, text }
 }
 
 fn joined<'m>(

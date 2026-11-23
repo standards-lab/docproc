@@ -22,10 +22,9 @@
 //! taking the backslash away would change how the Markdown reads, and makes every other the bare
 //! character, so the Markdown reads, and is written, as it was ([`bare`]).
 //!
-//! Markdown made from HTML is compared with the message's source text by the content rule, the
-//! shared crate's (docs/tool-contract.md, schema "2"): the source text's sentences the Markdown lacks
-//! are appended to it, in order, as one paragraph escaped as a text body's Markdown is
-//! ([`with_missing`]). The source text is the text body, else the RTF body's own text.
+//! A message's Markdown is made from its HTML body alone when it has one, else from its plain
+//! text, and nothing of one body is appended to another's: each part of a `multipart/alternative`
+//! is an alternative version of the same information (RFC 2046 §5.1.4) ([`derive`]).
 //!
 //! An image's source is read as a URL in an attribute is: its edge whitespace dropped, its scheme
 //! matched in any case. A `data:` URL (RFC 2397) is named by its decoded payload's hash and its
@@ -38,16 +37,16 @@
 //! and joined by line feeds. A table cell is walked where a block may begin, as htmd 0.5.6 walked
 //! it, so a heading in a cell stays a heading rather than running into the text beside it.
 //!
-//! [`bare`] reads the Markdown as the envelope's content rule does, CommonMark with GFM tables and
-//! strikethrough, and with math, which htmd 0.6 writes for. The escapes it may take back are those
-//! htmd 0.5.6 never wrote, or wrote under narrower rules; htmd 0.5.6's own, before `\`, `*`, `_`,
-//! `` ` ``, `[`, `]`, a first `=`, `>`, or `#`, and an ordered item's `.`, are kept as written. The
-//! escapes are tried last first, each against the Markdown with the later ones already taken away,
-//! so a run's first backslash, which may keep the run from beginning a block, is the one left, as
-//! in htmd 0.5.6's `\~~~`; each test reads only the top-level block that holds its escape, so a
-//! body's many blocks cost one read each per escape. Code spans, code blocks, math, raw HTML,
-//! images, and links' destinations and titles, where a backslash escapes nothing or the envelope
-//! wrote it, are left as written.
+//! [`bare`] reads the Markdown as CommonMark with GFM tables and strikethrough, and with math,
+//! which htmd 0.6 writes for. The escapes it may take back are those htmd 0.5.6 never wrote, or
+//! wrote under narrower rules; htmd 0.5.6's own, before `\`, `*`, `_`, `` ` ``, `[`, `]`, a first
+//! `=`, `>`, or `#`, and an ordered item's `.`, are kept as written. The escapes are tried last
+//! first, each against the Markdown with the later ones already taken away, so a run's first
+//! backslash, which may keep the run from beginning a block, is the one left, as in htmd 0.5.6's
+//! `\~~~`; each test reads only the top-level block that holds its escape, so a body's many blocks
+//! cost one read each per escape. Code spans, code blocks, math, raw HTML, images, and links'
+//! destinations and titles, where a backslash escapes nothing or the envelope wrote it, are left
+//! as written.
 //!
 //! [`image_tags`] counts as the HTML parser leaves elements open: each start tag opens one but a
 //! void element's, and a self-closing one's inside `svg` or `math`, where `/>` closes it; an end
@@ -64,7 +63,6 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ops::Range;
 
-use docproc_envelope::content::{self, Text};
 use docproc_envelope::markdown::{destination, escape, escape_into, title};
 use docproc_envelope::{Fault, Media, Payload};
 use htmd::Element;
@@ -78,12 +76,10 @@ use crate::model::{Medium, Message};
 pub const NESTING_MAX: usize = 512;
 
 /// A message's bodies as its Markdown is made from them: its HTML, stored or recovered from its
-/// RTF body, and its plain text, the text body or else the RTF body's own text. Beside HTML and no
-/// text body, `rtf_text` is the RTF body's own text, read for the content rule alone.
+/// RTF body, and its plain text, the text body or else the RTF body's own text.
 pub struct Bodies {
     pub html: Option<String>,
     pub text: Option<String>,
-    pub rtf_text: Option<String>,
 }
 
 /// Makes `message`'s Markdown from `bodies`, once its attachments are read: its images linked to
@@ -102,7 +98,6 @@ pub fn make(
     let markdown = derive(
         bodies.html.as_deref(),
         bodies.text.as_deref(),
-        bodies.text.as_deref().or(bodies.rtf_text.as_deref()),
         &mut |src| images.resolve(src),
         notes,
     );
@@ -285,23 +280,20 @@ fn percent_decoded(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A message's Markdown, by the one rule every format follows: made from `html` when the
-/// message has an HTML body, its images' sources first rewritten by `images`, and the sentences
-/// of `source` it lacks appended ([`with_missing`]), else from `text`, read literally. An HTML
-/// body nested past [`NESTING_MAX`] open elements gives way to `text`, else to its own text with
-/// its tags stripped, with a note, and its images are not read. One that can't be made is left
-/// out, with a note.
+/// A message's Markdown, by the one rule every format follows: made from `html` alone when the
+/// message has an HTML body, its images' sources first rewritten by `images`, else from `text`,
+/// read literally. An HTML body nested past [`NESTING_MAX`] open elements gives way to `text`,
+/// else to its own text with its tags stripped, with a note, and its images are not read. One that
+/// can't be made is left out, with a note.
 pub fn derive(
     html: Option<&str>,
     text: Option<&str>,
-    source: Option<&str>,
     images: &mut dyn FnMut(&str) -> Option<String>,
     notes: &mut Vec<String>,
 ) -> Option<String> {
     let made = match (html, text) {
         (Some(html), _) => match image_tags(html) {
-            Some(tags) => from_html(&rewritten(html, &tags, images))
-                .map(|markdown| with_missing(markdown, source)),
+            Some(tags) => from_html(&rewritten(html, &tags, images)),
             None => {
                 let (made, from) = match text {
                     Some(text) => (from_text(text), "the text body"),
@@ -322,22 +314,6 @@ pub fn derive(
     };
     made.map_err(|reason| notes.push(format!("the Markdown body {reason}; left out")))
         .ok()
-}
-
-fn with_missing(markdown: String, source: Option<&str>) -> String {
-    let Some(source) = source else {
-        return markdown;
-    };
-    let missing = content::missing(&Text::plain(source), &Text::markdown(&markdown));
-    if missing.is_empty() {
-        return markdown;
-    }
-    let paragraph = from_text(&missing.join(" "));
-    if markdown.trim().is_empty() {
-        paragraph
-    } else {
-        format!("{markdown}\n\n{paragraph}")
-    }
 }
 
 fn rewritten<'h>(
@@ -1005,33 +981,22 @@ mod tests {
     }
 
     #[test]
-    fn html_markdown_gains_the_sentences_it_lacks() {
+    fn html_markdown_is_the_htmls_alone() {
         let mut notes = Vec::new();
-        let source = "We found a moth.\r\n# It is *taped* in. Done\r\n";
+        let text = "We found a moth.\r\n# It is *taped* in. Done\r\n";
         let made = |html: Option<&str>, notes: &mut Vec<String>| {
-            derive(html, Some(source), Some(source), &mut |_| None, notes)
+            derive(html, Some(text), &mut |_| None, notes)
         };
         assert_eq!(
             made(Some("<p>We found a <b>moth</b>!</p>"), &mut notes).as_deref(),
-            Some("We found a **moth**!\n\n\\# It is \\*taped\\* in. Done")
+            Some("We found a **moth**!")
         );
+        assert_eq!(made(None, &mut notes), Some(from_text(text)));
         assert_eq!(
-            made(
-                Some("<p>We found a moth. It is taped in.</p><p>Done</p>"),
-                &mut notes
-            )
-            .as_deref(),
-            Some("We found a moth. It is taped in.\n\nDone")
+            derive(Some("<p>x</p>"), None, &mut |_| None, &mut notes).as_deref(),
+            Some("x")
         );
-        assert_eq!(made(None, &mut notes), Some(from_text(source)));
-        let lacking = derive(
-            Some("<p>x</p>"),
-            None,
-            Some("Only the RTF's text."),
-            &mut |_| None,
-            &mut notes,
-        );
-        assert_eq!(lacking.as_deref(), Some("x\n\nOnly the RTF's text."));
+        assert_eq!(derive(None, None, &mut |_| None, &mut notes), None);
         assert!(notes.is_empty(), "{notes:?}");
     }
 
@@ -1041,7 +1006,6 @@ mod tests {
         let at_cap = derive(
             Some(&nested("div", 512)),
             Some("text"),
-            None,
             &mut |_| None,
             &mut notes,
         );
@@ -1052,12 +1016,11 @@ mod tests {
         let from_text = derive(
             Some(&past),
             Some("the *text* body"),
-            None,
             &mut |_| None,
             &mut notes,
         );
         assert_eq!(from_text.as_deref(), Some("the \\*text\\* body"));
-        let from_html = derive(Some(&past), None, None, &mut |_| None, &mut notes);
+        let from_html = derive(Some(&past), None, &mut |_| None, &mut notes);
         assert_eq!(from_html.as_deref(), Some("word"));
         assert_eq!(
             notes,
@@ -1435,7 +1398,6 @@ mod tests {
         let bodies = Bodies {
             html: Some(html.to_owned()),
             text: None,
-            rtf_text: None,
         };
         let mut notes = Vec::new();
         make(
