@@ -253,7 +253,8 @@ symlinks: mail's scale store (`.state/scale`, built 2026-11-05 for run v0.3.0) a
 and onenote's three large sections, each checked against its pinned SHA-256. Outputs went to a
 tmpfs scratch directory, where the spikes wrote to btrfs. The WER measurement was scheduled on the
 host at the same time; no ffmpeg process was running at the start or the end of the mail run, and
-the load average was between 0.4 and 2.8 throughout.
+the load average was between 0.4 and 2.8 throughout. The `final` task reran the mail bench on
+2026-11-23 against tools/mail/v0.1.4; "docproc-mail: the findings" records both runs.
 
 A spike figure is the one its findings page records in `docs/findings/`: office's run `office`
 (2026-10-31, office 0.1.0+6ed0d0e), mail's run `v0.3.0` (2026-11-05, 0.3.0, the run that repeats
@@ -330,7 +331,17 @@ on every committed .pst, plaso's 59 MB store, and the 2.1 GB scale store as a .p
 2.7 GB mboxrd, each without and with its media directory, and the scale store resumed with
 `--after`.
 
-Adaptations, in `bench/findings.rs`:
+Acceptance ran it against tools/mail/v0.1.2 on 2026-11-19. The `final` task reran it against
+tools/mail/v0.1.4 on 2026-11-23, from 14:45 to 14:48 UTC, on the same laptop: Intel Core Ultra 9
+185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy. The release's linux-x64 archive,
+downloaded with `gh release download tools/mail/v0.1.4 -R standards-lab/docproc`, matched the
+release's `SHA256SUMS`:
+
+| Release | Archive SHA-256 | Binary SHA-256 | `--version` |
+| --- | --- | --- | --- |
+| tools/mail/v0.1.4 | `f89828a1b10923ffec5d5437dac0b82776928006ae020b2cc50ab7f9db94804d` | `ba7d06e5ee463d30682679a6f9fcb5ee3a95ba67f920b4230bdaf0001fcfea47` | 0.1.4, schema 2 |
+
+Adaptations, in `bench/findings.rs`, the same for both runs:
 
 - `time_store`: the media flag passed is `--media <dir>`, where it was `--attachments <dir>`.
 - `Args` and `run`: `--glibc-bin` is optional, and without it the three glibc rows are not run.
@@ -342,11 +353,23 @@ Adaptations, in `bench/findings.rs`:
 - `time_store`: once a row's runs are counted, its media directory is removed, so the large
   stores' 1.9 GB each don't accumulate on the tmpfs.
 
+v0.1.4 needed no further adaptation.
+
 The scorer was built with `CARGO_TARGET_DIR=<scratch>/target-mail mise exec -- cargo build
---release --locked --example findings`, and run from the worktree as the script runs it, with
-`--bin <release>/docproc-mail --rusage .state/findings/rusage --plaso <plaso's store>
---plaso-commit f5bf35fcc102585eed58b930392da56a318690f6 --scale .state/scale --state
-.state/findings --out <scratch>/results.json --commit <describe> --runs 3`, no `--glibc-bin`.
+--release --locked --example findings`, and run from the spike's tree as the script runs it, with
+`--bin <release>/docproc-mail --rusage <state>/rusage --plaso <plaso's store>
+--plaso-commit f5bf35fcc102585eed58b930392da56a318690f6 --scale <scale store> --state <state>
+--out <scratch>/results.json --commit <describe> --runs 3`, no `--glibc-bin`. Acceptance's tree
+was a detached `git worktree` of the spike checkout at 9cbbdd3, with its large inputs symlinked
+into its `.state`; the `final` task's was a `git clone` of that checkout into a scratch directory,
+detached at 9cbbdd3, with `--plaso` and `--scale` pointed at the checkout's own
+`.state/findings/plaso` and `.state/scale`, read in place, and `--state` in the scratch
+directory. plaso's store matched its pinned SHA-256, and scale.mboxrd's SHA-256,
+`79f5ad34bd4962a1bd84974fd1b4e06bd06bbba7718e5db1321ea64dbb22fe1a`, is the one the spike's run
+v0.3.0 records. Outputs went to tmpfs in both runs. The `final` task's ran with every `DOCPROC_`
+variable unset. Other sessions' builds shared the host, and the load average was between 1.6 and
+5.8; the first of the three runs of scale.pst and of scale.mboxrd, without media, were their
+rows' slowest, 12.267 s and 5.124 s, and the median sets the figure.
 
 Cut fields left unscored: `body.text` and `body.html` (the generated tables, the MIME group's
 .eml, and POI's two body pointers and their two Java hashes); `body.rtf` and `body.derived.html`,
@@ -354,58 +377,68 @@ which no truth names; and folder `display_name`, which no truth names. The two m
 compare each message with the tool's read of its source, field by field, so their `body derived`,
 `body text`, and `body html` kinds become one `markdown` kind on both sides.
 
-| Table | Spike: expected, recovered, gap, mismatched | Release, cut kinds removed | Verdict |
-| --- | --- | --- | --- |
-| Generated .pst | 94, 80, 14, 0 | 84, 70, 14, 0 | equal: the 10 removed are the body kinds the spike recovered |
-| Generated .msg | 86, 67, 19, 0 | 76, 57, 19, 0 | equal |
-| Generated .eml | 86, 86, 0, 0 | 76, 76, 0, 0 | equal |
-| MIME .eml | 15, 15, 0, 0 | 14, 14, 0, 0 | equal |
-| nine.mboxrd against its sources | 116, 116, 0, 0 | 105, 105, 0, 0 | equal |
-| mbox.rlug against its splits | 59, 59, 0, 0 | 54, 54, 0, 0 | equal |
-| Tika's stores, threading | 47, 47, 0, 0; 8 of 8 absences | 47, 47, 0, 0; 8 of 8 absences | equal |
-| Tika's .msg | 22, 21, 0, 1 | 22, 21, 0, 1 | equal; the miss is better read |
-| POI's .msg | 31, 31, 0, 0 | 27, 27, 0, 0 | equal |
+Each count is expected, recovered, gap, mismatched; the releases' are with the cut kinds removed.
 
-The generator gaps are the same 33, kind for kind. Tika's one mismatch is still
-testMSG_chinese.msg's `/to/0/address`, an X.500 DN where Tika asserts the SMTP address; the
-release writes that address, `tests.chang@fengttt.com`, in the recipient's new `smtp_address`,
-which the truth's pointer doesn't read.
+| Table | Spike | v0.1.2, acceptance | v0.1.4, `final` | Against v0.1.2 | Against the spike |
+| --- | --- | --- | --- | --- | --- |
+| Generated .pst | 94, 80, 14, 0 | 84, 70, 14, 0 | 84, 70, 14, 0 | equal | equal: the 10 removed are the body kinds the spike recovered |
+| Generated .msg | 86, 67, 19, 0 | 76, 57, 19, 0 | 76, 57, 19, 0 | equal | equal |
+| Generated .eml | 86, 86, 0, 0 | 76, 76, 0, 0 | 76, 76, 0, 0 | equal | equal |
+| MIME .eml | 15, 15, 0, 0 | 14, 14, 0, 0 | 14, 14, 0, 0 | equal | equal |
+| nine.mboxrd against its sources | 116, 116, 0, 0 | 105, 105, 0, 0 | 105, 105, 0, 0 | equal | equal |
+| mbox.rlug against its splits | 59, 59, 0, 0 | 54, 54, 0, 0 | 54, 54, 0, 0 | equal | equal |
+| Tika's stores, threading | 47, 47, 0, 0; 8 of 8 absences | 47, 47, 0, 0; 8 of 8 absences | 47, 47, 0, 0; 8 of 8 absences | equal | equal |
+| Tika's .msg | 22, 21, 0, 1 | 22, 21, 0, 1 | 22, 21, 0, 1 | equal | equal; the miss is better read |
+| POI's .msg | 31, 31, 0, 0 | 27, 27, 0, 0 | 27, 27, 0, 0 | equal | equal |
 
-Time and peak memory, the median of 3 runs and the most of 3:
+The generator gaps are the same 33 in all three, kind for kind. Tika's one mismatch is still
+testMSG_chinese.msg's `/to/0/address`, an X.500 DN where Tika asserts the SMTP address; both
+releases write that address, `tests.chang@fengttt.com`, in the recipient's `smtp_address`, which
+the truth's pointer doesn't read. v0.1.4's HTML-only Markdown moves no score: the generated and
+MIME tables don't score the bodies, and the mbox tables hold the tool's read of each source to
+the same rule.
 
-| Store | Media | Spike | Release | Verdict |
-| --- | --- | --- | --- | --- |
-| plaso's, 540 messages | no | 1.609 s, 41.7 MiB | 3.338 s, 33.1 MiB | time worse, 2.07 times; memory better |
-| plaso's | yes | 1.607 s, 41.7 MiB | 3.364 s, 33.0 MiB | time worse; memory better |
-| scale.pst, 50,000 messages | no | 14.322 s, 65.1 MiB | 14.244 s, 50.2 MiB | time equal; memory better |
-| scale.pst | yes | 15.783 s, 66.6 MiB | 15.751 s, 52.6 MiB | time equal; memory better |
-| scale.mboxrd | no | 6.727 s, 41.0 MiB | 8.516 s, 43.3 MiB | time worse, 1.27 times; memory equal |
-| scale.mboxrd | yes | 7.408 s, 42.1 MiB | 8.418 s, 44.7 MiB | time worse, 1.14 times; memory equal |
-| scale.pst after the 25,000th | no | 6.848 s, 58.6 MiB | 7.229 s, 46.7 MiB | time equal; memory better |
-| scale.pst after the 25,000th | yes | 8.405 s, 59.5 MiB | 7.562 s, 47.9 MiB | time equal; memory better |
-| scale.pst after the 50,000th | no | 0.105 s, 15.8 MiB | 0.097 s, 16.5 MiB | equal |
-| scale.mboxrd after the 25,000th | no | 4.226 s, 41.4 MiB | 5.043 s, 42.7 MiB | time worse, 1.19 times; memory equal |
-| scale.mboxrd after the 25,000th | yes | 4.552 s, 41.5 MiB | 5.115 s, 42.3 MiB | time worse, 1.12 times; memory equal |
-| scale.mboxrd after the 50,000th | no | 1.925 s, 24.0 MiB | 1.833 s, 24.8 MiB | equal |
-| Committed .pst, 6 stores | both | 2 to 8 ms, 2.1 to 3.0 MiB | 2 to 8 ms, 2.9 to 3.9 MiB | time equal; memory worse by about 1 MiB, the process's start |
-| glibc build, 3 stores | no | 0.733, 7.004, 4.021 s | not run | not comparable: no glibc release |
+Time and peak memory, the median of 3 runs and the most of 3. Times within a row's own spread, or
+within the 12% the mail finding records between two days' runs, are equal; so is a peak on
+plaso's or the scale store within about 3 MiB, as acceptance judged scale.mboxrd's:
 
-What else the run shows, against the spike's:
+| Store | Media | Spike | v0.1.2, acceptance | v0.1.4, `final` | Against v0.1.2 | Against the spike |
+| --- | --- | --- | --- | --- | --- | --- |
+| plaso's, 540 messages | no | 1.609 s, 41.7 MiB | 3.338 s, 33.1 MiB | 1.507 s, 32.8 MiB | time better, 2.22 times faster; memory equal | time equal; memory better |
+| plaso's | yes | 1.607 s, 41.7 MiB | 3.364 s, 33.0 MiB | 1.509 s, 32.8 MiB | time better; memory equal | time equal; memory better |
+| scale.pst, 50,000 messages | no | 14.322 s, 65.1 MiB | 14.244 s, 50.2 MiB | 10.751 s, 50.3 MiB | time better, 0.75 times; memory equal | time better; memory better |
+| scale.pst | yes | 15.783 s, 66.6 MiB | 15.751 s, 52.6 MiB | 11.379 s, 52.6 MiB | time better, 0.72 times; memory equal | time better; memory better |
+| scale.mboxrd | no | 6.727 s, 41.0 MiB | 8.516 s, 43.3 MiB | 4.345 s, 40.7 MiB | time better, 1.96 times faster; memory equal | time better, 1.55 times faster; memory equal |
+| scale.mboxrd | yes | 7.408 s, 42.1 MiB | 8.418 s, 44.7 MiB | 4.929 s, 42.3 MiB | time better; memory equal | time better; memory equal |
+| scale.pst after the 25,000th | no | 6.848 s, 58.6 MiB | 7.229 s, 46.7 MiB | 5.430 s, 46.6 MiB | time better; memory equal | time better; memory better |
+| scale.pst after the 25,000th | yes | 8.405 s, 59.5 MiB | 7.562 s, 47.9 MiB | 5.777 s, 47.8 MiB | time better; memory equal | time better; memory better |
+| scale.pst after the 50,000th | no | 0.105 s, 15.8 MiB | 0.097 s, 16.5 MiB | 0.099 s, 16.0 MiB | equal | equal |
+| scale.mboxrd after the 25,000th | no | 4.226 s, 41.4 MiB | 5.043 s, 42.7 MiB | 2.791 s, 40.8 MiB | time better; memory equal | time better; memory equal |
+| scale.mboxrd after the 25,000th | yes | 4.552 s, 41.5 MiB | 5.115 s, 42.3 MiB | 3.086 s, 41.2 MiB | time better; memory equal | time better; memory equal |
+| scale.mboxrd after the 50,000th | no | 1.925 s, 24.0 MiB | 1.833 s, 24.8 MiB | 1.316 s, 24.1 MiB | time better; memory equal | time better; memory equal |
+| Committed .pst, 6 stores | both | 2 to 8 ms, 2.1 to 3.0 MiB | 2 to 8 ms, 2.9 to 3.9 MiB | 1.6 to 6.7 ms, 2.4 to 3.5 MiB | time equal; memory better by about 0.5 MiB | time equal; memory worse by about 0.4 MiB, the process's start |
+| glibc build, 3 stores | no | 0.733, 7.004, 4.021 s | not run | not run | not comparable: no glibc release | not comparable |
 
-- The slower rows are CPU time. plaso's store took 3.02 to 3.07 s of user time a run against
-  1.31 to 1.36 s, and scale.mboxrd 5.48 to 5.54 s against 3.90 to 4.00 s; system time barely
-  moved. The run doesn't profile it; [`mail-performance.md`](mail-performance.md) does, stage
-  by stage. Schema "2", as this run read it, made every message's Markdown by the content rule, on
-  htmd 0.6 with its `bare` pass; docproc-mail 0.1.4 no longer runs the rule.
-- Every stdout was byte-identical across its runs and with and without `--media`. Every resumed
-  stdout was the whole read's tail, byte for byte. `--media` wrote the same files as
-  `--attachments` did: 21,202 files of 1,877,202,474 B from each scale store, 10,489 and 10,584
-  after the middle message, and 5 files of 14,533,959 B from plaso's store.
-- stdout is smaller, the bodies cut: scale.pst's 77,903,482 B against 141,220,403 B, and
-  scale.mboxrd's 100,620,613 B against 164,389,002 B.
-- Warnings rose from 3 to 1,530 on plaso's store and from 1 to 8 on Tika's testPST.pst. Each new
-  one is an `http:` or `https:` image source that names no attachment, kept as written, as the
-  README states for a source that names nothing; plaso's 3 skipped contacts keep theirs.
+What else the runs show:
+
+- Acceptance found v0.1.2 slower than the spike on plaso's store, 2.07 times, and on
+  scale.mboxrd, 1.12 to 1.27 times, and the difference was CPU time: plaso's store took 3.02 to
+  3.07 s of user time a run against the spike's 1.31 to 1.36 s, and scale.mboxrd 5.48 to 5.54 s
+  against 3.90 to 4.00 s. v0.1.2 made every message's Markdown by the content rule, on htmd 0.6
+  with its `bare` pass. v0.1.4 runs no content rule and repeats and copies less
+  ([`mail-performance.md`](mail-performance.md) records both changes): plaso's store took 1.25 to
+  1.31 s of user time a run, and scale.mboxrd 2.70 to 2.81 s.
+- Every stdout was byte-identical across its runs and with and without `--media`, in both
+  releases' runs. Every resumed stdout was the whole read's tail, byte for byte. `--media` wrote
+  the same files as `--attachments` did: 21,202 files of 1,877,202,474 B from each scale store,
+  10,489 and 10,584 after the middle message, and 5 files of 14,533,959 B from plaso's store.
+- stdout is smaller than the spike's, the bodies cut, and v0.1.4's is the size v0.1.2's was:
+  scale.pst's 77,903,482 B against the spike's 141,220,403 B, and scale.mboxrd's 100,620,613 B
+  against 164,389,002 B.
+- Warnings were 1,530 on plaso's store and 8 on Tika's testPST.pst in both releases' runs, where
+  the spike's were 3 and 1. Each new one is an `http:` or `https:` image source that names no
+  attachment, kept as written, as the README states for a source that names nothing; plaso's 3
+  skipped contacts keep theirs.
 
 ### docproc-onenote: the findings
 
@@ -473,16 +506,16 @@ are mostly the process's start, and the 18 ms summed over 46 rows is within the 
 | Tool | Fields | Time | Memory |
 | --- | --- | --- | --- |
 | docproc-ooxml | equal: every kind 1.000, as the spike's | equal | better, slightly |
-| docproc-mail | equal on every kept kind; Tika's SMTP address now written, in `smtp_address` | equal on the scale .pst; worse on plaso's store (2.07 times) and the mboxrd (1.12 to 1.27 times) | better on plaso's and the scale .pst; equal on the mboxrd; about 1 MiB more on the small stores |
+| docproc-mail | equal on every kept kind; Tika's SMTP address now written, in `smtp_address` | v0.1.4: equal on plaso's store, better on the scale store, as a .pst and as an mboxrd; v0.1.2 was equal on the scale .pst and worse on plaso's store (2.07 times) and the mboxrd (1.12 to 1.27 times) | better on plaso's and the scale .pst; equal on the mboxrd; about 0.4 MiB more on the small stores, where v0.1.2 took about 1 MiB more |
 | docproc-onenote | equal on every kept kind; the refusal and empty-notebook warnings changed by settled decisions | better on the large sections; equal on the committed inputs | better: the large twins 135 MiB to under 9 MiB |
 
 No finding. No shipped tool falls short of its README, its CHANGELOG, or a settled decision on
-anything the benches measure. docproc-mail's slower rows are not a regression in that sense: its
-README states no time of the tool's own, and the figures under "Limits" are cited as the spike's.
-The slowdown is CPU time spent making the Markdown, which schema "2" adds to every message, and
-the run doesn't attribute it further. docproc-mail's memory stays within the README's bound, the
-largest attachment's small multiple: 52.6 MiB at most on the scale store, whose largest is
-16 MiB.
+anything the benches measure. docproc-mail v0.1.2's slower rows were not a regression in that
+sense: its README stated no time of the tool's own, and the figures under "Limits" were cited as
+the spike's. The slowdown was CPU time spent making the Markdown, which schema "2" added to every
+message. v0.1.4, which the `final` task measured, has no slower row against the spike or against
+v0.1.2. docproc-mail's memory stays within the README's bound, the largest attachment's small
+multiple: 52.6 MiB at most on the scale store in both releases, whose largest is 16 MiB.
 
 Not run: the three glibc rows of the mail bench, since no glibc build is released, and the
 onenote content table, all of whose fields are cut.
