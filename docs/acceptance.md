@@ -18,7 +18,8 @@ when:
   release archive; and ["The ~/docs run"](#the-docs-run) and
   ["Failures by class"](#failures-by-class), on `b48ee124f6c8`. a3d861a and `b48ee124f6c8` hold
   the same code, differing in docs and context alone: the release candidate that is tagged v0.4.2,
-  then cmd/docproc/v0.2.2, with docproc-onenote tagged `tools/onenote/v0.1.2`. Each rerun section
+  `storage/v0.1.1`, `postgres/v0.1.1`, and `tools/onenote/v0.1.2`, then cmd/docproc/v0.2.2;
+  the storage and postgres modules were not measured. Each rerun section
   keeps acceptance's figures beside its own.
 
 **The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final`, run id
