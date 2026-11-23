@@ -232,5 +232,147 @@ Looked for and not found to cost anything on these inputs:
 
 ## After the fixes
 
-Slice 5 records here how each numbered waste was removed, with the after profiles taken the same
-way on the same inputs, and the stage table and allocation counts set beside the ones above.
+Each waste was removed in a commit of its own, each with the check passing and the goldens
+unchanged. The "after" profiles were taken on 2026-11-22 at 62e8d24, the same way and on the same
+inputs as the "before" ones, with the stage rules following the renamed functions (`image_tags`,
+`blocks_and_kept`, `collapse`).
+
+### How each waste was removed
+
+1. **Word tokens** (6a5b695). The interning map borrows its word keys, `&str` slices of the two
+   texts, for the length of `content::missing`; URL keys, which `url::normalized` already
+   allocates, are a map of their own, sharing one numbering. A word token allocates nothing.
+2. **htmd's converter** (e7c4132). The converter is a `thread_local`, built at its first use. htmd
+   resets its own per-document state at each conversion, so a reused converter writes what a
+   fresh one did. Passing it in was weighed, but it would thread a value that never changes
+   through every reader (pst, msg, mime, mbox, eml) and `derive`'s tests.
+3. **The tag scans** (ed7becd). One scan, `image_tags`, counts the nesting and collects the
+   `<img>` tags' ranges, and it returns None past the cap. `rewritten` rewrites the sources of the
+   tags it's given, so images are still resolved only for a body within the cap. `Pieces` yields
+   each tag name as a borrowed slice, compared ASCII case-insensitively against the static lists,
+   and a raw element's end is found without building its `</name`. A tag allocates nothing.
+4. **The payload buffer** (2447ea6). `Media::store_bytes` hashes a slice in place. With
+   `--media`, it writes the slice whole into the temporary file, and only when its name isn't
+   already written this run. Every docproc-mail caller passes a slice, so every one uses it.
+   `Media::store` keeps its reader for docproc-onenote, whose file data comes as a reader. The
+   `data:` image's double hash went in the same commit: `Payload` names the bytes once, when
+   `Images::data` reads them, and `make` stores that `Payload` by its name.
+5. **The `bare` pass** (93cf6e2). One offset parse, `blocks_and_kept`, yields both the top-level
+   block ranges and the kept ranges. A block with no escape to try is appended as it stands, and
+   the trials reuse one buffer. `bare` takes htmd's `String` by value, so a Markdown with no
+   backslash is returned uncopied.
+6. **`from_text`** (bf0157f). Lines are split at any line ending as the pass goes. A line that is
+   already single-spaced is taken as it stands, and any other is collapsed into one reused buffer.
+   Each line is escaped straight into the output through the envelope's `escape_into`, which
+   `escape` now wraps.
+
+The content rule's alignment (62e8d24) was tightened without changing what it finds.
+`middle_snake` takes the same steps in the same order with less work in each. The two ranges are
+sliced once. The diagonals are walked by a plain countdown. Diagonal k's start, which is one past
+diagonal k − 1's point or on diagonal k + 1's, whichever reaches further, is taken as their
+maximum, which it equals, so no branch depends on the data. Diagonal k − 1's point, read for
+diagonal k, is carried to diagonal k − 2 as its k + 1, so each diagonal reads one point, not two.
+The tokens were already interned to integers, and the common prefix and suffix were already
+trimmed. Two other changes were measured and not kept: reversed copies of the sequences for the
+backward snake, and diagonals indexed without the offset. Neither ran faster. On the 538 token
+pairs dumped from plaso's store, the old and new `kept` agree exactly, bounded, unbounded, and at
+a 1,000-edit bound, and so do they on 1.2 million random pairs with many ties. A unit test pins
+the rule's choice among tied subsequences.
+
+### Byte identity
+
+Each binary's stdout and stderr were hashed (SHA-256) on the three bench inputs, at eec6906 before
+any fix and at 62e8d24. Each commit between them was checked the same way: on plaso's store for
+the first two, and on all three inputs from ed7becd on. Every hash matched:
+
+| Input | stdout SHA-256 | stderr |
+| --- | --- | --- |
+| plaso's store | `094a78a1…b6b149` | identical |
+| scale.mboxrd | `3c13feeb…5d9f8` | empty |
+| scale.pst | `7a474845…b3e75` | empty |
+
+With `--media`, plaso's store and scale.mboxrd write the same files byte for byte: 5 and 21,202
+files.
+
+### Wall time
+
+Medians of 10 runs, the three binaries timed in one sitting. "Before" is eec6906's build.
+
+| Input | Binary | Wall | Range | User | System | Instructions |
+| --- | --- | --- | --- | --- | --- | --- |
+| plaso's store | spike 0.3.1 | 1.576 s | 1.531–1.652 s | 1.354 s | 0.215 s | 7.84 G |
+| plaso's store | before | 3.408 s | 3.377–3.574 s | 3.136 s | 0.271 s | 44.47 G |
+| plaso's store | after | 2.495 s | 2.474–2.520 s | 2.246 s | 0.242 s | 28.42 G |
+| scale.mboxrd | spike 0.3.1 | 5.595 s | 5.524–5.688 s | 3.676 s | 1.875 s | 25.92 G |
+| scale.mboxrd | before | 7.695 s | 7.638–7.966 s | 5.397 s | 2.277 s | 41.37 G |
+| scale.mboxrd | after | 5.463 s | 5.418–5.483 s | 3.883 s | 1.544 s | 31.95 G |
+
+On scale.mboxrd the tool now runs slightly faster than the spike, while also applying the
+content rule, which the spike lacks. On plaso's store the difference left is almost all the
+content rule.
+
+### Where the time goes now
+
+Seconds are samples over the rate, as in the "before" table, shown here beside it:
+
+| Stage | plaso's: before | plaso's: after | after share | scale.mboxrd: before | scale.mboxrd: after | after share |
+| --- | --- | --- | --- | --- | --- | --- |
+| Reading the input | 0.26 s | 0.31 s | 10.0% | 2.74 s | 2.01 s | 33.6% |
+| Body selection and decoding | 0.01 s | 0.01 s | 0.2% | 0.00 s | 0.00 s | 0.0% |
+| htmd: the converter built | 0.01 s | 0.00 s | 0.0% | 0.44 s | 0.00 s | 0.0% |
+| htmd: the conversion | 0.91 s | 1.07 s | 35.4% | 0.49 s | 0.39 s | 6.5% |
+| htmd: the `bare` pass | 0.07 s | 0.05 s | 1.8% | 0.01 s | 0.00 s | 0.1% |
+| The tag scan (`image_tags`) | 0.04 s | 0.05 s | 1.5% | 0.03 s | 0.03 s | 0.5% |
+| The image-source rewrite | 0.04 s | 0.00 s | 0.0% | 0.03 s | 0.01 s | 0.1% |
+| Content rule: tokens | 0.15 s | 0.15 s | 4.8% | 1.13 s | 0.81 s | 13.5% |
+| Content rule: alignment | 1.37 s | 0.78 s | 25.7% | 0.01 s | 0.00 s | 0.1% |
+| Content rule: sentence split | 0.01 s | 0.01 s | 0.4% | 0.11 s | 0.10 s | 1.6% |
+| Content rule: reading the Markdown | 0.04 s | 0.05 s | 1.7% | 0.10 s | 0.10 s | 1.6% |
+| Content rule: the rest | 0.00 s | 0.00 s | 0.1% | 0.05 s | 0.05 s | 0.8% |
+| Escaping | 0.03 s | 0.04 s | 1.3% | 0.17 s | 0.07 s | 1.1% |
+| The JSON line | 0.01 s | 0.02 s | 0.6% | 0.25 s | 0.23 s | 3.8% |
+| Media: hashing each payload for its name | 0.01 s | 0.01 s | 0.3% | 1.14 s | 0.99 s | 16.5% |
+| Allocator, caller not unwound | 0.44 s | 0.48 s | 16.0% | 2.58 s | 1.20 s | 20.1% |
+| Other | 0.00 s | 0.00 s | 0.1% | 0.01 s | 0.01 s | 0.1% |
+| Samples, rate | 13,588 at 4 kHz | 12,150 at 4 kHz | 3.04 s | 18,561 at 2 kHz | 11,987 at 2 kHz | 5.99 s |
+
+The before table's "nesting count" row is now the tag scan, which also finds the images. The
+image-source rewrite now only rewrites the tags the scan found.
+
+The allocation counts, from the instrumented copy ported onto 62e8d24:
+
+| Stage | plaso's: before | plaso's: after | scale.mboxrd: before | scale.mboxrd: after |
+| --- | --- | --- | --- | --- |
+| Whole run | 5,199,022 | 3,287,718 | 19,092,087 | 4,890,911 |
+| Content rule: `content::missing` | 1,153,819 | 556,382 | 7,627,754 | 1,006,769 |
+| htmd: the converter built | 95,226 | 177, once | 6,175,353 | 177, once |
+| htmd: the conversion | 2,124,209 | 2,124,209 | 1,038,269 | 1,038,269 |
+| The tag scan and the image-source rewrite | 1,159,566 | 10,851 | 981,019 | 55,133 |
+| Escaping (`from_text`) | 7,508 | 4,293 | 403,260 | 15,111 |
+| Content rule: reading the Markdown | 145,142 | 145,142 | 338,025 | 338,025 |
+| The `bare` pass | 121,224 | 54,880 | 34,889 | 0 |
+
+On scale.mboxrd, reading the input and the allocator row fell too, though their code didn't
+change. The likeliest cause is that musl's allocator now serves fourteen million fewer
+allocations. The payload copy is gone from the media row; the hash is what's left there, the work
+the names need. On plaso's store, the conversion's samples read higher after: 1.07 s against
+0.91 s. The code it runs is html5ever's and is unchanged, and the instrumented copy timed the
+conversion at 1.08 s against 1.05 s. The higher reading is most likely the allocator's state and
+sampling, not new work.
+
+### What is left
+
+- **The content rule's alignment on plaso's store: 0.78 s, 25.7% of samples.** Alone, on the
+  538 dumped token pairs, it takes 0.69 s in place of 1.39 s. That time is now the diagonal steps
+  themselves, about 268 million of them, each two reads, one write, and one comparison of tokens.
+  The number of steps is set by the rule: Myers' algorithm takes O((n + m)·D) steps, and plaso's
+  comparisons run to about 4,500 edits. Of the Markdown's 357,606 tokens, 152,355 never occur in
+  their message's text body: the image and link destinations, and the text the HTML holds beyond
+  the text body. Fewer steps would need a change to which tokens are aligned, such as dropping
+  those that occur on one side only. That changes which sentences are missing ("What is not
+  waste"), so it is the architect's decision.
+- **The content rule's tokens on scale.mboxrd: 0.81 s, 13.5%.** This is ICU4X's word segmenter
+  (5.2%), the interning map's SipHash lookups (3.8%), and the URL scan (3.1%). Each is a step the
+  rule needs, and none copies or repeats work. A faster hash would trade away SipHash's
+  resistance to inputs crafted to collide, and mail input is untrusted.
+- **htmd's conversion and reading the input** remain as "What is not waste" describes.

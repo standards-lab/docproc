@@ -9,6 +9,18 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+### Changed
+
+- A read does the same work with less around it, and its output is unchanged, byte for byte: a
+  word token of the content rule allocates nothing; htmd's converter is built once a run rather
+  than once a message; one scan of an HTML body's tags both counts its nesting and finds its
+  `<img>` tags, allocating no tag name; a payload in memory is hashed where it lies rather than
+  copied through a buffer, and a `data:` image's payload is hashed once; the pass that takes back
+  htmd 0.6's escapes reads the Markdown once; a text body's Markdown is made in one pass; and the
+  content rule's alignment does about half its former work per step, finding the same
+  subsequence. On plaso's store a read takes 2.50 s in place of 3.41 s, and on scale.mboxrd
+  5.46 s in place of 7.70 s, as docproc's `docs/mail-performance.md` records.
+
 ## [v0.1.3] - 2026-11-19
 
 ### Changed

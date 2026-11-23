@@ -14,6 +14,11 @@ covers docproc-onenote only.
 
 - The crate graph locks hashbrown 0.17.2, a patch release through lru, in place of 0.17.1. The
   output is unchanged.
+- The shared envelope crate interns the content rule's word tokens without copying them and
+  runs the rule's alignment with about half its former work per step, finding the same
+  subsequence; it also gains a media store call for a payload in memory and an escape that
+  appends to a caller's string, which docproc-onenote doesn't call. The output is unchanged; the
+  goldens are identical.
 
 ## [v0.1.1] - 2026-11-19
 
