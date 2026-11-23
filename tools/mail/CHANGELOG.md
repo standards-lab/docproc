@@ -9,6 +9,56 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.1.4] - 2026-11-22
+
+### Changed
+
+- The crate graph locks mail-parser 1.0.2 and encodify 1.0.3, patch releases, in place of 1.0.1
+  and 1.0.2. The output is unchanged.
+- A message's Markdown is made from its HTML body alone when it has one, else from its text body,
+  else from its RTF body's own text, and appends nothing from another body. Markdown made from
+  HTML had appended, as one paragraph, the sentences of the text body, or of the RTF body's text,
+  that it lacked by the content rule; on plaso's store that grew 513 of 538 such messages by 2.1 M
+  characters, the median one by 27%, mostly with sentences whose words the Markdown already held
+  and tracking URLs that differ between the parts. The parts of a `multipart/alternative` are each
+  an alternative version of the same information (RFC 2046 §5.1.4), so docproc-mail no longer runs
+  the content rule, in any format, a clear-signed message's signed content included. The RTF
+  body's text is now read only for a message with neither HTML nor a text body.
+- A read repeats and copies less, with its output unchanged byte for byte: htmd's converter is
+  built once a run rather than once a message; one scan of an HTML body's tags both counts its
+  nesting and finds its `<img>` tags, allocating no tag name; a payload in memory is hashed where
+  it lies rather than copied through a buffer, and a `data:` image's payload is hashed once; the
+  pass that takes back htmd 0.6's escapes reads the Markdown once; and a text body's Markdown is
+  made in one pass. With these changes and the content rule gone, a read of plaso's store takes
+  1.50 s in place of 3.41 s, and of scale.mboxrd 4.07 s in place of 7.70 s, as docproc's
+  `docs/mail-performance.md` records.
+
+### Fixed
+
+- A table in an RTF body reads one line per row. The RTF reader dropped `\cell` and `\row`, so a
+  row's cells ran together and its rows into one line. Now `\cell` and `\nestcell` are read as a
+  tab, so a row's cells are separated by single spaces in the Markdown, and `\row`, `\page`, and
+  `\sect` as line breaks, as `\par` and `\line` are; a nested table's `\nonesttables` fallback is
+  skipped, so its text is read once. This holds for the HTML recovered from an RTF body and for
+  an RTF body's own text.
+- A `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or ends in `.SMIME`, compared
+  without regard to case, has the warning an opaque S/MIME part gives, `it holds an S/MIME part
+  (application/pkcs7-mime), encrypted or opaquely signed, whose content is not read`, whatever
+  its attachments; it had none, so its Markdown, empty or partial, read as all there was. It is
+  still read. A clear-signed `IPM.Note.SMIME.MultipartSigned` message has no such warning.
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared
+  without regard to case, that stores no body of its own has its Markdown made from the text and
+  HTML bodies of its `multipart/signed` attachment, chosen as an `.eml`'s signed content's are;
+  it had no Markdown, since such a message keeps its readable text in that attachment alone.
+  A body the message does store is kept as before. The attachment is still listed as stored, and
+  the signed content's own attachments are not listed.
+- A rights-managed message, in any format, has a warning, `it is a rights-managed message
+  (message.rpmsg), whose encrypted content is not read`; it had none, so its placeholder body read
+  as all there was. Its sign is an attachment named `message.rpmsg`, or, in an `.eml` or an mbox,
+  a `Content-Class: rpmsg.message` header, each compared without regard to case, and it is warned
+  once whichever it has. It is still read: its placeholder body is its Markdown, and the
+  `message.rpmsg` attachment is listed.
+
 ## [v0.1.3] - 2026-11-19
 
 ### Changed
@@ -167,7 +217,8 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.3...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.4...HEAD
+[v0.1.4]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.3...tools/mail/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...tools/mail/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.0...tools/mail/v0.1.1

@@ -351,8 +351,9 @@ What else the run shows, against the spike's:
 
 - The slower rows are CPU time. plaso's store took 3.02 to 3.07 s of user time a run against
   1.31 to 1.36 s, and scale.mboxrd 5.48 to 5.54 s against 3.90 to 4.00 s; system time barely
-  moved. The run doesn't profile it. Schema "2" makes every message's Markdown by the content rule,
-  on htmd 0.6 with its `bare` pass.
+  moved. The run doesn't profile it; [`mail-performance.md`](mail-performance.md) does, stage
+  by stage. Schema "2", as this run read it, made every message's Markdown by the content rule, on
+  htmd 0.6 with its `bare` pass; docproc-mail 0.1.4 no longer runs the rule.
 - Every stdout was byte-identical across its runs and with and without `--media`. Every resumed
   stdout was the whole read's tail, byte for byte. `--media` wrote the same files as
   `--attachments` did: 21,202 files of 1,877,202,474 B from each scale store, 10,489 and 10,584

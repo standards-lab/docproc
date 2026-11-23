@@ -1,7 +1,7 @@
 //! .eml messages through the binary: the eight generated sources under
 //! tests/fixtures/generated/eml against their hand truth (truth.json), the MIME group's
 //! hand-written sources under tests/fixtures/mime/eml against theirs, and test-built messages
-//! for what those don't carry.
+//! for what those don't carry. The MIME and Markdown groups match their SHA-256 lists.
 
 mod common;
 
@@ -199,15 +199,15 @@ fn the_mime_group_matches_its_truth() {
     assert_group_matches_its_truth("mime", MIME_SOURCES);
 }
 
-#[test]
-fn the_mime_group_matches_its_sha256_list() {
+fn assert_group_matches_its_sha256_list(group: &str) {
     let list: Value =
-        serde_json::from_slice(&std::fs::read(fixture("mime/sha256.json")).unwrap()).unwrap();
+        serde_json::from_slice(&std::fs::read(fixture(&format!("{group}/sha256.json"))).unwrap())
+            .unwrap();
     let mut listed = Vec::new();
     for entry in list.as_array().unwrap() {
         let file = entry["file"].as_str().unwrap();
         assert_eq!(
-            Some(sha256(&fixture(&format!("mime/{file}"))).as_str()),
+            Some(sha256(&fixture(&format!("{group}/{file}"))).as_str()),
             entry["sha256"].as_str(),
             "{file}"
         );
@@ -217,7 +217,7 @@ fn the_mime_group_matches_its_sha256_list() {
     let mut committed = Vec::new();
     let mut dirs = vec![String::new()];
     while let Some(dir) = dirs.pop() {
-        for entry in std::fs::read_dir(fixture(&format!("mime/{dir}"))).unwrap() {
+        for entry in std::fs::read_dir(fixture(&format!("{group}/{dir}"))).unwrap() {
             let entry = entry.unwrap();
             let name = format!("{dir}{}", entry.file_name().into_string().unwrap());
             if entry.file_type().unwrap().is_dir() {
@@ -232,6 +232,16 @@ fn the_mime_group_matches_its_sha256_list() {
 }
 
 #[test]
+fn the_mime_group_matches_its_sha256_list() {
+    assert_group_matches_its_sha256_list("mime");
+}
+
+#[test]
+fn the_markdown_group_matches_its_sha256_list() {
+    assert_group_matches_its_sha256_list("markdown");
+}
+
+#[test]
 fn markdown_is_made_from_the_html_else_the_text() {
     let markdown = |source: &str| {
         let out = run(&[fixture(&format!("generated/eml/{source}"))]);
@@ -239,15 +249,31 @@ fn markdown_is_made_from_the_html_else_the_text() {
     };
     assert_eq!(
         markdown("03-html-inline-image.eml"),
-        format!(
-            "We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})\n\n\
-             It is taped into the log book."
-        )
+        format!("We found a **moth** in relay 70, panel F.\n\n![moth]({MOTH})")
     );
     assert_eq!(
         markdown("02-reply-latin1.eml"),
         "Ada,\n\nSplendid. The café in Zürich serves crème brûlée; we shall  \n\
          discuss Note G there.\n\n\\> I have finished the notes on the engine.\n\nCharles"
+    );
+}
+
+#[test]
+fn differing_text_and_html_bodies_give_the_htmls_markdown_alone() {
+    let (message, stderr) = read(
+        "alternative.eml",
+        b"From: ann@example.com\r\n\
+          Content-Type: multipart/alternative; boundary=\"b\"\r\n\r\n\
+          --b\r\nContent-Type: text/plain\r\n\r\n\
+          We found a moth. Track it at https://example.net/t?id=1\r\n\
+          --b\r\nContent-Type: text/html\r\n\r\n\
+          <p>We found a <b>moth</b>.</p><p>It is taped in.</p>\r\n\
+          --b--\r\n",
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "We found a **moth**.\n\nIt is taped in."
     );
 }
 
@@ -669,7 +695,7 @@ fn latin1_and_ascii_decode_as_windows_1252() {
     );
     assert_eq!(stderr, "");
     assert_eq!(message["subject"], "€5café");
-    assert_eq!(message["markdown"], "\u{201c}café\u{201d}\n\ncafé € Ÿ");
+    assert_eq!(message["markdown"], "\u{201c}café\u{201d}");
     let (message, stderr) = read(
         "latin1-text.eml",
         b"From: ann@example.com\r\n\
@@ -741,4 +767,44 @@ fn images_link_their_media_names() {
             file(1)
         )
     );
+}
+
+#[test]
+fn a_rights_managed_message_warns_that_the_content_is_not_read() {
+    let rights_managed = warning(
+        "it is a rights-managed message (message.rpmsg), whose encrypted content is not read",
+    );
+    let placeholder = "This message is protected with Rights Management.";
+    let attached = |name: &str| {
+        format!(
+            "From: ann@example.com\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n\
+             --b\r\nContent-Type: text/plain\r\n\r\n{placeholder}\r\n\
+             --b\r\nContent-Type: application/x-microsoft-rpmsg-message\r\n\
+             Content-Disposition: attachment; filename=\"{name}\"\r\n\r\nx\r\n--b--\r\n"
+        )
+    };
+    let (message, stderr) = with_headers("class.eml", "Content-Class: rpmsg.message\r\n");
+    assert_eq!(stderr, rights_managed);
+    assert_eq!(message["markdown"], "body");
+    let (_, stderr) = with_headers("class-case.eml", "Content-Class:  RPMsg.Message \r\n");
+    assert_eq!(stderr, rights_managed);
+    for name in ["message.rpmsg", "Message.RPMSG"] {
+        let (message, stderr) = read("attached.eml", attached(name).as_bytes());
+        assert_eq!(stderr, rights_managed, "{name}");
+        assert_eq!(message["markdown"], placeholder);
+        assert_eq!(message["attachments"][0]["filename"], name);
+    }
+    let both = format!(
+        "Content-Class: rpmsg.message\r\n{}",
+        attached("message.rpmsg")
+    );
+    let (_, stderr) = read("both.eml", both.as_bytes());
+    assert_eq!(stderr, rights_managed);
+    let (_, stderr) = with_headers(
+        "plain.eml",
+        "Content-Class: urn:content-classes:message\r\n",
+    );
+    assert_eq!(stderr, "");
+    let (_, stderr) = read("plain-attached.eml", attached("message.txt").as_bytes());
+    assert_eq!(stderr, "");
 }

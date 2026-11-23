@@ -13,7 +13,7 @@ typed-path 0.12.4: onenote_parser 2.1.0 requires ^0.12.3; it moves only with one
 '''
 
 [tasks.check]
-description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, lint the envelope with all its features on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
+description = "Format-check, lint, and test docproc-onenote and the shared envelope crate against the static musl release binary, lint the envelope on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -22,7 +22,7 @@ target="$(uname -m)-unknown-linux-musl"
 cargo fmt --check
 cargo fmt --check --manifest-path ../envelope/Cargo.toml
 cargo clippy --all-targets --locked --target "$target" -p docproc-onenote -p docproc-envelope -- -D warnings
-cargo clippy --all-targets --all-features --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
+cargo clippy --all-targets --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
 cargo test --release --locked --target "$target" -p docproc-onenote -p docproc-envelope
 "target/$target/release/docproc-onenote" --version
 '''

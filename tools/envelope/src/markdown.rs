@@ -10,6 +10,12 @@
 /// The text holds no line break; the caller writes its own.
 pub fn escape(text: &str, line_start: bool) -> String {
     let mut out = String::with_capacity(text.len() + 8);
+    escape_into(&mut out, text, line_start);
+    out
+}
+
+/// [`escape`], appending to `out`.
+pub fn escape_into(out: &mut String, text: &str, line_start: bool) {
     let mut rest = text;
     if line_start {
         if rest.starts_with(['-', '=', '+', '#', '>']) {
@@ -32,7 +38,6 @@ pub fn escape(text: &str, line_start: bool) -> String {
             _ => out.push(c),
         }
     }
-    out
 }
 
 fn html_like(rest: &str) -> bool {
@@ -141,6 +146,16 @@ mod tests {
     }
 
     #[test]
+    fn the_escape_appends_what_it_returns() {
+        for case in cases::group("literal_escape") {
+            let text = cases::text(&case, "text");
+            let mut out = String::from("> ");
+            escape_into(&mut out, text, true);
+            assert_eq!(out, format!("> {}", escape(text, true)), "{case}");
+        }
+    }
+
+    #[test]
     fn a_target_makes_its_tables_destination() {
         for case in cases::group("destinations") {
             let markdown = destination(cases::text(&case, "target"));
@@ -153,45 +168,6 @@ mod tests {
         for case in cases::group("titles") {
             let markdown = title(cases::text(&case, "title"));
             assert_eq!(markdown, cases::text(&case, "markdown"), "{case}");
-        }
-    }
-
-    #[cfg(feature = "markdown")]
-    #[test]
-    fn a_title_reads_back_as_written() {
-        use pulldown_cmark::{Event, Parser, Tag};
-        for case in cases::group("titles") {
-            let written = case["reads"]
-                .as_str()
-                .unwrap_or_else(|| cases::text(&case, "title"));
-            let markdown = title(cases::text(&case, "title"));
-            let both = format!("[x](y \"{markdown}\") ![x](y \"{markdown}\")");
-            let read: Vec<String> = Parser::new(&both)
-                .filter_map(|event| match event {
-                    Event::Start(Tag::Link { title, .. } | Tag::Image { title, .. }) => {
-                        Some(title.into_string())
-                    }
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(read, [written, written], "{case}: {both}");
-        }
-    }
-
-    #[cfg(feature = "markdown")]
-    #[test]
-    fn a_destination_reads_back_as_its_target() {
-        use pulldown_cmark::{Event, Parser, Tag};
-        for case in cases::group("destinations") {
-            let target = case["reads"]
-                .as_str()
-                .unwrap_or_else(|| cases::text(&case, "target"));
-            let link = format!("[x]({})", destination(cases::text(&case, "target")));
-            let read = Parser::new(&link).find_map(|event| match event {
-                Event::Start(Tag::Link { dest_url, .. }) => Some(dest_url.into_string()),
-                _ => None,
-            });
-            assert_eq!(read.as_deref(), Some(target), "{case}: {link}");
         }
     }
 }

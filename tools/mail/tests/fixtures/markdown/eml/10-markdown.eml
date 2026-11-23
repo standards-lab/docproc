@@ -1,0 +1,23 @@
+Message-ID: <markdown-1@example.org>
+Date: Wed, 14 Jan 2026 11:05:00 +0000
+From: Ada Lovelace <ada@example.org>
+To: Mary Somerville <mary@example.org>
+Subject: The Markdown of Note G
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<html><body>
+<p>The sum <span class="math math-inline">x^2 + y^2</span> is shown inline.</p>
+<p><span class="math math-display">\int_0^1 f(x)\,dx</span></p>
+<p>Read <a href="https://example.org/notes"> the<br>notes </a> for the table.</p>
+<p>Read <a href="https://example.org/g" title="  Note G
+
+the table  ">the note</a> again.</p>
+<p>The plate: <img src="https://example.org/plate.png" alt="the engine" title=" the
+  engine plate "></p>
+<p>The lost plate: <img alt="lost plate" title="lost"> was never drawn.</p>
+<p>+ is not a list item.</p>
+<p>1) is not a list item either.</p>
+<p>&lt;https://example.org&gt; is not a link.</p>
+</body></html>

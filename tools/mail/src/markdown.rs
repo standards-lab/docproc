@@ -4,8 +4,8 @@
 //! htmd walks the document recursively, and html5ever caps no depth, so an HTML body nested a few
 //! thousand elements deep would overflow the stack, a fault no guard catches, and end the whole
 //! run by signal. A pass over the HTML's tags counts its open elements first, as the HTML parser
-//! would leave them open ([`too_deep`]), and a body nested past [`NESTING_MAX`] never reaches
-//! htmd.
+//! would leave them open, and finds its `<img>` tags in the same pass ([`image_tags`]); a body
+//! nested past [`NESTING_MAX`] never reaches htmd.
 //!
 //! The Markdown is made once a message's attachments are read, nested messages included, so that
 //! its images link media names ([`make`]). Before htmd reads the HTML, each `<img>`'s source is
@@ -22,10 +22,9 @@
 //! taking the backslash away would change how the Markdown reads, and makes every other the bare
 //! character, so the Markdown reads, and is written, as it was ([`bare`]).
 //!
-//! Markdown made from HTML is compared with the message's source text by the content rule, the
-//! shared crate's (docs/tool-contract.md, schema "2"): the source text's sentences the Markdown lacks
-//! are appended to it, in order, as one paragraph escaped as a text body's Markdown is
-//! ([`with_missing`]). The source text is the text body, else the RTF body's own text.
+//! A message's Markdown is made from its HTML body alone when it has one, else from its plain
+//! text, and nothing of one body is appended to another's: each part of a `multipart/alternative`
+//! is an alternative version of the same information (RFC 2046 §5.1.4) ([`derive`]).
 //!
 //! An image's source is read as a URL in an attribute is: its edge whitespace dropped, its scheme
 //! matched in any case. A `data:` URL (RFC 2397) is named by its decoded payload's hash and its
@@ -38,21 +37,21 @@
 //! and joined by line feeds. A table cell is walked where a block may begin, as htmd 0.5.6 walked
 //! it, so a heading in a cell stays a heading rather than running into the text beside it.
 //!
-//! [`bare`] reads the Markdown as the envelope's content rule does, CommonMark with GFM tables and
-//! strikethrough, and with math, which htmd 0.6 writes for. The escapes it may take back are those
-//! htmd 0.5.6 never wrote, or wrote under narrower rules; htmd 0.5.6's own, before `\`, `*`, `_`,
-//! `` ` ``, `[`, `]`, a first `=`, `>`, or `#`, and an ordered item's `.`, are kept as written. The
-//! escapes are tried last first, each against the Markdown with the later ones already taken away,
-//! so a run's first backslash, which may keep the run from beginning a block, is the one left, as
-//! in htmd 0.5.6's `\~~~`; each test reads only the top-level block that holds its escape, so a
-//! body's many blocks cost one read each per escape. Code spans, code blocks, math, raw HTML,
-//! images, and links' destinations and titles, where a backslash escapes nothing or the envelope
-//! wrote it, are left as written.
+//! [`bare`] reads the Markdown as CommonMark with GFM tables and strikethrough, and with math,
+//! which htmd 0.6 writes for. The escapes it may take back are those htmd 0.5.6 never wrote, or
+//! wrote under narrower rules; htmd 0.5.6's own, before `\`, `*`, `_`, `` ` ``, `[`, `]`, a first
+//! `=`, `>`, or `#`, and an ordered item's `.`, are kept as written. The escapes are tried last
+//! first, each against the Markdown with the later ones already taken away, so a run's first
+//! backslash, which may keep the run from beginning a block, is the one left, as in htmd 0.5.6's
+//! `\~~~`; each test reads only the top-level block that holds its escape, so a body's many blocks
+//! cost one read each per escape. Code spans, code blocks, math, raw HTML, images, and links'
+//! destinations and titles, where a backslash escapes nothing or the envelope wrote it, are left
+//! as written.
 //!
-//! [`too_deep`] counts as the HTML parser leaves elements open: each start tag opens one but a void
-//! element's, and a self-closing one's inside `svg` or `math`, where `/>` closes it; an end tag
-//! closes the most recent open element of its name and those opened after it, and one with no such
-//! element is ignored. A start tag also closes the open element just before it that the parser
+//! [`image_tags`] counts as the HTML parser leaves elements open: each start tag opens one but a
+//! void element's, and a self-closing one's inside `svg` or `math`, where `/>` closes it; an end
+//! tag closes the most recent open element of its name and those opened after it, and one with no
+//! such element is ignored. A start tag also closes the open element just before it that the parser
 //! closes in the common case: a `p`, `li`, `dt`, `dd`, `option`, `tr`, `td`, or `th` the same as
 //! it, or an open `p` before a block. The count errs high rather than low, so a body it lets
 //! through htmd reads. A body past the cap that has no text body gives way to its text with its
@@ -64,9 +63,8 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::ops::Range;
 
-use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::{destination, escape, title};
-use docproc_envelope::{Fault, Media};
+use docproc_envelope::markdown::{destination, escape, escape_into, title};
+use docproc_envelope::{Fault, Media, Payload};
 use htmd::Element;
 use htmd::element_handler::{Context, ContextKind, HandlerResult, Handlers};
 use mail_parser::Encoding;
@@ -78,12 +76,10 @@ use crate::model::{Medium, Message};
 pub const NESTING_MAX: usize = 512;
 
 /// A message's bodies as its Markdown is made from them: its HTML, stored or recovered from its
-/// RTF body, and its plain text, the text body or else the RTF body's own text. Beside HTML and no
-/// text body, `rtf_text` is the RTF body's own text, read for the content rule alone.
+/// RTF body, and its plain text, the text body or else the RTF body's own text.
 pub struct Bodies {
     pub html: Option<String>,
     pub text: Option<String>,
-    pub rtf_text: Option<String>,
 }
 
 /// Makes `message`'s Markdown from `bodies`, once its attachments are read: its images linked to
@@ -102,7 +98,6 @@ pub fn make(
     let markdown = derive(
         bodies.html.as_deref(),
         bodies.text.as_deref(),
-        bodies.text.as_deref().or(bodies.rtf_text.as_deref()),
         &mut |src| images.resolve(src),
         notes,
     );
@@ -123,13 +118,13 @@ pub fn make(
             !message
                 .attachments
                 .iter()
-                .any(|attachment| attachment.file.as_deref() == Some(data.name.as_str()))
+                .any(|attachment| attachment.file.as_deref() == Some(data.payload.name()))
         })
-        .filter_map(|data| Some((links(&data.name)?, data)))
+        .filter_map(|data| Some((links(data.payload.name())?, data)))
         .collect();
     media.sort_by_key(|(at, _)| *at);
     for (_, data) in media {
-        let file = files.store(data.bytes.as_slice(), data.extension.as_deref())?;
+        let file = files.store_payload(&data.payload)?;
         message.media.push(Medium {
             file,
             mime_type: data.mime_type,
@@ -154,10 +149,8 @@ struct Target {
 }
 
 struct Data {
-    name: String,
-    bytes: Vec<u8>,
+    payload: Payload,
     mime_type: Option<String>,
-    extension: Option<String>,
 }
 
 impl Images {
@@ -248,17 +241,11 @@ impl Images {
         let extension = mime_type
             .as_deref()
             .and_then(|mime_type| mime_type.split_once('/'))
-            .map(|(_, subtype)| subtype.to_owned());
-        let name = Media::new(None)
-            .store(bytes.as_slice(), extension.as_deref())
-            .ok()?;
-        if !self.data.iter().any(|data| data.name == name) {
-            self.data.push(Data {
-                name: name.clone(),
-                bytes,
-                mime_type,
-                extension,
-            });
+            .map(|(_, subtype)| subtype);
+        let payload = Payload::new(bytes, extension);
+        let name = payload.name().to_owned();
+        if !self.data.iter().any(|data| data.payload.name() == name) {
+            self.data.push(Data { payload, mime_type });
         }
         Some(name)
     }
@@ -293,37 +280,35 @@ fn percent_decoded(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// A message's Markdown, by the one rule every format follows: made from `html` when the
-/// message has an HTML body, its images' sources first rewritten by `images`, and the sentences
-/// of `source` it lacks appended ([`with_missing`]), else from `text`, read literally. An HTML
-/// body nested past [`NESTING_MAX`] open elements gives way to `text`, else to its own text with
-/// its tags stripped, with a note, and its images are not read. One that can't be made is left
-/// out, with a note.
+/// A message's Markdown, by the one rule every format follows: made from `html` alone when the
+/// message has an HTML body, its images' sources first rewritten by `images`, else from `text`,
+/// read literally. An HTML body nested past [`NESTING_MAX`] open elements gives way to `text`,
+/// else to its own text with its tags stripped, with a note, and its images are not read. One that
+/// can't be made is left out, with a note.
 pub fn derive(
     html: Option<&str>,
     text: Option<&str>,
-    source: Option<&str>,
     images: &mut dyn FnMut(&str) -> Option<String>,
     notes: &mut Vec<String>,
 ) -> Option<String> {
     let made = match (html, text) {
-        (Some(html), _) if too_deep(html) => {
-            let (made, from) = match text {
-                Some(text) => (from_text(text), "the text body"),
-                None => (
-                    from_text(&stripped(html)),
-                    "the HTML's text, its tags stripped",
-                ),
-            };
-            notes.push(format!(
-                "the HTML body nests more than {NESTING_MAX} open elements; \
-                 the Markdown is made from {from}"
-            ));
-            Ok(made)
-        }
-        (Some(html), _) => {
-            from_html(&rewritten(html, images)).map(|markdown| with_missing(markdown, source))
-        }
+        (Some(html), _) => match image_tags(html) {
+            Some(tags) => from_html(&rewritten(html, &tags, images)),
+            None => {
+                let (made, from) = match text {
+                    Some(text) => (from_text(text), "the text body"),
+                    None => (
+                        from_text(&stripped(html)),
+                        "the HTML's text, its tags stripped",
+                    ),
+                };
+                notes.push(format!(
+                    "the HTML body nests more than {NESTING_MAX} open elements; \
+                     the Markdown is made from {from}"
+                ));
+                Ok(made)
+            }
+        },
         (None, Some(text)) => Ok(from_text(text)),
         (None, None) => return None,
     };
@@ -331,32 +316,14 @@ pub fn derive(
         .ok()
 }
 
-fn with_missing(markdown: String, source: Option<&str>) -> String {
-    let Some(source) = source else {
-        return markdown;
-    };
-    let missing = content::missing(&Text::plain(source), &Text::markdown(&markdown));
-    if missing.is_empty() {
-        return markdown;
-    }
-    let paragraph = from_text(&missing.join(" "));
-    if markdown.trim().is_empty() {
-        paragraph
-    } else {
-        format!("{markdown}\n\n{paragraph}")
-    }
-}
-
-fn rewritten<'h>(html: &'h str, images: &mut dyn FnMut(&str) -> Option<String>) -> Cow<'h, str> {
+fn rewritten<'h>(
+    html: &'h str,
+    tags: &[Range<usize>],
+    images: &mut dyn FnMut(&str) -> Option<String>,
+) -> Cow<'h, str> {
     let mut out: Option<String> = None;
     let mut copied = 0;
-    for piece in Pieces::new(html) {
-        let Piece::Start(name, _, tag) = piece else {
-            continue;
-        };
-        if name != "img" {
-            continue;
-        }
+    for tag in tags {
         let Some((whole, value)) = src_attribute(&html[tag.clone()]) else {
             continue;
         };
@@ -434,22 +401,25 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
     }
 }
 
-/// Markdown from an HTML body. Images keep their sources as written. The head, styles and
-/// scripts are no part of the text: htmd would write a style's rules as text. Links, images, and
-/// table cells are written by [`anchor`], [`image`], and [`cell`], in place of htmd's own. The
-/// escapes htmd 0.6 writes beyond htmd 0.5.6's are kept only where CommonMark needs them
-/// ([`bare`]).
-pub fn from_html(html: &str) -> Result<String, String> {
-    let htmd = htmd::HtmlToMarkdown::builder()
+thread_local! {
+    static CONVERTER: htmd::HtmlToMarkdown = htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
         .add_handler(vec!["a"], anchor)
         .add_handler(vec!["img"], image)
         .add_handler(vec!["td", "th"], cell)
         .build();
-    let markdown = htmd
-        .convert(html)
+}
+
+/// Markdown from an HTML body. Images keep their sources as written. The head, styles and
+/// scripts are no part of the text: htmd would write a style's rules as text. Links, images, and
+/// table cells are written by [`anchor`], [`image`], and [`cell`], in place of htmd's own. The
+/// escapes htmd 0.6 writes beyond htmd 0.5.6's are kept only where CommonMark needs them
+/// ([`bare`]). One converter a thread, built at its first call, makes every body.
+pub fn from_html(html: &str) -> Result<String, String> {
+    let markdown = CONVERTER
+        .with(|htmd| htmd.convert(html))
         .map_err(|err| format!("can't be made into Markdown ({err})"))?;
-    Ok(bare(&markdown))
+    Ok(bare(markdown))
 }
 
 const READING: pulldown_cmark::Options = pulldown_cmark::Options::ENABLE_TABLES
@@ -460,40 +430,21 @@ fn bare_candidate(c: u8) -> bool {
     c.is_ascii_punctuation() && !b"\\*_`[]=>#.".contains(&c)
 }
 
-fn bare(markdown: &str) -> String {
+fn bare(markdown: String) -> String {
     if !markdown.contains('\\') {
-        return markdown.to_owned();
+        return markdown;
     }
-    let kept = kept(markdown);
+    let (blocks, kept) = blocks_and_kept(&markdown);
     let mut out = String::with_capacity(markdown.len());
     let mut copied = 0;
-    for block in blocks(markdown) {
+    for block in blocks {
         out.push_str(&markdown[copied..block.start]);
-        let escapes = escapes(markdown, block.clone(), &kept);
-        out.push_str(&bare_block(&markdown[block.clone()], &escapes));
+        let escapes = escapes(&markdown, block.clone(), &kept);
+        bare_block(&markdown[block.clone()], &escapes, &mut out);
         copied = block.end;
     }
     out.push_str(&markdown[copied..]);
     out
-}
-
-fn blocks(markdown: &str) -> Vec<Range<usize>> {
-    use pulldown_cmark::{Event, Parser};
-    let mut blocks = Vec::new();
-    let mut depth = 0usize;
-    for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
-        match event {
-            Event::Start(_) => {
-                if depth == 0 {
-                    blocks.push(range);
-                }
-                depth += 1;
-            }
-            Event::End(_) => depth -= 1,
-            _ => {}
-        }
-    }
-    blocks
 }
 
 fn escapes(markdown: &str, block: Range<usize>, kept: &[Range<usize>]) -> Vec<usize> {
@@ -519,20 +470,23 @@ fn escapes(markdown: &str, block: Range<usize>, kept: &[Range<usize>]) -> Vec<us
     found
 }
 
-fn bare_block(block: &str, escapes: &[usize]) -> String {
-    let mut text = block.to_owned();
+fn bare_block(block: &str, escapes: &[usize], out: &mut String) {
     if escapes.is_empty() {
-        return text;
+        out.push_str(block);
+        return;
     }
     let read = reading(block);
+    let mut text = block.to_owned();
+    let mut trial = String::with_capacity(block.len());
     for &at in escapes.iter().rev() {
-        let mut trial = text.clone();
-        trial.remove(at);
+        trial.clear();
+        trial.push_str(&text[..at]);
+        trial.push_str(&text[at + 1..]);
         if reading(&trial) == read {
-            text = trial;
+            std::mem::swap(&mut text, &mut trial);
         }
     }
-    text
+    out.push_str(&text);
 }
 
 fn reading(markdown: &str) -> Vec<pulldown_cmark::Event<'static>> {
@@ -549,12 +503,24 @@ fn reading(markdown: &str) -> Vec<pulldown_cmark::Event<'static>> {
     events
 }
 
-fn kept(markdown: &str) -> Vec<Range<usize>> {
+fn blocks_and_kept(markdown: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
     use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut blocks = Vec::new();
+    let mut depth = 0usize;
     let mut kept: Vec<Range<usize>> = Vec::new();
     let mut links: Vec<(Range<usize>, usize)> = Vec::new();
     let mut image = 0usize;
     for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
+        match event {
+            Event::Start(_) => {
+                if depth == 0 {
+                    blocks.push(range.clone());
+                }
+                depth += 1;
+            }
+            Event::End(_) => depth -= 1,
+            _ => {}
+        }
         if image > 0 {
             match event {
                 Event::Start(Tag::Image { .. }) => image += 1,
@@ -597,7 +563,7 @@ fn kept(markdown: &str) -> Vec<Range<usize>> {
         }
     }
     kept.sort_by_key(|range| range.start);
-    kept
+    (blocks, kept)
 }
 
 fn anchor(handlers: &dyn Handlers, element: &Element) -> Option<HandlerResult> {
@@ -656,30 +622,54 @@ fn attribute_alt(text: &str) -> String {
 /// would read the one as an indented code block or a list's continuation, and the other as a
 /// line break.
 pub fn from_text(text: &str) -> String {
-    let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut out = String::with_capacity(text.len() + 64);
+    let mut collapsed = String::new();
     let mut paragraph = false;
-    let mut first = true;
-    for line in text.split('\n') {
-        let line = line
-            .split(|c: char| c.is_ascii_whitespace())
-            .filter(|word| !word.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
+    let mut rest = text;
+    while !rest.is_empty() {
+        let (line, next) = match rest.find(['\r', '\n']) {
+            Some(end) if rest[end..].starts_with("\r\n") => (&rest[..end], &rest[end + 2..]),
+            Some(end) => (&rest[..end], &rest[end + 1..]),
+            None => (rest, ""),
+        };
+        rest = next;
+        let line = collapse(line, &mut collapsed);
         if line.is_empty() {
             paragraph = false;
             continue;
         }
         if paragraph {
             out.push_str("  \n");
-        } else if !first {
+        } else if !out.is_empty() {
             out.push_str("\n\n");
         }
-        out.push_str(&escape(&line, true));
+        escape_into(&mut out, line, true);
         paragraph = true;
-        first = false;
     }
     out
+}
+
+fn collapse<'a>(line: &'a str, collapsed: &'a mut String) -> &'a str {
+    let bytes = line.as_bytes();
+    let single_spaced = !bytes.first().is_some_and(u8::is_ascii_whitespace)
+        && !bytes.last().is_some_and(u8::is_ascii_whitespace)
+        && bytes.iter().enumerate().all(|(at, byte)| {
+            !byte.is_ascii_whitespace() || *byte == b' ' && bytes[at + 1] != b' '
+        });
+    if single_spaced {
+        return line;
+    }
+    collapsed.clear();
+    for word in line
+        .split(|c: char| c.is_ascii_whitespace())
+        .filter(|word| !word.is_empty())
+    {
+        if !collapsed.is_empty() {
+            collapsed.push(' ');
+        }
+        collapsed.push_str(word);
+    }
+    collapsed
 }
 
 const VOID: &[&str] = &[
@@ -724,29 +714,38 @@ const BREAKS: &[&str] = &[
     "ul",
 ];
 
-fn too_deep(html: &str) -> bool {
-    let mut open: Vec<String> = Vec::new();
+const FOREIGN: &[&str] = &["svg", "math"];
+
+fn image_tags(html: &str) -> Option<Vec<Range<usize>>> {
+    let mut open: Vec<&str> = Vec::new();
     let mut foreign = 0usize;
+    let mut images = Vec::new();
     for piece in Pieces::new(html) {
         match piece {
-            Piece::Start(name, self_closing, _) => {
-                while open.last().is_some_and(|last| closes(last, &name)) {
+            Piece::Start(name, self_closing, tag) => {
+                if name.eq_ignore_ascii_case("img") {
+                    images.push(tag);
+                }
+                while open.last().is_some_and(|last| closes(last, name)) {
                     open.pop();
                 }
-                if VOID.contains(&name.as_str()) || self_closing && foreign > 0 {
+                if among(name, VOID) || self_closing && foreign > 0 {
                     continue;
                 }
-                foreign += usize::from(matches!(name.as_str(), "svg" | "math"));
+                foreign += usize::from(among(name, FOREIGN));
                 open.push(name);
                 if open.len() > NESTING_MAX {
-                    return true;
+                    return None;
                 }
             }
             Piece::End(name) => {
-                if let Some(at) = open.iter().rposition(|open| *open == name) {
+                if let Some(at) = open
+                    .iter()
+                    .rposition(|open| open.eq_ignore_ascii_case(name))
+                {
                     foreign -= open[at..]
                         .iter()
-                        .filter(|open| matches!(open.as_str(), "svg" | "math"))
+                        .filter(|open| among(open, FOREIGN))
                         .count();
                     open.truncate(at);
                 }
@@ -754,18 +753,26 @@ fn too_deep(html: &str) -> bool {
             Piece::Text(_) => {}
         }
     }
-    false
+    Some(images)
+}
+
+fn among(name: &str, names: &[&str]) -> bool {
+    names.iter().any(|known| known.eq_ignore_ascii_case(name))
 }
 
 fn closes(last: &str, name: &str) -> bool {
-    let cell = |name: &str| matches!(name, "td" | "th");
-    let term = |name: &str| matches!(name, "dt" | "dd");
-    match last {
-        "p" => name == "p" || BREAKS.contains(&name) && !matches!(name, "br" | "hr"),
-        "li" | "option" | "tr" => name == last,
-        _ if cell(last) => cell(name) || name == "tr",
-        _ if term(last) => term(name),
-        _ => false,
+    const CELLS: &[&str] = &["td", "th"];
+    const TERMS: &[&str] = &["dt", "dd"];
+    if last.eq_ignore_ascii_case("p") {
+        name.eq_ignore_ascii_case("p") || among(name, BREAKS) && !among(name, &["br", "hr"])
+    } else if among(last, &["li", "option", "tr"]) {
+        name.eq_ignore_ascii_case(last)
+    } else if among(last, CELLS) {
+        among(name, CELLS) || name.eq_ignore_ascii_case("tr")
+    } else if among(last, TERMS) {
+        among(name, TERMS)
+    } else {
+        false
     }
 }
 
@@ -778,7 +785,7 @@ fn stripped(html: &str) -> String {
                     .chars()
                     .map(|c| if c.is_ascii_whitespace() { ' ' } else { c }),
             ),
-            Piece::Start(name, ..) | Piece::End(name) if BREAKS.contains(&name.as_str()) => {
+            Piece::Start(name, ..) | Piece::End(name) if among(name, BREAKS) => {
                 text.push('\n');
             }
             _ => {}
@@ -833,14 +840,14 @@ fn references(text: &str) -> String {
 
 enum Piece<'a> {
     Text(&'a str),
-    Start(String, bool, Range<usize>),
-    End(String),
+    Start(&'a str, bool, Range<usize>),
+    End(&'a str),
 }
 
 struct Pieces<'a> {
     html: &'a str,
     at: usize,
-    raw: Option<String>,
+    raw: Option<&'a str>,
 }
 
 impl<'a> Pieces<'a> {
@@ -866,11 +873,23 @@ impl<'a> Pieces<'a> {
         rest.len()
     }
 
-    fn name(rest: &str, from: usize) -> (String, usize) {
+    fn name(rest: &str, from: usize) -> (&str, usize) {
         let end = rest[from..]
             .find(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>')
             .map_or(rest.len(), |end| from + end);
-        (rest[from..end].to_ascii_lowercase(), end)
+        (&rest[from..end], end)
+    }
+
+    fn closing(rest: &str, name: &str) -> usize {
+        let bytes = rest.as_bytes();
+        (0..bytes.len())
+            .find(|&at| {
+                bytes[at..].starts_with(b"</")
+                    && bytes
+                        .get(at + 2..at + 2 + name.len())
+                        .is_some_and(|found| found.eq_ignore_ascii_case(name.as_bytes()))
+            })
+            .unwrap_or(bytes.len())
     }
 }
 
@@ -884,14 +903,9 @@ impl<'a> Iterator for Pieces<'a> {
                 return None;
             }
             if let Some(name) = self.raw.take() {
-                let close = format!("</{name}");
-                let end = rest
-                    .as_bytes()
-                    .windows(close.len())
-                    .position(|window| window.eq_ignore_ascii_case(close.as_bytes()))
-                    .unwrap_or(rest.len());
+                let end = Self::closing(rest, name);
                 self.at += end;
-                if end == 0 || matches!(name.as_str(), "script" | "style" | "title") {
+                if end == 0 || among(name, &["script", "style", "title"]) {
                     continue;
                 }
                 return Some(Piece::Text(&rest[..end]));
@@ -918,8 +932,8 @@ impl<'a> Iterator for Pieces<'a> {
                     let self_closing = bytes[..past].ends_with(b"/>");
                     let tag = self.at..self.at + past;
                     self.at += past;
-                    if RAW.contains(&name.as_str()) {
-                        self.raw = Some(name.clone());
+                    if among(name, RAW) {
+                        self.raw = Some(name);
                     }
                     return Some(Piece::Start(name, self_closing, tag));
                 }
@@ -959,6 +973,7 @@ mod tests {
             "indented # mid  \n\\- item\n\nafter three\n\n\u{a0} x"
         );
         assert_eq!(from_text(" \r\n\t"), "");
+        assert_eq!(from_text("a <\t b\r\r\rc<  d <x"), "a < b\n\nc< d \\<x");
     }
 
     fn nested(tag: &str, depth: usize) -> String {
@@ -966,33 +981,22 @@ mod tests {
     }
 
     #[test]
-    fn html_markdown_gains_the_sentences_it_lacks() {
+    fn html_markdown_is_the_htmls_alone() {
         let mut notes = Vec::new();
-        let source = "We found a moth.\r\n# It is *taped* in. Done\r\n";
+        let text = "We found a moth.\r\n# It is *taped* in. Done\r\n";
         let made = |html: Option<&str>, notes: &mut Vec<String>| {
-            derive(html, Some(source), Some(source), &mut |_| None, notes)
+            derive(html, Some(text), &mut |_| None, notes)
         };
         assert_eq!(
             made(Some("<p>We found a <b>moth</b>!</p>"), &mut notes).as_deref(),
-            Some("We found a **moth**!\n\n\\# It is \\*taped\\* in. Done")
+            Some("We found a **moth**!")
         );
+        assert_eq!(made(None, &mut notes), Some(from_text(text)));
         assert_eq!(
-            made(
-                Some("<p>We found a moth. It is taped in.</p><p>Done</p>"),
-                &mut notes
-            )
-            .as_deref(),
-            Some("We found a moth. It is taped in.\n\nDone")
+            derive(Some("<p>x</p>"), None, &mut |_| None, &mut notes).as_deref(),
+            Some("x")
         );
-        assert_eq!(made(None, &mut notes), Some(from_text(source)));
-        let lacking = derive(
-            Some("<p>x</p>"),
-            None,
-            Some("Only the RTF's text."),
-            &mut |_| None,
-            &mut notes,
-        );
-        assert_eq!(lacking.as_deref(), Some("x\n\nOnly the RTF's text."));
+        assert_eq!(derive(None, None, &mut |_| None, &mut notes), None);
         assert!(notes.is_empty(), "{notes:?}");
     }
 
@@ -1002,7 +1006,6 @@ mod tests {
         let at_cap = derive(
             Some(&nested("div", 512)),
             Some("text"),
-            None,
             &mut |_| None,
             &mut notes,
         );
@@ -1013,12 +1016,11 @@ mod tests {
         let from_text = derive(
             Some(&past),
             Some("the *text* body"),
-            None,
             &mut |_| None,
             &mut notes,
         );
         assert_eq!(from_text.as_deref(), Some("the \\*text\\* body"));
-        let from_html = derive(Some(&past), None, None, &mut |_| None, &mut notes);
+        let from_html = derive(Some(&past), None, &mut |_| None, &mut notes);
         assert_eq!(from_html.as_deref(), Some("word"));
         assert_eq!(
             notes,
@@ -1046,7 +1048,7 @@ mod tests {
             many("a < b <3 </> <!doctype html><?xml ?>"),
             many("<b>x</B>"),
         ] {
-            assert!(!too_deep(&flat), "{flat:.80}");
+            assert!(image_tags(&flat).is_some(), "{flat:.80}");
         }
         for deep in [
             many("<div>"),
@@ -1055,7 +1057,7 @@ mod tests {
             many("<DIV>"),
             format!("<svg>{}</svg>", many("<g>")),
         ] {
-            assert!(too_deep(&deep), "{deep:.80}");
+            assert!(image_tags(&deep).is_none(), "{deep:.80}");
         }
     }
 
@@ -1172,6 +1174,37 @@ mod tests {
             let (titles, alts) = titles_and_alts(&markdown);
             assert_eq!(titles, [title, title], "{markdown}");
             assert_eq!(alts, [alt], "{markdown}");
+        }
+    }
+
+    fn envelope_cases(group: &str) -> Vec<serde_json::Value> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../envelope/cases.json");
+        let text = std::fs::read_to_string(path).expect("tools/envelope/cases.json is readable");
+        let table: serde_json::Value =
+            serde_json::from_str(&text).expect("tools/envelope/cases.json is JSON");
+        let cases = table[group].as_array().cloned().unwrap_or_default();
+        assert!(!cases.is_empty(), "cases.json has a {group} list");
+        cases
+    }
+
+    #[test]
+    fn the_envelopes_destinations_read_back_as_their_targets() {
+        for case in envelope_cases("destinations") {
+            let target = case["target"].as_str().unwrap();
+            let reads = case["reads"].as_str().unwrap_or(target);
+            let link = format!("[x]({})", destination(target));
+            assert_eq!(destinations(&link), [reads], "{case}: {link}");
+        }
+    }
+
+    #[test]
+    fn the_envelopes_titles_read_back_as_written() {
+        for case in envelope_cases("titles") {
+            let written = case["title"].as_str().unwrap();
+            let reads = case["reads"].as_str().unwrap_or(written);
+            let markdown = title(written);
+            let both = format!("[x](y \"{markdown}\") ![x](y \"{markdown}\")");
+            assert_eq!(titles_and_alts(&both).0, [reads, reads], "{case}: {both}");
         }
     }
 
@@ -1302,7 +1335,7 @@ mod tests {
             (r"\[Webinar\] \*not\* bold", r"\[Webinar\] \*not\* bold"),
         ];
         for (htmd, ours) in cases {
-            let made = bare(htmd);
+            let made = bare(htmd.to_owned());
             assert_eq!(made, ours, "{htmd}");
             assert_eq!(reading(&made), reading(htmd), "{htmd}");
         }
@@ -1323,7 +1356,7 @@ mod tests {
             ),
         ];
         for (htmd, ours) in cases {
-            assert_eq!(bare(htmd), ours, "{htmd}");
+            assert_eq!(bare(htmd.to_owned()), ours, "{htmd}");
         }
         assert_eq!(
             from_html(
@@ -1360,7 +1393,8 @@ mod tests {
         let html = "<a href=\"cid:x\">a</a><img alt=1 src='cid:x&amp;y'><IMG SRC=keep>\
                     <script>'<img src=cid:x>'</script><img src=cid:x>";
         let mut seen = Vec::new();
-        let out = rewritten(html, &mut |src| {
+        let tags = image_tags(html).unwrap();
+        let out = rewritten(html, &tags, &mut |src| {
             seen.push(src.to_owned());
             (src != "keep").then(|| "f.png".to_owned())
         });
@@ -1371,7 +1405,7 @@ mod tests {
              <script>'<img src=cid:x>'</script><img src=\"f.png\">"
         );
         assert!(matches!(
-            rewritten("<p>x</p>", &mut |_| None),
+            rewritten("<p>x</p>", &[], &mut |_| None),
             Cow::Borrowed(_)
         ));
     }
@@ -1395,7 +1429,6 @@ mod tests {
         let bodies = Bodies {
             html: Some(html.to_owned()),
             text: None,
-            rtf_text: None,
         };
         let mut notes = Vec::new();
         make(

@@ -185,7 +185,7 @@ impl Walk<'_> {
                 Err(reason) => warn(&here, &format!("skipped: {reason}")),
             }
         }
-        let (mut message, bodies, notes) = mapping::message(props, &recipients, code_page);
+        let (mut message, mut bodies, notes) = mapping::message(props, &recipients, code_page);
         warn_all(place, notes);
 
         let mut skipped = Vec::new();
@@ -222,15 +222,23 @@ impl Walk<'_> {
                     ),
                 }
             }
+            let class = message.class.as_deref();
             let mapped = guarded(|| {
-                Ok::<_, Infallible>(mapping::attachment(&props, content.as_deref(), code_page))
+                let signed = content
+                    .as_deref()
+                    .map(|content| mapping::signed(class, &mut bodies, content));
+                let mapped = mapping::attachment(&props, content.as_deref(), code_page);
+                Ok::<_, Infallible>((mapped, signed.unwrap_or_default()))
             });
-            let mapping::Mapped {
-                mut record,
-                extension,
-                location,
-                notes,
-            } = match mapped {
+            let (
+                mapping::Mapped {
+                    mut record,
+                    extension,
+                    location,
+                    notes,
+                },
+                signed,
+            ) = match mapped {
                 Ok(mapped) => mapped,
                 Err(failure) => {
                     warn(&here, &format!("skipped: {}", failure.reason));
@@ -239,13 +247,15 @@ impl Walk<'_> {
                 }
             };
             warn_all(&here, notes);
+            warn_all(place, signed);
             if let Some(content) = &content {
-                record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
+                record.file = Some(self.files.store_bytes(content, extension.as_deref())?);
             }
             record.message = nested.map(Box::new);
             message.attachments.push(record);
             locations.push(location);
         }
+        warn_all(place, mapping::rights_managed(&message));
         let mut notes = Vec::new();
         markdown::make(&mut message, &bodies, &locations, self.files, &mut notes)?;
         warn_all(place, notes);

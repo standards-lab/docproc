@@ -301,6 +301,7 @@ const ATTACH_CONTENT_ID: u16 = 0x3712;
 const ATTACH_CONTENT_LOCATION: u16 = 0x3713;
 const ATTACH_FLAGS: u16 = 0x3714;
 const ATTACH_LONG_FILENAME: u16 = 0x3707;
+const MESSAGE_CLASS: u16 = 0x001A;
 
 fn subject(text: &str) -> Vec<(u16, Prop)> {
     vec![(SUBJECT, Prop::Unicode(text.into()))]
@@ -600,6 +601,33 @@ fn a_plain_rtf_only_message_has_the_rtfs_text() {
 }
 
 #[test]
+fn a_plain_rtf_tables_rows_are_one_line_each() {
+    let mut props = subject("rtf table");
+    props.push((
+        RTF_COMPRESSED,
+        rtf(
+            "{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\\pard\\f0\\fs20 \
+             Counts:\\par\\trowd\\cellx2000\\cellx4000\\pard\\intbl Name\\cell Count\\cell\\row\
+             \\trowd\\cellx2000\\cellx4000\\pard\\intbl Moths\\cell 3\\cell\\row\
+             \\trowd\\cellx2000\\cellx4000\\pard\\intbl Beetles\\cell 12\\cell\\row\
+             \\pard Done\\par}",
+        ),
+    ));
+    let (message, stderr) = read_built(
+        "rtf-table.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "Counts:  \nName Count  \nMoths 3  \nBeetles 12  \nDone"
+    );
+}
+
+#[test]
 fn a_fromtext_rtf_gives_way_to_the_text_body() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\fromtext \\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\
                 {\\*\\htmltag64 <p>}Hello from \\'abRTF\\'bb\\par\
@@ -630,12 +658,14 @@ fn a_fromtext_rtf_gives_way_to_the_text_body() {
 }
 
 #[test]
-fn a_plain_rtf_beside_html_is_the_source_text() {
+fn a_plain_rtf_beside_html_gives_way_to_the_html() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\deff0 We found a moth.\\par It is taped in.\\par}";
-    let html = || Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec());
     let mut props = subject("html and rtf");
     props.push((RTF_COMPRESSED, rtf(body)));
-    props.push((HTML, html()));
+    props.push((
+        HTML,
+        Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec()),
+    ));
     let (message, stderr) = read_built(
         "html-rtf.msg",
         &Message {
@@ -644,22 +674,28 @@ fn a_plain_rtf_beside_html_is_the_source_text() {
         },
     );
     assert_eq!(stderr, "");
-    assert_eq!(
-        message["markdown"],
-        "We found a **moth**.\n\nIt is taped in."
-    );
+    assert_eq!(message["markdown"], "We found a **moth**.");
+}
 
-    let mut props = subject("html, rtf and text");
-    props.push((RTF_COMPRESSED, rtf(body)));
-    props.push((HTML, html()));
-    props.push((BODY, Prop::Unicode("We found a moth.".into())));
-    let (message, _) = read_built(
-        "html-rtf-text.msg",
+#[test]
+fn differing_text_and_html_bodies_give_the_htmls_markdown_alone() {
+    let mut props = subject("html and text");
+    props.push((
+        HTML,
+        Prop::Binary(b"<p>We found a <b>moth</b>.</p>".to_vec()),
+    ));
+    props.push((
+        BODY,
+        Prop::Unicode("We found a moth.\r\nIt is taped in. https://example.net/t?id=1".into()),
+    ));
+    let (message, stderr) = read_built(
+        "html-text.msg",
         &Message {
             props,
             ..Message::default()
         },
     );
+    assert_eq!(stderr, "");
     assert_eq!(message["markdown"], "We found a **moth**.");
 }
 
@@ -828,4 +864,148 @@ fn an_embedded_messages_images_link_its_own_attachments() {
         inner["markdown"],
         format!("![moth]({})", picture["file"].as_str().unwrap())
     );
+}
+
+#[test]
+fn an_smime_class_warns_as_an_opaque_smime_part_does() {
+    let warning = "docproc-mail: warning: message: it holds an S/MIME part \
+                   (application/pkcs7-mime), encrypted or opaquely signed, whose content is not \
+                   read\n";
+    let smime = |class: &str, attachments: Vec<Attachment>| {
+        let mut props = subject("sealed");
+        props.push((MESSAGE_CLASS, Prop::Unicode(class.into())));
+        let name = format!("{}.msg", class.replace('.', "-"));
+        read_built(
+            &name,
+            &Message {
+                props,
+                attachments,
+                ..Message::default()
+            },
+        )
+    };
+    let (message, stderr) = smime("IPM.Note.SMIME", vec![by_value("smime.p7m", b"MIAGCSqG")]);
+    assert_eq!(stderr, warning);
+    assert_eq!(message["class"], "IPM.Note.SMIME");
+    assert_eq!(message["subject"], "sealed");
+    assert_eq!(message["attachments"][0]["filename"], "smime.p7m");
+    for class in ["ipm.note.smime", "IPM.Note.Custom.SMIME"] {
+        let (message, stderr) = smime(class, vec![]);
+        assert_eq!(stderr, warning, "{class}");
+        assert_eq!(message["class"], class);
+    }
+    let (_, stderr) = smime(
+        "IPM.Note.SMIME.MultipartSigned",
+        vec![by_value("smime.p7m", b"MIAGCSqG")],
+    );
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn a_message_rpmsg_attachment_warns_that_the_content_is_not_read() {
+    let built = |name: &str, attachments: Vec<Attachment>| {
+        let mut props = subject("protected");
+        props.push((
+            BODY,
+            Prop::Unicode("This message is protected with Rights Management.".into()),
+        ));
+        read_built(
+            name,
+            &Message {
+                props,
+                attachments,
+                ..Message::default()
+            },
+        )
+    };
+    let (message, stderr) = built(
+        "rights-managed.msg",
+        vec![by_value("message.rpmsg", b"\x76\xe8\x04\x60")],
+    );
+    assert_eq!(
+        stderr,
+        "docproc-mail: warning: message: it is a rights-managed message (message.rpmsg), whose \
+         encrypted content is not read\n"
+    );
+    assert_eq!(
+        message["markdown"],
+        "This message is protected with Rights Management."
+    );
+    assert_eq!(message["attachments"][0]["filename"], "message.rpmsg");
+    let (_, stderr) = built(
+        "rights-managed-upper.msg",
+        vec![
+            by_value("MESSAGE.RPMSG", b"x"),
+            by_value("message.rpmsg", b"y"),
+        ],
+    );
+    assert_eq!(stderr.matches("rights-managed").count(), 1, "{stderr}");
+    let (message, stderr) = built("plain.msg", vec![by_value("report.csv", b"a,b")]);
+    assert_eq!(stderr, "");
+    assert_eq!(message["attachments"][0]["filename"], "report.csv");
+}
+
+const ATTACH_MIME_TAG: u16 = 0x370E;
+
+const SIGNED: &[u8] = b"Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; \
+                        boundary=s\r\n\r\n\
+                        --s\r\nContent-Type: multipart/mixed; boundary=m\r\n\r\n\
+                        --m\r\nContent-Type: multipart/alternative; boundary=a\r\n\r\n\
+                        --a\r\nContent-Type: text/plain\r\n\r\nSigned text, not read.\r\n\
+                        --a\r\nContent-Type: text/html\r\n\r\n<p>Signed <b>HTML</b>.</p>\r\n\
+                        --a--\r\n\
+                        --m\r\nContent-Type: text/csv\r\n\
+                        Content-Disposition: attachment; filename=inner.csv\r\n\r\na,b\r\n\
+                        --m--\r\n\
+                        --s\r\nContent-Type: application/pkcs7-signature; name=smime.p7s\r\n\
+                        \r\nMIAGCSqG\r\n--s--\r\n";
+
+fn clear_signed(mut props: Vec<(u16, Prop)>) -> Message {
+    props.push((
+        MESSAGE_CLASS,
+        Prop::Unicode("IPM.Note.SMIME.MultipartSigned".into()),
+    ));
+    Message {
+        props,
+        attachments: vec![Attachment {
+            props: Child::Props(vec![
+                (ATTACH_METHOD, Prop::Long(1)),
+                (ATTACH_LONG_FILENAME, Prop::Unicode("SMIME.txt".into())),
+                (ATTACH_MIME_TAG, Prop::Unicode("multipart/signed".into())),
+                (ATTACH_DATA, Prop::Binary(SIGNED.to_vec())),
+            ]),
+            object: None,
+        }],
+        ..Message::default()
+    }
+}
+
+#[test]
+fn a_clear_signed_message_without_a_body_reads_its_signed_entitys_bodies() {
+    let msg = build("clear-signed.msg", &clear_signed(subject("signed")));
+    let dir = scratch("msg-clear-signed");
+    let out = run(&[msg.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.stderr, "");
+    let message = &out.lines()[1];
+    assert_eq!(message["markdown"], "Signed **HTML**.");
+    let attachments = message["attachments"].as_array().unwrap();
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0]["filename"], "SMIME.txt");
+    assert_eq!(attachments[0]["mime_type"], "multipart/signed");
+    assert_eq!(attachments[0]["size"], SIGNED.len());
+    assert_eq!(attachments[0]["inline"], false);
+    let file = attachments[0]["file"].as_str().unwrap();
+    assert_eq!(std::fs::read(dir.join(file)).unwrap(), SIGNED);
+    assert_eq!(names(&dir), [file]);
+}
+
+#[test]
+fn a_clear_signed_message_keeps_its_own_body() {
+    let mut props = subject("signed");
+    props.push((BODY, Prop::Unicode("Its own.".into())));
+    let (message, stderr) = read_built("clear-signed-own.msg", &clear_signed(props));
+    assert_eq!(stderr, "");
+    assert_eq!(message["markdown"], "Its own.");
+    assert_eq!(message["attachments"].as_array().unwrap().len(), 1);
 }

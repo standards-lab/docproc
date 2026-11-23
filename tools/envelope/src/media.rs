@@ -1,10 +1,12 @@
 //! The media store of `--media <dir>`. Each distinct payload is one file there, named by the
 //! lowercase hex SHA-256 of its bytes and, when the stored extension is 1 to 8 ASCII letters and
 //! digits, `.` and that extension, its case kept; a stored name is never otherwise part of a path.
-//! A payload is streamed: hashed while it is copied through a fixed buffer into a temporary file
-//! in the directory, which is then renamed to its name, so a name in the directory always holds
-//! the whole payload. Without `--media` a payload is hashed only, the names stand, and nothing is
-//! written to disk.
+//! A payload read from a reader is streamed: hashed while it is copied through a fixed buffer into
+//! a temporary file in the directory, which is then renamed to its name, so a name in the
+//! directory always holds the whole payload. A payload already in memory is hashed where it lies
+//! ([`Media::store_bytes`], [`Payload`]), and written whole into the temporary file only when its
+//! name is not yet written. Without `--media` a payload is hashed only, the names stand, and
+//! nothing is written to disk.
 //!
 //! The directory is created, if it is missing, once the input is read, with or without a payload
 //! to write: the tool calls [`Media::create`] then. A name is written once a run.
@@ -22,6 +24,26 @@ use crate::Fault;
 const BUFFER: usize = 64 * 1024;
 
 const EXTENSION_MAX: usize = 8;
+
+/// A payload held in memory with its name, the name [`Media::store_bytes`] gives it, hashed once
+/// when it is made; [`Media::store_payload`] stores it by that name.
+pub struct Payload {
+    bytes: Vec<u8>,
+    name: String,
+}
+
+impl Payload {
+    /// Names `bytes`, with the extension they were stored under.
+    pub fn new(bytes: Vec<u8>, extension: Option<&str>) -> Self {
+        let name = name(Sha256::digest(&bytes).into(), extension);
+        Self { bytes, name }
+    }
+
+    /// The payload's name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
 
 pub struct Media {
     dir: Option<PathBuf>,
@@ -59,15 +81,14 @@ impl Media {
     /// worded as it is without `--media`, never naming the temporary file it was being copied
     /// into, and a media file that can't be written is named.
     pub fn store(&mut self, content: impl Read, extension: Option<&str>) -> Result<String, Fault> {
-        let Some(dir) = self.dir.clone() else {
+        let Some(dir) = &self.dir else {
             let hash = copy(content, &mut io::sink()).map_err(|failed| {
                 let (Failed::Read(err) | Failed::Write(err)) = failed;
                 unreadable(err)
             })?;
             return Ok(name(hash, extension));
         };
-        self.temporaries += 1;
-        let temporary = dir.join(format!(".{}-{}.tmp", std::process::id(), self.temporaries));
+        let temporary = temporary(dir, &mut self.temporaries);
         let written = File::create_new(&temporary)
             .map_err(Failed::Write)
             .and_then(|mut file| {
@@ -84,17 +105,68 @@ impl Media {
             remove(&temporary);
             return Ok(name);
         }
-        let path = dir.join(&name);
-        fs::rename(&temporary, &path).map_err(|err| {
-            remove(&temporary);
-            Fault::Media(format!(
-                "the media file {} can't be written: {err}",
-                path.display()
-            ))
-        })?;
-        self.written.insert(name.clone());
+        renamed(dir, &temporary, &name, &mut self.written)?;
         Ok(name)
     }
+
+    /// Stores one payload held in memory, as [`Media::store`] stores one read from a reader, and
+    /// returns its name: hashed in place, and with `--media` written unless this run already
+    /// wrote that name. A media file that can't be written is named, a media fault.
+    pub fn store_bytes(&mut self, bytes: &[u8], extension: Option<&str>) -> Result<String, Fault> {
+        let name = name(Sha256::digest(bytes).into(), extension);
+        self.write(&name, bytes)?;
+        Ok(name)
+    }
+
+    /// Stores a [`Payload`] by its name, as [`Media::store_bytes`] stores its bytes, and returns
+    /// the name.
+    pub fn store_payload(&mut self, payload: &Payload) -> Result<String, Fault> {
+        self.write(&payload.name, &payload.bytes)?;
+        Ok(payload.name.clone())
+    }
+
+    fn write(&mut self, name: &str, bytes: &[u8]) -> Result<(), Fault> {
+        let Some(dir) = &self.dir else {
+            return Ok(());
+        };
+        if self.written.contains(name) {
+            return Ok(());
+        }
+        let temporary = temporary(dir, &mut self.temporaries);
+        File::create_new(&temporary)
+            .and_then(|mut file| {
+                file.write_all(bytes)?;
+                file.flush()
+            })
+            .map_err(|err| {
+                remove(&temporary);
+                Failed::Write(err).fault(&temporary)
+            })?;
+        renamed(dir, &temporary, name, &mut self.written)
+    }
+}
+
+fn temporary(dir: &Path, temporaries: &mut u64) -> PathBuf {
+    *temporaries += 1;
+    dir.join(format!(".{}-{temporaries}.tmp", std::process::id()))
+}
+
+fn renamed(
+    dir: &Path,
+    temporary: &Path,
+    name: &str,
+    written: &mut HashSet<String>,
+) -> Result<(), Fault> {
+    let path = dir.join(name);
+    fs::rename(temporary, &path).map_err(|err| {
+        remove(temporary);
+        Fault::Media(format!(
+            "the media file {} can't be written: {err}",
+            path.display()
+        ))
+    })?;
+    written.insert(name.to_owned());
+    Ok(())
 }
 
 /// A stored name's extension: what follows the last dot of its last path segment, when anything
@@ -190,6 +262,24 @@ mod tests {
             write!(whole, "{byte:02x}").unwrap();
         }
         assert_eq!(name, whole);
+    }
+
+    #[test]
+    fn a_payload_in_memory_is_named_as_one_read_is() {
+        for case in cases::group("media_names") {
+            let bytes = hex(cases::text(&case, "bytes_hex"));
+            let extension = extension_of(cases::text(&case, "stored_name"));
+            let name = cases::text(&case, "name");
+            let mut media = Media::new(None);
+            assert_eq!(
+                media.store_bytes(&bytes, extension).unwrap(),
+                name,
+                "{case}"
+            );
+            let payload = Payload::new(bytes, extension);
+            assert_eq!(payload.name(), name, "{case}");
+            assert_eq!(media.store_payload(&payload).unwrap(), name, "{case}");
+        }
     }
 
     fn hex(text: &str) -> Vec<u8> {

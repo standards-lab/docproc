@@ -443,3 +443,27 @@ fn every_rlug_file_has_a_matching_sources_entry() {
         assert!(fixture(&format!("mime/{notice}")).is_file(), "{notice}");
     }
 }
+
+#[test]
+fn a_rights_managed_message_in_an_mbox_warns_with_its_ordinal() {
+    let mbox = built(
+        "rights-managed.mbox",
+        b"From ann@example.com Mon Jan 12 17:00:00 2026\n\
+          From: ann@example.com\n\
+          Content-Class: rpmsg.message\n\
+          \n\
+          protected\n\
+          From bob@example.com Mon Jan 12 17:01:00 2026\n\
+          From: bob@example.com\n\
+          \n\
+          plain\n",
+    );
+    let out = run(&[&mbox]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.lines().len(), 3);
+    assert_eq!(
+        out.stderr,
+        "docproc-mail: warning: message 1: it is a rights-managed message (message.rpmsg), \
+         whose encrypted content is not read\n"
+    );
+}

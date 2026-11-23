@@ -255,8 +255,7 @@ fn markdown_links_cid_images_to_their_files() {
     assert_eq!(
         markdown(&message),
         format!(
-            "We found a **moth** in relay 70, panel F.\n\n![moth]({})\n\n\
-             It is taped into the log book.",
+            "We found a **moth** in relay 70, panel F.\n\n![moth]({})",
             attachment["file"].as_str().unwrap()
         )
     );

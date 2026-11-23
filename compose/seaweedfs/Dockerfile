@@ -1,6 +1,6 @@
 # The harness's SeaweedFS S3 gateway, for the storage module's live tier.
 # See docs/development.md
-FROM chrislusf/seaweedfs:4.54
+FROM chrislusf/seaweedfs:4.55
 
 ENV AWS_ACCESS_KEY_ID=admin \
     AWS_SECRET_ACCESS_KEY=secret

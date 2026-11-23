@@ -139,6 +139,7 @@ var mimeThreads = map[string]string{
 	"generated/eml/06-chinese.eml":                  "0",
 	"generated/eml/07-html-only-bcc.eml":            "0",
 	"generated/eml/08-forward-attached-message.eml": "0",
+	"markdown/eml/10-markdown.eml":                  "0",
 	"mime/eml/09-threading.eml":                     "0",
 	"mime/nine.mboxrd":                              "1[2 9] 3 4 5 6 7 8",
 	"mime/rlug/mbox.rlug":                           "1[4] 2 3 5",

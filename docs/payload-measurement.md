@@ -108,7 +108,9 @@ Refused: 7 cpython `.eml` fixtures that are no message (`msg_11`, `18`, `19`, `3
   "docproc-mail", states, compared the same way, lacks nothing where the Markdown is made from it (2
   messages); beside a stored HTML body (2 messages) it lacks 57 B, all in `testMSG_chinese.msg`: 28
   B, the line its text body also holds, and 29 B, a table's numbers 1 to 19, which the RTF's text
-  runs together into one word, since nothing separates its cells.
+  runs together into one word, since nothing separates its cells. docproc-mail 0.1.4 appends none
+  of these: Markdown made from HTML is the HTML's alone ([`tool-contract.md`](tool-contract.md),
+  "docproc-mail").
 - **onenote.** Alt text 9,684 B (all), run text 7,482 B (6,944), image `ocr_text` 5,572 B (4,926,
   every duplicated byte of it reaching the Markdown inside the same image's alt text), filenames
   3,240 B (2,865), run links 114 B (all, as link targets), tag labels 57 B (27), ink alternatives

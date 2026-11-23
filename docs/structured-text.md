@@ -35,7 +35,7 @@ paths are spike-ai-pipeline-processing's ([`layers.md`](layers.md)).
 | ooxml | `properties` | `metadata` | tool | metadata | added |
 | mail | `markdown` | `dispatch/email.go` (`own`), `email/model.go` (`Conversation`) | tool; docinfer chunks it | chunks | kept |
 | mail | `body.html`, `body.derived.html` | none; `Conversation.HTML` copies `html` and nothing reads it; the Markdown is made from them | tool, in `markdown` | chunks, through `markdown` | **cut** |
-| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line), which the tool appends as [`tool-contract.md`](tool-contract.md), "docproc-mail", states | tool, in `markdown` | chunks, through `markdown` | into Markdown |
+| mail | `body.text`, `body.rtf` | none; the Markdown holds their text, but 295 B of text bodies beside an HTML body (and 28 B of RTF, the same line), alternatives to the HTML that the tool doesn't append, as [`tool-contract.md`](tool-contract.md), "docproc-mail", states | tool, in `markdown` | chunks, through `markdown` | **cut** |
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | tool | metadata | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | tool; docproc's `Threader` threads by them | none: the email stage's `Threader` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | tool | none: the email stage's `Conversation` | kept |

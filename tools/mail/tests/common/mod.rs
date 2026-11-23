@@ -104,27 +104,11 @@ pub fn assert_markdown(got: &serde_json::Value, body: &serde_json::Value, source
             }
         }
         let html = htmd::convert(&html).unwrap();
-        let markdown = markdown.unwrap_or_else(|| panic!("{source}: no markdown"));
-        let appended = markdown
-            .strip_prefix(html.as_str())
-            .unwrap_or_else(|| panic!("{source}: markdown {markdown:?} is not htmd's {html:?}"));
-        if !appended.is_empty() {
-            let paragraph = appended
-                .strip_prefix("\n\n")
-                .filter(|paragraph| !paragraph.contains('\n'))
-                .unwrap_or_else(|| panic!("{source}: {appended:?} is no appended paragraph"));
-            let text = body
-                .get("text")
-                .and_then(|text| text.as_str())
-                .unwrap_or("");
-            let mut words = text.split_whitespace();
-            for word in words_of_markdown(paragraph) {
-                assert!(
-                    words.any(|text| text == word),
-                    "{source}: appended {word:?} is not the text body's, in its order"
-                );
-            }
-        }
+        assert_eq!(
+            markdown,
+            Some(html.as_str()),
+            "{source}: markdown is not htmd's"
+        );
     } else if let Some(text) = body.get("text") {
         let text: Vec<String> = text
             .as_str()

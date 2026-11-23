@@ -1,11 +1,9 @@
 //! The content rule (docs/tool-contract.md, schema "2", "The content rule"): which sentences of a
 //! source text a target text lacks, compared by standards alone, so that no fixture tunes it.
-//! docproc-mail compares a message's text body with the Markdown made from its HTML, and
-//! docproc-onenote an image's OCR text with its alt text; both take the rule from here, its one
-//! normative implementation, pinned by their goldens.
+//! docproc-onenote compares an image's OCR text with its alt text, taking the rule from here, its
+//! one normative implementation, pinned by its goldens.
 //!
-//! - **Plain text.** Both texts are normalized to Unicode NFC. A Markdown text is read by
-//!   CommonMark's semantics first ([`Text::markdown`], behind the `markdown` feature).
+//! - **Plain text.** Both texts are normalized to Unicode NFC.
 //! - **URLs.** A `<scheme:…>` in angle brackets, its whitespace removed, or a GFM extended
 //!   autolink is one URL token, compared after RFC 3986 §6.2.2 normalization ([`url`]).
 //! - **Words.** The rest splits at UAX #29 word boundaries, and a segment holding a letter or a
@@ -22,8 +20,6 @@
 //! The Unicode version is that of the ICU4X data the crate's exact pins carry, [`UNICODE_VERSION`],
 //! part of schema "2": a bump that moves it fails the unit test asserting it.
 
-#[cfg(feature = "markdown")]
-mod markdown;
 mod myers;
 mod url;
 
@@ -42,29 +38,16 @@ pub const UNICODE_VERSION: &str = "18.0.0";
 /// The most edits the alignment runs to; past them, sentences are compared by set membership.
 pub const EDITS_MAX: usize = 10_000;
 
-/// A text as the rule reads it: NFC-normalized, with the ranges of it that are each one URL token
-/// as they stand, a Markdown link's or image's destination, in order.
-#[derive(Debug, Default)]
+/// A text as the rule reads it: NFC-normalized.
+#[derive(Debug)]
 pub struct Text {
     text: String,
-    urls: Vec<Range<usize>>,
 }
 
 impl Text {
     /// A plain text, normalized to NFC.
     pub fn plain(text: &str) -> Self {
-        Self {
-            text: nfc(text),
-            urls: Vec::new(),
-        }
-    }
-
-    /// A Markdown text's plain text, read by CommonMark's semantics: a link as its text followed
-    /// by its destination as one URL token, an image as its alt text followed by its destination,
-    /// emphasis and backslash escapes removed, and each block ending a line.
-    #[cfg(feature = "markdown")]
-    pub fn markdown(markdown: &str) -> Self {
-        markdown::plain(markdown)
+        Self { text: nfc(text) }
     }
 
     /// The text, NFC-normalized.
@@ -134,50 +117,47 @@ fn sentences(text: &str) -> Vec<Range<usize>> {
     out
 }
 
-#[derive(Hash, PartialEq, Eq)]
-enum Key {
-    Word(String),
+enum Key<'t> {
+    Word(&'t str),
     Url(String),
 }
 
 #[derive(Default)]
-struct Ids(HashMap<Key, u32>);
+struct Ids<'t> {
+    words: HashMap<&'t str, u32>,
+    urls: HashMap<String, u32>,
+}
 
-impl Ids {
-    fn tokens(&mut self, text: &Text) -> Vec<(usize, u32)> {
-        let mut keys = Vec::new();
-        let mut at = 0;
-        for range in &text.urls {
-            unforced(&text.text, at..range.start, &mut keys);
-            let url: String = text.text[range.clone()]
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect();
-            keys.push((range.start, Key::Url(url::normalized(&url))));
-            at = range.end;
-        }
-        unforced(&text.text, at..text.text.len(), &mut keys);
-        keys.into_iter()
-            .map(|(at, key)| {
-                let next = u32::try_from(self.0.len()).unwrap_or(u32::MAX);
-                (at, *self.0.entry(key).or_insert(next))
-            })
+impl<'t> Ids<'t> {
+    fn tokens(&mut self, text: &'t Text) -> Vec<(usize, u32)> {
+        keys(&text.text)
+            .into_iter()
+            .map(|(at, key)| (at, self.id(key)))
             .collect()
     }
+
+    fn id(&mut self, key: Key<'t>) -> u32 {
+        let next = u32::try_from(self.words.len() + self.urls.len()).unwrap_or(u32::MAX);
+        match key {
+            Key::Word(word) => *self.words.entry(word).or_insert(next),
+            Key::Url(url) => *self.urls.entry(url).or_insert(next),
+        }
+    }
 }
 
-fn unforced(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
-    let piece = &text[range.clone()];
+fn keys(text: &str) -> Vec<(usize, Key<'_>)> {
+    let mut out = Vec::new();
     let mut at = 0;
-    for (span, url) in url::find(piece) {
-        words(text, range.start + at..range.start + span.start, out);
-        out.push((range.start + span.start, Key::Url(url)));
+    for (span, url) in url::find(text) {
+        words(text, at..span.start, &mut out);
+        out.push((span.start, Key::Url(url)));
         at = span.end;
     }
-    words(text, range.start + at..range.end, out);
+    words(text, at..text.len(), &mut out);
+    out
 }
 
-fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
+fn words<'t>(text: &'t str, range: Range<usize>, out: &mut Vec<(usize, Key<'t>)>) {
     let piece = &text[range.clone()];
     let categories = CodePointMapData::<GeneralCategory>::new();
     let mut start = 0;
@@ -194,7 +174,7 @@ fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
                 || GeneralCategoryGroup::Number.contains(category)
         });
         if word {
-            out.push((range.start + start, Key::Word(segment.to_owned())));
+            out.push((range.start + start, Key::Word(segment)));
         }
         start = end;
     }
@@ -222,7 +202,7 @@ mod tests {
         words(text, 0..text.len(), &mut out);
         out.into_iter()
             .map(|(_, key)| match key {
-                Key::Word(word) => word,
+                Key::Word(word) => word.to_owned(),
                 Key::Url(url) => url,
             })
             .collect()

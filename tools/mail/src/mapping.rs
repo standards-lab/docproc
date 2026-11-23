@@ -4,13 +4,13 @@
 //!
 //! A message's bodies are read in the order its Markdown is made from them: its stored HTML, the
 //! HTML recovered from its RTF body, its plain text, then its RTF body's own text, which is read
-//! only when there is no text body and is then the Markdown's, or beside HTML the content rule's
-//! source text; an RTF that encapsulates HTML has none of its own. Each body is still read and
-//! decoded, and one that can't be is passed over with a note. The stored HTML, PidTagHtml or
-//! PidTagBodyHtml in PT_STRING8, the same bytes, is decoded in the code page PidTagInternetCodepage
-//! names, else the one its own `<meta>` declares, else UTF-8 when it is valid UTF-8, else the
-//! message's: Apache POI's ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other strings in 1252 and
-//! its HTML in UTF-8, its internet code page. In PT_UNICODE it is UTF-16.
+//! only when there is neither HTML nor a text body, and is then the Markdown's; an RTF that
+//! encapsulates HTML has none of its own. Each body is still read and decoded, and one that can't
+//! be is passed over with a note. The stored HTML, PidTagHtml or PidTagBodyHtml in PT_STRING8, the
+//! same bytes, is decoded in the code page PidTagInternetCodepage names, else the one its own
+//! `<meta>` declares, else UTF-8 when it is valid UTF-8, else the message's: Apache POI's
+//! ASCII_UTF-8_CP1252_LCID1031_HTML.msg keeps its other strings in 1252 and its HTML in UTF-8, its
+//! internet code page. In PT_UNICODE it is UTF-16.
 //!
 //! An address's SMTP address is read only for an Exchange (`EX`) address type: on any other type
 //! the address is already the one to write to. A .pst stores a PidTagSubject that starts with
@@ -20,11 +20,27 @@
 //! (MS-OXCMSG 2.2.2.9), and its extension PidTagAttachExtension, stored with or without its dot,
 //! else its filename's. A PT_SYSTIME is written in ISO 8601 UTC, to the second, through Howard
 //! Hinnant's proleptic Gregorian algorithm; one past year 9999 is left out, with a note.
+//!
+//! A message whose class is `IPM.Note.SMIME`, or any class ending in `.SMIME`, compared without
+//! regard to case, is an opaque S/MIME message (MS-OXOSMIME 2.1.3.2.2.2): its content is the
+//! encrypted or opaquely signed attachment no reader here opens. It gives the message the note an
+//! opaque S/MIME MIME part gives, whatever its attachments. `IPM.Note.SMIME.MultipartSigned`, a
+//! clear-signed message, is no such class: it keeps its whole `multipart/signed` MIME entity,
+//! readable text included, as its one attachment, and sets no body of its own (MS-OXOSMIME
+//! 2.1.3.1.1.2 and 2.1.3.1.2.2). When it stores no body, its bodies are that entity's, read as a
+//! MIME message's are ([`signed`]); a body it does store is kept, and the entity's are not read.
+//!
+//! A message with an attachment named `message.rpmsg`, compared without regard to case, is a
+//! rights-managed message (MS-OXORMMS 2.2.3.1): its content is that attachment's, encrypted. It
+//! gives the message the note a rights-managed MIME message gives, once ([`rights_managed`]). The
+//! content class PidNameContentClass, `rpmsg.message` on such a message (MS-OXORMMS 2.2.2.1), is a
+//! named property, and no reader here reads named properties, so the attachment is the one sign.
 
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
 use crate::markdown::Bodies;
+use crate::mime::{self, OPAQUE_SMIME, RIGHTS_MANAGED};
 use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::rtf;
@@ -79,6 +95,9 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
         ..Message::default()
     };
     let bodies = bodies(&mut strings, props, code_page, &mut notes);
+    if message.class.as_deref().is_some_and(opaque_smime) {
+        notes.push(OPAQUE_SMIME.to_owned());
+    }
     for (row, recipient) in recipients.iter().enumerate() {
         let Some(address) = address(
             &mut strings,
@@ -106,6 +125,48 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
     (message, bodies, all)
 }
 
+fn opaque_smime(class: &str) -> bool {
+    class
+        .get(class.len().saturating_sub(".smime".len())..)
+        .is_some_and(|tail| tail.eq_ignore_ascii_case(".smime"))
+}
+
+/// The note for a rights-managed message, once its attachments are mapped: one when any of them
+/// is named `message.rpmsg`, compared without regard to case, else none.
+pub fn rights_managed(message: &Message) -> Vec<String> {
+    let rpmsg = message
+        .attachments
+        .iter()
+        .any(|attachment| attachment.filename.as_deref().is_some_and(mime::rpmsg));
+    if rpmsg {
+        vec![RIGHTS_MANAGED.to_owned()]
+    } else {
+        Vec::new()
+    }
+}
+
+const MULTIPART_SIGNED: &str = "IPM.Note.SMIME.MultipartSigned";
+
+/// Reads a clear-signed message's attachment `content` for its bodies: when the message's class
+/// is `IPM.Note.SMIME.MultipartSigned`, compared without regard to case, `bodies` holds none yet,
+/// and `content` is a `multipart/signed` MIME entity, `bodies` becomes the entity's, chosen as a
+/// MIME message's are. Otherwise `bodies` is left as it is. The notes are the message's.
+pub fn signed(class: Option<&str>, bodies: &mut Bodies, content: &[u8]) -> Vec<String> {
+    let mut notes = Vec::new();
+    let clear_signed = class.is_some_and(|class| class.eq_ignore_ascii_case(MULTIPART_SIGNED));
+    let bodiless = bodies.html.is_none() && bodies.text.is_none();
+    if !clear_signed || !bodiless {
+        return notes;
+    }
+    let Some(parsed) = mime::parser().parse(content) else {
+        return notes;
+    };
+    if parsed.is_content_type("multipart", "signed") {
+        *bodies = mime::bodies(&parsed.root(), &mut notes);
+    }
+    notes
+}
+
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
     let text = strings.text(props, tag::BODY);
     let html = html(strings, props, code_page);
@@ -124,25 +185,14 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
         html
     });
     let html = html.or(from_rtf);
-    let rtf_text = match text {
-        Some(_) => None,
-        None => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
+    let text = match (&html, text) {
+        (None, None) => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
             notes.append(&mut lossy);
             text
         }),
+        (_, text) => text,
     };
-    match html {
-        Some(_) => Bodies {
-            html,
-            text,
-            rtf_text,
-        },
-        None => Bodies {
-            html,
-            text: text.or(rtf_text),
-            rtf_text: None,
-        },
-    }
+    Bodies { html, text }
 }
 
 fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {
@@ -387,6 +437,85 @@ mod tests {
     fn the_subject_prefix_marker_is_dropped() {
         assert_eq!(strip_subject_prefix("\u{1}\u{5}Re: Hi".into()), "Re: Hi");
         assert_eq!(strip_subject_prefix("Hi".into()), "Hi");
+    }
+
+    #[test]
+    fn a_message_rpmsg_attachment_gives_its_message_one_rights_managed_note() {
+        let notes = |names: &[&str]| {
+            let (mut message, _, _) = message(&Bag::new(), &[], 1252);
+            for name in names {
+                let props = Bag::from([(tag::ATTACH_LONG_FILENAME, unicode(name))]);
+                message
+                    .attachments
+                    .push(attachment(&props, Some(b"x"), 1252).record);
+            }
+            rights_managed(&message)
+        };
+        for names in [
+            &["message.rpmsg"][..],
+            &["MESSAGE.RPMSG"],
+            &["report.csv", "Message.Rpmsg"],
+            &["message.rpmsg", "message.rpmsg"],
+        ] {
+            assert_eq!(notes(names), [RIGHTS_MANAGED], "{names:?}");
+        }
+        for names in [&[][..], &["report.csv"], &["message.rpmsg.txt"], &["rpmsg"]] {
+            assert_eq!(notes(names), Vec::<String>::new(), "{names:?}");
+        }
+    }
+
+    #[test]
+    fn an_smime_class_gives_its_message_the_opaque_smime_note() {
+        let notes = |class: &str| {
+            let props = Bag::from([(tag::MESSAGE_CLASS, unicode(class))]);
+            message(&props, &[], 1252).2
+        };
+        for class in ["IPM.Note.SMIME", "ipm.note.smime", "IPM.Note.Custom.SMIME"] {
+            assert_eq!(notes(class), [OPAQUE_SMIME], "{class}");
+        }
+        for class in [
+            "IPM.Note.SMIME.MultipartSigned",
+            "IPM.Note",
+            "SMIME",
+            "IPM.Note.Тест",
+        ] {
+            assert_eq!(notes(class), Vec::<String>::new(), "{class}");
+        }
+    }
+
+    const SIGNED: &[u8] = b"Content-Type: multipart/signed; \
+                            protocol=\"application/pkcs7-signature\"; boundary=s\r\n\r\n\
+                            --s\r\nContent-Type: multipart/alternative; boundary=a\r\n\r\n\
+                            --a\r\nContent-Type: text/plain\r\n\r\nSigned.\r\n\
+                            --a\r\nContent-Type: text/html\r\n\r\n<p>Signed.</p>\r\n\
+                            --a--\r\n\
+                            --s\r\nContent-Type: application/pkcs7-signature; \
+                            name=smime.p7s\r\n\r\nMIAGCSqG\r\n--s--\r\n";
+
+    #[test]
+    fn a_clear_signed_message_without_a_body_reads_its_signed_entitys() {
+        let read = |class: &str, props: Vec<(u16, Value)>, content: &[u8]| {
+            let mut props = Bag::from_iter(props);
+            props.insert(tag::MESSAGE_CLASS, unicode(class));
+            let (message, mut bodies, _) = message(&props, &[], 1252);
+            let notes = signed(message.class.as_deref(), &mut bodies, content);
+            assert_eq!(notes, Vec::<String>::new());
+            (bodies.html, bodies.text)
+        };
+        let entitys = (Some("<p>Signed.</p>".into()), Some("Signed.".into()));
+        for class in [MULTIPART_SIGNED, "ipm.note.smime.multipartsigned"] {
+            assert_eq!(read(class, vec![], SIGNED), entitys, "{class}");
+        }
+        let own = vec![(tag::BODY, unicode("Own."))];
+        assert_eq!(
+            read(MULTIPART_SIGNED, own.clone(), SIGNED),
+            (None, Some("Own.".into()))
+        );
+        assert_eq!(read("IPM.Note", vec![], SIGNED), (None, None));
+        assert_eq!(read("IPM.Note", own, SIGNED), (None, Some("Own.".into())));
+        let plain = b"Content-Type: text/plain\r\n\r\nNot signed.\r\n";
+        assert_eq!(read(MULTIPART_SIGNED, vec![], plain), (None, None));
+        assert_eq!(read(MULTIPART_SIGNED, vec![], b"MIAGCSqG"), (None, None));
     }
 
     fn unicode(text: &str) -> Value {

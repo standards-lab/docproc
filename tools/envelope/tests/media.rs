@@ -5,7 +5,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
 
-use docproc_envelope::{Fault, Media};
+use docproc_envelope::{Fault, Media, Payload};
 
 const ABC: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -48,6 +48,26 @@ fn a_repeated_payload_is_written_once() {
     let second = media.store(&b"abc"[..], Some("txt")).unwrap();
     assert_eq!(second, first);
     assert!(entries(&dir).is_empty());
+}
+
+#[test]
+fn a_payload_in_memory_is_written_once() {
+    let dir = scratch("in-memory");
+    let mut media = Media::new(Some(dir.clone()));
+    media.create().unwrap();
+    let name = media.store_bytes(b"abc", Some("txt")).unwrap();
+    assert_eq!(name, format!("{ABC}.txt"));
+    assert_eq!(fs::read(dir.join(&name)).unwrap(), b"abc");
+    fs::remove_file(dir.join(&name)).unwrap();
+    let payload = Payload::new(b"abc".to_vec(), Some("txt"));
+    assert_eq!(media.store_payload(&payload).unwrap(), name);
+    assert_eq!(media.store(&b"abc"[..], Some("txt")).unwrap(), name);
+    assert!(entries(&dir).is_empty());
+    let other = media
+        .store_payload(&Payload::new(b"abcd".to_vec(), None))
+        .unwrap();
+    assert_eq!(fs::read(dir.join(&other)).unwrap(), b"abcd");
+    assert_eq!(entries(&dir), [other]);
 }
 
 #[test]
@@ -110,6 +130,23 @@ fn a_media_file_that_cant_be_written_is_named() {
     let dir = scratch("unwritable").join("missing");
     let fault = Media::new(Some(dir.clone()))
         .store(&b"abc"[..], None)
+        .unwrap_err();
+    assert_eq!(fault.code(), 1);
+    let temporary = dir.join(format!(".{}-1.tmp", std::process::id()));
+    assert_eq!(
+        fault.reason(),
+        format!(
+            "the media file {} can't be written: No such file or directory (os error 2)",
+            temporary.display()
+        )
+    );
+}
+
+#[test]
+fn a_media_file_in_memory_that_cant_be_written_is_named() {
+    let dir = scratch("unwritable-in-memory").join("missing");
+    let fault = Media::new(Some(dir.clone()))
+        .store_bytes(b"abc", None)
         .unwrap_err();
     assert_eq!(fault.code(), 1);
     let temporary = dir.join(format!(".{}-1.tmp", std::process::id()));

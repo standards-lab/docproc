@@ -31,7 +31,7 @@ Each archive holds the `docproc-mail` binary, the repository's `LICENSE`, and
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.3-linux-x64.tar.gz
+tar -xzf docproc-mail-v0.1.4-linux-x64.tar.gz
 ./docproc-mail --version
 ```
 
@@ -74,7 +74,7 @@ usage error. An id that names no message is refused.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.3
+0.1.4
 schema 2
 ```
 
@@ -120,9 +120,9 @@ body (`\fromhtml1`), its text body, then its RTF body's own text. Its images lin
 `cid:` source names the attachment whose `content_id` it is, any other source the attachment
 whose Content-Location it is, and a `data:` image is written as media and listed in the message's
 `media`, with no attachment record. A source that names nothing is kept as written, with a
-warning. When the Markdown is made from HTML, the sentences of the message's text body, or of its
-RTF body's text, that the Markdown lacks are appended to it, in order, as one paragraph, by the
-content rule docproc's tools share (Unicode 18.0.0).
+warning. Markdown made from HTML is the HTML's alone: nothing of the text body or the RTF body's
+text is appended, as the parts of a `multipart/alternative` are each an alternative version of the
+same information (RFC 2046 §5.1.4).
 
 A field with no value is left out, never `null`, and so is an empty list. The same input gives
 byte-identical stdout and media. The contract, field by field, is docproc's:
@@ -157,7 +157,9 @@ hierarchy table names twice, `skipped: already read`. A warning also comes for a
 lossily, a header value that doesn't map, an HTML body nested past 512 open elements (its
 Markdown made from the text body, else the HTML's text), a compressed RTF body whose stated size
 is more than nine times what its data can yield (not decompressed), an image source that names
-nothing, a TNEF or opaque S/MIME part, and a `.pst` embedded message listed without its content.
+nothing, a TNEF or opaque S/MIME part, a `.msg` or `.pst` message of an S/MIME class other than
+the clear-signed one, a rights-managed message, and a `.pst` embedded message listed without its
+content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
 an input that is missing, a directory, or without read permission, `no such file: <path>`, `is a
@@ -182,7 +184,21 @@ crate, [`tools/envelope`](../envelope).
 - No class-specific field is written: a contact, an appointment, or a task is a `message` line
   with the message fields alone.
 - TNEF (`winmail.dat`) and opaque S/MIME (`application/pkcs7-mime`) parts are not read; each
-  gives its message a warning. An `IPM.Note.SMIME` `.msg` or `.pst` message gets none.
+  gives its message a warning. So does a `.msg` or `.pst` message whose class is
+  `IPM.Note.SMIME`, or ends in `.SMIME`, compared without regard to case, whatever its
+  attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message gets none.
+- A rights-managed message's content is not read: it is encrypted in its `message.rpmsg`
+  attachment. A message with an attachment of that name, in any format, or, in an `.eml` or an
+  mbox, with a `Content-Class: rpmsg.message` header, each compared without regard to case, gets
+  one warning. It is still read: its placeholder body is its Markdown, and the `message.rpmsg`
+  attachment is listed. A `.msg` or `.pst` message's content class is a named property, which is
+  not read, so there the attachment is the one sign.
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared without
+  regard to case, keeps its signed content as one `multipart/signed` attachment. When the message
+  stores no body of its own, its Markdown is made from that content's text and HTML bodies, chosen
+  as an `.eml`'s are; a body it does store is kept, and the attachment's are not read. The
+  attachment is listed as stored, and the signed content's own attachments are not listed: they are
+  in its file alone.
 - ANSI stores are read but untested: no ANSI `.pst` is among the fixtures.
 - An embedded message in a `.msg`, an `.eml`, or an mbox is read to 16 levels of nesting; one
   deeper is listed without it, with a warning.
@@ -239,7 +255,11 @@ tool's check. The reasoning behind its configuration is on
   diff and run `check`; docproc's own `mise run upgrade` runs it.
 - `fixtures`, with `MISE_ENV=fixtures`: regenerates the generated `.pst` and `.msg` fixtures and
   their manifest from their `.eml` and item sources, on .NET 11, MimeKit held at 4.18.2. Each
-  other fixture is listed with its source, license, and SHA-256 in its group's `sources.json`.
+  third-party fixture is listed with its source, license, and SHA-256 in its group's
+  `sources.json`.
+  The hand-written `.eml` files of the MIME group and of the Markdown group
+  (`tests/fixtures/markdown/`, whose message pins each Markdown difference v0.1.2 lists) are
+  listed with their SHA-256 in their group's `sha256.json`.
 
 The version Cargo.toml records must be the release tag's and that of
 [`CHANGELOG.md`](CHANGELOG.md)'s newest release section.

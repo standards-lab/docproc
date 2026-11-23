@@ -153,7 +153,7 @@ renders:
   keeps Unicode symbols. An equation whose markers don't parse is the LaTeX of its text, with a
   warning.
 - An image as `![alt](file)`, its alt text followed by the sentences of its OCR text that the
-  alt text lacks, by the content rule docproc's tools share (Unicode 18.0.0); a hyperlinked
+  alt text lacks, by the shared envelope crate's content rule (Unicode 18.0.0); a hyperlinked
   image as `[![alt](file)](hyperlink)`. An embedded file as `[filename](file)`. Without a file,
   `[image: …]` and `[file: …]`.
 - An ink drawing, the page's own ink, a paragraph's handwriting, or an ink block, as
