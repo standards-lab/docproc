@@ -6,7 +6,7 @@ task.run_auto_install = false
 
 [tools]
 "aqua:google/go-containerregistry" = "0.22.1"
-"github:standards-lab/claude-plugins" = { version = "0.23.0", version_prefix = "marathon/v" }
+"github:standards-lab/claude-plugins" = { version = "0.24.0", version_prefix = "marathon/v" }
 "github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"
