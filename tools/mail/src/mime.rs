@@ -302,7 +302,9 @@ fn thread_index(header: Option<Header<'_>>, notes: &mut Vec<String>) -> Option<S
     Some(mapping::hex(&bytes))
 }
 
-fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
+/// A parsed message's bodies, its text body's text parts and its HTML body's HTML parts, each
+/// joined; a body that decodes lossily gives a note.
+pub fn bodies(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Bodies {
     let text = joined(
         parsed.text_body(),
         |kind| matches!(kind, PartKind::Text),

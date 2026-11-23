@@ -442,7 +442,7 @@ impl<W: Write> Walk<'_, W> {
         let mapped = guarded(|| {
             Ok::<_, Infallible>(mapping::message(&data.props, &data.recipients, code_page))
         });
-        let (mut message, bodies, notes) = match mapped {
+        let (mut message, mut bodies, notes) = match mapped {
             Ok(mapped) => mapped,
             Err(failure) => {
                 warn(&place, &format!("skipped: {}", failure.reason));
@@ -480,15 +480,23 @@ impl<W: Write> Walk<'_, W> {
             if read.opened.is_none() {
                 warn(&here, not_opened(&read.props));
             }
+            let class = message.class.as_deref();
             let mapped = guarded(|| {
-                Ok::<_, Infallible>(mapping::attachment(&read.props, read.content(), code_page))
+                let signed = read
+                    .content()
+                    .map(|content| mapping::signed(class, &mut bodies, content));
+                let mapped = mapping::attachment(&read.props, read.content(), code_page);
+                Ok::<_, Infallible>((mapped, signed.unwrap_or_default()))
             });
-            let mapping::Mapped {
-                mut record,
-                extension,
-                location,
-                notes,
-            } = match mapped {
+            let (
+                mapping::Mapped {
+                    mut record,
+                    extension,
+                    location,
+                    notes,
+                },
+                signed,
+            ) = match mapped {
                 Ok(mapped) => mapped,
                 Err(failure) => {
                     warn(&here, &format!("skipped: {}", failure.reason));
@@ -497,6 +505,7 @@ impl<W: Write> Walk<'_, W> {
                 }
             };
             warn_all(&here, notes);
+            warn_all(&place, signed);
             if let Some(content) = read.content() {
                 record.file = Some(self.files.store_bytes(content, extension.as_deref())?);
             }

@@ -892,3 +892,68 @@ fn an_smime_class_warns_as_an_opaque_smime_part_does() {
     );
     assert_eq!(stderr, "");
 }
+
+const ATTACH_MIME_TAG: u16 = 0x370E;
+
+const SIGNED: &[u8] = b"Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; \
+                        boundary=s\r\n\r\n\
+                        --s\r\nContent-Type: multipart/mixed; boundary=m\r\n\r\n\
+                        --m\r\nContent-Type: multipart/alternative; boundary=a\r\n\r\n\
+                        --a\r\nContent-Type: text/plain\r\n\r\nSigned HTML.\r\n\
+                        --a\r\nContent-Type: text/html\r\n\r\n<p>Signed <b>HTML</b>.</p>\r\n\
+                        --a--\r\n\
+                        --m\r\nContent-Type: text/csv\r\n\
+                        Content-Disposition: attachment; filename=inner.csv\r\n\r\na,b\r\n\
+                        --m--\r\n\
+                        --s\r\nContent-Type: application/pkcs7-signature; name=smime.p7s\r\n\
+                        \r\nMIAGCSqG\r\n--s--\r\n";
+
+fn clear_signed(mut props: Vec<(u16, Prop)>) -> Message {
+    props.push((
+        MESSAGE_CLASS,
+        Prop::Unicode("IPM.Note.SMIME.MultipartSigned".into()),
+    ));
+    Message {
+        props,
+        attachments: vec![Attachment {
+            props: Child::Props(vec![
+                (ATTACH_METHOD, Prop::Long(1)),
+                (ATTACH_LONG_FILENAME, Prop::Unicode("SMIME.txt".into())),
+                (ATTACH_MIME_TAG, Prop::Unicode("multipart/signed".into())),
+                (ATTACH_DATA, Prop::Binary(SIGNED.to_vec())),
+            ]),
+            object: None,
+        }],
+        ..Message::default()
+    }
+}
+
+#[test]
+fn a_clear_signed_message_without_a_body_reads_its_signed_entitys_bodies() {
+    let msg = build("clear-signed.msg", &clear_signed(subject("signed")));
+    let dir = scratch("msg-clear-signed");
+    let out = run(&[msg.as_os_str(), "--media".as_ref(), dir.as_os_str()]);
+    assert_eq!(out.code, Some(0), "{}", out.stderr);
+    assert_eq!(out.stderr, "");
+    let message = &out.lines()[1];
+    assert_eq!(message["markdown"], "Signed **HTML**.");
+    let attachments = message["attachments"].as_array().unwrap();
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0]["filename"], "SMIME.txt");
+    assert_eq!(attachments[0]["mime_type"], "multipart/signed");
+    assert_eq!(attachments[0]["size"], SIGNED.len());
+    assert_eq!(attachments[0]["inline"], false);
+    let file = attachments[0]["file"].as_str().unwrap();
+    assert_eq!(std::fs::read(dir.join(file)).unwrap(), SIGNED);
+    assert_eq!(names(&dir), [file]);
+}
+
+#[test]
+fn a_clear_signed_message_keeps_its_own_body() {
+    let mut props = subject("signed");
+    props.push((BODY, Prop::Unicode("Its own.".into())));
+    let (message, stderr) = read_built("clear-signed-own.msg", &clear_signed(props));
+    assert_eq!(stderr, "");
+    assert_eq!(message["markdown"], "Its own.");
+    assert_eq!(message["attachments"].as_array().unwrap().len(), 1);
+}

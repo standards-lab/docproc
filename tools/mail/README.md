@@ -185,6 +185,11 @@ crate, [`tools/envelope`](../envelope).
   gives its message a warning. So does a `.msg` or `.pst` message whose class is
   `IPM.Note.SMIME`, or ends in `.SMIME`, whatever its attachments; a clear-signed
   `IPM.Note.SMIME.MultipartSigned` message gets none.
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned`, keeps its
+  signed content as one `multipart/signed` attachment. When the message stores no body of its
+  own, its Markdown is made from that content's text and HTML bodies, chosen as an `.eml`'s are;
+  a body it does store is kept, and the attachment's are not read. The attachment is listed as
+  stored, and the signed content's own attachments are not listed: they are in its file alone.
 - ANSI stores are read but untested: no ANSI `.pst` is among the fixtures.
 - An embedded message in a `.msg`, an `.eml`, or an mbox is read to 16 levels of nesting; one
   deeper is listed without it, with a warning.

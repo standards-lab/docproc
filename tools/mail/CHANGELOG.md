@@ -34,6 +34,12 @@ output contract: a change to them is a change here. This changelog covers docpro
   (application/pkcs7-mime), encrypted or opaquely signed, whose content is not read`, whatever
   its attachments; it had none, so its Markdown, empty or partial, read as all there was. It is
   still read. A clear-signed `IPM.Note.SMIME.MultipartSigned` message has no such warning.
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared
+  without regard to case, that stores no body of its own has its Markdown made from the text and
+  HTML bodies of its `multipart/signed` attachment, chosen as an `.eml`'s signed content's are;
+  it had no Markdown, since such a message keeps its readable text in that attachment alone.
+  A body the message does store is kept as before. The attachment is still listed as stored, and
+  the signed content's own attachments are not listed.
 
 ## [v0.1.3] - 2026-11-19
 

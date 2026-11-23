@@ -25,13 +25,16 @@
 //! regard to case, is an opaque S/MIME message (MS-OXOSMIME 2.1.3.2.2.2): its content is the
 //! encrypted or opaquely signed attachment no reader here opens. It gives the message the note an
 //! opaque S/MIME MIME part gives, whatever its attachments. `IPM.Note.SMIME.MultipartSigned`, a
-//! clear-signed message, is no such class.
+//! clear-signed message, is no such class: it keeps its whole `multipart/signed` MIME entity,
+//! readable text included, as its one attachment, and sets no body of its own (MS-OXOSMIME
+//! 2.1.3.1.1.2 and 2.1.3.1.2.2). When it stores no body, its bodies are that entity's, read as a
+//! MIME message's are ([`signed`]); a body it does store is kept, and the entity's are not read.
 
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
 use crate::markdown::Bodies;
-use crate::mime::OPAQUE_SMIME;
+use crate::mime::{self, OPAQUE_SMIME};
 use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::rtf;
@@ -120,6 +123,28 @@ fn opaque_smime(class: &str) -> bool {
     class
         .get(class.len().saturating_sub(".smime".len())..)
         .is_some_and(|tail| tail.eq_ignore_ascii_case(".smime"))
+}
+
+const MULTIPART_SIGNED: &str = "IPM.Note.SMIME.MultipartSigned";
+
+/// Reads a clear-signed message's attachment `content` for its bodies: when the message's class
+/// is `IPM.Note.SMIME.MultipartSigned`, compared without regard to case, `bodies` holds none yet,
+/// and `content` is a `multipart/signed` MIME entity, `bodies` becomes the entity's, chosen as a
+/// MIME message's are. Otherwise `bodies` is left as it is. The notes are the message's.
+pub fn signed(class: Option<&str>, bodies: &mut Bodies, content: &[u8]) -> Vec<String> {
+    let mut notes = Vec::new();
+    let clear_signed = class.is_some_and(|class| class.eq_ignore_ascii_case(MULTIPART_SIGNED));
+    let bodiless = bodies.html.is_none() && bodies.text.is_none() && bodies.rtf_text.is_none();
+    if !clear_signed || !bodiless {
+        return notes;
+    }
+    let Some(parsed) = mime::parser().parse(content) else {
+        return notes;
+    };
+    if parsed.is_content_type("multipart", "signed") {
+        *bodies = mime::bodies(&parsed.root(), &mut notes);
+    }
+    notes
 }
 
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
@@ -422,6 +447,41 @@ mod tests {
         ] {
             assert_eq!(notes(class), Vec::<String>::new(), "{class}");
         }
+    }
+
+    const SIGNED: &[u8] = b"Content-Type: multipart/signed; \
+                            protocol=\"application/pkcs7-signature\"; boundary=s\r\n\r\n\
+                            --s\r\nContent-Type: multipart/alternative; boundary=a\r\n\r\n\
+                            --a\r\nContent-Type: text/plain\r\n\r\nSigned.\r\n\
+                            --a\r\nContent-Type: text/html\r\n\r\n<p>Signed.</p>\r\n\
+                            --a--\r\n\
+                            --s\r\nContent-Type: application/pkcs7-signature; \
+                            name=smime.p7s\r\n\r\nMIAGCSqG\r\n--s--\r\n";
+
+    #[test]
+    fn a_clear_signed_message_without_a_body_reads_its_signed_entitys() {
+        let read = |class: &str, props: Vec<(u16, Value)>, content: &[u8]| {
+            let mut props = Bag::from_iter(props);
+            props.insert(tag::MESSAGE_CLASS, unicode(class));
+            let (message, mut bodies, _) = message(&props, &[], 1252);
+            let notes = signed(message.class.as_deref(), &mut bodies, content);
+            assert_eq!(notes, Vec::<String>::new());
+            (bodies.html, bodies.text)
+        };
+        let entitys = (Some("<p>Signed.</p>".into()), Some("Signed.".into()));
+        for class in [MULTIPART_SIGNED, "ipm.note.smime.multipartsigned"] {
+            assert_eq!(read(class, vec![], SIGNED), entitys, "{class}");
+        }
+        let own = vec![(tag::BODY, unicode("Own."))];
+        assert_eq!(
+            read(MULTIPART_SIGNED, own.clone(), SIGNED),
+            (None, Some("Own.".into()))
+        );
+        assert_eq!(read("IPM.Note", vec![], SIGNED), (None, None));
+        assert_eq!(read("IPM.Note", own, SIGNED), (None, Some("Own.".into())));
+        let plain = b"Content-Type: text/plain\r\n\r\nNot signed.\r\n";
+        assert_eq!(read(MULTIPART_SIGNED, vec![], plain), (None, None));
+        assert_eq!(read(MULTIPART_SIGNED, vec![], b"MIAGCSqG"), (None, None));
     }
 
     fn unicode(text: &str) -> Value {
