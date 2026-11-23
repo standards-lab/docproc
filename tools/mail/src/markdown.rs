@@ -434,20 +434,23 @@ fn src_attribute(tag: &str) -> Option<(Range<usize>, Range<usize>)> {
     }
 }
 
-/// Markdown from an HTML body. Images keep their sources as written. The head, styles and
-/// scripts are no part of the text: htmd would write a style's rules as text. Links, images, and
-/// table cells are written by [`anchor`], [`image`], and [`cell`], in place of htmd's own. The
-/// escapes htmd 0.6 writes beyond htmd 0.5.6's are kept only where CommonMark needs them
-/// ([`bare`]).
-pub fn from_html(html: &str) -> Result<String, String> {
-    let htmd = htmd::HtmlToMarkdown::builder()
+thread_local! {
+    static CONVERTER: htmd::HtmlToMarkdown = htmd::HtmlToMarkdown::builder()
         .skip_tags(vec!["head", "style", "script"])
         .add_handler(vec!["a"], anchor)
         .add_handler(vec!["img"], image)
         .add_handler(vec!["td", "th"], cell)
         .build();
-    let markdown = htmd
-        .convert(html)
+}
+
+/// Markdown from an HTML body. Images keep their sources as written. The head, styles and
+/// scripts are no part of the text: htmd would write a style's rules as text. Links, images, and
+/// table cells are written by [`anchor`], [`image`], and [`cell`], in place of htmd's own. The
+/// escapes htmd 0.6 writes beyond htmd 0.5.6's are kept only where CommonMark needs them
+/// ([`bare`]). One converter a thread, built at its first call, makes every body.
+pub fn from_html(html: &str) -> Result<String, String> {
+    let markdown = CONVERTER
+        .with(|htmd| htmd.convert(html))
         .map_err(|err| format!("can't be made into Markdown ({err})"))?;
     Ok(bare(&markdown))
 }
