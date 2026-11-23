@@ -3,8 +3,7 @@
 //! docproc-onenote compares an image's OCR text with its alt text, taking the rule from here, its
 //! one normative implementation, pinned by its goldens.
 //!
-//! - **Plain text.** Both texts are normalized to Unicode NFC. A Markdown text is read by
-//!   CommonMark's semantics first ([`Text::markdown`], behind the `markdown` feature).
+//! - **Plain text.** Both texts are normalized to Unicode NFC.
 //! - **URLs.** A `<scheme:…>` in angle brackets, its whitespace removed, or a GFM extended
 //!   autolink is one URL token, compared after RFC 3986 §6.2.2 normalization ([`url`]).
 //! - **Words.** The rest splits at UAX #29 word boundaries, and a segment holding a letter or a
@@ -21,8 +20,6 @@
 //! The Unicode version is that of the ICU4X data the crate's exact pins carry, [`UNICODE_VERSION`],
 //! part of schema "2": a bump that moves it fails the unit test asserting it.
 
-#[cfg(feature = "markdown")]
-mod markdown;
 mod myers;
 mod url;
 
@@ -41,29 +38,16 @@ pub const UNICODE_VERSION: &str = "18.0.0";
 /// The most edits the alignment runs to; past them, sentences are compared by set membership.
 pub const EDITS_MAX: usize = 10_000;
 
-/// A text as the rule reads it: NFC-normalized, with the ranges of it that are each one URL token
-/// as they stand, a Markdown link's or image's destination, in order.
-#[derive(Debug, Default)]
+/// A text as the rule reads it: NFC-normalized.
+#[derive(Debug)]
 pub struct Text {
     text: String,
-    urls: Vec<Range<usize>>,
 }
 
 impl Text {
     /// A plain text, normalized to NFC.
     pub fn plain(text: &str) -> Self {
-        Self {
-            text: nfc(text),
-            urls: Vec::new(),
-        }
-    }
-
-    /// A Markdown text's plain text, read by CommonMark's semantics: a link as its text followed
-    /// by its destination as one URL token, an image as its alt text followed by its destination,
-    /// emphasis and backslash escapes removed, and each block ending a line.
-    #[cfg(feature = "markdown")]
-    pub fn markdown(markdown: &str) -> Self {
-        markdown::plain(markdown)
+        Self { text: nfc(text) }
     }
 
     /// The text, NFC-normalized.
@@ -146,19 +130,8 @@ struct Ids<'t> {
 
 impl<'t> Ids<'t> {
     fn tokens(&mut self, text: &'t Text) -> Vec<(usize, u32)> {
-        let mut keys = Vec::new();
-        let mut at = 0;
-        for range in &text.urls {
-            unforced(&text.text, at..range.start, &mut keys);
-            let url: String = text.text[range.clone()]
-                .chars()
-                .filter(|c| !c.is_whitespace())
-                .collect();
-            keys.push((range.start, Key::Url(url::normalized(&url))));
-            at = range.end;
-        }
-        unforced(&text.text, at..text.text.len(), &mut keys);
-        keys.into_iter()
+        keys(&text.text)
+            .into_iter()
             .map(|(at, key)| (at, self.id(key)))
             .collect()
     }
@@ -172,15 +145,16 @@ impl<'t> Ids<'t> {
     }
 }
 
-fn unforced<'t>(text: &'t str, range: Range<usize>, out: &mut Vec<(usize, Key<'t>)>) {
-    let piece = &text[range.clone()];
+fn keys(text: &str) -> Vec<(usize, Key<'_>)> {
+    let mut out = Vec::new();
     let mut at = 0;
-    for (span, url) in url::find(piece) {
-        words(text, range.start + at..range.start + span.start, out);
-        out.push((range.start + span.start, Key::Url(url)));
+    for (span, url) in url::find(text) {
+        words(text, at..span.start, &mut out);
+        out.push((span.start, Key::Url(url)));
         at = span.end;
     }
-    words(text, range.start + at..range.end, out);
+    words(text, at..text.len(), &mut out);
+    out
 }
 
 fn words<'t>(text: &'t str, range: Range<usize>, out: &mut Vec<(usize, Key<'t>)>) {

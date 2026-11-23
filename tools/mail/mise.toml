@@ -13,7 +13,7 @@ MimeKit 4.18.2: MsgKit 3.0.6 and PstBuilder.Eml 1.3.0 are built on MimeKit 4
 '''
 
 [tasks.check]
-description = "Shellcheck the scripts, format-check and lint docproc-mail and the shared envelope crate, test docproc-mail against the static musl release binary, lint and test the envelope with all its features on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
+description = "Shellcheck the scripts, format-check, lint, and test docproc-mail and the shared envelope crate against the static musl release binary, lint the envelope on its own locked graph, then print the binary's version; writes only target/ and tools/envelope/target/"
 dir = "{{config_root}}"
 run = '''
 set -eu
@@ -23,9 +23,8 @@ git ls-files -z '*.sh' | xargs -0 -r shellcheck
 cargo fmt --check
 cargo fmt --check --manifest-path ../envelope/Cargo.toml
 cargo clippy --all-targets --locked --target "$target" -p docproc-mail -p docproc-envelope -- -D warnings
-cargo clippy --all-targets --all-features --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
-cargo test --release --locked --target "$target" -p docproc-mail
-cargo test --release --all-features --locked --target "$target" --manifest-path ../envelope/Cargo.toml
+cargo clippy --all-targets --locked --target "$target" --manifest-path ../envelope/Cargo.toml -- -D warnings
+cargo test --release --locked --target "$target" -p docproc-mail -p docproc-envelope
 "target/$target/release/docproc-mail" --version
 '''
 

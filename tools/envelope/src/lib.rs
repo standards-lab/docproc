@@ -16,8 +16,8 @@
 //! - [`category`]: Unicode general-category predicates, on the content rule's Unicode version.
 //!
 //! Each tool keeps its own flags, readers, and model. The envelope's cases are
-//! tools/envelope/cases.json's, which this crate's unit tests read in place, as docproc-ooxml's
-//! tests and docproc's internal/cli do.
+//! tools/envelope/cases.json's, which this crate's unit tests read in place, as docproc-ooxml's,
+//! docproc-mail's, and docproc's internal/cli's tests do.
 
 pub mod category;
 pub mod content;

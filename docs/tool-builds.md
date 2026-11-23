@@ -98,14 +98,13 @@ task runs in the tool's directory. This page holds the reasoning behind the tool
   release musl binary, so no debug build is made.
 - **The envelope crate.** The shared envelope crate, `tools/envelope`, is untagged and unpublished,
   with no toolchain of its own: each Rust tool depends on it by path, and each Rust tool's check
-  formats it and lints it with the tool's toolchain, against the tool's Cargo.lock, and docproc's
-  root check reaches it through `TOOLS`. docproc-onenote's check tests it in that tool's graph, and
-  docproc-mail's tests it with every feature against its own `tools/envelope/Cargo.lock`, so its
-  `markdown` feature, which no tool enables, stays tested. clippy lints only a workspace member, and
-  the envelope is a member of no tool's graph, so each Rust tool's check also lints it by its own
-  manifest, with every feature and warnings denied, against that lock. Its manifest is formatted by
-  path, which reads no lock and writes none. Its `.gitignore` ignores the build output of a cargo
-  run in its directory. Its features: `markdown`, the content rule's Markdown-to-plain reader.
+  formats and tests it with the tool's toolchain, against the tool's Cargo.lock, so it is tested in
+  every graph that links it, and docproc's root check reaches it through `TOOLS`. clippy lints only
+  a workspace member, and the envelope is a member of no tool's graph, so each Rust tool's check
+  also lints it by its own manifest, with warnings denied, against its own
+  `tools/envelope/Cargo.lock`. Its manifest is formatted by path, which reads no lock and writes
+  none. Its `.gitignore` ignores the build output of a cargo run in its directory. It has no
+  features.
 - **Currency and upgrade.** `tools/currency.sh` reports the crates, their RustSec advisories, and
   the mise tools, as it does for every Rust tool, and moves every mise tool and every crate, raising
   the shared envelope crate's requirements, `tools/envelope/Cargo.toml`, then re-locking the tool's
@@ -201,11 +200,8 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   Unicode version each states, which a unit test asserts. They are not dev-dependencies: the crate
   is tested from each tool's graph, where it is no workspace member, and cargo tests no such crate
   with dev-dependencies.
-- pulldown-cmark, a CommonMark reader (`src/content/markdown.rs`), for a tool that compares a
-  source text with its Markdown; behind the `markdown` feature, so a tool comparing two plain texts
-  links none.
 - Its own `Cargo.lock`, the graph clippy lints it on, pins each of these at the version
-  docproc-mail's lock does, the ICU4X crates and pulldown-cmark at their exact requirements.
+  docproc-mail's lock does, the ICU4X crates at their exact requirements.
 
 ### docproc-mail
 
@@ -232,20 +228,20 @@ only a newer release of a crate can clear. Run it, review the diff, and run each
   date. It registers .NET's code pages, which only MimeKit registers for itself: without them
   MsgKit fails on a windows-1251 or GB2312 source. MsgKit refuses to overwrite a file, so each
   output is deleted before it is built.
-- Its dependencies: docproc-envelope, without its `markdown` feature; outlook-pst, the `.pst`
-  store reader, pinned exactly since `src/pst.rs` works around that release's faults; codepage and
-  encoding_rs, code pages to text (`src/codepage.rs`): codepage maps a Windows code page to its
-  encoding_rs encoding, which decodes it, and a charset an HTML body's `<meta>` names, a WHATWG
-  label encoding_rs knows, back to its code page; compressed-rtf, Microsoft's MS-OXRTFCP
-  decompressor, `PidTagRtfCompressed` to RTF; htmd, HTML to Markdown, for the derived Markdown body,
-  which brings html5ever and its default DOM, ego-tree (ISC alone, accepted for it alone in
-  `about.toml`); pulldown-cmark, a CommonMark reader, which finds the code spans and code blocks of
-  the Markdown htmd writes, so a text `&` is written escaped outside them and as itself within
-  (`src/markdown.rs`); cfb, Compound File Binary (MIT), the container of a `.msg`, under the CLI's own MS-OXMSG reader (`src/msg.rs`), which brings
-  fnv, uuid and web-time; and mail-parser, Stalwart's RFC 5322 and MIME parser (Apache-2.0 OR MIT),
-  the reader of an `.eml` and of an mbox's messages (`src/eml.rs`, `src/mbox.rs`), which brings
-  hashify and encodify; `full_encoding` brings encoding_rs's multi-byte charsets, ISO-2022-JP and
-  GB2312 among them.
+- Its dependencies: docproc-envelope; outlook-pst, the `.pst` store reader, pinned exactly since
+  `src/pst.rs` works around that release's faults; codepage and encoding_rs, code pages to text
+  (`src/codepage.rs`): codepage maps a Windows code page to its encoding_rs encoding, which decodes
+  it, and a charset an HTML body's `<meta>` names, a WHATWG label encoding_rs knows, back to its
+  code page; compressed-rtf, Microsoft's MS-OXRTFCP decompressor, `PidTagRtfCompressed` to RTF;
+  htmd, HTML to Markdown, for the derived Markdown body, which brings html5ever and its default DOM,
+  ego-tree (ISC alone, accepted for it alone in `about.toml`); pulldown-cmark, a CommonMark reader,
+  which finds the code spans and code blocks of the Markdown htmd writes, so a text `&` is written
+  escaped outside them and as itself within (`src/markdown.rs`), and through which its tests read
+  the envelope's destinations and titles back; cfb, Compound File Binary (MIT), the container of a
+  `.msg`, under the CLI's own MS-OXMSG reader (`src/msg.rs`), which brings fnv, uuid and web-time;
+  and mail-parser, Stalwart's RFC 5322 and MIME parser (Apache-2.0 OR MIT), the reader of an `.eml`
+  and of an mbox's messages (`src/eml.rs`, `src/mbox.rs`), which brings hashify and encodify;
+  `full_encoding` brings encoding_rs's multi-byte charsets, ISO-2022-JP and GB2312 among them.
 - Its `.gitattributes`: the `.eml` sources are hashed in the generated fixtures' manifest and keep
   MIME's CRLF line breaks, and the mboxrd holds those sources byte for byte, CRLF and all, and the
   check compares it so; mime4j's `mbox.rlug` and its splits, and its NOTICE's CRLF, are kept as

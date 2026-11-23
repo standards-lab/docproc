@@ -1177,6 +1177,37 @@ mod tests {
         }
     }
 
+    fn envelope_cases(group: &str) -> Vec<serde_json::Value> {
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../envelope/cases.json");
+        let text = std::fs::read_to_string(path).expect("tools/envelope/cases.json is readable");
+        let table: serde_json::Value =
+            serde_json::from_str(&text).expect("tools/envelope/cases.json is JSON");
+        let cases = table[group].as_array().cloned().unwrap_or_default();
+        assert!(!cases.is_empty(), "cases.json has a {group} list");
+        cases
+    }
+
+    #[test]
+    fn the_envelopes_destinations_read_back_as_their_targets() {
+        for case in envelope_cases("destinations") {
+            let target = case["target"].as_str().unwrap();
+            let reads = case["reads"].as_str().unwrap_or(target);
+            let link = format!("[x]({})", destination(target));
+            assert_eq!(destinations(&link), [reads], "{case}: {link}");
+        }
+    }
+
+    #[test]
+    fn the_envelopes_titles_read_back_as_written() {
+        for case in envelope_cases("titles") {
+            let written = case["title"].as_str().unwrap();
+            let reads = case["reads"].as_str().unwrap_or(written);
+            let markdown = title(written);
+            let both = format!("[x](y \"{markdown}\") ![x](y \"{markdown}\")");
+            assert_eq!(titles_and_alts(&both).0, [reads, reads], "{case}: {both}");
+        }
+    }
+
     #[test]
     fn links_and_images_are_written_as_htmd_writes_them() {
         let htmls = [

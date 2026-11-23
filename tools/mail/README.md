@@ -193,11 +193,12 @@ crate, [`tools/envelope`](../envelope).
   one warning. It is still read: its placeholder body is its Markdown, and the `message.rpmsg`
   attachment is listed. A `.msg` or `.pst` message's content class is a named property, which is
   not read, so there the attachment is the one sign.
-- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared
-  without regard to case, keeps its signed content as one `multipart/signed` attachment. When the message stores no body of its
-  own, its Markdown is made from that content's text and HTML bodies, chosen as an `.eml`'s are;
-  a body it does store is kept, and the attachment's are not read. The attachment is listed as
-  stored, and the signed content's own attachments are not listed: they are in its file alone.
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared without
+  regard to case, keeps its signed content as one `multipart/signed` attachment. When the message
+  stores no body of its own, its Markdown is made from that content's text and HTML bodies, chosen
+  as an `.eml`'s are; a body it does store is kept, and the attachment's are not read. The
+  attachment is listed as stored, and the signed content's own attachments are not listed: they are
+  in its file alone.
 - ANSI stores are read but untested: no ANSI `.pst` is among the fixtures.
 - An embedded message in a `.msg`, an `.eml`, or an mbox is read to 16 levels of nesting; one
   deeper is listed without it, with a warning.
@@ -235,9 +236,8 @@ tool's check. The reasoning behind its configuration is on
 [`docs/tool-builds.md`](../../docs/tool-builds.md).
 
 - `check`: shellchecks the scripts, verifies formatting, lints with warnings as errors, and runs
-  the tests of docproc-mail against the static musl release binary, overflow checks on, from the
-  locked crate graph, and those of the shared crate, [`tools/envelope`](../envelope), with every
-  feature, from its own. The tests compare
+  the tests of docproc-mail and of the shared crate, [`tools/envelope`](../envelope), against the
+  static musl release binary, overflow checks on, from the locked crate graph. The tests compare
   that binary's stdout and stderr, at exit code 0, for every committed input under
   `tests/fixtures/` against its `.jsonl` and `.stderr` goldens under `tests/golden/`.
 - `golden`: re-records the goldens from the release binary. The check never writes them, so a

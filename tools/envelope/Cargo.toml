@@ -20,10 +20,6 @@ icu_segmenter = { version = "=2.4.0", default-features = false, features = ["com
 icu_normalizer_data = "=2.4.0"
 icu_properties_data = "=2.4.0"
 icu_segmenter_data = "=2.4.0"
-pulldown-cmark = { version = "=0.13.6", default-features = false, optional = true }
-
-[features]
-markdown = ["dep:pulldown-cmark"]
 
 [lints.clippy]
 allow_attributes_without_reason = "deny"

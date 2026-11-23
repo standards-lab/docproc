@@ -1,8 +1,9 @@
 {
   "$comment": [
     "The common envelope's cases (docs/tool-contract.md, \"Common envelope\"), stated once for every system tool",
-    "and for docproc: docproc-ooxml's tests, the shared Rust crate's, and docproc's internal/cli's read this",
-    "file in place, so no language restates a case. A case is added here, never in one tool's tests.",
+    "and for docproc: docproc-ooxml's tests, the shared Rust crate's, docproc-mail's, and docproc's",
+    "internal/cli's read this file in place, so no language restates a case. A case is added here, never in",
+    "one tool's tests.",
     "exit_codes: each exit code and its meaning.",
     "warnings: a warning's where and what as the tool has them, and the stderr line it writes for them, its",
     "  tool's name spelled \"tool\"; split at its first three \": \" and unescaped, the line gives them back.",
