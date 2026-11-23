@@ -134,17 +134,19 @@ fn sentences(text: &str) -> Vec<Range<usize>> {
     out
 }
 
-#[derive(Hash, PartialEq, Eq)]
-enum Key {
-    Word(String),
+enum Key<'t> {
+    Word(&'t str),
     Url(String),
 }
 
 #[derive(Default)]
-struct Ids(HashMap<Key, u32>);
+struct Ids<'t> {
+    words: HashMap<&'t str, u32>,
+    urls: HashMap<String, u32>,
+}
 
-impl Ids {
-    fn tokens(&mut self, text: &Text) -> Vec<(usize, u32)> {
+impl<'t> Ids<'t> {
+    fn tokens(&mut self, text: &'t Text) -> Vec<(usize, u32)> {
         let mut keys = Vec::new();
         let mut at = 0;
         for range in &text.urls {
@@ -158,15 +160,20 @@ impl Ids {
         }
         unforced(&text.text, at..text.text.len(), &mut keys);
         keys.into_iter()
-            .map(|(at, key)| {
-                let next = u32::try_from(self.0.len()).unwrap_or(u32::MAX);
-                (at, *self.0.entry(key).or_insert(next))
-            })
+            .map(|(at, key)| (at, self.id(key)))
             .collect()
+    }
+
+    fn id(&mut self, key: Key<'t>) -> u32 {
+        let next = u32::try_from(self.words.len() + self.urls.len()).unwrap_or(u32::MAX);
+        match key {
+            Key::Word(word) => *self.words.entry(word).or_insert(next),
+            Key::Url(url) => *self.urls.entry(url).or_insert(next),
+        }
     }
 }
 
-fn unforced(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
+fn unforced<'t>(text: &'t str, range: Range<usize>, out: &mut Vec<(usize, Key<'t>)>) {
     let piece = &text[range.clone()];
     let mut at = 0;
     for (span, url) in url::find(piece) {
@@ -177,7 +184,7 @@ fn unforced(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
     words(text, range.start + at..range.end, out);
 }
 
-fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
+fn words<'t>(text: &'t str, range: Range<usize>, out: &mut Vec<(usize, Key<'t>)>) {
     let piece = &text[range.clone()];
     let categories = CodePointMapData::<GeneralCategory>::new();
     let mut start = 0;
@@ -194,7 +201,7 @@ fn words(text: &str, range: Range<usize>, out: &mut Vec<(usize, Key)>) {
                 || GeneralCategoryGroup::Number.contains(category)
         });
         if word {
-            out.push((range.start + start, Key::Word(segment.to_owned())));
+            out.push((range.start + start, Key::Word(segment)));
         }
         start = end;
     }
@@ -222,7 +229,7 @@ mod tests {
         words(text, 0..text.len(), &mut out);
         out.into_iter()
             .map(|(_, key)| match key {
-                Key::Word(word) => word,
+                Key::Word(word) => word.to_owned(),
                 Key::Url(url) => url,
             })
             .collect()
