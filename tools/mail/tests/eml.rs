@@ -752,3 +752,43 @@ fn images_link_their_media_names() {
         )
     );
 }
+
+#[test]
+fn a_rights_managed_message_warns_that_the_content_is_not_read() {
+    let rights_managed = warning(
+        "it is a rights-managed message (message.rpmsg), whose encrypted content is not read",
+    );
+    let placeholder = "This message is protected with Rights Management.";
+    let attached = |name: &str| {
+        format!(
+            "From: ann@example.com\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n\
+             --b\r\nContent-Type: text/plain\r\n\r\n{placeholder}\r\n\
+             --b\r\nContent-Type: application/x-microsoft-rpmsg-message\r\n\
+             Content-Disposition: attachment; filename=\"{name}\"\r\n\r\nx\r\n--b--\r\n"
+        )
+    };
+    let (message, stderr) = with_headers("class.eml", "Content-Class: rpmsg.message\r\n");
+    assert_eq!(stderr, rights_managed);
+    assert_eq!(message["markdown"], "body");
+    let (_, stderr) = with_headers("class-case.eml", "Content-Class:  RPMsg.Message \r\n");
+    assert_eq!(stderr, rights_managed);
+    for name in ["message.rpmsg", "Message.RPMSG"] {
+        let (message, stderr) = read("attached.eml", attached(name).as_bytes());
+        assert_eq!(stderr, rights_managed, "{name}");
+        assert_eq!(message["markdown"], placeholder);
+        assert_eq!(message["attachments"][0]["filename"], name);
+    }
+    let both = format!(
+        "Content-Class: rpmsg.message\r\n{}",
+        attached("message.rpmsg")
+    );
+    let (_, stderr) = read("both.eml", both.as_bytes());
+    assert_eq!(stderr, rights_managed);
+    let (_, stderr) = with_headers(
+        "plain.eml",
+        "Content-Class: urn:content-classes:message\r\n",
+    );
+    assert_eq!(stderr, "");
+    let (_, stderr) = read("plain-attached.eml", attached("message.txt").as_bytes());
+    assert_eq!(stderr, "");
+}

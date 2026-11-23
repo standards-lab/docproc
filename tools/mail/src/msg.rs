@@ -255,6 +255,7 @@ impl Walk<'_> {
             message.attachments.push(record);
             locations.push(location);
         }
+        warn_all(place, mapping::rights_managed(&message));
         let mut notes = Vec::new();
         markdown::make(&mut message, &bodies, &locations, self.files, &mut notes)?;
         warn_all(place, notes);

@@ -29,12 +29,18 @@
 //! readable text included, as its one attachment, and sets no body of its own (MS-OXOSMIME
 //! 2.1.3.1.1.2 and 2.1.3.1.2.2). When it stores no body, its bodies are that entity's, read as a
 //! MIME message's are ([`signed`]); a body it does store is kept, and the entity's are not read.
+//!
+//! A message with an attachment named `message.rpmsg`, compared without regard to case, is a
+//! rights-managed message (MS-OXORMMS 2.2.3.1): its content is that attachment's, encrypted. It
+//! gives the message the note a rights-managed MIME message gives, once ([`rights_managed`]). The
+//! content class PidNameContentClass, `rpmsg.message` on such a message (MS-OXORMMS 2.2.2.1), is a
+//! named property, and no reader here reads named properties, so the attachment is the one sign.
 
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
 use crate::markdown::Bodies;
-use crate::mime::{self, OPAQUE_SMIME};
+use crate::mime::{self, OPAQUE_SMIME, RIGHTS_MANAGED};
 use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::rtf;
@@ -123,6 +129,20 @@ fn opaque_smime(class: &str) -> bool {
     class
         .get(class.len().saturating_sub(".smime".len())..)
         .is_some_and(|tail| tail.eq_ignore_ascii_case(".smime"))
+}
+
+/// The note for a rights-managed message, once its attachments are mapped: one when any of them
+/// is named `message.rpmsg`, compared without regard to case, else none.
+pub fn rights_managed(message: &Message) -> Vec<String> {
+    let rpmsg = message
+        .attachments
+        .iter()
+        .any(|attachment| attachment.filename.as_deref().is_some_and(mime::rpmsg));
+    if rpmsg {
+        vec![RIGHTS_MANAGED.to_owned()]
+    } else {
+        Vec::new()
+    }
 }
 
 const MULTIPART_SIGNED: &str = "IPM.Note.SMIME.MultipartSigned";
@@ -428,6 +448,31 @@ mod tests {
     fn the_subject_prefix_marker_is_dropped() {
         assert_eq!(strip_subject_prefix("\u{1}\u{5}Re: Hi".into()), "Re: Hi");
         assert_eq!(strip_subject_prefix("Hi".into()), "Hi");
+    }
+
+    #[test]
+    fn a_message_rpmsg_attachment_gives_its_message_one_rights_managed_note() {
+        let notes = |names: &[&str]| {
+            let (mut message, _, _) = message(&Bag::new(), &[], 1252);
+            for name in names {
+                let props = Bag::from([(tag::ATTACH_LONG_FILENAME, unicode(name))]);
+                message
+                    .attachments
+                    .push(attachment(&props, Some(b"x"), 1252).record);
+            }
+            rights_managed(&message)
+        };
+        for names in [
+            &["message.rpmsg"][..],
+            &["MESSAGE.RPMSG"],
+            &["report.csv", "Message.Rpmsg"],
+            &["message.rpmsg", "message.rpmsg"],
+        ] {
+            assert_eq!(notes(names), [RIGHTS_MANAGED], "{names:?}");
+        }
+        for names in [&[][..], &["report.csv"], &["message.rpmsg.txt"], &["rpmsg"]] {
+            assert_eq!(notes(names), Vec::<String>::new(), "{names:?}");
+        }
     }
 
     #[test]

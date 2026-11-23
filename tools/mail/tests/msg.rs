@@ -893,6 +893,50 @@ fn an_smime_class_warns_as_an_opaque_smime_part_does() {
     assert_eq!(stderr, "");
 }
 
+#[test]
+fn a_message_rpmsg_attachment_warns_that_the_content_is_not_read() {
+    let built = |name: &str, attachments: Vec<Attachment>| {
+        let mut props = subject("protected");
+        props.push((
+            BODY,
+            Prop::Unicode("This message is protected with Rights Management.".into()),
+        ));
+        read_built(
+            name,
+            &Message {
+                props,
+                attachments,
+                ..Message::default()
+            },
+        )
+    };
+    let (message, stderr) = built(
+        "rights-managed.msg",
+        vec![by_value("message.rpmsg", b"\x76\xe8\x04\x60")],
+    );
+    assert_eq!(
+        stderr,
+        "docproc-mail: warning: message: it is a rights-managed message (message.rpmsg), whose \
+         encrypted content is not read\n"
+    );
+    assert_eq!(
+        message["markdown"],
+        "This message is protected with Rights Management."
+    );
+    assert_eq!(message["attachments"][0]["filename"], "message.rpmsg");
+    let (_, stderr) = built(
+        "rights-managed-upper.msg",
+        vec![
+            by_value("MESSAGE.RPMSG", b"x"),
+            by_value("message.rpmsg", b"y"),
+        ],
+    );
+    assert_eq!(stderr.matches("rights-managed").count(), 1, "{stderr}");
+    let (message, stderr) = built("plain.msg", vec![by_value("report.csv", b"a,b")]);
+    assert_eq!(stderr, "");
+    assert_eq!(message["attachments"][0]["filename"], "report.csv");
+}
+
 const ATTACH_MIME_TAG: u16 = 0x370E;
 
 const SIGNED: &[u8] = b"Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; \

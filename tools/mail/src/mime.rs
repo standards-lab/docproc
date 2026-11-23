@@ -28,7 +28,11 @@
 //! Two kinds of part hold content no reader here opens: a TNEF part (`winmail.dat`, Outlook's own
 //! serialization of a message's rich text and attachments) and an opaque S/MIME part (an
 //! encrypted or opaquely signed `application/pkcs7-mime`). Each gives its message a note, so the
-//! message's Markdown, empty or partial, is never read as all there is.
+//! message's Markdown, empty or partial, is never read as all there is. A rights-managed message,
+//! one whose Content-Class is `rpmsg.message` or that has an attachment named `message.rpmsg`,
+//! each compared without regard to case, gets a note once, its content being that attachment's,
+//! encrypted (MS-OXORMMS 2.2.2.1 and 2.2.3.1); it is still read, its placeholder body and the
+//! attachment included.
 //!
 //! mail-parser decodes US-ASCII and ISO-8859-1 as windows-1252, as WHATWG labels them, and the
 //! five bytes windows-1252 leaves undefined as U+FFFD. Whatever it reports as a decoding problem
@@ -74,6 +78,20 @@ const SMTP: &str = "SMTP";
 /// S/MIME's ([`mapping::message`]).
 pub const OPAQUE_SMIME: &str = "it holds an S/MIME part (application/pkcs7-mime), encrypted or \
                                 opaquely signed, whose content is not read";
+
+/// The note for a rights-managed message, whose content is encrypted in its `message.rpmsg`
+/// attachment, which no reader here opens: a MIME message's, or a .pst or .msg message's
+/// ([`mapping::rights_managed`]).
+pub const RIGHTS_MANAGED: &str = "it is a rights-managed message (message.rpmsg), whose \
+                                  encrypted content is not read";
+
+const RPMSG: &str = "message.rpmsg";
+
+/// Whether an attachment's `name` is the one a rights-managed message's content is kept under,
+/// compared without regard to case.
+pub fn rpmsg(name: &str) -> bool {
+    name.eq_ignore_ascii_case(RPMSG)
+}
 
 /// A message read: its line, its notes, each with its place below the message ("" for the
 /// message itself, else ", attachment <n>" and ", message" for each level of nesting), and the
@@ -131,6 +149,9 @@ fn read(
     let mut message = headers(parsed, &mut own);
     let bodies = bodies(parsed, &mut own);
     own.extend(parsed.parts().filter_map(|part| unread(&part)));
+    if rights_managed(parsed) {
+        own.push(RIGHTS_MANAGED.to_owned());
+    }
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     let mut skipped = Vec::new();
     let mut locations = Vec::new();
@@ -193,6 +214,19 @@ fn unread(part: &MessagePart<'_>) -> Option<String> {
     let smime = part.is_content_type("application", "pkcs7-mime")
         || part.is_content_type("application", "x-pkcs7-mime");
     smime.then(|| OPAQUE_SMIME.to_owned())
+}
+
+fn rights_managed(parsed: &MessageRef<'_>) -> bool {
+    let class = parsed.headers().get("Content-Class").is_some_and(|header| {
+        header
+            .raw_value()
+            .trim_ascii()
+            .eq_ignore_ascii_case(b"rpmsg.message")
+    });
+    class
+        || parsed
+            .parts()
+            .any(|part| part.attachment_name().is_some_and(rpmsg))
 }
 
 fn headers(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Message {

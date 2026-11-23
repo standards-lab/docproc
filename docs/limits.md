@@ -18,7 +18,8 @@ or routes by.
   about 1 run in 20 at 256 MiB, its last stderr line naming libssl, not memory, and converts in
   20 of 20 at 512 MiB and above; arm64 is unmeasured.
 - **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is refused;
-  TNEF and opaque S/MIME parts are not read; an attachment by reference has no file; every mbox is
+  TNEF and opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg`
+  content, each with a warning; an attachment by reference has no file; every mbox is
   read as an mboxrd. docproc-mail's memory is a small multiple of the largest single attachment, and
   of the file for an `.eml`, which is read whole. The Threader keeps each message's threading keys
   alone: it holds about 362 bytes a message, 435 while Threads runs (spike-ai-pipeline-processing's

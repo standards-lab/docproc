@@ -40,6 +40,12 @@ output contract: a change to them is a change here. This changelog covers docpro
   it had no Markdown, since such a message keeps its readable text in that attachment alone.
   A body the message does store is kept as before. The attachment is still listed as stored, and
   the signed content's own attachments are not listed.
+- A rights-managed message, in any format, has a warning, `it is a rights-managed message
+  (message.rpmsg), whose encrypted content is not read`; it had none, so its placeholder body read
+  as all there was. Its sign is an attachment named `message.rpmsg`, or, in an `.eml` or an mbox,
+  a `Content-Class: rpmsg.message` header, each compared without regard to case, and it is warned
+  once whichever it has. It is still read: its placeholder body is its Markdown, and the
+  `message.rpmsg` attachment is listed.
 
 ## [v0.1.3] - 2026-11-19
 

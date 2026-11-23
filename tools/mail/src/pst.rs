@@ -512,6 +512,7 @@ impl<W: Write> Walk<'_, W> {
             message.attachments.push(record);
             locations.push(location);
         }
+        warn_all(&place, mapping::rights_managed(&message));
         let files = &mut *self.files;
         let made = guarded(|| {
             let mut notes = Vec::new();
