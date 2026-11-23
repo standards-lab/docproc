@@ -31,7 +31,7 @@ Each archive holds the `docproc-mail` binary, the repository's `LICENSE`, and
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.3-linux-x64.tar.gz
+tar -xzf docproc-mail-v0.1.4-linux-x64.tar.gz
 ./docproc-mail --version
 ```
 
@@ -74,7 +74,7 @@ usage error. An id that names no message is refused.
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.3
+0.1.4
 schema 2
 ```
 
@@ -157,8 +157,9 @@ hierarchy table names twice, `skipped: already read`. A warning also comes for a
 lossily, a header value that doesn't map, an HTML body nested past 512 open elements (its
 Markdown made from the text body, else the HTML's text), a compressed RTF body whose stated size
 is more than nine times what its data can yield (not decompressed), an image source that names
-nothing, a TNEF or opaque S/MIME part, a rights-managed message, and a `.pst` embedded message
-listed without its content.
+nothing, a TNEF or opaque S/MIME part, a `.msg` or `.pst` message of an S/MIME class other than
+the clear-signed one, a rights-managed message, and a `.pst` embedded message listed without its
+content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
 an input that is missing, a directory, or without read permission, `no such file: <path>`, `is a
@@ -184,16 +185,16 @@ crate, [`tools/envelope`](../envelope).
   with the message fields alone.
 - TNEF (`winmail.dat`) and opaque S/MIME (`application/pkcs7-mime`) parts are not read; each
   gives its message a warning. So does a `.msg` or `.pst` message whose class is
-  `IPM.Note.SMIME`, or ends in `.SMIME`, whatever its attachments; a clear-signed
-  `IPM.Note.SMIME.MultipartSigned` message gets none.
+  `IPM.Note.SMIME`, or ends in `.SMIME`, compared without regard to case, whatever its
+  attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message gets none.
 - A rights-managed message's content is not read: it is encrypted in its `message.rpmsg`
   attachment. A message with an attachment of that name, in any format, or, in an `.eml` or an
   mbox, with a `Content-Class: rpmsg.message` header, each compared without regard to case, gets
   one warning. It is still read: its placeholder body is its Markdown, and the `message.rpmsg`
   attachment is listed. A `.msg` or `.pst` message's content class is a named property, which is
   not read, so there the attachment is the one sign.
-- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned`, keeps its
-  signed content as one `multipart/signed` attachment. When the message stores no body of its
+- A clear-signed `.msg` or `.pst` message, class `IPM.Note.SMIME.MultipartSigned` compared
+  without regard to case, keeps its signed content as one `multipart/signed` attachment. When the message stores no body of its
   own, its Markdown is made from that content's text and HTML bodies, chosen as an `.eml`'s are;
   a body it does store is kept, and the attachment's are not read. The attachment is listed as
   stored, and the signed content's own attachments are not listed: they are in its file alone.
