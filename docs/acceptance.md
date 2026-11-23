@@ -67,8 +67,8 @@ the `final` task reran Identity alone.
 
 ### The sweep and the default
 
-Acceptance's sweep timed `Images` on the 915-page CFR volume (cfr-2024-title32-vol1.pdf) at concurrency 1,
-three runs at each `PagesPerProcess`, the counts interleaved within each run.
+Acceptance's sweep timed `Images` on the 915-page CFR volume (cfr-2024-title32-vol1.pdf) at
+concurrency 1, three runs at each `PagesPerProcess`, the counts interleaved within each run.
 
 | PagesPerProcess | Median (s) | Range (s) | Against the fastest median |
 | --- | --- | --- | --- |
@@ -95,8 +95,8 @@ three runs each, took 102.9 s at 4, 97.4 s at 8, and 99.6 s for the whole PDF.
 
 ### Adoption at 8
 
-Acceptance's adoption run timed both paths over all 68 PDFs in `~/docs`, at concurrency 1 and 4, three
-runs each way, the per-page and shared runs interleaved. A PDF is faster or slower beyond the
+Acceptance's adoption run timed both paths over all 68 PDFs in `~/docs`, at concurrency 1 and 4,
+three runs each way, the per-page and shared runs interleaved. A PDF is faster or slower beyond the
 spread when every run of one path took less time than every run of the other.
 
 The 915-page CFR volume (cfr-2024-title32-vol1.pdf):
@@ -229,13 +229,13 @@ fixed.
 
 ### gs's temporary files
 
-Acceptance measured these on 2026-11-19, when the exec runner set gs's `TMPDIR` to a run's
-working directory, the PDF's directory. gs keeps temporary files in its `TMPDIR`: `gs_` and six characters for a render's band list, which a render
-creates and removes page by page, and `gpdf-collection-` and six characters for each of a
-portfolio's embedded documents, which any run that opens a portfolio writes, the count run among
-them. gs removes them as it exits. A gs killed first, by SIGTERM or SIGKILL, leaves them; the tool
-package sends both when a run's context ends, as when the consumer stops the stream, and when its
-bound passes.
+Acceptance measured these on 2026-11-19, when the exec runner set gs's `TMPDIR` to a run's working
+directory, the PDF's directory. gs keeps temporary files in its `TMPDIR`: `gs_` and six characters
+for a render's band list, which a render creates and removes page by page, and `gpdf-collection-`
+and six characters for each of a portfolio's embedded documents, which any run that opens a
+portfolio writes, the count run among them. gs removes them as it exits. A gs killed first, by
+SIGTERM or SIGKILL, leaves them; the tool package sends both when a run's context ends, as when the
+consumer stops the stream, and when its bound passes.
 
 On scratch copies of the 68 PDFs, a run to the end of the stream left nothing beside the PDF on
 either path. Stopping the stream after 1, 2, 3, 5, or 9 pages, four times each at concurrency 4,
@@ -292,10 +292,10 @@ output directory before and after each run.
 
 ## Tool bench reruns
 
-Acceptance measured all three on 2026-11-19, from 17:31 to 17:38 UTC, on the same laptop as the spikes' runs: Intel Core
-Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy. Each spike's own bench ran against
-the tool's published linux-x64 release, downloaded with `gh release download <tag> -R
-standards-lab/docproc` and checked against the release's `SHA256SUMS`:
+Acceptance measured all three on 2026-11-19, from 17:31 to 17:38 UTC, on the same laptop as the
+spikes' runs: Intel Core Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy. Each spike's
+own bench ran against the tool's published linux-x64 release, downloaded with `gh release download
+<tag> -R standards-lab/docproc` and checked against the release's `SHA256SUMS`:
 
 | Release | Archive SHA-256 | Binary SHA-256 | `--version` |
 | --- | --- | --- | --- |
@@ -502,9 +502,10 @@ What else the runs show:
 ### docproc-onenote: the findings
 
 Acceptance's run, against tools/onenote/v0.1.0. The bench is `mise run findings`
-(`scripts/findings.sh`, `bench/findings.rs`): every field of the committed sections and notebooks against `sections.json` and `notebooks.json`, the content fields
-against `content.json`, and the time and peak memory of every committed input and three large
-sections, each without and with `--media`, 3 runs each.
+(`scripts/findings.sh`, `bench/findings.rs`): every field of the committed sections and notebooks
+against `sections.json` and `notebooks.json`, the content fields against `content.json`, and the
+time and peak memory of every committed input and three large sections, each without and with
+`--media`, 3 runs each.
 
 Adaptations, in `bench/findings.rs`:
 
@@ -750,14 +751,14 @@ Acceptance measured it on 2026-11-19, on 96a9cdb, with its ~/docs run's tools: d
 Gotenberg 9.1.0's image. The `final` task didn't measure it again; the page's opening says what
 has changed since in the programs it measures.
 
-It took the peak resident memory of each tool's calls, through a stand-in on PATH for every
-program docproc runs on the host, which ran the real program with docproc's exact arguments,
-under its 2 GiB RLIMIT_AS, and logged the call's ru_maxrss. The run was a second full ~/docs run
-of acceptance's, `docproc run` with every tool wrapped: 154.6 s, the counts of acceptance's ~/docs
-run, 1,347 calls, none ended by a signal. soffice runs in its container under docker's
-`--memory=2147483648`, a cgroup bound, so it was measured apart: docproc's lockdown flags and soffice arguments, with a static rusage as the
-container's entrypoint, on the five largest legacy office inputs, the largest .xls, and the
-largest EMF and WMF.
+It took the peak resident memory of each tool's calls, through a stand-in on PATH for every program
+docproc runs on the host, which ran the real program with docproc's exact arguments, under its 2 GiB
+RLIMIT_AS, and logged the call's ru_maxrss. The run was a second full ~/docs run of acceptance's,
+`docproc run` with every tool wrapped: 154.6 s, the counts of acceptance's ~/docs run, 1,347 calls,
+none ended by a signal. soffice runs in its container under docker's `--memory=2147483648`, a cgroup
+bound, so it was measured apart: docproc's lockdown flags and soffice arguments, with a static
+rusage as the container's entrypoint, on the five largest legacy office inputs, the largest .xls,
+and the largest EMF and WMF.
 
 | Tool | Calls | Peak RSS | The peak call's input | Longest call |
 | --- | --- | --- | --- | --- |
