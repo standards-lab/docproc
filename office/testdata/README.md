@@ -157,7 +157,7 @@ outputs pin. The
 twelve sums of the EMF and WMF renders are LibreOffice 26.8.2.2's, in Gotenberg 9.0.0's image,
 the picture package's default at the time, recorded with no code changed. 26.8.2.2 rasterizes
 the metafiles differently from 26.8.1.1, Gotenberg 8.39.0's, by less than a pixel: the EMF's page
-is one pixel shorter at the default scale, and the renders read the same. The test compares a run's sums against the
-file. Setting `GOLDEN_RECORD=1` records the sums in place of comparing, and is done only at a
+is one pixel shorter at the default scale, and the renders read the same. The test compares a
+run's sums against the file. Setting `GOLDEN_RECORD=1` records the sums in place of comparing, and is done only at a
 commit before the code the sums guard changes, so they hold what that code wrote; it is never done
 to make a failing test pass, since a failure is the change the sums exist to catch.
