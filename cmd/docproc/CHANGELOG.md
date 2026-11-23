@@ -10,6 +10,19 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.2] - 2026-11-23
+
+This release requires the docproc base module at v0.4.2, whose default container images reach
+`docproc run` as Changed says. Its command line, run directory, and exit codes are unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.4.2, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full: soffice runs in
+  `gotenberg/gotenberg:9.9.3-libreoffice`, which carries the same LibreOffice, 26.8.2.2, and the
+  ffmpeg default is `linuxserver/ffmpeg:9.0.2-cli-ls90`, each pinned by its multi-arch index
+  digest.
+
 ## [v0.2.1] - 2026-11-20
 
 This release requires the docproc base module at v0.4.1, whose fixes reach `docproc run` as
@@ -133,7 +146,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...HEAD
+[v0.2.2]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...cmd/docproc/v0.2.2
 [v0.2.1]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.0...cmd/docproc/v0.2.1
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.1.0...cmd/docproc/v0.2.0
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/cmd/docproc/v0.1.0
