@@ -10,6 +10,16 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-23
+
+This release requires the docproc base module at v0.4.2. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.4.2, from v0.4.1, and passes its
+  `dispatchtest.Content` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes,
+  none of which reach this module.
+
 ## [v0.1.1] - 2026-11-23
 
 This release requires the docproc base module at v0.4.1. Its exported API is unchanged.
@@ -43,6 +53,7 @@ The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
   a missing container; the live tier, under `-tags integration`, runs it over go-storage's S3
   provider against the compose harness's SeaweedFS.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/storage/v0.1.1...storage/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/storage/v0.1.0...storage/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/storage/v0.1.0
