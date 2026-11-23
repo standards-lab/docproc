@@ -100,11 +100,54 @@ The rows' full paths are `~/docs/pdf/edge/encrypted/simple-open-password.pdf`,
 
 ### Identity
 
-Every page's PNG and text, and its record line apart from times, is identical to the per-page
-path's on all 68 PDFs: each page's number, DPI, PNG SHA-256, text SHA-256, file name, and error,
-at concurrency 1 and 4, against the per-page path's at concurrency 1. Six PDFs fail as before:
-the five gs can't open fail their count with the same error, word for word, and
-compacted-syntax.pdf's one page fails its render with the same error.
+v1.ai.processing's final task measured it again on 2026-11-23, on a3d861a, the release candidate
+that is tagged v0.4.2; cmd/docproc/v0.2.2 follows it at SHIP. The harness is the Recipe's, built
+twice: once requiring docproc v0.3.0, the per-page path, and once replacing it with the checkout,
+the shared path at the default `PagesPerProcess`, 8. Each ran once over a scratch copy of the 68
+PDFs, the shared path at concurrency 1 and 4 and the per-page path at 1, with every `DOCPROC_`
+variable unset and the host's tools as they are: gs 10.08.0 (Arch's ghostscript 10.08.0-1) and Go
+1.27.4.
+
+Over the 1,387 pages and five failed counts, every line, each page's number, DPI, PNG SHA-256,
+text SHA-256, file name, and error, is identical to the per-page path's, and the shared path's
+lines are identical at concurrency 1 and 4, apart from two PDFs, each a change a release made:
+
+- **digitally-signed-3d-portfolio.pdf**, the stated exception. The per-page path renders, and
+  reads the text of, the first embedded document's first page in place of the portfolio's one
+  page. Since v0.4.1 a portfolio's page is its own, the cover that asks for Acrobat 9 or Adobe
+  Reader 9, so its PNG and text SHA-256 differ; its number, DPI, and name agree.
+- **compacted-syntax.pdf**. The per-page path fails its one page with "no PNG on stdout", gs's
+  "Page drawing error occurred" ahead of the PNG on stdout. Since v0.4.0 (831f865) that message
+  goes to stderr, and the page renders. Its PNG is byte for byte what follows the message on
+  stdout when gs runs with v0.3.0's render arguments, and its text is what v0.3.0's text arguments
+  give.
+
+Five PDFs fail as before, their count failing with the same error, word for word:
+encryption-openpassword.pdf, simple-open-password.pdf, and unicode-password-corrigendum5.pdf in
+`edge/encrypted/`, and header-no-version-info.pdf and no-document-catalog.pdf in
+`edge/malformed/`. The sixth, compacted-syntax.pdf, now prepares.
+
+Each run's stream wall times, summed over the 68 PDFs, and the CFR volume's alone, beside the
+adoption run's medians, summed for the 68:
+
+| Path | Concurrency | 68 PDFs (s) | Adoption (s) | CFR volume (s) | Adoption (s) |
+| --- | --- | --- | --- | --- | --- |
+| per-page, v0.3.0 | 1 | 361.1 | 331.0 | 153.78 | 135.79 |
+| shared, a3d861a | 1 | 233.6 | 237.7 | 94.38 | 94.79 |
+| shared, a3d861a | 4 | 89.4 | 96.0 | 26.54 | 27.58 |
+
+These are one run each against adoption's medians of three. The per-page run took 9% longer over
+the 68 and 13% longer on the CFR volume; the shared runs took 2% less over the 68 at concurrency
+1 and 7% less at 4, and up to 4% less on the CFR volume.
+
+`~/docs` was only read: its listing, the path, size, and modification time of each of its 700
+entries, was the same before the runs and after.
+
+Acceptance measured it first, on 2026-11-19, against a build of the shared path before 831f865:
+every page line was identical to the per-page path's on all 68 PDFs, at concurrency 1 and 4,
+against the per-page path's at concurrency 1. Six PDFs failed as on the per-page path: the five gs
+can't open failed their count with the same error, word for word, and compacted-syntax.pdf's one
+page failed its render with the same error.
 
 ### Defects the measurement found and fixed
 
