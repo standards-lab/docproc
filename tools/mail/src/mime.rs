@@ -150,7 +150,7 @@ fn read(
         notes.extend(own.into_iter().map(|note| (here.clone(), note)));
         if let Some(content) = &content {
             let extension = record.filename.as_deref().and_then(extension_of);
-            record.file = Some(files.store(content.as_ref(), extension)?);
+            record.file = Some(files.store_bytes(content, extension)?);
         }
         match nested {
             Some(_) if depth + 1 > DEPTH_MAX => notes.push((here, too_deep())),

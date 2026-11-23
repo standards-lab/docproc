@@ -8,7 +8,8 @@
 //!   the envelope's escape.
 //! - [`Lines`]: the JSON Lines writer of stdout.
 //! - [`guarded`]: a reader's error, or its panic, as a reason.
-//! - [`Media`]: the media store, streaming each medium to its hash name.
+//! - [`Media`]: the media store, writing each medium under its hash name, and [`Payload`], a
+//!   payload in memory named once.
 //! - [`markdown`]: the literal-text escape, the destination and title writers, and the test for a
 //!   `&` that could begin a character reference.
 //! - [`content`]: the content rule, the sentences of a source text that a target text lacks.
@@ -33,4 +34,4 @@ mod cases;
 pub use fault::{Fault, input_refusal, panic_text, run, version};
 pub use guard::{Failure, guarded};
 pub use lines::Lines;
-pub use media::{Media, extension_of};
+pub use media::{Media, Payload, extension_of};

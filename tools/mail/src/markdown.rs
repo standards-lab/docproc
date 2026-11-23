@@ -66,7 +66,7 @@ use std::ops::Range;
 
 use docproc_envelope::content::{self, Text};
 use docproc_envelope::markdown::{destination, escape, title};
-use docproc_envelope::{Fault, Media};
+use docproc_envelope::{Fault, Media, Payload};
 use htmd::Element;
 use htmd::element_handler::{Context, ContextKind, HandlerResult, Handlers};
 use mail_parser::Encoding;
@@ -123,13 +123,13 @@ pub fn make(
             !message
                 .attachments
                 .iter()
-                .any(|attachment| attachment.file.as_deref() == Some(data.name.as_str()))
+                .any(|attachment| attachment.file.as_deref() == Some(data.payload.name()))
         })
-        .filter_map(|data| Some((links(&data.name)?, data)))
+        .filter_map(|data| Some((links(data.payload.name())?, data)))
         .collect();
     media.sort_by_key(|(at, _)| *at);
     for (_, data) in media {
-        let file = files.store(data.bytes.as_slice(), data.extension.as_deref())?;
+        let file = files.store_payload(&data.payload)?;
         message.media.push(Medium {
             file,
             mime_type: data.mime_type,
@@ -154,10 +154,8 @@ struct Target {
 }
 
 struct Data {
-    name: String,
-    bytes: Vec<u8>,
+    payload: Payload,
     mime_type: Option<String>,
-    extension: Option<String>,
 }
 
 impl Images {
@@ -248,17 +246,11 @@ impl Images {
         let extension = mime_type
             .as_deref()
             .and_then(|mime_type| mime_type.split_once('/'))
-            .map(|(_, subtype)| subtype.to_owned());
-        let name = Media::new(None)
-            .store(bytes.as_slice(), extension.as_deref())
-            .ok()?;
-        if !self.data.iter().any(|data| data.name == name) {
-            self.data.push(Data {
-                name: name.clone(),
-                bytes,
-                mime_type,
-                extension,
-            });
+            .map(|(_, subtype)| subtype);
+        let payload = Payload::new(bytes, extension);
+        let name = payload.name().to_owned();
+        if !self.data.iter().any(|data| data.payload.name() == name) {
+            self.data.push(Data { payload, mime_type });
         }
         Some(name)
     }

@@ -240,7 +240,7 @@ impl Walk<'_> {
             };
             warn_all(&here, notes);
             if let Some(content) = &content {
-                record.file = Some(self.files.store(content.as_slice(), extension.as_deref())?);
+                record.file = Some(self.files.store_bytes(content, extension.as_deref())?);
             }
             record.message = nested.map(Box::new);
             message.attachments.push(record);

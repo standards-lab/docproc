@@ -498,7 +498,7 @@ impl<W: Write> Walk<'_, W> {
             };
             warn_all(&here, notes);
             if let Some(content) = read.content() {
-                record.file = Some(self.files.store(content, extension.as_deref())?);
+                record.file = Some(self.files.store_bytes(content, extension.as_deref())?);
             }
             message.attachments.push(record);
             locations.push(location);
