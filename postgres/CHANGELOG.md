@@ -10,6 +10,16 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-23
+
+This release requires the docproc base module at v0.4.2. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.4.2, from v0.4.1, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes,
+  none of which reach this module.
+
 ## [v0.1.1] - 2026-11-23
 
 This release requires the docproc base module at v0.4.1. Its exported API is unchanged.
@@ -58,6 +68,7 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.1...postgres/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.0...postgres/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/postgres/v0.1.0
