@@ -227,12 +227,13 @@ crate, [`tools/envelope`](../envelope).
   its whole notebook, since the parser reads the notebook in one call. `skipped` lines follow the
   notebook's entries, not their place in the table of contents.
 - onenote_parser holds a notebook whole in memory before its first line is written, and decompresses
-  a `.onepkg` whole. A OneDrive-format section parses every cell of its storage index
-  ([#48](https://github.com/msiemens/onenote.rs/issues/48)), so a 375 MB section needs over 9 GB;
-  the spike measured its 161 MB sample at 135 MiB, and acceptance measured docproc-onenote 0.1.0 at
-  6.9 MiB on it ([`docs/acceptance.md`](../../docs/acceptance.md), "docproc-onenote: the findings").
-  The tool streams media through a fixed buffer, adding no copy of its own. Size a host by the
-  largest notebook or section it is given.
+  a `.onepkg` whole. A OneDrive-format section parses every cell of its storage index, unreferenced
+  ones included: [#48](https://github.com/msiemens/onenote.rs/issues/48) reports a 375 MB section of
+  3,232 cells, 373 of them reachable, needing over 9 GB. The spike measured its 161 MB sample at 135
+  MiB, and acceptance measured docproc-onenote 0.1.0 at 6.9 MiB on it
+  ([`docs/acceptance.md`](../../docs/acceptance.md), "docproc-onenote: the findings"). The tool
+  streams media through a fixed buffer, adding no copy of its own. Size a host by the largest
+  notebook or section it is given.
 - Byte identity has three edges in the parser's hash and directory order, which no committed
   fixture reaches: a section group holding more than one `.onetoc2` is read through the first
   the directory, or the package's map, yields; a OneDrive-format file holding more than one

@@ -62,14 +62,10 @@ the tools part to the system tools under `tools/`.
   composition root and its fixtures, its exit codes, and its usage errors, which build nothing.
 - `architecture/standards/go-elemental/principles/domain-files.md`: `cmd/docproc`'s command
   packages under `internal/`, `run` and `report`, only.
-- The exception for a command nested in its library's repository: since the module's one public
-  surface is the command, `cmd/docproc` keeps `main.go` at its module's root, so
-  `go install github.com/standards-lab/docproc/cmd/docproc@<version>` installs `docproc`, and
-  keeps its packages under `internal/`: `app`, `apptest`, and its command packages, `run` and
-  `report`. `cli-applications.md` has `cmd/<name>/main.go` instead, and `topology-and-naming.md`
-  has domain packages at the module's root level. The module's one package outside `internal/` is
-  `integration`, the built-binary tier's harness, at the module's root, where
-  go-cli-sdk-template's template/v0.3.0 places it.
+- `architecture/standards/go-elemental/principles/cli-applications.md`, "A command nested in its
+  library's repository" and "The built-binary integration tier": `cmd/docproc` keeps `main.go`
+  at its module's root and its packages, `app`, `apptest`, `run`, and `report`, under `internal/`;
+  `integration`, the built-binary tier's harness, is its one package outside `internal/`.
 - `architecture/standards/go-elemental/principles/system-tools.md`: an adapter declares `Spec()`
   and `Minimum`, unprefixed with one tool and named for the tool with several. It checks its
   tools' versions through `Tool.AtLeast` alone, so a tool of another schema fails at startup, as
@@ -94,5 +90,6 @@ the tools part to the system tools under `tools/`.
   safe, and `undocumented_unsafe_blocks`, so no `unsafe` block is written without a `// SAFETY:`
   comment naming why it is sound; in C#, nothing is suppressed to quiet a NativeAOT or trim
   warning without a comment naming why it is safe, which the reviewer judges.
-- A gap in a dependency is filled in our own code, owned and tested; an upstream repository is
-  never engaged unless something is legitimately broken, and then only to report it.
+- `architecture/principles/minimal-footprint.md`, "A dependency's missing feature is the
+  component's own requirement": each tool's workarounds for its dependencies' gaps, owned and
+  tested in the tool.
