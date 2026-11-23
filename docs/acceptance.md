@@ -16,37 +16,37 @@ when:
   mail-hardening tasks cut: ["Identity"](#identity), on a3d861a; the mail bench
   (["docproc-mail: the findings"](#docproc-mail-the-findings)), against tools/mail/v0.1.4's
   release archive; and ["The ~/docs run"](#the-docs-run) and
-  ["Failures by class"](#failures-by-class), on `b48ee124f6c8`. a3d861a and `b48ee124f6c8` hold
-  the same code, differing in docs and context alone: the release candidate that is tagged v0.4.2,
-  `storage/v0.1.1`, `postgres/v0.1.1`, and `tools/onenote/v0.1.2`, then cmd/docproc/v0.2.2;
-  the storage and postgres modules were not measured. Each rerun section
-  keeps acceptance's figures beside its own.
+  ["Failures by class"](#failures-by-class), on `b48ee124f6c8`. The two commits hold the same
+  code and differ only in docs and context. That code is the release candidate, tagged v0.4.2,
+  `storage/v0.1.1`, `postgres/v0.1.1`, and `tools/onenote/v0.1.2`, then cmd/docproc/v0.2.2. The
+  storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
+  beside its own.
 
-**The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final`, run id
-`01a208e5-e581-7b95-b43a-0f91f8d3b40e`, and it is the run v1.ai.inference's acceptance reads
-(["The ~/docs run"](#the-docs-run)).
+**The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
+v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
 
 **What `final` didn't rerun.** Word error rate, the bombs, peak memory, and the office and
 OneNote benches were outside the `final` task's scope, which reran the measurements the hardened
-releases bear on. Their sections are acceptance's measurement of its builds. Against the
-CHANGELOGs and the code between those builds and the releases `final` measured:
+releases bear on. Their sections hold acceptance's figures for its own builds. The CHANGELOGs and
+the code between those builds and the releases `final` measured show what has changed since:
 
 - **Word error rate**: `audio`, which cut the tracker windows at e14389c, has changed since only
   in comments and its unexported names, and in `audio.FFmpegImage`, the container default, which
   the measurement didn't run. Nothing it measures changed.
 - **Bombs**: `inspect`, `dispatch`, and the archive stage have changed since 96a9cdb only in
-  comments and layout. route's ZIP rule now also looks for an XPS package's sequence part in the
-  central directory (v0.4.1), the directory a ZIP holding no `[Content_Types].xml`, as both bombs
-  are, was already read through. No tool runs for either bomb. Nothing they measure changed.
+  comments and layout. Since v0.4.1, route's ZIP rule also looks for an XPS package's sequence
+  part in the central directory, which the rule already read for a ZIP holding no
+  `[Content_Types].xml`, as both bombs are. No tool runs for either bomb. Nothing they measure
+  changed.
 - **The office bench**: docproc-ooxml v0.1.2 changed only the refusal reason for an input that is
   missing, a directory, or unreadable, and the bench's 72 files each exit 0. Nothing it measures
   changed.
 - **The OneNote bench**: docproc-onenote v0.1.1 changed only the refusal reason for an input that
-  is missing or unreadable, and patch releases in its lock file. v0.1.2 states its output
-  unchanged, its goldens identical, but its shared envelope crate runs the content rule, which
-  docproc-onenote runs, with about half its former work per step. The fields the bench scores
-  are stated unchanged; its time and peak-memory rows measured v0.1.0, and v0.1.2's are
-  unmeasured.
+  is missing or unreadable, and patch releases in its lock file. v0.1.2's CHANGELOG states its
+  output unchanged and its goldens identical, while the shared envelope crate runs the content
+  rule, which docproc-onenote runs, with about half its former work per step. The fields the
+  bench scores are therefore stated unchanged; its time and peak-memory rows measured v0.1.0, and
+  v0.1.2's are unmeasured.
 - **Peak memory**: several of its rows measure programs that have changed since. docproc-mail is
   v0.1.4, which reads with less copying and no content rule (its peaks on the bench's stores are
   in "docproc-mail: the findings"); docproc-onenote is v0.1.2, as above; soffice runs in
@@ -154,16 +154,16 @@ The rows' full paths are `~/docs/pdf/edge/encrypted/simple-open-password.pdf`,
 ### Identity
 
 v1.ai.processing's final task measured it again on 2026-11-23, on a3d861a, the release candidate
-that is tagged v0.4.2; cmd/docproc/v0.2.2 follows it at SHIP. The harness is the Recipe's, built
-twice: once requiring docproc v0.3.0, the per-page path, and once replacing it with the checkout,
+that is tagged v0.4.2 and then cmd/docproc/v0.2.2. The harness is the one [the Recipe](#recipe)
+describes, built twice: once requiring docproc v0.3.0, the per-page path, and once replacing it with the checkout,
 the shared path at the default `PagesPerProcess`, 8. Each ran once over a scratch copy of the 68
 PDFs, the shared path at concurrency 1 and 4 and the per-page path at 1, with every `DOCPROC_`
 variable unset and the host's tools as they are: gs 10.08.0 (Arch's ghostscript 10.08.0-1) and Go
 1.27.4.
 
-Over the 1,387 pages and five failed counts, every line, each page's number, DPI, PNG SHA-256,
-text SHA-256, file name, and error, is identical to the per-page path's, and the shared path's
-lines are identical at concurrency 1 and 4, apart from two PDFs, each a change a release made:
+Over the 1,387 pages and five failed counts, the shared path's lines are identical at
+concurrency 1 and 4. Every line (each page's number, DPI, PNG SHA-256, text SHA-256, file name,
+and error) is identical to the per-page path's, apart from two PDFs, each changed by a release:
 
 - **digitally-signed-3d-portfolio.pdf**, the stated exception. The per-page path renders, and
   reads the text of, the first embedded document's first page in place of the portfolio's one
@@ -180,8 +180,8 @@ encryption-openpassword.pdf, simple-open-password.pdf, and unicode-password-corr
 `edge/encrypted/`, and header-no-version-info.pdf and no-document-catalog.pdf in
 `edge/malformed/`. The sixth, compacted-syntax.pdf, now prepares.
 
-Each run's stream wall times, summed over the 68 PDFs, and the CFR volume's alone, beside the
-adoption run's medians, summed for the 68:
+The table gives each run's stream wall time, summed over the 68 PDFs and for the CFR volume
+alone, beside the adoption run's medians, summed the same way:
 
 | Path | Concurrency | 68 PDFs (s) | Adoption (s) | CFR volume (s) | Adoption (s) |
 | --- | --- | --- | --- | --- | --- |
@@ -197,8 +197,8 @@ the 68 and 13% longer on the CFR volume; the shared runs took 2% less over the 6
 entries, was the same before the runs and after.
 
 Acceptance measured it first, on 2026-11-19, against a build of the shared path before 831f865:
-every page line was identical to the per-page path's on all 68 PDFs, at concurrency 1 and 4,
-against the per-page path's at concurrency 1. Six PDFs failed as on the per-page path: the five gs
+on all 68 PDFs, every page line at concurrency 1 and 4 was identical to the per-page path's at
+concurrency 1. Six PDFs failed as on the per-page path: the five gs
 can't open failed their count with the same error, word for word, and compacted-syntax.pdf's one
 page failed its render with the same error.
 
@@ -458,9 +458,10 @@ the truth's pointer doesn't read. v0.1.4's HTML-only Markdown moves no score: th
 MIME tables don't score the bodies, and the mbox tables hold the tool's read of each source to
 the same rule.
 
-Time and peak memory, the median of 3 runs and the most of 3. Times within a row's own spread, or
-within the 12% the mail finding records between two days' runs, are equal; so is a peak on
-plaso's or the scale store within about 3 MiB, as acceptance judged scale.mboxrd's:
+Each row gives the median time of 3 runs and the highest peak memory of the 3. Times within a
+row's own spread, or within the 12% the mail finding records between two days' runs, are equal;
+so is a peak on plaso's or the scale store within about 3 MiB, as acceptance judged
+scale.mboxrd's:
 
 | Store | Media | Spike | v0.1.2, acceptance | v0.1.4, `final` | Against v0.1.2 | Against the spike |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -589,7 +590,7 @@ command as `v0.1.1-0.20261119190539-96a9cdbe35d1+dirty`; that run directory no l
 `final` task ran it again on 2026-11-23, from 14:53:33 to 14:56:04 UTC, on the same laptop: Intel
 Core Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy, the run's output on btrfs. It
 measured docproc at `b48ee124f6c8176a0d37833b45d5852479a6e2dc`, the release candidate that is
-tagged v0.4.2, with cmd/docproc/v0.2.2 following it at SHIP; the manifest reads the command as
+tagged v0.4.2 and then cmd/docproc/v0.2.2; the manifest reads the command as
 `v0.2.2-0.20261123145216-b48ee124f6c8` and the library as `(devel)`, cmd/docproc reaching the
 base module through its temporary replace.
 
@@ -709,8 +710,8 @@ for each entry beside it, named by a 64-hex-digit hash. Acceptance's run id was
 
 ## Failures by class
 
-Each failure in the `final` task's run's record, classed by what stopped it, with each part that
-failed counted once, beside acceptance's run:
+This table classes each failure in the `final` task's run's record by what stopped it, counting
+each part that failed once, beside acceptance's run:
 
 | Class | Acceptance (2026-11-19) | This run |
 | --- | --- | --- |

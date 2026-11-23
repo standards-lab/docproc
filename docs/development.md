@@ -116,11 +116,11 @@ it shows none of them but the held. Run it, review the diff, and run the check.
 - **Images.** An image's latest follows `architecture/principles/rolling-currency.md`'s rule for a
   container image: the highest version among the tags with a dot that carry the pin's variant
   suffix. A linuxserver image's trailing `-ls<N>` is its build, not its variant: a pin of
-  `9.0.2-cli-ls89` is current against the newest `-cli-ls<N>` tag, the version compared first and
-  the build second. A service that builds from `compose/<service>/Dockerfile` has its one pin in
-  that file's FROM line.
-- **Images in the Go source.** Every Go file the repository tracks is read, its string
-  concatenations joined, for an `<image>:<tag>@sha256:<digest>` reference:
+  `9.0.2-cli-ls89` is current against the newest `-cli-ls<N>` tag, by version first and build
+  second. A service that builds from `compose/<service>/Dockerfile` has its one pin in that file's
+  FROM line.
+- **Images in the Go source.** The scan reads every Go file the repository tracks, with its
+  string concatenations joined, for an `<image>:<tag>@sha256:<digest>` reference:
   `audio.FFmpegImage`, `picture.LibreOfficeImage`, and each test's copy of one. A reference whose
   registry is a reserved name (`.example`, `.invalid`, or `.test`) is a test's stand-in and names
   no registry, so it is skipped. The upgrade moves the tag and the digest together, the digest to
