@@ -318,8 +318,9 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   docproc-mail's. The RTF's text is read only for a message with neither HTML nor a text body, by
   the RTF specification: the body decompressed, control words and ignorable groups (`\*`, the
   font, color, and style tables) stripped, `\par` and `\line` as line breaks, `\tab` as a tab, a
-  table's `\cell` as a tab and its `\row` as a line break, symbol words (`\rquote`, `\emdash`, …)
-  as their characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates
+  table's `\cell` and `\nestcell` as a tab, `\row`, `\page`, and `\sect` as line breaks, a nested
+  table's `\nonesttables` fallback skipped, symbol words (`\rquote`, `\emdash`, …) as their
+  characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates
   HTML (`\fromhtml`) has that HTML's text.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
