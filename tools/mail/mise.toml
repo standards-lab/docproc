@@ -9,7 +9,8 @@ shellcheck = "0.11.0"
 
 [env]
 HOLDS = '''
-MimeKit 4.18.2: MsgKit 3.0.6 and PstBuilder.Eml 1.3.0 are built on MimeKit 4
+MimeKit 4.18.2: PstBuilder.Eml 1.3.0, its latest, is built on MimeKit 4
+MsgKit 3.0.6: MsgKit 3.1.0 needs MimeKit.Core 5, and PstBuilder.Eml 1.3.0 is built on MimeKit 4
 '''
 
 [tasks.check]
