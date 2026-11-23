@@ -117,8 +117,9 @@ pub fn html(rtf: &str) -> Option<(String, Vec<String>)> {
 
 /// The text of an RTF document that encapsulates no HTML, plain RTF or `\fromtext`, with notes on
 /// any text decoded lossily: its visible text, read by the RTF specification, `\par`, `\line`,
-/// `\row`, `\page` and `\sect` as line breaks and a table's cells as tab-separated. None for a document that encapsulates HTML, whose text is that HTML's, and
-/// for bytes that are no RTF document. `rtf` is as for [`html`].
+/// `\row`, `\page` and `\sect` as line breaks and a table's cells as tab-separated. None for a
+/// document that encapsulates HTML, whose text is that HTML's, and for bytes that are no RTF
+/// document. `rtf` is as for [`html`].
 pub fn text(rtf: &str) -> Option<(String, Vec<String>)> {
     let bytes = bytes_of(rtf);
     (bytes.starts_with(b"{\\rtf") && recognize(&bytes) != Encapsulated::Html)
