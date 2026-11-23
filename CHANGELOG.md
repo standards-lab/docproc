@@ -9,6 +9,15 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Changed
+
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.9.3-libreoffice`, from 9.1.0-libreoffice,
+  and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls90`, from 9.0.2-cli-ls89, each pinned
+  by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,
+  and the pictures' golden sums are unchanged.
+- Currency reports, and upgrade moves, the container images pinned in the Go source, tag and
+  digest together, as it does the compose harness's.
+
 ## [v0.4.1] - 2026-11-20
 
 This release fixes how the tools' runs keep their temporary files, how a PDF portfolio's pages are
