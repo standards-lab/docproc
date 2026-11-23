@@ -69,6 +69,12 @@ use crate::msg::{DEPTH_MAX, too_deep};
 
 const SMTP: &str = "SMTP";
 
+/// The note for a message holding an opaque S/MIME part, whose content no reader here opens:
+/// a MIME message's `application/pkcs7-mime` part, or a .pst or .msg message whose class is
+/// S/MIME's ([`mapping::message`]).
+pub const OPAQUE_SMIME: &str = "it holds an S/MIME part (application/pkcs7-mime), encrypted or \
+                                opaquely signed, whose content is not read";
+
 /// A message read: its line, its notes, each with its place below the message ("" for the
 /// message itself, else ", attachment <n>" and ", message" for each level of nesting), and the
 /// attachments that couldn't be read, by number and reason.
@@ -186,11 +192,7 @@ fn unread(part: &MessagePart<'_>) -> Option<String> {
     }
     let smime = part.is_content_type("application", "pkcs7-mime")
         || part.is_content_type("application", "x-pkcs7-mime");
-    smime.then(|| {
-        "it holds an S/MIME part (application/pkcs7-mime), encrypted or opaquely signed, \
-         whose content is not read"
-            .to_owned()
-    })
+    smime.then(|| OPAQUE_SMIME.to_owned())
 }
 
 fn headers(parsed: &MessageRef<'_>, notes: &mut Vec<String>) -> Message {

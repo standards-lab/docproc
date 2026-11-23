@@ -301,6 +301,7 @@ const ATTACH_CONTENT_ID: u16 = 0x3712;
 const ATTACH_CONTENT_LOCATION: u16 = 0x3713;
 const ATTACH_FLAGS: u16 = 0x3714;
 const ATTACH_LONG_FILENAME: u16 = 0x3707;
+const MESSAGE_CLASS: u16 = 0x001A;
 
 fn subject(text: &str) -> Vec<(u16, Prop)> {
     vec![(SUBJECT, Prop::Unicode(text.into()))]
@@ -855,4 +856,39 @@ fn an_embedded_messages_images_link_its_own_attachments() {
         inner["markdown"],
         format!("![moth]({})", picture["file"].as_str().unwrap())
     );
+}
+
+#[test]
+fn an_smime_class_warns_as_an_opaque_smime_part_does() {
+    let warning = "docproc-mail: warning: message: it holds an S/MIME part \
+                   (application/pkcs7-mime), encrypted or opaquely signed, whose content is not \
+                   read\n";
+    let smime = |class: &str, attachments: Vec<Attachment>| {
+        let mut props = subject("sealed");
+        props.push((MESSAGE_CLASS, Prop::Unicode(class.into())));
+        let name = format!("{}.msg", class.replace('.', "-"));
+        read_built(
+            &name,
+            &Message {
+                props,
+                attachments,
+                ..Message::default()
+            },
+        )
+    };
+    let (message, stderr) = smime("IPM.Note.SMIME", vec![by_value("smime.p7m", b"MIAGCSqG")]);
+    assert_eq!(stderr, warning);
+    assert_eq!(message["class"], "IPM.Note.SMIME");
+    assert_eq!(message["subject"], "sealed");
+    assert_eq!(message["attachments"][0]["filename"], "smime.p7m");
+    for class in ["ipm.note.smime", "IPM.Note.Custom.SMIME"] {
+        let (message, stderr) = smime(class, vec![]);
+        assert_eq!(stderr, warning, "{class}");
+        assert_eq!(message["class"], class);
+    }
+    let (_, stderr) = smime(
+        "IPM.Note.SMIME.MultipartSigned",
+        vec![by_value("smime.p7m", b"MIAGCSqG")],
+    );
+    assert_eq!(stderr, "");
 }

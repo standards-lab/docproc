@@ -20,11 +20,18 @@
 //! (MS-OXCMSG 2.2.2.9), and its extension PidTagAttachExtension, stored with or without its dot,
 //! else its filename's. A PT_SYSTIME is written in ISO 8601 UTC, to the second, through Howard
 //! Hinnant's proleptic Gregorian algorithm; one past year 9999 is left out, with a note.
+//!
+//! A message whose class is `IPM.Note.SMIME`, or any class ending in `.SMIME`, compared without
+//! regard to case, is an opaque S/MIME message (MS-OXOSMIME 2.1.3.2.2.2): its content is the
+//! encrypted or opaquely signed attachment no reader here opens. It gives the message the note an
+//! opaque S/MIME MIME part gives, whatever its attachments. `IPM.Note.SMIME.MultipartSigned`, a
+//! clear-signed message, is no such class.
 
 use docproc_envelope::extension_of;
 
 use crate::codepage::{self, Strings};
 use crate::markdown::Bodies;
+use crate::mime::OPAQUE_SMIME;
 use crate::model::{Address, Attachment, Message};
 use crate::props::{Bag, Value, integer, tag};
 use crate::rtf;
@@ -79,6 +86,9 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
         ..Message::default()
     };
     let bodies = bodies(&mut strings, props, code_page, &mut notes);
+    if message.class.as_deref().is_some_and(opaque_smime) {
+        notes.push(OPAQUE_SMIME.to_owned());
+    }
     for (row, recipient) in recipients.iter().enumerate() {
         let Some(address) = address(
             &mut strings,
@@ -104,6 +114,12 @@ pub fn message(props: &Bag, recipients: &[Bag], code_page: u16) -> (Message, Bod
     let mut all = strings.into_notes();
     all.append(&mut notes);
     (message, bodies, all)
+}
+
+fn opaque_smime(class: &str) -> bool {
+    class
+        .get(class.len().saturating_sub(".smime".len())..)
+        .is_some_and(|tail| tail.eq_ignore_ascii_case(".smime"))
 }
 
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
@@ -387,6 +403,25 @@ mod tests {
     fn the_subject_prefix_marker_is_dropped() {
         assert_eq!(strip_subject_prefix("\u{1}\u{5}Re: Hi".into()), "Re: Hi");
         assert_eq!(strip_subject_prefix("Hi".into()), "Hi");
+    }
+
+    #[test]
+    fn an_smime_class_gives_its_message_the_opaque_smime_note() {
+        let notes = |class: &str| {
+            let props = Bag::from([(tag::MESSAGE_CLASS, unicode(class))]);
+            message(&props, &[], 1252).2
+        };
+        for class in ["IPM.Note.SMIME", "ipm.note.smime", "IPM.Note.Custom.SMIME"] {
+            assert_eq!(notes(class), [OPAQUE_SMIME], "{class}");
+        }
+        for class in [
+            "IPM.Note.SMIME.MultipartSigned",
+            "IPM.Note",
+            "SMIME",
+            "IPM.Note.Тест",
+        ] {
+            assert_eq!(notes(class), Vec::<String>::new(), "{class}");
+        }
     }
 
     fn unicode(text: &str) -> Value {

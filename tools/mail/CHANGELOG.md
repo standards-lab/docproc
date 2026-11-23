@@ -29,6 +29,11 @@ output contract: a change to them is a change here. This changelog covers docpro
   `\sect` as line breaks, as `\par` and `\line` are; a nested table's `\nonesttables` fallback is
   skipped, so its text is read once. This holds for the HTML recovered from an RTF body and for
   an RTF body's own text.
+- A `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or ends in `.SMIME`, compared
+  without regard to case, has the warning an opaque S/MIME part gives, `it holds an S/MIME part
+  (application/pkcs7-mime), encrypted or opaquely signed, whose content is not read`, whatever
+  its attachments; it had none, so its Markdown, empty or partial, read as all there was. It is
+  still read. A clear-signed `IPM.Note.SMIME.MultipartSigned` message has no such warning.
 
 ## [v0.1.3] - 2026-11-19
 

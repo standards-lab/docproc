@@ -182,7 +182,9 @@ crate, [`tools/envelope`](../envelope).
 - No class-specific field is written: a contact, an appointment, or a task is a `message` line
   with the message fields alone.
 - TNEF (`winmail.dat`) and opaque S/MIME (`application/pkcs7-mime`) parts are not read; each
-  gives its message a warning. An `IPM.Note.SMIME` `.msg` or `.pst` message gets none.
+  gives its message a warning. So does a `.msg` or `.pst` message whose class is
+  `IPM.Note.SMIME`, or ends in `.SMIME`, whatever its attachments; a clear-signed
+  `IPM.Note.SMIME.MultipartSigned` message gets none.
 - ANSI stores are read but untested: no ANSI `.pst` is among the fixtures.
 - An embedded message in a `.msg`, an `.eml`, or an mbox is read to 16 levels of nesting; one
   deeper is listed without it, with a warning.
