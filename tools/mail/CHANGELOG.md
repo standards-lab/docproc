@@ -13,6 +13,8 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ### Changed
 
+- The crate graph locks mail-parser 1.0.2 and encodify 1.0.3, patch releases, in place of 1.0.1
+  and 1.0.2. The output is unchanged.
 - A message's Markdown is made from its HTML body alone when it has one, else from its text body,
   else from its RTF body's own text, and appends nothing from another body. Markdown made from
   HTML had the sentences of the text body, or of the RTF body's text, that it lacked by the content
