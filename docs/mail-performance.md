@@ -8,8 +8,10 @@ redundant pass, a needless allocation or copy, or work done for output that is n
 aim is that each stage does its work and nothing more, so there is no time target. The figures
 are shares of samples, with wall times as context.
 
-The "before" profiles were taken on 2026-11-22 at 1660dcb, before any fix. The fixes and the
-"after" profile are recorded in [After the fixes](#after-the-fixes).
+The "before" profiles were taken on 2026-11-22 at 1660dcb, before any fix, and
+[After the fixes](#after-the-fixes) records the fixes and the "after" profile. docproc-mail 0.1.4
+then stopped running the content rule ([The HTML-only Markdown](#the-html-only-markdown)), so the
+content rule's rows record the read before that change.
 
 ## Method
 
@@ -138,8 +140,8 @@ over the rate, and a sample counts toward every group its stack holds:
 | The JSON line | 0.06 s | 0.01 s | 0.28 s | 0.23 s |
 | Allocator, caller not unwound | 0.33 s | 0.44 s | 1.76 s | 2.56 s |
 
-Stages shared with the spike take about the same time; htmd 0.6's conversion costs what 0.5.6's did.
-The difference is the content rule, which is new in schema "2": 1.58 s of plaso's 1.84 s and
+Stages shared with the spike take about the same time; htmd 0.6's conversion costs what 0.5.6's
+did. The difference is the content rule, which is new in schema "2": 1.58 s of plaso's 1.84 s and
 1.40 s of scale.mboxrd's 2.93 s. Most of the rest of the mbox difference is allocator time that
 lost its callers. The rule's per-token allocations (waste 1) are the likeliest source.
 
@@ -178,9 +180,9 @@ Ranked by what each costs in the profiles. Paths are relative to `tools/`, with 
    yet `copy` (line 130) allocates a zeroed 64 KiB buffer for each payload (line 132) and copies
    the slice through it (line 134) before `hasher.update` (line 140). On scale.mboxrd, with
    21,202 distinct payloads, the copy is 1.7% of samples (0.16 s), besides the buffer's
-   allocation and zeroing. The hash itself, 10.2%, is the work the names need, and the spike's took the same.
-   Fix: take the bytes as a slice, hash them in place, and, with `--media`, write them straight
-   to the temporary file.
+   allocation and zeroing. The hash itself, 10.2%, is the work the names need, and the spike's
+   took the same. Fix: take the bytes as a slice, hash them in place, and, with `--media`, write
+   them straight to the temporary file.
 5. **The `bare` pass parses the whole Markdown twice, then again per block.** For any Markdown
    holding a backslash, `bare` (`mail/src/markdown.rs:463`) parses it once in `kept` (line 552)
    and again in `blocks` (line 480). `bare_block` (line 522) copies the block (line 523), and for
@@ -210,13 +212,13 @@ Looked for and not found to cost anything on these inputs:
 
 ## What is not waste
 
-- **The content rule's alignment on plaso's store (40.4%, 1.37 s).** Many of plaso's messages
-  carry a text alternative written apart from their HTML: 513 of the 538 compared gain appended
-  sentences. Across the 538 comparisons, the alignment kept about half of the text body's
-  286,259 tokens against the Markdown's 357,606. The Markdown's many image and link destinations are tokens the text body
-  never holds. So each comparison runs to about 4,500 edits, and Myers' algorithm costs
-  O((n + m)·D). The instrumented copy counted 268 million diagonal steps, 98.5% of them inside
-  the edit graph, and no comparison reached `EDITS_MAX`. This is the rule's defined work, not a
+- **The content rule's alignment on plaso's store (40.4%, 1.37 s).** Many of plaso's messages carry
+  a text alternative written apart from their HTML: 513 of the 538 compared gain appended sentences.
+  Across the 538 comparisons, the alignment kept about half of the text body's 286,259 tokens
+  against the Markdown's 357,606. The Markdown's many image and link destinations are tokens the
+  text body never holds. So each comparison runs to about 4,500 edits, and Myers' algorithm costs
+  O((n + m)·D). The instrumented copy counted 268 million diagonal steps, 98.5% of them inside the
+  edit graph, and no comparison reached `EDITS_MAX`. This is the rule's defined work, not a
   redundant pass. Dropping the tokens that appear on only one side before aligning, as diff tools
   do, would cut it from 2.76 s to 0.56 s in the instrumented copy. But it changed which sentences
   are missing in 136 of plaso's 538 messages, and it would change what `EDITS_MAX` counts. That
@@ -307,8 +309,8 @@ Medians of 10 runs, the three binaries timed in one sitting. "Before" is eec6906
 | scale.mboxrd | before | 7.695 s | 7.638–7.966 s | 5.397 s | 2.277 s | 41.37 G |
 | scale.mboxrd | after | 5.463 s | 5.418–5.483 s | 3.883 s | 1.544 s | 31.95 G |
 
-On scale.mboxrd the tool now runs slightly faster than the spike, while also applying the
-content rule, which the spike lacks. On plaso's store the difference left is almost all the
+After the fixes, the tool ran slightly faster than the spike on scale.mboxrd while still applying
+the content rule, which the spike lacks. On plaso's store the difference left was almost all the
 content rule.
 
 ### Where the time goes now
@@ -380,15 +382,14 @@ sampling, not new work.
 ## The HTML-only Markdown
 
 docproc-mail no longer runs the content rule. On plaso's store the rule appended 2.1 M characters
-to 513 of the 538 messages it compared, and the median message's Markdown grew 27%. Most of
-it was sentences whose words the Markdown already held, flagged because the alignment depends on
+to 513 of the 538 messages it compared, and the median message's Markdown grew 27%. Most of it
+was sentences whose words the Markdown already held, flagged because the alignment depends on
 order and one unmatched token flags a whole sentence, and tracking URLs that differ between the
 text and HTML parts. The architect chose the HTML alone: a message's Markdown is made from its HTML
 body when it has one, else from its text body, else from its RTF body's own text, and nothing of
 one body is appended to another's, as the parts of a `multipart/alternative` are each an
 alternative version of the same information (RFC 2046 §5.1.4). The alignment's cost in "What is
-left" no longer applies to mail; the content rule is docproc-onenote's, and the `alignment` and
-`tokens` rows above stay as the record of before.
+left" no longer applies to mail: the content rule is docproc-onenote's alone.
 
 Medians of 10 runs, both binaries timed in one sitting, by the method's `hyperfine` line, the
 tool's plain static musl release build against the spike's 0.3.1:
@@ -400,6 +401,6 @@ tool's plain static musl release build against the spike's 0.3.1:
 | scale.mboxrd | spike 0.3.1 | 5.473 s | 5.465–5.516 s | 3.597 s | 1.839 s | 25.90 G |
 | scale.mboxrd | HTML-only | 4.066 s | 4.050–4.137 s | 2.687 s | 1.353 s | 18.78 G |
 
-On plaso's store the tool now runs as fast as the spike, where it took 2.495 s in "After the
-fixes"; on scale.mboxrd it runs 26% faster than the spike, where it took 5.463 s. No profile was
-taken.
+On plaso's store the tool now runs as fast as the spike, against 2.495 s after the fixes; on
+scale.mboxrd it runs 26% faster than the spike, against 5.463 s. No profile was taken of this
+build.

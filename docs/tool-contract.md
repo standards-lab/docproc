@@ -314,14 +314,13 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   to the HTML's text with its tags stripped, with a warning. Markdown made from HTML, stored or
   recovered from the RTF, is the HTML's alone: nothing of the text body or the RTF's text is
   appended to it, as the parts of a `multipart/alternative` are each an alternative version of the
-  same information (RFC 2046 §5.1.4), and the content rule below is docproc-onenote's, not
-  docproc-mail's. The RTF's text is read only for a message with neither HTML nor a text body, by
-  the RTF specification: the body decompressed, control words and ignorable groups (`\*`, the
-  font, color, and style tables) stripped, `\par` and `\line` as line breaks, `\tab` as a tab, a
-  table's `\cell` and `\nestcell` as a tab, `\row`, `\page`, and `\sect` as line breaks, a nested
-  table's `\nonesttables` fallback skipped, symbol words (`\rquote`, `\emdash`, …) as their
-  characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates
-  HTML (`\fromhtml`) has that HTML's text.
+  same information (RFC 2046 §5.1.4). The RTF's text is read only for a message with neither HTML
+  nor a text body, by the RTF specification: the body decompressed, control words and ignorable
+  groups (`\*`, the font, color, and style tables) stripped, `\par` and `\line` as line breaks,
+  `\tab` as a tab, a table's `\cell` and `\nestcell` as a tab, `\row`, `\page`, and `\sect` as line
+  breaks, a nested table's `\nonesttables` fallback skipped, symbol words (`\rquote`, `\emdash`, …)
+  as their characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates HTML
+  (`\fromhtml`) has that HTML's text.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
   its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6

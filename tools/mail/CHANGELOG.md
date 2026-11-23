@@ -17,22 +17,21 @@ output contract: a change to them is a change here. This changelog covers docpro
   and 1.0.2. The output is unchanged.
 - A message's Markdown is made from its HTML body alone when it has one, else from its text body,
   else from its RTF body's own text, and appends nothing from another body. Markdown made from
-  HTML had the sentences of the text body, or of the RTF body's text, that it lacked by the content
-  rule appended as one paragraph; on plaso's store that grew 513 of 538 such messages by 2.1 M
+  HTML had appended, as one paragraph, the sentences of the text body, or of the RTF body's text,
+  that it lacked by the content rule; on plaso's store that grew 513 of 538 such messages by 2.1 M
   characters, the median one by 27%, mostly with sentences whose words the Markdown already held
   and tracking URLs that differ between the parts. The parts of a `multipart/alternative` are each
   an alternative version of the same information (RFC 2046 §5.1.4), so docproc-mail no longer runs
   the content rule, in any format, a clear-signed message's signed content included. The RTF
   body's text is now read only for a message with neither HTML nor a text body.
-- A read does the same work with less around it, and these changes leave its output unchanged,
-  byte for byte: htmd's converter is built once a run rather than once a message; one scan of an
-  HTML body's tags both counts its nesting and finds its `<img>` tags, allocating no tag name; a
-  payload in memory is hashed where it lies rather than copied through a buffer, and a `data:`
-  image's payload is hashed once; the pass that takes back htmd 0.6's escapes reads the Markdown
-  once; and a text body's Markdown is made in one pass. The shared crate's content rule, which
-  docproc-mail ran until the change above, was made cheaper too. With all of them, and the content
-  rule gone, a read of plaso's store takes 1.50 s in place of 3.41 s, and of scale.mboxrd 4.07 s
-  in place of 7.70 s, as docproc's `docs/mail-performance.md` records.
+- A read repeats and copies less, with its output unchanged byte for byte: htmd's converter is
+  built once a run rather than once a message; one scan of an HTML body's tags both counts its
+  nesting and finds its `<img>` tags, allocating no tag name; a payload in memory is hashed where
+  it lies rather than copied through a buffer, and a `data:` image's payload is hashed once; the
+  pass that takes back htmd 0.6's escapes reads the Markdown once; and a text body's Markdown is
+  made in one pass. With these changes and the content rule gone, a read of plaso's store takes
+  1.50 s in place of 3.41 s, and of scale.mboxrd 4.07 s in place of 7.70 s, as docproc's
+  `docs/mail-performance.md` records.
 
 ### Fixed
 

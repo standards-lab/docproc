@@ -255,10 +255,11 @@ tool's check. The reasoning behind its configuration is on
   diff and run `check`; docproc's own `mise run upgrade` runs it.
 - `fixtures`, with `MISE_ENV=fixtures`: regenerates the generated `.pst` and `.msg` fixtures and
   their manifest from their `.eml` and item sources, on .NET 11, MimeKit held at 4.18.2. Each
-  other fixture is listed with its source, license, and SHA-256 in its group's `sources.json`,
-  and the hand-written `.eml` of the MIME group and of the Markdown group,
-  `tests/fixtures/markdown/`, whose message pins each Markdown difference v0.1.2 lists, with
-  their SHA-256 in their group's `sha256.json`.
+  third-party fixture is listed with its source, license, and SHA-256 in its group's
+  `sources.json`.
+  The hand-written `.eml` files of the MIME group and of the Markdown group
+  (`tests/fixtures/markdown/`, whose message pins each Markdown difference v0.1.2 lists) are
+  listed with their SHA-256 in their group's `sha256.json`.
 
 The version Cargo.toml records must be the release tag's and that of
 [`CHANGELOG.md`](CHANGELOG.md)'s newest release section.
