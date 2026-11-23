@@ -4,8 +4,8 @@
 //! htmd walks the document recursively, and html5ever caps no depth, so an HTML body nested a few
 //! thousand elements deep would overflow the stack, a fault no guard catches, and end the whole
 //! run by signal. A pass over the HTML's tags counts its open elements first, as the HTML parser
-//! would leave them open ([`too_deep`]), and a body nested past [`NESTING_MAX`] never reaches
-//! htmd.
+//! would leave them open, and finds its `<img>` tags in the same pass ([`image_tags`]); a body
+//! nested past [`NESTING_MAX`] never reaches htmd.
 //!
 //! The Markdown is made once a message's attachments are read, nested messages included, so that
 //! its images link media names ([`make`]). Before htmd reads the HTML, each `<img>`'s source is
@@ -49,10 +49,10 @@
 //! images, and links' destinations and titles, where a backslash escapes nothing or the envelope
 //! wrote it, are left as written.
 //!
-//! [`too_deep`] counts as the HTML parser leaves elements open: each start tag opens one but a void
-//! element's, and a self-closing one's inside `svg` or `math`, where `/>` closes it; an end tag
-//! closes the most recent open element of its name and those opened after it, and one with no such
-//! element is ignored. A start tag also closes the open element just before it that the parser
+//! [`image_tags`] counts as the HTML parser leaves elements open: each start tag opens one but a
+//! void element's, and a self-closing one's inside `svg` or `math`, where `/>` closes it; an end
+//! tag closes the most recent open element of its name and those opened after it, and one with no
+//! such element is ignored. A start tag also closes the open element just before it that the parser
 //! closes in the common case: a `p`, `li`, `dt`, `dd`, `option`, `tr`, `td`, or `th` the same as
 //! it, or an open `p` before a block. The count errs high rather than low, so a body it lets
 //! through htmd reads. A body past the cap that has no text body gives way to its text with its
@@ -307,23 +307,24 @@ pub fn derive(
     notes: &mut Vec<String>,
 ) -> Option<String> {
     let made = match (html, text) {
-        (Some(html), _) if too_deep(html) => {
-            let (made, from) = match text {
-                Some(text) => (from_text(text), "the text body"),
-                None => (
-                    from_text(&stripped(html)),
-                    "the HTML's text, its tags stripped",
-                ),
-            };
-            notes.push(format!(
-                "the HTML body nests more than {NESTING_MAX} open elements; \
-                 the Markdown is made from {from}"
-            ));
-            Ok(made)
-        }
-        (Some(html), _) => {
-            from_html(&rewritten(html, images)).map(|markdown| with_missing(markdown, source))
-        }
+        (Some(html), _) => match image_tags(html) {
+            Some(tags) => from_html(&rewritten(html, &tags, images))
+                .map(|markdown| with_missing(markdown, source)),
+            None => {
+                let (made, from) = match text {
+                    Some(text) => (from_text(text), "the text body"),
+                    None => (
+                        from_text(&stripped(html)),
+                        "the HTML's text, its tags stripped",
+                    ),
+                };
+                notes.push(format!(
+                    "the HTML body nests more than {NESTING_MAX} open elements; \
+                     the Markdown is made from {from}"
+                ));
+                Ok(made)
+            }
+        },
         (None, Some(text)) => Ok(from_text(text)),
         (None, None) => return None,
     };
@@ -347,16 +348,14 @@ fn with_missing(markdown: String, source: Option<&str>) -> String {
     }
 }
 
-fn rewritten<'h>(html: &'h str, images: &mut dyn FnMut(&str) -> Option<String>) -> Cow<'h, str> {
+fn rewritten<'h>(
+    html: &'h str,
+    tags: &[Range<usize>],
+    images: &mut dyn FnMut(&str) -> Option<String>,
+) -> Cow<'h, str> {
     let mut out: Option<String> = None;
     let mut copied = 0;
-    for piece in Pieces::new(html) {
-        let Piece::Start(name, _, tag) = piece else {
-            continue;
-        };
-        if name != "img" {
-            continue;
-        }
+    for tag in tags {
         let Some((whole, value)) = src_attribute(&html[tag.clone()]) else {
             continue;
         };
@@ -727,29 +726,38 @@ const BREAKS: &[&str] = &[
     "ul",
 ];
 
-fn too_deep(html: &str) -> bool {
-    let mut open: Vec<String> = Vec::new();
+const FOREIGN: &[&str] = &["svg", "math"];
+
+fn image_tags(html: &str) -> Option<Vec<Range<usize>>> {
+    let mut open: Vec<&str> = Vec::new();
     let mut foreign = 0usize;
+    let mut images = Vec::new();
     for piece in Pieces::new(html) {
         match piece {
-            Piece::Start(name, self_closing, _) => {
-                while open.last().is_some_and(|last| closes(last, &name)) {
+            Piece::Start(name, self_closing, tag) => {
+                if name.eq_ignore_ascii_case("img") {
+                    images.push(tag);
+                }
+                while open.last().is_some_and(|last| closes(last, name)) {
                     open.pop();
                 }
-                if VOID.contains(&name.as_str()) || self_closing && foreign > 0 {
+                if among(name, VOID) || self_closing && foreign > 0 {
                     continue;
                 }
-                foreign += usize::from(matches!(name.as_str(), "svg" | "math"));
+                foreign += usize::from(among(name, FOREIGN));
                 open.push(name);
                 if open.len() > NESTING_MAX {
-                    return true;
+                    return None;
                 }
             }
             Piece::End(name) => {
-                if let Some(at) = open.iter().rposition(|open| *open == name) {
+                if let Some(at) = open
+                    .iter()
+                    .rposition(|open| open.eq_ignore_ascii_case(name))
+                {
                     foreign -= open[at..]
                         .iter()
-                        .filter(|open| matches!(open.as_str(), "svg" | "math"))
+                        .filter(|open| among(open, FOREIGN))
                         .count();
                     open.truncate(at);
                 }
@@ -757,18 +765,26 @@ fn too_deep(html: &str) -> bool {
             Piece::Text(_) => {}
         }
     }
-    false
+    Some(images)
+}
+
+fn among(name: &str, names: &[&str]) -> bool {
+    names.iter().any(|known| known.eq_ignore_ascii_case(name))
 }
 
 fn closes(last: &str, name: &str) -> bool {
-    let cell = |name: &str| matches!(name, "td" | "th");
-    let term = |name: &str| matches!(name, "dt" | "dd");
-    match last {
-        "p" => name == "p" || BREAKS.contains(&name) && !matches!(name, "br" | "hr"),
-        "li" | "option" | "tr" => name == last,
-        _ if cell(last) => cell(name) || name == "tr",
-        _ if term(last) => term(name),
-        _ => false,
+    const CELLS: &[&str] = &["td", "th"];
+    const TERMS: &[&str] = &["dt", "dd"];
+    if last.eq_ignore_ascii_case("p") {
+        name.eq_ignore_ascii_case("p") || among(name, BREAKS) && !among(name, &["br", "hr"])
+    } else if among(last, &["li", "option", "tr"]) {
+        name.eq_ignore_ascii_case(last)
+    } else if among(last, CELLS) {
+        among(name, CELLS) || name.eq_ignore_ascii_case("tr")
+    } else if among(last, TERMS) {
+        among(name, TERMS)
+    } else {
+        false
     }
 }
 
@@ -781,7 +797,7 @@ fn stripped(html: &str) -> String {
                     .chars()
                     .map(|c| if c.is_ascii_whitespace() { ' ' } else { c }),
             ),
-            Piece::Start(name, ..) | Piece::End(name) if BREAKS.contains(&name.as_str()) => {
+            Piece::Start(name, ..) | Piece::End(name) if among(name, BREAKS) => {
                 text.push('\n');
             }
             _ => {}
@@ -836,14 +852,14 @@ fn references(text: &str) -> String {
 
 enum Piece<'a> {
     Text(&'a str),
-    Start(String, bool, Range<usize>),
-    End(String),
+    Start(&'a str, bool, Range<usize>),
+    End(&'a str),
 }
 
 struct Pieces<'a> {
     html: &'a str,
     at: usize,
-    raw: Option<String>,
+    raw: Option<&'a str>,
 }
 
 impl<'a> Pieces<'a> {
@@ -869,11 +885,23 @@ impl<'a> Pieces<'a> {
         rest.len()
     }
 
-    fn name(rest: &str, from: usize) -> (String, usize) {
+    fn name(rest: &str, from: usize) -> (&str, usize) {
         let end = rest[from..]
             .find(|c: char| c.is_ascii_whitespace() || c == '/' || c == '>')
             .map_or(rest.len(), |end| from + end);
-        (rest[from..end].to_ascii_lowercase(), end)
+        (&rest[from..end], end)
+    }
+
+    fn closing(rest: &str, name: &str) -> usize {
+        let bytes = rest.as_bytes();
+        (0..bytes.len())
+            .find(|&at| {
+                bytes[at..].starts_with(b"</")
+                    && bytes
+                        .get(at + 2..at + 2 + name.len())
+                        .is_some_and(|found| found.eq_ignore_ascii_case(name.as_bytes()))
+            })
+            .unwrap_or(bytes.len())
     }
 }
 
@@ -887,14 +915,9 @@ impl<'a> Iterator for Pieces<'a> {
                 return None;
             }
             if let Some(name) = self.raw.take() {
-                let close = format!("</{name}");
-                let end = rest
-                    .as_bytes()
-                    .windows(close.len())
-                    .position(|window| window.eq_ignore_ascii_case(close.as_bytes()))
-                    .unwrap_or(rest.len());
+                let end = Self::closing(rest, name);
                 self.at += end;
-                if end == 0 || matches!(name.as_str(), "script" | "style" | "title") {
+                if end == 0 || among(name, &["script", "style", "title"]) {
                     continue;
                 }
                 return Some(Piece::Text(&rest[..end]));
@@ -921,8 +944,8 @@ impl<'a> Iterator for Pieces<'a> {
                     let self_closing = bytes[..past].ends_with(b"/>");
                     let tag = self.at..self.at + past;
                     self.at += past;
-                    if RAW.contains(&name.as_str()) {
-                        self.raw = Some(name.clone());
+                    if among(name, RAW) {
+                        self.raw = Some(name);
                     }
                     return Some(Piece::Start(name, self_closing, tag));
                 }
@@ -1049,7 +1072,7 @@ mod tests {
             many("a < b <3 </> <!doctype html><?xml ?>"),
             many("<b>x</B>"),
         ] {
-            assert!(!too_deep(&flat), "{flat:.80}");
+            assert!(image_tags(&flat).is_some(), "{flat:.80}");
         }
         for deep in [
             many("<div>"),
@@ -1058,7 +1081,7 @@ mod tests {
             many("<DIV>"),
             format!("<svg>{}</svg>", many("<g>")),
         ] {
-            assert!(too_deep(&deep), "{deep:.80}");
+            assert!(image_tags(&deep).is_none(), "{deep:.80}");
         }
     }
 
@@ -1363,7 +1386,8 @@ mod tests {
         let html = "<a href=\"cid:x\">a</a><img alt=1 src='cid:x&amp;y'><IMG SRC=keep>\
                     <script>'<img src=cid:x>'</script><img src=cid:x>";
         let mut seen = Vec::new();
-        let out = rewritten(html, &mut |src| {
+        let tags = image_tags(html).unwrap();
+        let out = rewritten(html, &tags, &mut |src| {
             seen.push(src.to_owned());
             (src != "keep").then(|| "f.png".to_owned())
         });
@@ -1374,7 +1398,7 @@ mod tests {
              <script>'<img src=cid:x>'</script><img src=\"f.png\">"
         );
         assert!(matches!(
-            rewritten("<p>x</p>", &mut |_| None),
+            rewritten("<p>x</p>", &[], &mut |_| None),
             Cow::Borrowed(_)
         ));
     }
