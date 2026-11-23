@@ -65,7 +65,7 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use docproc_envelope::content::{self, Text};
-use docproc_envelope::markdown::{destination, escape, title};
+use docproc_envelope::markdown::{destination, escape, escape_into, title};
 use docproc_envelope::{Fault, Media, Payload};
 use htmd::Element;
 use htmd::element_handler::{Context, ContextKind, HandlerResult, Handlers};
@@ -646,30 +646,54 @@ fn attribute_alt(text: &str) -> String {
 /// would read the one as an indented code block or a list's continuation, and the other as a
 /// line break.
 pub fn from_text(text: &str) -> String {
-    let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let mut out = String::with_capacity(text.len() + 64);
+    let mut collapsed = String::new();
     let mut paragraph = false;
-    let mut first = true;
-    for line in text.split('\n') {
-        let line = line
-            .split(|c: char| c.is_ascii_whitespace())
-            .filter(|word| !word.is_empty())
-            .collect::<Vec<_>>()
-            .join(" ");
+    let mut rest = text;
+    while !rest.is_empty() {
+        let (line, next) = match rest.find(['\r', '\n']) {
+            Some(end) if rest[end..].starts_with("\r\n") => (&rest[..end], &rest[end + 2..]),
+            Some(end) => (&rest[..end], &rest[end + 1..]),
+            None => (rest, ""),
+        };
+        rest = next;
+        let line = collapse(line, &mut collapsed);
         if line.is_empty() {
             paragraph = false;
             continue;
         }
         if paragraph {
             out.push_str("  \n");
-        } else if !first {
+        } else if !out.is_empty() {
             out.push_str("\n\n");
         }
-        out.push_str(&escape(&line, true));
+        escape_into(&mut out, line, true);
         paragraph = true;
-        first = false;
     }
     out
+}
+
+fn collapse<'a>(line: &'a str, collapsed: &'a mut String) -> &'a str {
+    let bytes = line.as_bytes();
+    let single_spaced = !bytes.first().is_some_and(u8::is_ascii_whitespace)
+        && !bytes.last().is_some_and(u8::is_ascii_whitespace)
+        && bytes.iter().enumerate().all(|(at, byte)| {
+            !byte.is_ascii_whitespace() || *byte == b' ' && bytes[at + 1] != b' '
+        });
+    if single_spaced {
+        return line;
+    }
+    collapsed.clear();
+    for word in line
+        .split(|c: char| c.is_ascii_whitespace())
+        .filter(|word| !word.is_empty())
+    {
+        if !collapsed.is_empty() {
+            collapsed.push(' ');
+        }
+        collapsed.push_str(word);
+    }
+    collapsed
 }
 
 const VOID: &[&str] = &[
@@ -973,6 +997,7 @@ mod tests {
             "indented # mid  \n\\- item\n\nafter three\n\n\u{a0} x"
         );
         assert_eq!(from_text(" \r\n\t"), "");
+        assert_eq!(from_text("a <\t b\r\r\rc<  d <x"), "a < b\n\nc< d \\<x");
     }
 
     fn nested(tag: &str, depth: usize) -> String {

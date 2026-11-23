@@ -10,6 +10,12 @@
 /// The text holds no line break; the caller writes its own.
 pub fn escape(text: &str, line_start: bool) -> String {
     let mut out = String::with_capacity(text.len() + 8);
+    escape_into(&mut out, text, line_start);
+    out
+}
+
+/// [`escape`], appending to `out`.
+pub fn escape_into(out: &mut String, text: &str, line_start: bool) {
     let mut rest = text;
     if line_start {
         if rest.starts_with(['-', '=', '+', '#', '>']) {
@@ -32,7 +38,6 @@ pub fn escape(text: &str, line_start: bool) -> String {
             _ => out.push(c),
         }
     }
-    out
 }
 
 fn html_like(rest: &str) -> bool {
@@ -138,6 +143,16 @@ mod tests {
         assert_eq!(escape("# x", false), "# x");
         assert_eq!(escape("1. x", false), "1. x");
         assert_eq!(escape("*x*", false), "\\*x\\*");
+    }
+
+    #[test]
+    fn the_escape_appends_what_it_returns() {
+        for case in cases::group("literal_escape") {
+            let text = cases::text(&case, "text");
+            let mut out = String::from("> ");
+            escape_into(&mut out, text, true);
+            assert_eq!(out, format!("> {}", escape(text, true)), "{case}");
+        }
     }
 
     #[test]
