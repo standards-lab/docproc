@@ -21,6 +21,15 @@ output contract: a change to them is a change here. This changelog covers docpro
   subsequence. On plaso's store a read takes 2.50 s in place of 3.41 s, and on scale.mboxrd
   5.46 s in place of 7.70 s, as docproc's `docs/mail-performance.md` records.
 
+### Fixed
+
+- A table in an RTF body reads one line per row. The RTF reader dropped `\cell` and `\row`, so a
+  row's cells ran together and its rows into one line. Now `\cell` and `\nestcell` are read as a
+  tab, so a row's cells are separated by single spaces in the Markdown, and `\row`, `\page`, and
+  `\sect` as line breaks, as `\par` and `\line` are; a nested table's `\nonesttables` fallback is
+  skipped, so its text is read once. This holds for the HTML recovered from an RTF body and for
+  an RTF body's own text.
+
 ## [v0.1.3] - 2026-11-19
 
 ### Changed

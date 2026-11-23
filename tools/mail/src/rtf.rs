@@ -6,9 +6,11 @@
 //! ([`Sink`]): the HTML sink keeps `\*\htmltag` groups' fragments, and the text sink skips them
 //! as it skips any other ignorable group, so it keeps the document's visible text alone. Both
 //! strip control words and the invisible destinations (`\*`, the font, color and style tables,
-//! and the rest of [`INVISIBLE`]), write `\par` and `\line` as line breaks and the symbol words
-//! (`\rquote`, `\emdash`, …) as their characters, and honor `\htmlrtf`, which a plain RTF never
-//! holds.
+//! and the rest of [`INVISIBLE`], a nested table's `\nonesttables` fallback among them), write
+//! `\par`, `\line`, `\row`, `\page` and `\sect` as line breaks, `\tab`, `\cell` and `\nestcell` as
+//! tabs, so a table row reads as one line, and the symbol words (`\rquote`, `\emdash`, …) as their
+//! characters, and honor `\htmlrtf`, which a plain RTF never holds. Inside a tag's fragment,
+//! `\line` and the table, page and section words write nothing.
 //!
 //! De-encapsulation follows MS-OXRTFEX 2.2.3.2, with these choices:
 //! - text and `\'hh` escapes are decoded in the header's `\ansicpg` code page, else 1252; the
@@ -114,8 +116,8 @@ pub fn html(rtf: &str) -> Option<(String, Vec<String>)> {
 }
 
 /// The text of an RTF document that encapsulates no HTML, plain RTF or `\fromtext`, with notes on
-/// any text decoded lossily: its visible text, read by the RTF specification, `\par` and `\line`
-/// as line breaks. None for a document that encapsulates HTML, whose text is that HTML's, and
+/// any text decoded lossily: its visible text, read by the RTF specification, `\par`, `\line`,
+/// `\row`, `\page` and `\sect` as line breaks and a table's cells as tab-separated. None for a document that encapsulates HTML, whose text is that HTML's, and
 /// for bytes that are no RTF document. `rtf` is as for [`html`].
 pub fn text(rtf: &str) -> Option<(String, Vec<String>)> {
     let bytes = bytes_of(rtf);
@@ -261,6 +263,7 @@ const INVISIBLE: &[&[u8]] = &[
     b"bkmkend",
     b"xe",
     b"tc",
+    b"nonesttables",
 ];
 
 struct Deencapsulator<'a> {
@@ -434,8 +437,9 @@ impl<'a> Deencapsulator<'a> {
             }
             Token::Word(word, _) => match word {
                 b"par" => self.out.text("\r\n"),
-                b"line" if !in_tag => self.out.text("\r\n"),
+                b"line" | b"row" | b"page" | b"sect" if !in_tag => self.out.text("\r\n"),
                 b"tab" => self.out.text("\t"),
+                b"cell" | b"nestcell" if !in_tag => self.out.text("\t"),
                 b"lquote" => self.out.text("\u{2018}"),
                 b"rquote" => self.out.text("\u{2019}"),
                 b"ldblquote" => self.out.text("\u{201C}"),
@@ -695,6 +699,51 @@ mod tests {
             None
         );
         assert_eq!(read_text(b"Hello"), None);
+    }
+
+    #[test]
+    fn a_tables_cells_are_tabs_and_its_rows_line_breaks() {
+        let rtf = b"{\\rtf1\\ansi\\deff0 Before\\par\\trowd\\cellx1000\\cellx2000\\pard\\intbl \
+                    Name\\cell Count\\cell\\row\\trowd\\cellx1000\\cellx2000\\pard\\intbl \
+                    Moths\\cell 3\\cell\\row\\pard After\\par}";
+        assert_eq!(
+            read_text(rtf),
+            Some((
+                "Before\r\nName\tCount\t\r\nMoths\t3\t\r\nAfter\r\n".to_owned(),
+                Vec::new()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_nested_tables_text_is_read_once() {
+        let rtf = b"{\\rtf1\\ansi\\deff0 \\trowd\\cellx4000\\pard\\intbl Outer\\par\
+                    \\pard\\intbl\\itap2 a\\nestcell b\\nestcell{\\*\\nesttableprops\\trowd\\cellx1000\
+                    \\cellx2000\\nestrow}{\\nonesttables\\par a\\tab b\\par}\\pard\\intbl\\itap1 \\cell\
+                    \\row\\pard End}";
+        assert_eq!(
+            read_text(rtf),
+            Some(("Outer\r\na\tb\t\t\r\nEnd".to_owned(), Vec::new()))
+        );
+    }
+
+    #[test]
+    fn page_and_section_breaks_are_line_breaks() {
+        let rtf = b"{\\rtf1\\ansi\\deff0 one\\page two\\sect\\sectd three}";
+        assert_eq!(
+            read_text(rtf),
+            Some(("one\r\ntwo\r\nthree".to_owned(), Vec::new()))
+        );
+    }
+
+    #[test]
+    fn table_and_page_words_are_read_outside_tags_alone_in_encapsulated_html() {
+        let rtf = document(
+            1252,
+            "{\\*\\htmltag <td title=\"a\\cell b\\row c\\page d\\sect e\\nestcell\">}x\\cell y\\row \
+             p\\page q\\sect r\\nestcell{\\nonesttables s}",
+        );
+        assert_eq!(recovered(&rtf), "<td title=\"abcde\">x\ty\r\np\r\nq\r\nr\t");
     }
 
     #[test]

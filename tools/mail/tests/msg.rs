@@ -600,6 +600,33 @@ fn a_plain_rtf_only_message_has_the_rtfs_text() {
 }
 
 #[test]
+fn a_plain_rtf_tables_rows_are_one_line_each() {
+    let mut props = subject("rtf table");
+    props.push((
+        RTF_COMPRESSED,
+        rtf(
+            "{\\rtf1\\ansi\\ansicpg1252\\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\\pard\\f0\\fs20 \
+             Counts:\\par\\trowd\\cellx2000\\cellx4000\\pard\\intbl Name\\cell Count\\cell\\row\
+             \\trowd\\cellx2000\\cellx4000\\pard\\intbl Moths\\cell 3\\cell\\row\
+             \\trowd\\cellx2000\\cellx4000\\pard\\intbl Beetles\\cell 12\\cell\\row\
+             \\pard Done\\par}",
+        ),
+    ));
+    let (message, stderr) = read_built(
+        "rtf-table.msg",
+        &Message {
+            props,
+            ..Message::default()
+        },
+    );
+    assert_eq!(stderr, "");
+    assert_eq!(
+        message["markdown"],
+        "Counts:  \nName Count  \nMoths 3  \nBeetles 12  \nDone"
+    );
+}
+
+#[test]
 fn a_fromtext_rtf_gives_way_to_the_text_body() {
     let body = "{\\rtf1\\ansi\\ansicpg1252\\fromtext \\deff0{\\fonttbl{\\f0\\fswiss Arial;}}\
                 {\\*\\htmltag64 <p>}Hello from \\'abRTF\\'bb\\par\
