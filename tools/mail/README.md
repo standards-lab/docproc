@@ -211,8 +211,12 @@ crate, [`tools/envelope`](../envelope).
   "The release binary against a glibc build" and ".eml and mbox"), it took 2.0 times a glibc
   build's time on the 2.1 GB scale store (13.27 s against 6.51 s), 2.3 times on plaso's smaller
   store (1.59 s against 0.71 s), and 1.7 times on the scale store's messages as a 2.7 GB mboxrd
-  (6.86 s against 4.09 s), with less peak memory. It is released static all the same, so it runs
-  on any Linux host.
+  (6.86 s against 4.09 s), with less peak memory. docproc's acceptance document records v0.1.4's
+  release binary against the spike's glibc build, the spike's code and not v0.1.4's, since no
+  glibc build is released: 4.345 s against 4.021 s on the scale store as an mboxrd, 10.751 s
+  against 7.004 s on it as a `.pst`, and 1.507 s against 0.733 s on plaso's store
+  ([`docs/acceptance.md`](../../docs/acceptance.md), "docproc-mail: the findings"). It is
+  released static all the same, so it runs on any Linux host.
 - `.ost` files are refused, and an attachment by reference has no file.
 - mail-parser decodes US-ASCII and ISO-8859-1 as windows-1252, and the five bytes windows-1252
   leaves undefined as U+FFFD, with a lossy-decoding warning in a body or an attachment but none

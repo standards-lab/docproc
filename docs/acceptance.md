@@ -1,8 +1,58 @@
 # acceptance
 
-Measured 2026-11-19 on an Intel Core Ultra 9 185H, 16 cores and 22 threads, with gs 10.08.0.
-This page holds the results of v1.ai.processing's acceptance task, a section for each
-measurement.
+This page records what docproc delivers at the close of v1.ai.processing, a section for each
+measurement. Two of the goal's tasks measured it, on the same laptop, an Intel Core Ultra 9 185H,
+16 cores and 22 threads, with gs 10.08.0, and each section names the task that measured it and
+when:
+
+- **acceptance, 2026-11-19**, measured the builds of its own branch, which released v0.4.0 and
+  cmd/docproc/v0.2.0, and the tools at docproc-ooxml 0.1.1, docproc-mail 0.1.2, and
+  docproc-onenote 0.1.0. Its sections are the sweep and adoption of shared gs processes, the
+  defects they found, and gs's temporary files ("PDF pages in shared gs processes"); the office
+  and OneNote benches ("Tool bench reruns"); ["Peak memory"](#peak-memory);
+  ["Bombs"](#bombs); and ["Word error rate"](#word-error-rate). Its ~/docs run, the peak-memory
+  run, and the bombs ran on 96a9cdb, its release candidate.
+- **final, 2026-11-23**, reran four measurements against the releases the hardening and
+  mail-hardening tasks cut: ["Identity"](#identity), on a3d861a; the mail bench
+  (["docproc-mail: the findings"](#docproc-mail-the-findings)), against tools/mail/v0.1.4's
+  release archive; and ["The ~/docs run"](#the-docs-run) and
+  ["Failures by class"](#failures-by-class), on `b48ee124f6c8`. a3d861a and `b48ee124f6c8` hold
+  the same code, differing in docs and context alone: the release candidate that is tagged v0.4.2,
+  then cmd/docproc/v0.2.2, with docproc-onenote tagged `tools/onenote/v0.1.2`. Each rerun section
+  keeps acceptance's figures beside its own.
+
+**The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final`, run id
+`01a208e5-e581-7b95-b43a-0f91f8d3b40e`, and it is the run v1.ai.inference's acceptance reads
+(["The ~/docs run"](#the-docs-run)).
+
+**What `final` didn't rerun.** Word error rate, the bombs, peak memory, and the office and
+OneNote benches were outside the `final` task's scope, which reran the measurements the hardened
+releases bear on. Their sections are acceptance's measurement of its builds. Against the
+CHANGELOGs and the code between those builds and the releases `final` measured:
+
+- **Word error rate**: `audio`, which cut the tracker windows at e14389c, has changed since only
+  in comments and its unexported names, and in `audio.FFmpegImage`, the container default, which
+  the measurement didn't run. Nothing it measures changed.
+- **Bombs**: `inspect`, `dispatch`, and the archive stage have changed since 96a9cdb only in
+  comments and layout. route's ZIP rule now also looks for an XPS package's sequence part in the
+  central directory (v0.4.1), the directory a ZIP holding no `[Content_Types].xml`, as both bombs
+  are, was already read through. No tool runs for either bomb. Nothing they measure changed.
+- **The office bench**: docproc-ooxml v0.1.2 changed only the refusal reason for an input that is
+  missing, a directory, or unreadable, and the bench's 72 files each exit 0. Nothing it measures
+  changed.
+- **The OneNote bench**: docproc-onenote v0.1.1 changed only the refusal reason for an input that
+  is missing or unreadable, and patch releases in its lock file. v0.1.2 states its output
+  unchanged, its goldens identical, but its shared envelope crate runs the content rule, which
+  docproc-onenote runs, with about half its former work per step. The fields the bench scores
+  are stated unchanged; its time and peak-memory rows measured v0.1.0, and v0.1.2's are
+  unmeasured.
+- **Peak memory**: several of its rows measure programs that have changed since. docproc-mail is
+  v0.1.4, which reads with less copying and no content rule (its peaks on the bench's stores are
+  in "docproc-mail: the findings"); docproc-onenote is v0.1.2, as above; soffice runs in
+  Gotenberg 9.9.3's image, with the same LibreOffice, 26.8.2.2; docproc-ooxml no longer runs on
+  LargeData.one's XPS package; and gs renders a PDF portfolio's page as the portfolio's own
+  (v0.4.1). Its figures are acceptance's, of 96a9cdb and those tools' earlier versions, and
+  weren't measured again.
 
 ## PDF pages in shared gs processes
 
@@ -11,11 +61,13 @@ k takes pages k, k+C, k+2C, and so on, up to `ImagesRequest.PagesPerProcess` pag
 one txtwrite process before each render process when the request reads text. The per-page path,
 as released on origin/main (v0.3.0), runs two gs processes for each page, its text and its render.
 Every measurement here runs the request cmd/docproc starts with: 150 DPI, `Text`, `MaxPixels`
-64,000,000, and the gs Tool's Timeout at 10 minutes.
+64,000,000, and the gs Tool's Timeout at 10 minutes. Acceptance measured the sweep, adoption, and
+gs's temporary files on 2026-11-19, against the shared path as its branch built it before v0.4.0;
+the `final` task reran Identity alone.
 
 ### The sweep and the default
 
-The sweep timed `Images` on the 915-page CFR volume (cfr-2024-title32-vol1.pdf) at concurrency 1,
+Acceptance's sweep timed `Images` on the 915-page CFR volume (cfr-2024-title32-vol1.pdf) at concurrency 1,
 three runs at each `PagesPerProcess`, the counts interleaved within each run.
 
 | PagesPerProcess | Median (s) | Range (s) | Against the fastest median |
@@ -43,7 +95,7 @@ three runs each, took 102.9 s at 4, 97.4 s at 8, and 99.6 s for the whole PDF.
 
 ### Adoption at 8
 
-The adoption run timed both paths over all 68 PDFs in `~/docs`, at concurrency 1 and 4, three
+Acceptance's adoption run timed both paths over all 68 PDFs in `~/docs`, at concurrency 1 and 4, three
 runs each way, the per-page and shared runs interleaved. A PDF is faster or slower beyond the
 spread when every run of one path took less time than every run of the other.
 
@@ -151,6 +203,9 @@ page failed its render with the same error.
 
 ### Defects the measurement found and fixed
 
+Acceptance's measurement found these in its branch's shared path, which v0.4.0 released with them
+fixed.
+
 - **Portfolios.** gs renders, and reads the text of, a PDF portfolio's embedded documents in place
   of its own pages, the run's pages applied to each document in turn. A shared process over
   digitally-signed-3d-portfolio.pdf wrote five PNGs and five texts for its one page and kept the
@@ -174,8 +229,8 @@ page failed its render with the same error.
 
 ### gs's temporary files
 
-gs keeps temporary files in its `TMPDIR`, which the exec runner sets to a run's working
-directory, the PDF's directory: `gs_` and six characters for a render's band list, which a render
+Acceptance measured these on 2026-11-19, when the exec runner set gs's `TMPDIR` to a run's
+working directory, the PDF's directory. gs keeps temporary files in its `TMPDIR`: `gs_` and six characters for a render's band list, which a render
 creates and removes page by page, and `gpdf-collection-` and six characters for each of a
 portfolio's embedded documents, which any run that opens a portfolio writes, the count run among
 them. gs removes them as it exits. A gs killed first, by SIGTERM or SIGKILL, leaves them; the tool
@@ -192,13 +247,13 @@ SIGTERM or SIGKILL, left five `gpdf-collection-` files. The adoption run's lefto
 in several directories and `gpdf-collection-` files beside the portfolio, came from runs ended
 early, since a run to the end leaves none.
 
-The count run and the shared processes now work in a scratch directory of the stream's own
-through the exec runner, their `TMPDIR`, which is removed once every page's work has ended. The
-same 40 stopped runs, and 20 over the portfolio, then left nothing beside the PDF. A page's own
-processes still work in the PDF's directory, as the released per-page path's do: `Render`,
-`Text`, and `Count`, and the fallback for a shared process that fails. One ended early can leave
-gs's files beside the input, as the released path can. Changing `TMPDIR` for every tool's runs
-belongs to the tool package and is on the backlog.
+Acceptance's fix, released in v0.4.0, put the count run and the shared processes in a scratch
+directory of the stream's own through the exec runner, their `TMPDIR`, which is removed once every
+page's work has ended. The same 40 stopped runs, and 20 over the portfolio, then left nothing
+beside the PDF. A page's own processes still worked in the PDF's directory, as the per-page path's
+did: `Render`, `Text`, and `Count`, and the fallback for a shared process that fails. One ended
+early could leave gs's files beside the input, and changing `TMPDIR` for every tool's runs was
+left to the tool package.
 
 Since v0.4.1, every exec-runner run's `TMPDIR` is a directory of the run's own under the host's
 `TMPDIR`, removed once gs is reaped, so a page's own process ended early leaves nothing beside the
@@ -215,11 +270,14 @@ and its error count, and, when asked, writes a line a page sorted by page number
 DPI, the SHA-256 of the PNG file and of the text, the file's name, and the error. It empties its
 output directory before and after each run.
 
-1. Build the harness twice: once with its go.mod's `replace` naming a worktree of origin/main
-   (`git worktree add --detach <dir> origin/main`), the per-page build, and once naming the
-   checkout, the shared build. Remove the worktree once the runs are done.
-2. Copy the PDFs to a scratch directory and run there, never in `~/docs`: gs writes temporary
-   files in a run's working directory, the PDF's.
+1. Build the harness twice: the per-page build, on docproc v0.3.0, and the shared build, its
+   go.mod's `replace` naming the checkout. Acceptance's per-page build named a worktree of
+   origin/main, then v0.3.0, in its `replace` (`git worktree add --detach <dir> origin/main`),
+   removed once the runs were done; the `final` task's required the released module, `go get
+   github.com/standards-lab/docproc@v0.3.0`, with no `replace`.
+2. Copy the PDFs to a scratch directory and run there, never in `~/docs`: the per-page build's gs
+   writes temporary files in a run's working directory, the PDF's, as a page's own processes on
+   the shared build did before v0.4.1.
 3. The sweep: the shared build on the CFR volume at concurrency 1, each `PagesPerProcess` in
    turn, three times.
 4. Adoption: for each PDF, at concurrency 1 and 4, three times, the per-page build then the shared
@@ -234,7 +292,7 @@ output directory before and after each run.
 
 ## Tool bench reruns
 
-Measured 2026-11-19, from 17:31 to 17:38 UTC, on the same laptop as the spikes' runs: Intel Core
+Acceptance measured all three on 2026-11-19, from 17:31 to 17:38 UTC, on the same laptop as the spikes' runs: Intel Core
 Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy. Each spike's own bench ran against
 the tool's published linux-x64 release, downloaded with `gh release download <tag> -R
 standards-lab/docproc` and checked against the release's `SHA256SUMS`:
@@ -264,7 +322,8 @@ records between two days' runs on this laptop, are equal.
 
 ### docproc-ooxml: the baseline
 
-The bench is `mise run baseline` (`scripts/baseline.sh`, `bench/SpikeAiPipeline.Office.Baseline`):
+Acceptance's run, against tools/ooxml/v0.1.1. The bench is `mise run baseline`
+(`scripts/baseline.sh`, `bench/SpikeAiPipeline.Office.Baseline`):
 each of the 72 pool files (42 generated, 30 real-world) run 5 times through `bench/rusage.c`, the
 first run's Markdown scored against the file's ground truth.
 
@@ -289,7 +348,7 @@ Cut fields: none scored. The bench reads the Markdown alone, and schema "2" move
 JSON lines whole. The structured fields schema "2" cut (the block tree, the chart fields, the
 picture `alt`) were never scored.
 
-| Kind | Spike, whole pool | Release, whole pool | Spike, real-world | Release, real-world |
+| Kind | Spike, whole pool | v0.1.1, whole pool | Spike, real-world | v0.1.1, real-world |
 | --- | --- | --- | --- | --- |
 | Heading | 62 / 62 | 62 / 62 | 18 / 18 | 18 / 18 |
 | Paragraph | 179 / 179 | 179 / 179 | 89 / 89 | 89 / 89 |
@@ -305,7 +364,7 @@ picture `alt`) were never scored.
 | Footnote or endnote | 13 / 13 | 13 / 13 | 3 / 3 | 3 / 3 |
 | Comment | 18 / 18 | 18 / 18 | 4 / 4 | 4 / 4 |
 
-| Measure | Spike | Release | Verdict |
+| Measure | Spike | v0.1.1 | Verdict |
 | --- | --- | --- | --- |
 | Files exiting 0 | 72 of 72 | 72 of 72 | equal |
 | Same output on every run | 72 of 72 | 72 of 72 | equal |
@@ -318,7 +377,7 @@ picture `alt`) were never scored.
 | Binary | 30,197,712 B | 29,363,352 B | equal |
 | Markdown, all 72 files | 46,418 B | 47,484 B | not comparable: the release's Markdown adds text |
 
-The Markdown of 8 files differs from the spike's: a hyperlink's text is written as a Markdown
+The Markdown of 8 files differed from the spike's: a hyperlink's text is written as a Markdown
 link (delins.docx, shapes.pptx, word-with-attachments.docx, unit-test-formatting.docx among them),
 and an xlsx cell's `->` loses the spike's backslash. The scoring reads a link as its text, so no
 score moves.
@@ -442,8 +501,8 @@ What else the runs show:
 
 ### docproc-onenote: the findings
 
-The bench is `mise run findings` (`scripts/findings.sh`, `bench/findings.rs`): every field of the
-committed sections and notebooks against `sections.json` and `notebooks.json`, the content fields
+Acceptance's run, against tools/onenote/v0.1.0. The bench is `mise run findings`
+(`scripts/findings.sh`, `bench/findings.rs`): every field of the committed sections and notebooks against `sections.json` and `notebooks.json`, the content fields
 against `content.json`, and the time and peak memory of every committed input and three large
 sections, each without and with `--media`, 3 runs each.
 
@@ -469,24 +528,24 @@ into `content`, `ink`, and `ink_text` alone: containers, paragraph styles, runs,
 list markers, tables, math, images, embedded files, ink, and recognised words. Their text is in
 the Markdown, which the bench doesn't score.
 
-| Table | Spike: expected, recovered; absences | Release, cut kinds removed | Verdict |
+| Table | Spike: expected, recovered; absences | v0.1.0, cut kinds removed | Verdict |
 | --- | --- | --- | --- |
 | Sections | 236, 236; 34 of 34 | 192, 191; 34 of 34 | equal, but the refusal reason, not comparable |
 | Notebooks | 138, 138; 26 of 26 | 128, 126; 21 of 26 | equal, but 7 not comparable |
 | Content | 129, 129; 6 of 6 | none left | not comparable: all cut |
 
-Every kept kind is recovered as the spike's was, but these, each changed by a settled decision:
+Every kept kind was recovered as the spike's was, but these, each changed by a settled decision:
 
-- Encryption.one is refused, exit 3 in both, with the reason `encrypted section (…); remove its
+- Encryption.one was refused, exit 3 in both, with the reason `encrypted section (…); remove its
   password in OneNote first`, where the expectation holds the parser's `Unexpected end of file`.
   Inside interop/SUT's notebook its `skipped` line carries that reason and `encrypted: true`, and
   its warning that reason. Layers' docproc-onenote section settles this.
 - Four notebooks that read no section (AlternativePackaging, NoSection, interop's Resources Open
-  Notebook, and onenote-rs's object-revision) warn `/: no section or section group is read`,
+  Notebook, and onenote-rs's object-revision) warned `/: no section or section group is read`,
   where the expectations hold no warning. Layers' docproc-onenote section and the tool's
   CHANGELOG settle this.
 
-| Input | Media | Spike, median wall and median peak | Release | Verdict |
+| Input | Media | Spike, median wall and median peak | v0.1.0 | Verdict |
 | --- | --- | --- | --- | --- |
 | LargeData.one, 11 MB | no | 1.296 s, 19.5 MiB | 0.953 s, 8.6 MiB | better |
 | LargeData.one | yes | 1.307 s, 19.4 MiB | 1.183 s, 10.3 MiB | better |
@@ -505,9 +564,9 @@ are mostly the process's start, and the 18 ms summed over 46 rows is within the 
 
 | Tool | Fields | Time | Memory |
 | --- | --- | --- | --- |
-| docproc-ooxml | equal: every kind 1.000, as the spike's | equal | better, slightly |
-| docproc-mail | equal on every kept kind; Tika's SMTP address now written, in `smtp_address` | v0.1.4: equal on plaso's store, better on the scale store, as a .pst and as an mboxrd; v0.1.2 was equal on the scale .pst and worse on plaso's store (2.07 times) and the mboxrd (1.12 to 1.27 times) | better on plaso's and the scale .pst; equal on the mboxrd; about 0.4 MiB more on the small stores, where v0.1.2 took about 1 MiB more |
-| docproc-onenote | equal on every kept kind; the refusal and empty-notebook warnings changed by settled decisions | better on the large sections; equal on the committed inputs | better: the large twins 135 MiB to under 9 MiB |
+| docproc-ooxml v0.1.1, acceptance | equal: every kind 1.000, as the spike's | equal | better, slightly |
+| docproc-mail v0.1.2, acceptance, and v0.1.4, `final` | equal on every kept kind; Tika's SMTP address now written, in `smtp_address` | v0.1.4: equal on plaso's store, better on the scale store, as a .pst and as an mboxrd; v0.1.2 was equal on the scale .pst and worse on plaso's store (2.07 times) and the mboxrd (1.12 to 1.27 times) | better on plaso's and the scale .pst; equal on the mboxrd; about 0.4 MiB more on the small stores, where v0.1.2 took about 1 MiB more |
+| docproc-onenote v0.1.0, acceptance | equal on every kept kind; the refusal and empty-notebook warnings changed by settled decisions | better on the large sections; equal on the committed inputs | better: the large twins 135 MiB to under 9 MiB |
 
 No finding. No shipped tool falls short of its README, its CHANGELOG, or a settled decision on
 anything the benches measure. docproc-mail v0.1.2's slower rows were not a regression in that
@@ -686,12 +745,17 @@ them informational by its count; that record is gone, so the difference of one i
 
 ## Peak memory
 
-The peak resident memory of each tool's calls, through a stand-in on PATH for every program
-docproc runs on the host, which runs the real program with docproc's exact arguments, under its
-2 GiB RLIMIT_AS, and logs the call's ru_maxrss. The run was a full ~/docs run, `docproc run`
-again with every tool wrapped: 154.6 s, the same counts, 1,347 calls, none ended by a signal.
-soffice runs in its container under docker's `--memory=2147483648`, a cgroup bound, so it was
-measured apart: docproc's lockdown flags and soffice arguments, with a static rusage as the
+Acceptance measured it on 2026-11-19, on 96a9cdb, with its ~/docs run's tools: docproc-ooxml
+0.1.1, docproc-mail 0.1.2, and docproc-onenote 0.1.0, built from its checkout, and soffice in
+Gotenberg 9.1.0's image. The `final` task didn't measure it again; the page's opening says what
+has changed since in the programs it measures.
+
+It took the peak resident memory of each tool's calls, through a stand-in on PATH for every
+program docproc runs on the host, which ran the real program with docproc's exact arguments,
+under its 2 GiB RLIMIT_AS, and logged the call's ru_maxrss. The run was a second full ~/docs run
+of acceptance's, `docproc run` with every tool wrapped: 154.6 s, the counts of acceptance's ~/docs
+run, 1,347 calls, none ended by a signal. soffice runs in its container under docker's
+`--memory=2147483648`, a cgroup bound, so it was measured apart: docproc's lockdown flags and soffice arguments, with a static rusage as the
 container's entrypoint, on the five largest legacy office inputs, the largest .xls, and the
 largest EMF and WMF.
 
@@ -709,17 +773,20 @@ largest EMF and WMF.
 | 7zz | 5 | 7.5 MiB | mixed-bundle.tar.zst, 44,020 B | 0.03 s |
 | docproc-mail | 75 | 3.7 MiB | outlook.pst, 271,360 B | 3.52 s |
 
-**The 2 GiB bound stands.** No part failed by it, and every peak is under it: the highest,
-magick's 344.3 MiB, is 16.8% of 2 GiB, and no peak comes within 50% of the bound, 1 GiB. The bound
-is on address space, which resident memory understates; the two runs' zero memory-bound failures
-are the evidence for that side.
+**The 2 GiB bound stood.** No part failed by it, and every peak was under it: the highest,
+magick's 344.3 MiB, is 16.8% of 2 GiB, and no peak came within 50% of the bound, 1 GiB. The bound
+is on address space, which resident memory understates; acceptance's two runs' zero memory-bound
+failures are the evidence for that side, and the `final` task's ~/docs run had none either
+(["Failures by class"](#failures-by-class)).
 
 One gap: docproc-ooxml's arm64 floor is unmeasured, because this host is x86_64. On x64, about 1
-run in 20 of the .NET tool aborts at a 256 MiB address-space bound, and all 20 pass at 512 MiB.
+run in 20 of the .NET tool aborted at a 256 MiB address-space bound, and all 20 passed
+at 512 MiB.
 
 ## Bombs
 
-Both bombs follow PI-1's recipe (`git show 8b03243:context/evaluations/processing-inspect.md`),
+Acceptance ran both bombs on 2026-11-19, on 96a9cdb; the `final` task didn't run them again. Both
+follow PI-1's recipe (`git show 8b03243:context/evaluations/processing-inspect.md`),
 built by the first measurement's script on disk:
 
 - **2 TiB across 2,000 entries**, `many-entries.zip`, 185,802 bytes, SHA-256
@@ -738,7 +805,7 @@ directory on btrfs with zstd:3 compression. The apparent size of the run directo
 used on its filesystem were sampled every second; the run output was deleted afterwards and the
 records kept.
 
-| Bomb | Before the write-time cap (cb82087) | This run (96a9cdb) |
+| Bomb | Before the write-time cap (cb82087) | Acceptance's run (96a9cdb) |
 | --- | --- | --- |
 | 2 TiB ZIP: outcome | quarantined, `archive-bomb`, unsafe | quarantined, `archive-bomb`, unsafe |
 | 2 TiB ZIP: time | 0.70 s | 0.66 s |
@@ -748,13 +815,13 @@ records kept.
 | 999:1 entry: peak apparent | 100.0 GiB | 30.9 GiB at the last sample, under the 31.9 GiB the cap leaves |
 | 999:1 entry: peak physical | 3.71 GiB | 1.02 GiB |
 
-The 2 TiB ZIP is quarantined at inspection, before any entry is written: "declared compressed
+The 2 TiB ZIP was quarantined at inspection, before any entry was written: "declared compressed
 sizes sum to 2097152000 bytes, past the 185802-byte ZIP, and 1 more". The "and 1 more" is the
 summed-entry bomb rule: `inspect/zip.go` flags both the declared compressed sum and the declared
 expanded sum, and the reason quotes the first. The run exited 0.
 
-The 999:1 entry is stopped while it is written. The archive part itself is prepared, with one
-child; the child `/zip entry payload.bin` is recorded `limited`, with size 0 and no SHA-256, and
+The 999:1 entry was stopped while it was written. The archive part itself was prepared, with one
+child; the child `/zip entry payload.bin` was recorded `limited`, with size 0 and no SHA-256, and
 the run exited 0. The entry was written at about 1.13 GiB a second; the last sample before its
 removal, at 28.3 s, read 30.92 GiB apparent, and the next, at 29.3 s, found the partial file
 removed. The cap leaves the entry 32 GiB less the bytes already admitted, the ZIP's own
@@ -764,8 +831,8 @@ filesystem it is the apparent size. Before the cap bounded writes, the same entr
 whole, 100 GiB, and hashed before dispatch refused it, in 168.5 s.
 
 **No starting value moved.** A bound's starting value moves when a bomb uses up the run's scratch
-or runs longer than the unit timeout, 10 minutes. Neither bomb does: the 2 TiB ZIP writes
-nothing, and the 999:1 entry is stopped by `DOCPROC_MAX_BYTES` at 32 GiB in 31.4 s, with 1.7 TB
+or runs longer than the unit timeout, 10 minutes. Neither bomb did: the 2 TiB ZIP wrote
+nothing, and the 999:1 entry was stopped by `DOCPROC_MAX_BYTES` at 32 GiB in 31.4 s, with 1.7 TB
 free on the run's filesystem. No tool runs for either, since ZIP is read in Go, so neither
 `DOCPROC_UNIT_TIMEOUT` nor `DOCPROC_STREAM_IDLE` applies. `DOCPROC_MAX_BYTES` at 32 GiB,
 `DOCPROC_BOMB_RATIO` at 1000, `DOCPROC_BOMB_SIZE` at 1 GiB, and `DOCPROC_ARCHIVE_ENTRIES` at
@@ -773,7 +840,8 @@ free on the run's filesystem. No tool runs for either, since ZIP is read in Go, 
 
 ## Word error rate
 
-Measured 2026-11-19 on the Framework row, `http://framework:8001/v1` direct, model `audio`:
+Acceptance measured it on 2026-11-19; the `final` task didn't measure it again. It ran on the
+Framework row, `http://framework:8001/v1` direct, model `audio`:
 google/gemma-4-E4B-it in BF16 on vLLM v0.34.0 ROCm, `max_model_len` 8192. Each window went
 through infer v0.2.0 (`github.com/standards-lab/go-ai/tools/infer/cmd/infer@v0.2.0`),
 `infer --model audio --retries 1 transcribe --mode chat`, with the row's own sampling and no
@@ -833,7 +901,7 @@ An excerpt passes when its median tracker WER is no more than its median silence
 | Earnings-22 | 0.1230 | 0.1026 | pass, 0.0006 over silencedetect |
 | LibriVox | 0.0741 | 0.0664 | pass, 0.0133 over silencedetect |
 
-**Every excerpt passes.** No miss goes to v1.ai.inference. LibriVox is nearest its line, 0.0077
+**Every excerpt passed.** No miss went to v1.ai.inference. LibriVox was nearest its line, 0.0077
 under it.
 
 ### The spike's figures, for context only

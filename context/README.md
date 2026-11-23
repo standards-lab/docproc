@@ -15,7 +15,8 @@ spike-ai-pipeline-office, -mail, and -onenote. The repository's [README](../READ
 package's documentation state the built base module. [`docs/layers.md`](../docs/layers.md) and the
 pages it lists state docproc's boundaries with the system tools and its callers as signatures and
 schemas. [`docs/design-review.md`](../docs/design-review.md) holds the design review of the five
-promoted artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance task's results.
+promoted artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the measurements of what the
+goal delivers, by its acceptance and final tasks.
 [`cerebro.md`](cerebro.md) holds Cerebro's planned boundary over docproc and docinfer.
 
 ## Capability map
