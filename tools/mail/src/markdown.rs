@@ -443,7 +443,7 @@ pub fn from_html(html: &str) -> Result<String, String> {
     let markdown = CONVERTER
         .with(|htmd| htmd.convert(html))
         .map_err(|err| format!("can't be made into Markdown ({err})"))?;
-    Ok(bare(&markdown))
+    Ok(bare(markdown))
 }
 
 const READING: pulldown_cmark::Options = pulldown_cmark::Options::ENABLE_TABLES
@@ -454,40 +454,21 @@ fn bare_candidate(c: u8) -> bool {
     c.is_ascii_punctuation() && !b"\\*_`[]=>#.".contains(&c)
 }
 
-fn bare(markdown: &str) -> String {
+fn bare(markdown: String) -> String {
     if !markdown.contains('\\') {
-        return markdown.to_owned();
+        return markdown;
     }
-    let kept = kept(markdown);
+    let (blocks, kept) = blocks_and_kept(&markdown);
     let mut out = String::with_capacity(markdown.len());
     let mut copied = 0;
-    for block in blocks(markdown) {
+    for block in blocks {
         out.push_str(&markdown[copied..block.start]);
-        let escapes = escapes(markdown, block.clone(), &kept);
-        out.push_str(&bare_block(&markdown[block.clone()], &escapes));
+        let escapes = escapes(&markdown, block.clone(), &kept);
+        bare_block(&markdown[block.clone()], &escapes, &mut out);
         copied = block.end;
     }
     out.push_str(&markdown[copied..]);
     out
-}
-
-fn blocks(markdown: &str) -> Vec<Range<usize>> {
-    use pulldown_cmark::{Event, Parser};
-    let mut blocks = Vec::new();
-    let mut depth = 0usize;
-    for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
-        match event {
-            Event::Start(_) => {
-                if depth == 0 {
-                    blocks.push(range);
-                }
-                depth += 1;
-            }
-            Event::End(_) => depth -= 1,
-            _ => {}
-        }
-    }
-    blocks
 }
 
 fn escapes(markdown: &str, block: Range<usize>, kept: &[Range<usize>]) -> Vec<usize> {
@@ -513,20 +494,23 @@ fn escapes(markdown: &str, block: Range<usize>, kept: &[Range<usize>]) -> Vec<us
     found
 }
 
-fn bare_block(block: &str, escapes: &[usize]) -> String {
-    let mut text = block.to_owned();
+fn bare_block(block: &str, escapes: &[usize], out: &mut String) {
     if escapes.is_empty() {
-        return text;
+        out.push_str(block);
+        return;
     }
     let read = reading(block);
+    let mut text = block.to_owned();
+    let mut trial = String::with_capacity(block.len());
     for &at in escapes.iter().rev() {
-        let mut trial = text.clone();
-        trial.remove(at);
+        trial.clear();
+        trial.push_str(&text[..at]);
+        trial.push_str(&text[at + 1..]);
         if reading(&trial) == read {
-            text = trial;
+            std::mem::swap(&mut text, &mut trial);
         }
     }
-    text
+    out.push_str(&text);
 }
 
 fn reading(markdown: &str) -> Vec<pulldown_cmark::Event<'static>> {
@@ -543,12 +527,24 @@ fn reading(markdown: &str) -> Vec<pulldown_cmark::Event<'static>> {
     events
 }
 
-fn kept(markdown: &str) -> Vec<Range<usize>> {
+fn blocks_and_kept(markdown: &str) -> (Vec<Range<usize>>, Vec<Range<usize>>) {
     use pulldown_cmark::{Event, Parser, Tag, TagEnd};
+    let mut blocks = Vec::new();
+    let mut depth = 0usize;
     let mut kept: Vec<Range<usize>> = Vec::new();
     let mut links: Vec<(Range<usize>, usize)> = Vec::new();
     let mut image = 0usize;
     for (event, range) in Parser::new_ext(markdown, READING).into_offset_iter() {
+        match event {
+            Event::Start(_) => {
+                if depth == 0 {
+                    blocks.push(range.clone());
+                }
+                depth += 1;
+            }
+            Event::End(_) => depth -= 1,
+            _ => {}
+        }
         if image > 0 {
             match event {
                 Event::Start(Tag::Image { .. }) => image += 1,
@@ -591,7 +587,7 @@ fn kept(markdown: &str) -> Vec<Range<usize>> {
         }
     }
     kept.sort_by_key(|range| range.start);
-    kept
+    (blocks, kept)
 }
 
 fn anchor(handlers: &dyn Handlers, element: &Element) -> Option<HandlerResult> {
@@ -1320,7 +1316,7 @@ mod tests {
             (r"\[Webinar\] \*not\* bold", r"\[Webinar\] \*not\* bold"),
         ];
         for (htmd, ours) in cases {
-            let made = bare(htmd);
+            let made = bare(htmd.to_owned());
             assert_eq!(made, ours, "{htmd}");
             assert_eq!(reading(&made), reading(htmd), "{htmd}");
         }
@@ -1341,7 +1337,7 @@ mod tests {
             ),
         ];
         for (htmd, ours) in cases {
-            assert_eq!(bare(htmd), ours, "{htmd}");
+            assert_eq!(bare(htmd.to_owned()), ours, "{htmd}");
         }
         assert_eq!(
             from_html(
