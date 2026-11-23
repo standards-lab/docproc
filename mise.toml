@@ -6,7 +6,7 @@ task.run_auto_install = false
 
 [tools]
 "aqua:google/go-containerregistry" = "0.22.1"
-"github:standards-lab/claude-plugins" = { version = "0.23.0", version_prefix = "marathon/v" }
+"github:standards-lab/claude-plugins" = { version = "0.24.0", version_prefix = "marathon/v" }
 "github:ip7z/7zip" = "26.06"
 actionlint = "1.7.12"
 go = "1.27.4"
@@ -145,9 +145,9 @@ exit $rc
 '''
 
 [tasks.currency]
-description = "Report every requirement, tool, action pin, and compose image pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
+description = "Report every requirement, tool, action pin, compose image pin, and Go source image pin behind its latest, and each tool's own currency; writes nothing outside the tools' obj/"
 run = "scripts/currency.sh report"
 
 [tasks.upgrade]
-description = "Bump the root mise pins, each Go module's go directive, direct requirements, and tool modules, each workflow action pin, and each compose image pin to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, the compose Dockerfiles, and the tools' pins and lock files"
+description = "Bump the root mise pins, each Go module's go directive, direct requirements, and tool modules, each workflow action pin, each compose image pin, and each Go source image pin, tag and digest, to their latest, but a held one, then run each tool's upgrade; rewrites mise.toml, go.mod, go.sum, the workflows, the compose Dockerfiles, the Go files holding an image pin, and the tools' pins and lock files"
 run = "scripts/currency.sh upgrade"

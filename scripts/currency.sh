@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # currency reports, or upgrades, docproc's root pins: each Go module's direct requirements, tool
-# modules, and go directive, the root mise tools, the workflows' action pins, and the compose image
-# pins; then each tool's own, through its currency or upgrade task. A pin the root HOLDS list names
-# is reported as held and never moved. report exits 1 when it reports any pin that isn't held.
+# modules, and go directive, the root mise tools, the workflows' action pins, the compose image
+# pins, and the image pins in the Go source, tag and digest; then each tool's own, through its
+# currency or upgrade task. A pin the root HOLDS list names is reported as held and never moved.
+# report exits 1 when it reports any pin that isn't held.
 # Run it through `mise run currency` or `mise run upgrade`.
 #
 # usage: scripts/currency.sh <report|upgrade>
@@ -90,12 +91,18 @@ outdated_actions() {
 }
 
 latest_image_tag() {
-	local image=$1 pin=$2 suffix pattern tags latest
-	suffix=${pin#"${pin%%[!0-9.]*}"}
-	pattern="^[0-9]+(\.[0-9]+)+${suffix//./\\.}\$"
+	local image=$1 pin=$2 version suffix build='()' pattern tags latest
+	version=${pin%%[!0-9.]*}
+	suffix=${pin#"$version"}
+	if [[ $suffix =~ -ls[0-9]+$ ]]; then
+		build='-ls([0-9]+)'
+		suffix=${suffix%-ls*}
+	fi
+	pattern="^([0-9]+(\.[0-9]+)+)${suffix//./\\.}${build}\$"
 	tags=$(crane ls "$image") || return
-	latest=$(grep -E "$pattern" <<<"$tags" | sed "s/${suffix}\$//" | sort -V | tail -n1) || return
-	echo "$latest$suffix"
+	latest=$(grep -E "$pattern" <<<"$tags" | sed -E "s/$pattern/\\1 \\3 &/" |
+		sort -t' ' -k1,1V -k2,2n | tail -n1 | cut -d' ' -f3) || return
+	echo "$latest"
 }
 
 outdated_images() {
@@ -112,6 +119,34 @@ outdated_images() {
 			echo "$image $pin $latest $dockerfile"
 		fi
 	done
+}
+
+go_source_image_pins() {
+	local file
+	for file in $(git ls-files '*.go'); do
+		tr '\n' ' ' <"$file" | sed -E 's/"[[:space:]]*\+[[:space:]]*"//g' |
+			grep -oE '"[a-z0-9][^"[:space:]@]*:[A-Za-z0-9_][A-Za-z0-9_.-]*@sha256:[0-9a-f]{64}"' |
+			tr -d '"' | grep -vE '^[^/]*\.(example|invalid|test)(:[0-9]+)?/' |
+			sed "s#^#$file #" || [ $? -eq 1 ] || return
+	done
+}
+
+outdated_go_source_images() {
+	local pins file ref image pin digest latest
+	pins=$(go_source_image_pins) || return
+	while read -r file ref; do
+		if [ -z "$file" ]; then
+			continue
+		fi
+		digest=${ref##*@}
+		ref=${ref%@*}
+		image=${ref%:*}
+		pin=${ref##*:}
+		latest=$(latest_image_tag "$image" "$pin") || return
+		if [ "$pin" != "$latest" ]; then
+			echo "$image $pin $latest $file $digest"
+		fi
+	done <<<"$pins"
 }
 
 stale=0
@@ -164,6 +199,14 @@ report_images() {
 	scanned=$(outdated_images) || return
 	while read -r name pinned latest dockerfile; do
 		if [ -n "$name" ]; then trailing "$dockerfile" "$name" "$pinned" "$latest"; fi
+	done <<<"$scanned"
+}
+
+report_go_source_images() {
+	local scanned name pinned latest file
+	scanned=$(outdated_go_source_images) || return
+	while read -r name pinned latest file _; do
+		if [ -n "$name" ]; then trailing "$file" "$name" "$pinned" "$latest"; fi
 	done <<<"$scanned"
 }
 
@@ -234,6 +277,20 @@ upgrade_images() {
 	done <<<"$scanned"
 }
 
+upgrade_go_source_images() {
+	local scanned name pinned latest file digest index key
+	scanned=$(outdated_go_source_images) || return
+	while read -r name pinned latest file digest; do
+		if [ -z "$name" ] || [ -n "$(held "$name" "$pinned")" ]; then
+			continue
+		fi
+		index=$(crane digest "$name:$latest") || return
+		echo "upgrade: $file: $name $pinned -> $latest"
+		key=$(escape_regex "$name:$pinned@sha256:") || return
+		sed -i -E -e "s#\"$key#\"$name:$latest@sha256:#" -e "s#${digest#sha256:}\"#${index#sha256:}\"#" "$file"
+	done <<<"$scanned"
+}
+
 upgrade_each_tool() {
 	local tool
 	for tool in $TOOLS; do
@@ -249,10 +306,12 @@ if [ "$action" = report ]; then
 	report_each_tool
 	report_actions
 	report_images
+	report_go_source_images
 	exit "$stale"
 fi
 upgrade_mise_tools
 upgrade_go_modules
 upgrade_actions
 upgrade_images
+upgrade_go_source_images
 upgrade_each_tool

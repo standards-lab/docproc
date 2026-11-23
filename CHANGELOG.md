@@ -9,6 +9,21 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.4.2] - 2026-11-23
+
+This release moves the default container images that soffice and ffmpeg run in, and currency now
+keeps them current. Its exported API is unchanged, and the module still requires golang.org/x/text
+alone.
+
+### Changed
+
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.9.3-libreoffice`, from 9.1.0-libreoffice,
+  and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls90`, from 9.0.2-cli-ls89, each pinned
+  by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,
+  and the pictures' golden sums are unchanged.
+- Currency reports, and upgrade moves, the container images pinned in the Go source, tag and
+  digest together, as it does the compose harness's.
+
 ## [v0.4.1] - 2026-11-20
 
 This release fixes how the tools' runs keep their temporary files, how a PDF portfolio's pages are
@@ -271,7 +286,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.2...HEAD
+[v0.4.2]: https://github.com/standards-lab/docproc/compare/v0.4.1...v0.4.2
 [v0.4.1]: https://github.com/standards-lab/docproc/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0

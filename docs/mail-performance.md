@@ -378,6 +378,9 @@ sampling, not new work.
   rule needs, and none copies or repeats work. A faster hash would trade away SipHash's
   resistance to inputs crafted to collide, and mail input is untrusted.
 - **htmd's conversion and reading the input** remain as "What is not waste" describes.
+- **musl's allocator.** It is kept. mimalloc 0.1.52, measured in its place, read 13 to 35%
+  faster with about twice the peak memory. But its C build needs zig or a musl C toolchain, which
+  the static musl release would take on for the allocator alone.
 
 ## The HTML-only Markdown
 

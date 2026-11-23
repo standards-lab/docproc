@@ -9,7 +9,7 @@ requires the base module, sqlate, sqlate's `postgres` dialect, and pgx.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc/postgres@v0.1.0
+go get github.com/standards-lab/docproc/postgres@v0.1.1
 ```
 
 [`CHANGELOG.md`](CHANGELOG.md) states what each release changes. The package's documentation,

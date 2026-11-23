@@ -34,7 +34,7 @@ unpacking it:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-onenote-v0.1.1-linux-x64.tar.gz
+tar -xzf docproc-onenote-v0.1.2-linux-x64.tar.gz
 ./docproc-onenote --version
 ```
 
@@ -78,7 +78,7 @@ a path. `--media` naming something that exists and isn't a directory is a usage 
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.1
+0.1.2
 schema 2
 ```
 
@@ -226,12 +226,13 @@ crate, [`tools/envelope`](../envelope).
   so it gets no `skipped` line and no warning. A section whose parse panics the parser refuses
   its whole notebook, since the parser reads the notebook in one call. `skipped` lines follow the
   notebook's entries, not their place in the table of contents.
-- onenote_parser holds a notebook whole in memory before its first line is written, and
-  decompresses a `.onepkg` whole. A OneDrive-format section parses every cell of its storage
-  index
-  ([#48](https://github.com/msiemens/onenote.rs/issues/48)), so a 375 MB section needs over
-  9 GB; the spike measured its 161 MB sample at 135 MiB. The tool streams media through a fixed
-  buffer, adding no copy of its own. Size a host by the largest notebook or section it is given.
+- onenote_parser holds a notebook whole in memory before its first line is written, and decompresses
+  a `.onepkg` whole. A OneDrive-format section parses every cell of its storage index
+  ([#48](https://github.com/msiemens/onenote.rs/issues/48)), so a 375 MB section needs over 9 GB;
+  the spike measured its 161 MB sample at 135 MiB, and acceptance measured docproc-onenote 0.1.0 at
+  6.9 MiB on it ([`docs/acceptance.md`](../../docs/acceptance.md), "docproc-onenote: the findings").
+  The tool streams media through a fixed buffer, adding no copy of its own. Size a host by the
+  largest notebook or section it is given.
 - Byte identity has three edges in the parser's hash and directory order, which no committed
   fixture reaches: a section group holding more than one `.onetoc2` is read through the first
   the directory, or the package's map, yields; a OneDrive-format file holding more than one

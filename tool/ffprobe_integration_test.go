@@ -21,8 +21,8 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-const ffmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls89@sha256:" +
-	"822d04f0b2d0c4847430f5cc90f20ea48be866bb502ece63fdeb729400bf5361"
+const ffmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls90@sha256:" +
+	"66fa8e2351fb78f9dad2c59c946be2658edcc529339320da3f2cf788312368af"
 
 func ffprobeSpec() tool.Spec {
 	return tool.Spec{

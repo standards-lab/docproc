@@ -10,6 +10,8 @@ covers docproc-onenote only.
 
 ## [Unreleased]
 
+## [v0.1.2] - 2026-11-23
+
 ### Changed
 
 - The crate graph locks hashbrown 0.17.2, a patch release through lru, in place of 0.17.1. The
@@ -137,6 +139,7 @@ in the spike.
 - Page history and merged table cells are not read.
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/onenote/v0.1.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/onenote/v0.1.2...HEAD
+[v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/onenote/v0.1.1...tools/onenote/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/onenote/v0.1.0...tools/onenote/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/onenote/v0.1.0

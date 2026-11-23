@@ -31,7 +31,8 @@ tool under `tools/` pins its own. Tasks run from the repository root, `mise run 
   printing its log on a failure.
 - `currency` and `upgrade`: report, then bump, every root pin behind its latest: the root mise pins,
   each Go module's go directive, direct requirements, and tool modules, the workflows' action pins,
-  and the compose image pins, then each tool's. A pin the root `HOLDS` list names is held.
+  the compose image pins, and the image pins in the Go source, then each tool's. A pin the root
+  `HOLDS` list names is held.
 
 A Go module's release is a `vX.Y.Z` tag (`<module>/vX.Y.Z` for a nested module), a tool's
 `tools/<format>/vX.Y.Z`; the release workflow publishes each from its own changelog. The
@@ -44,7 +45,8 @@ in [the tools' builds](tool-builds.md).
 it current: `sevenzip` requires 24.07 or later. `test:integration` runs under it; CI never needs
 it, so its workflows set `MISE_DISABLE_TOOLS` to it, and no job installs it. The tier's other
 system tools are the host's. crane lists an image's tags for currency's scan of the compose
-harness's image pins; no CI job installs it either.
+harness's and the Go source's image pins, and reads a tag's index digest for the upgrade; no CI job
+installs it either.
 
 Its environment:
 
@@ -57,8 +59,8 @@ Its environment:
   docproc-ooxml (.NET), and docproc-mail and docproc-onenote (Rust).
 - `HOLDS`: the root's held pins, which currency reports as held and upgrade never moves: one line
   each, `<item> <pin>: <reason>`, the item named as currency names it (a Go module by its path, the
-  go directive as `go`, a mise tool by its name, an action by its owner/repo, a compose image by
-  its image). A tool's own holds are in its mise.toml.
+  go directive as `go`, a mise tool by its name, an action by its owner/repo, an image by its
+  image). A tool's own holds are in its mise.toml.
 - `DOCPROC_DSN`, `DOCPROC_S3_ENDPOINT`, `DOCPROC_S3_ACCESS_KEY`, and `DOCPROC_S3_SECRET_KEY`: the
   live tiers' servers, below.
 
@@ -112,8 +114,17 @@ it shows none of them but the held. Run it, review the diff, and run the check.
   `--no-global` reads and writes the root mise.toml alone, never the global config, and a held
   tool is excluded from the upgrade by name.
 - **Images.** An image's latest follows `architecture/principles/rolling-currency.md`'s rule for a
-  container image. A service that builds from `compose/<service>/Dockerfile` has its one pin in that
-  file's FROM line.
+  container image: the highest version among the tags with a dot that carry the pin's variant
+  suffix. A linuxserver image's trailing `-ls<N>` is its build, not its variant: a pin of
+  `9.0.2-cli-ls89` is current against the newest `-cli-ls<N>` tag, by version first and build
+  second. A service that builds from `compose/<service>/Dockerfile` has its one pin in that file's
+  FROM line.
+- **Images in the Go source.** The scan reads every Go file the repository tracks, with its
+  string concatenations joined, for an `<image>:<tag>@sha256:<digest>` reference:
+  `audio.FFmpegImage`, `picture.LibreOfficeImage`, and each test's copy of one. A reference whose
+  registry is a reserved name (`.example`, `.invalid`, or `.test`) is a test's stand-in and names
+  no registry, so it is skipped. The upgrade moves the tag and the digest together, the digest to
+  the new tag's multi-arch index digest, as crane reads it.
 - **Each tool's own.** Each tool's currency reports its packages, advisories, and toolchain, each
   line prefixed with the tool's directory. A tool reporting anything exits non-zero, which marks
   the whole report stale without stopping the other scans.
@@ -126,9 +137,11 @@ it shows none of them but the held. Run it, review the diff, and run the check.
   requirement and tool module with a newer version to its latest, then `go mod tidy`. Then the
   action pins, then the image pins, then each tool's upgrade last, so a tool's pins move after
   the root's.
-- **Rewriting a pin.** An action's or image's pin is matched with its regex characters escaped,
-  under a `#` delimiter, and only up to a space or the line's end, so v1 never matches inside
-  v1.2 and 18.7 never inside 18.70. Every use of a trailing action is rewritten.
+- **Rewriting a pin.** A pin is matched with its regex characters escaped, under a `#` delimiter.
+  An action's or a compose image's is matched only up to a space or the line's end, so v1 never
+  matches inside v1.2 and 18.7 never inside 18.70, and every use of a trailing action is
+  rewritten. A Go source image's is matched from its opening quote through `@sha256:`, and its
+  digest up to its closing quote, in each file that holds it.
 
 ## Lint configuration
 

@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.4.1
+go get github.com/standards-lab/docproc@v0.4.2
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -55,7 +55,7 @@ build, missing, too old, or failing in that environment, so that route has no pr
 | --- | --- | --- | --- |
 | docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.2` | office |
 | docproc-mail | 0.1.0 | `tools/mail/v0.1.4` | email |
-| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.1` | onenote |
+| docproc-onenote | 0.1.0 | `tools/onenote/v0.1.2` | onenote |
 
 Each minimum is the tool's first schema `"2"` release, which its reader requires. Fetch a tool by
 its own tag, never as the latest release: the repository's releases include the base module's
