@@ -70,67 +70,72 @@ impl Diff<'_> {
         y: Range<usize>,
         edits_max: Option<usize>,
     ) -> Option<(usize, usize)> {
-        let (n, m) = (x.len(), y.len());
+        let a = &self.a[x.clone()];
+        let b = &self.b[y.clone()];
+        let (n, m) = (a.len(), b.len());
         let delta = n as isize - m as isize;
         let odd = delta & 1 == 1;
-        self.forward.set(1, 0);
-        self.backward.set(1, 0);
+        let forward = &mut self.forward;
+        let backward = &mut self.backward;
+        forward.set(1, 0);
+        backward.set(1, 0);
         let rounds = (n + m).div_ceil(2) + 1;
         let (forward_max, backward_max) = match edits_max {
             Some(max) => (max.div_ceil(2), max / 2),
             None => (rounds, rounds),
         };
         for d in 0..rounds.min(forward_max + 1) as isize {
-            for k in (-d..=d).rev().step_by(2) {
-                let mut at =
-                    if k == -d || (k != d && self.forward.get(k - 1) < self.forward.get(k + 1)) {
-                        self.forward.get(k + 1)
-                    } else {
-                        self.forward.get(k - 1) + 1
-                    };
-                let start = (at, (at as isize - k) as usize);
-                let mut down = start.1;
-                while at < n && down < m && self.a[x.start + at] == self.b[y.start + down] {
+            let mut k = d;
+            let mut above = 0;
+            while k >= -d {
+                let start = furthest_start(forward, k, d, &mut above);
+                let down = (start as isize - k) as usize;
+                let (mut at, mut y_at) = (start, down);
+                while at < n && y_at < m && a[at] == b[y_at] {
                     at += 1;
-                    down += 1;
+                    y_at += 1;
                 }
-                self.forward.set(k, at);
-                if odd
-                    && (k - delta).abs() < d
-                    && self.forward.get(k) + self.backward.get(delta - k) >= n
-                {
-                    return Some((x.start + start.0, y.start + start.1));
+                forward.set(k, at);
+                if odd && (k - delta).abs() < d && at + backward.get(delta - k) >= n {
+                    return Some((x.start + start, y.start + down));
                 }
+                k -= 2;
             }
             if d as usize > backward_max {
                 continue;
             }
-            for k in (-d..=d).rev().step_by(2) {
-                let mut at =
-                    if k == -d || (k != d && self.backward.get(k - 1) < self.backward.get(k + 1)) {
-                        self.backward.get(k + 1)
-                    } else {
-                        self.backward.get(k - 1) + 1
-                    };
-                let mut up = (at as isize - k) as usize;
-                while at < n
-                    && up < m
-                    && self.a[x.start + n - at - 1] == self.b[y.start + m - up - 1]
-                {
+            let mut k = d;
+            let mut above = 0;
+            while k >= -d {
+                let start = furthest_start(backward, k, d, &mut above);
+                let (mut at, mut up) = (start, (start as isize - k) as usize);
+                while at < n && up < m && a[n - at - 1] == b[m - up - 1] {
                     at += 1;
                     up += 1;
                 }
-                self.backward.set(k, at);
-                if !odd
-                    && (k - delta).abs() <= d
-                    && self.backward.get(k) + self.forward.get(delta - k) >= n
-                {
+                backward.set(k, at);
+                if !odd && (k - delta).abs() <= d && at + forward.get(delta - k) >= n {
                     return Some((x.start + n - at, y.start + m - up));
                 }
+                k -= 2;
             }
         }
         None
     }
+}
+
+fn furthest_start(v: &V, k: isize, d: isize, above: &mut usize) -> usize {
+    if k == -d {
+        return *above;
+    }
+    let below = v.get(k - 1);
+    let start = if k == d {
+        below + 1
+    } else {
+        (below + 1).max(*above)
+    };
+    *above = below;
+    start
 }
 
 struct V {
@@ -208,6 +213,26 @@ mod tests {
                 lcs(&a, &b),
                 "{a:?} {b:?}"
             );
+        }
+    }
+
+    #[test]
+    fn ties_keep_the_rules_choice() {
+        let cases: [(&[u32], &[u32], [u8; 6]); 6] = [
+            (&[1, 2, 1, 2], &[2, 1, 2, 1], [1, 1, 1, 0, 0, 0]),
+            (&[1, 2, 3], &[3, 2, 1], [1, 0, 0, 0, 0, 0]),
+            (&[1, 1, 2, 2], &[2, 2, 1, 1], [1, 1, 0, 0, 0, 0]),
+            (&[1, 2, 1, 3, 1], &[1, 3, 1, 2, 1], [1, 1, 0, 0, 1, 0]),
+            (&[5, 6, 7, 8], &[7, 8, 5, 6], [1, 1, 0, 0, 0, 0]),
+            (
+                &[1, 2, 3, 4, 1, 2],
+                &[3, 4, 1, 2, 9, 3, 4],
+                [0, 0, 1, 1, 1, 1],
+            ),
+        ];
+        for (a, b, want) in cases {
+            let want: Vec<bool> = want[..a.len()].iter().map(|k| *k == 1).collect();
+            assert_eq!(kept(a, b, usize::MAX), Some(want), "{a:?} {b:?}");
         }
     }
 
