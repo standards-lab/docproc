@@ -9,6 +9,12 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.4.2] - 2026-11-23
+
+This release moves the default container images that soffice and ffmpeg run in, and currency now
+keeps them current. Its exported API is unchanged, and the module still requires golang.org/x/text
+alone.
+
 ### Changed
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.9.3-libreoffice`, from 9.1.0-libreoffice,
@@ -280,7 +286,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.2...HEAD
+[v0.4.2]: https://github.com/standards-lab/docproc/compare/v0.4.1...v0.4.2
 [v0.4.1]: https://github.com/standards-lab/docproc/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0
 [v0.3.0]: https://github.com/standards-lab/docproc/compare/v0.2.0...v0.3.0

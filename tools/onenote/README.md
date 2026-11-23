@@ -34,7 +34,7 @@ unpacking it:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-onenote-v0.1.1-linux-x64.tar.gz
+tar -xzf docproc-onenote-v0.1.2-linux-x64.tar.gz
 ./docproc-onenote --version
 ```
 
@@ -78,7 +78,7 @@ a path. `--media` naming something that exists and isn't a directory is a usage 
 `--version` prints the version on its first line and the schema on its second:
 
 ```text
-0.1.1
+0.1.2
 schema 2
 ```
 
