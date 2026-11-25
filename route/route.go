@@ -43,8 +43,9 @@ const (
 	// header field, and a From or Date field before its header block ends. Content of no routed
 	// signature, or of a UTF-8 byte order mark, is one by its header alone, whatever its name,
 	// when the header holds From and either Date or Received. It is a mail store too: a .pst, by
-	// its signature, and an mbox, by its first line's "From ". The caller reads it with the email
-	// package's Reader.
+	// its signature, and an mbox, by its first line's "From " followed by a header block whose
+	// first line is a field and which holds From and either Date or Received. The caller reads it
+	// with the email package's Reader.
 	Nested Route = "nested"
 	// OneNote is a OneNote section or table of contents, by its OneStore signature, or a cabinet
 	// whose name has the .onepkg extension, a OneNote package.
@@ -52,28 +53,37 @@ const (
 	// Archive is a ZIP that is neither an office document nor an ODF package, a tar, gzip, zstd,
 	// 7z, RAR4, RAR5, xz, or bzip2 archive, or a cabinet not named .onepkg.
 	Archive Route = "archive"
-	// Audio is WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A.
+	// Audio is WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A; and content of no
+	// signature whose stored MIME type's top-level type is audio and whose first [HeadLen] bytes
+	// hold a NUL byte, so the fallback refuses it as text.
 	Audio Route = "audio"
 	// Video is MP4, Matroska, WebM, AVI, an MPEG program stream, or an Ogg that begins a Theora,
-	// VP8, Dirac, or OGM video stream.
+	// VP8, Dirac, or OGM video stream; and content of no signature whose stored MIME type's
+	// top-level type is video and whose first [HeadLen] bytes hold a NUL byte, so the fallback
+	// refuses it as text.
 	Video Route = "video"
 	// Text is content that begins with a UTF-8, UTF-16, or UTF-32 byte order mark; a script, by
 	// its "#!" line; and, as the fallback, content no other route claims, or that fails a
-	// claim's own check, whose first [HeadLen] bytes hold no NUL byte, whatever its name: HTML,
-	// CSS, JavaScript, an EPUB's entries, a .txt, .csv, or .json, or a LICENSE among it. Its
-	// reason ends ", text by its head" and begins with the claim it failed, such as "OLE2
-	// signature without a legacy or .msg extension", or "no routed signature". A name's extension
-	// never makes content text.
+	// claim's own check, whose first [HeadLen] bytes hold no NUL byte, whatever its name or
+	// stored audio or video type: HTML, CSS, JavaScript, an EPUB's entries, a .txt, .csv, or
+	// .json, a LICENSE, prose that begins "From " without a message header, or a mislabelled
+	// attachment stored as audio among it. Its reason ends ", text by its head" and begins with
+	// the claim it failed, such as "OLE2 signature without a legacy or .msg extension", `mbox
+	// "From " line without a message header`, or "no routed signature"; for content named .eml or
+	// stored as a message whose header isn't a message's shape, it is "a message by its <name or
+	// type>, but not header-shaped; text by its head". A name's extension never makes content
+	// text.
 	Text Route = "text"
 	// Unrouted is a deliberate refusal: an executable, by a PE, ELF, or Mach-O signature; an XPS
 	// package, a ZIP holding a FixedDocumentSequence.fdseq entry, whole or as its first piece,
 	// whatever its name, ahead of the OOXML rules, since one is an OPC package too and may be
-	// named .docx; an .ost, an offline store mail refuses; and content named .eml or stored as a
-	// message whose header isn't a message's shape. It is the fallback's too: content no other
-	// route claims, or that fails a claim's own check, such as an OLE2 compound file without a
-	// legacy or .msg extension, nor an encrypted OOXML package's stream and name, whose first
-	// [HeadLen] bytes hold a NUL byte. Its reason then ends ", not text" and begins with the
-	// claim it failed, or "no routed signature".
+	// named .docx; and an .ost, an offline store mail refuses. It is the fallback's too: content
+	// no other route claims, or that fails a claim's own check, such as an OLE2 compound file
+	// without a legacy or .msg extension, nor an encrypted OOXML package's stream and name, or an
+	// mbox's "From " line without a message header, whose first [HeadLen] bytes hold a NUL byte.
+	// Its reason then ends ", not text" and begins with the claim it failed, or "no routed
+	// signature"; for content named .eml or stored as a message whose header isn't a message's
+	// shape, it is "a message by its <name or type>, but not header-shaped".
 	Unrouted Route = "unrouted"
 )
 
@@ -166,7 +176,6 @@ var kindRoutes = map[Kind]struct {
 	ELF:         {Unrouted, "ELF signature, an executable"},
 	MachO:       {Unrouted, "Mach-O signature, an executable"},
 	Shebang:     {Text, `"#!" line, a script`},
-	Mbox:        {Nested, `mbox "From " line`},
 }
 
 var boms = map[Kind]string{UTF8BOM: "UTF-8", UTF16BOM: "UTF-16", UTF32BOM: "UTF-32"}
@@ -205,14 +214,17 @@ func File(path, name, mimeType string) (Route, string, error) {
 // name, and otherwise for a [Content_Types].xml entry,
 // which makes it an OOXML package whatever its name; an OLE2 file, 128 bytes at a time, for an
 // EncryptedPackage stream's directory entry, by [EncryptedPackage], when it is named as an OOXML
-// package; and content of no signature, a line at a time, each at most 64 KiB, for a message's
-// header. Content of no signature Identify knows whose mimeType's top-level type is audio or
-// video, such as a OneNote recording's stored "audio", routes Audio or Video. Content of no
-// signature, or of a UTF-8 byte order mark, whose header is a message's, From and either Date or
-// Received in a header block whose first line is a field, is a message whatever its name. Content
-// no route claims, and an OLE2 compound file without a legacy or .msg extension, nor an encrypted
-// OOXML package's stream and name, falls back on head: [Text] when it holds no NUL byte,
-// [Unrouted] when it does. It returns an error only for r's own.
+// package; an mbox, a line at a time, each at most 64 KiB, past its "From " line for a message's
+// header; and content of no signature, the same way, for a message's header. A message's header
+// is From and either Date or Received in a header block whose first line is a field: an mbox is
+// [Nested] only with one, and content of no signature, or of a UTF-8 byte order mark, with one is
+// a message whatever its name. Content of no signature Identify knows whose mimeType's top-level
+// type is audio or video, such as a OneNote recording's stored "audio", routes Audio or Video
+// only when head holds a NUL byte. Content no route claims, an OLE2 compound file without a
+// legacy or .msg extension, nor an encrypted OOXML package's stream and name, an mbox without a
+// message's header, and content named .eml or stored as a message whose header isn't a
+// message's shape fall back on head: [Text] when it holds no NUL byte, [Unrouted] when it does.
+// It returns an error only for r's own.
 func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, string, error) {
 	head = head[:min(len(head), HeadLen)]
 	ext := Ext(name)
@@ -242,6 +254,17 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 		if held[2] {
 			return Office, "ZIP signature with a " + contentTypesName + " entry, an OOXML package", nil
 		}
+	case Mbox:
+		fields, err := mboxHeader(io.NewSectionReader(r, 0, size))
+		if err != nil {
+			return "", "", err
+		}
+		if fields.message() {
+			return Nested, `mbox "From " line`, nil
+		}
+		claim := `mbox "From " line without a message header`
+		route, why := fallBack(head, claim+", text by its head", claim+", not text")
+		return route, why, nil
 	}
 	if route, why := byKind(kind, ext, head); route != "" {
 		return route, why, nil
@@ -253,11 +276,13 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 		case err != nil:
 			return "", "", err
 		case !fields.shaped():
-			return Unrouted, "a message by its " + as + ", but not header-shaped", nil
+			claim := "a message by its " + as + ", but not header-shaped"
+			route, why := fallBack(head, claim+"; text by its head", claim)
+			return route, why, nil
 		}
 		return Nested, "a message by its " + as + ", header-shaped", nil
 	}
-	if r := storedMedia(mimeType); r != "" && kind == Unknown {
+	if r := storedMedia(mimeType); r != "" && kind == Unknown && holdsNUL(head) {
 		return r, "no known signature, stored as " + mimeType, nil
 	}
 	if kind == Unknown || kind == UTF8BOM {
@@ -272,15 +297,34 @@ func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, s
 	if bom, ok := boms[kind]; ok {
 		return Text, "text by its " + bom + " byte order mark", nil
 	}
-	route, why := fallBack(head, "no routed signature")
+	const unclaimed = "no routed signature"
+	route, why := fallBack(head, unclaimed+", text by its head", unclaimed+", not text")
 	return route, why, nil
 }
 
-func fallBack(head []byte, nearClaim string) (Route, string) {
-	if bytes.IndexByte(head, 0) >= 0 {
-		return Unrouted, nearClaim + ", not text"
+func fallBack(head []byte, textWhy, notTextWhy string) (Route, string) {
+	if holdsNUL(head) {
+		return Unrouted, notTextWhy
 	}
-	return Text, nearClaim + ", text by its head"
+	return Text, textWhy
+}
+
+func holdsNUL(head []byte) bool { return bytes.IndexByte(head, 0) >= 0 }
+
+func mboxHeader(r io.Reader) (headerFields, error) {
+	br := bufio.NewReaderSize(r, headerLineMax)
+	for {
+		_, err := br.ReadSlice('\n')
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue
+		case errors.Is(err, io.EOF):
+			return headerFields{}, nil
+		case err != nil:
+			return headerFields{}, err
+		}
+		return header(br)
+	}
 }
 
 func storedMedia(mimeType string) Route {
@@ -314,7 +358,8 @@ func byKind(kind Kind, ext string, head []byte) (Route, string) {
 		case ext == ".msg":
 			return Nested, "OLE2 signature, .msg extension"
 		}
-		return fallBack(head, "OLE2 signature without a legacy or .msg extension")
+		claim := "OLE2 signature without a legacy or .msg extension"
+		return fallBack(head, claim+", text by its head", claim+", not text")
 	case MSCF:
 		if ext == ".onepkg" {
 			return OneNote, "cabinet signature, .onepkg extension"

@@ -74,7 +74,7 @@ const (
 
 var (
 	wordPerfect = "\xffWPC\x10\x00\x00\x00\x01\x0a"
-	mboxBytes   = "From ann@example.org Sat Jan  3 01:05:34 1996\nFrom: ann@example.org\n\nbody\n"
+	mboxBytes   = "From ann@example.org Sat Jan  3 01:05:34 1996\nFrom: ann@example.org\nDate: Sat, 3 Jan 1996 01:05:34 +0000\n\nbody\n"
 	oneSection  = "\xe4\x52\x5c\x7b\x8c\xd8\xa7\x4d\xae\xb1\x53\x78\xd0\x29\x96\xd3" + strings.Repeat("\x00", 16)
 	oneTOC      = "\xa1\x2f\xff\x43\xd9\xef\x76\x4c\x9e\xe2\x10\xea\x57\x22\x76\x5f" + strings.Repeat("\x00", 16)
 	mscf        = "MSCF\x00\x00\x00\x00\x2c\x01\x00\x00"

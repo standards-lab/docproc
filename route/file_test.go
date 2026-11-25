@@ -126,7 +126,7 @@ func TestFileRoutes(t *testing.T) {
 
 		{"eml with a byte order mark", "\xef\xbb\xbf" + headerShaped, "fwd.eml", "", route.Nested, "a message by its .eml extension, header-shaped"},
 		{"rfc822 named .txt", headerShaped, "fwd.txt", "message/rfc822", route.Nested, "a message by its message/rfc822 type, header-shaped"},
-		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Unrouted, "a message by its message/rfc822 type, but not header-shaped"},
+		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Text, "a message by its message/rfc822 type, but not header-shaped; text by its head"},
 
 		{"pst", pstHeader("SM"), "archive.pst", "application/vnd.ms-outlook", route.Nested, "PST signature, a .pst"},
 		{"pst without a name", pstHeader("SM"), "", "", route.Nested, "PST signature, a .pst"},
@@ -135,7 +135,7 @@ func TestFileRoutes(t *testing.T) {
 		{"mbox", mboxBytes, "Inbox", "", route.Nested, `mbox "From " line`},
 		{"mbox named .mbox", mboxBytes, "a.mbox", "application/mbox", route.Nested, `mbox "From " line`},
 		{"mbox named .eml", mboxBytes, "a.eml", "message/rfc822", route.Nested, `mbox "From " line`},
-		{"mbox line named .txt", "From the desk of Ann\n", "letter.txt", "text/plain", route.Nested, `mbox "From " line`},
+		{"mbox line named .txt", "From the desk of Ann\n", "letter.txt", "text/plain", route.Text, `mbox "From " line without a message header, text by its head`},
 
 		{"pe", peBytes, "setup.exe", "application/x-msdownload", route.Unrouted, "PE signature, an executable"},
 		{"pe named .pdf", peBytes, "invoice.pdf", "application/pdf", route.Unrouted, "PE signature, an executable"},
