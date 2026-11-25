@@ -25,7 +25,12 @@ internal static partial class XlsxReader
             var rows = workbook.Rows(sheet).ToList();
             blocks.Add(new Model.Sheet(sheet.Name, sheet.Hidden, [.. rows.Count > 0 ? [new Table(rows)] : Array.Empty<Block>(), .. sheet.Drawings]));
         }
-        return new Conversion(new Document(SourceFormat.Xlsx, blocks) { Properties = workbook.Properties }, workbook.Media) { Warnings = workbook.Warnings };
+        var document = new Document(SourceFormat.Xlsx, blocks)
+        {
+            Properties = workbook.Properties,
+            Comments = workbook.Comments.Count > 0 ? workbook.Comments : null,
+        };
+        return new Conversion(document, workbook.Media) { Warnings = workbook.Warnings };
     }
 
     /// <summary>The validate pass: reads every sheet of the package forward once, writing nothing,
@@ -42,6 +47,7 @@ internal static partial class XlsxReader
             new NumberFormats(workbookPart.WorkbookStylesPart?.Stylesheet),
             workbook.WorkbookProperties?.Date1904?.Value ?? false,
             new UnreadKinds(warnings));
+        var comments = new SheetComments(workbookPart);
         var sheets = new List<XlsxSheet>();
         var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
@@ -55,9 +61,9 @@ internal static partial class XlsxReader
             }
             var state = sheet.State?.Value;
             var hidden = state == S.SheetStateValues.Hidden || state == S.SheetStateValues.VeryHidden;
-            sheets.Add(ValidateSheet(context, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
+            sheets.Add(ValidateSheet(context, comments, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
         }
-        return new XlsxWorkbook(context, sheets, warnings) { Properties = properties };
+        return new XlsxWorkbook(context, sheets, comments.All, warnings) { Properties = properties };
     }
 
     internal sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904, UnreadKinds unread)
@@ -73,7 +79,7 @@ internal static partial class XlsxReader
         public MediaStore Media { get; } = new();
     }
 
-    private static XlsxSheet ValidateSheet(XlsxContext context, string name, bool hidden, OpenXmlPart part, int index)
+    private static XlsxSheet ValidateSheet(XlsxContext context, SheetComments comments, string name, bool hidden, OpenXmlPart part, int index)
     {
         SheetCells? cells = null;
         DrawingsPart? drawings = null;
@@ -81,12 +87,8 @@ internal static partial class XlsxReader
         switch (part)
         {
             case WorksheetPart worksheet:
-                (cells, objects) = ValidateCells(context, worksheet);
+                (cells, objects) = ValidateCells(context, worksheet, comments.Read(worksheet));
                 drawings = worksheet.DrawingsPart;
-                if (worksheet.WorksheetCommentsPart is not null || worksheet.WorksheetThreadedCommentsParts.Any())
-                {
-                    context.Unread.Found(Place(index), UnreadKinds.Notes);
-                }
                 break;
             case ChartsheetPart chartsheet:
                 drawings = chartsheet.DrawingsPart;

@@ -1,0 +1,152 @@
+{
+  "fixture": "sheet-notes",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Budget",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "Item"
+                },
+                {
+                  "ref": "B1",
+                  "type": "text",
+                  "value": "Cost"
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "Rent"
+                },
+                {
+                  "ref": "B2",
+                  "type": "number",
+                  "value": 1200,
+                  "comments": [
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "text",
+                  "value": "Travel",
+                  "comments": [
+                    1
+                  ]
+                },
+                {
+                  "ref": "B3",
+                  "type": "number",
+                  "value": 300
+                },
+                {
+                  "ref": "D3",
+                  "comments": [
+                    3
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "Staff",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "Hires",
+                  "comments": [
+                    4
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": [],
+  "comments": [
+    {
+      "author": "Ben Author",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Two trips, one *cancelled*."
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Ana Reviewer",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Is this monthly?"
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Ana Reviewer",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Add the insurance here.\nIt was missed."
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Ben Author",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Two are still open."
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

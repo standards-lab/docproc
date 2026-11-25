@@ -165,6 +165,35 @@ public sealed class ConverterTests : IDisposable
     }
 
     [Fact]
+    public void ANoteIsMarkedOnTheCellItAnchorsAMergesAnchorForACoveredCell()
+    {
+        var path = Path.Combine(scratch.FullName, "sheet-notes.xlsx");
+        File.Copy(Fixtures.DocumentPath("sheet-notes", "openpyxl"), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            Write(zip, "xl/worksheets/sheet1.xml", Read(zip, "xl/worksheets/sheet1.xml")
+                .Replace("</row></sheetData>", "</row><row r=\"7\"><c r=\"A7\" t=\"inlineStr\"><is><t>Last</t></is></c></row></sheetData>", StringComparison.Ordinal)
+                .Replace("</sheetData>", "</sheetData><mergeCells count=\"1\"><mergeCell ref=\"A2:B2\"/></mergeCells>", StringComparison.Ordinal));
+            Write(zip, "xl/comments/comment1.xml", Read(zip, "xl/comments/comment1.xml").Replace(
+                "</commentList>",
+                "<comment ref=\"A5\" authorId=\"0\"><text><t>Between rows.</t></text></comment>"
+                + "<comment ref=\"C9\" authorId=\"1\"><text><t>Past the last row.</t></text></comment></commentList>",
+                StringComparison.Ordinal));
+        }
+
+        var document = OfficeReader.Read(path);
+
+        var table = Assert.IsType<Table>(Assert.IsType<Sheet>(document.Blocks[0]).Blocks[0]);
+        Assert.Equal(
+            ["1: A1 B1", "2: A2(2)[1]", "3: A3[2] B3 D3[3]", "5: A5[4]", "7: A7", "9: C9[5]"],
+            table.Rows.Select(row => $"{row.Row}: " + string.Join(" ", row.Cells.Select(cell =>
+                cell.Ref + (cell.ColSpan is { } span ? $"({span})" : "") + (cell.Comments is { } ids ? $"[{string.Join(",", ids)}]" : "")))));
+        Assert.Equal([1, 2, 3, 4, 5, 6], document.Comments!.Select(c => c.Id));
+        Assert.Equal(MarkdownRenderer.Render(document), string.Concat(Write(document).Split('\n')[..^1].Select(line => (string?)JsonNode.Parse(line)!["markdown"])));
+        Assert.Contains("| 2 | Rent[^c1] |  |  |  |\n", MarkdownRenderer.Render(document), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void APptxAutoNumberStartsItsListAtItsStartAt()
     {
         var path = Path.Combine(scratch.FullName, "bullets.pptx");

@@ -30,7 +30,7 @@ internal sealed class MarkdownRenderer
         chunks.AddRange(renderer.RenderBlocks(document.Blocks).Select(c => c.Text));
         chunks.AddRange(renderer.Stories(stories.SelectMany(s => s.Footers ?? [])));
         chunks.AddRange(renderer.NoteDefinitions(document));
-        chunks.AddRange(renderer.CommentDefinitions(document));
+        chunks.AddRange(renderer.CommentDefinitions(document.Comments ?? []));
         return chunks.Count == 0 ? "" : string.Join("\n\n", chunks) + "\n";
     }
 
@@ -75,9 +75,8 @@ internal sealed class MarkdownRenderer
         return definitions;
     }
 
-    private List<string> CommentDefinitions(Document document)
+    private List<string> CommentDefinitions(IReadOnlyList<Comment> all)
     {
-        var all = document.Comments ?? [];
         foreach (var comment in all)
         {
             CommentLabel(comment.Id);
@@ -285,8 +284,17 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    internal static string RowFragment(TableRow row, IReadOnlyList<string> columns) =>
+    /// <summary>A renderer for an xlsx's fragments, which numbers the comment labels its row
+    /// fragments reach across every sheet, so its comment fragments label them alike.</summary>
+    internal static MarkdownRenderer ForFragments() => new();
+
+    internal string RowFragment(TableRow row, IReadOnlyList<string> columns) =>
         Row(SheetRowCells(row, columns), columns.Count + 1) + "\n";
+
+    /// <summary>The comments' footnote definitions, each its own fragment, in the order of their
+    /// labels: those the row fragments reached first, then the rest.</summary>
+    internal List<string> CommentFragments(IReadOnlyList<Comment> comments) =>
+        [.. CommentDefinitions(comments).Select(definition => "\n" + definition + "\n")];
 
     internal static string DrawingFragment(IReadOnlyList<Block> drawings) =>
         string.Concat(new MarkdownRenderer().RenderBlocks(drawings).Select(c => "\n" + c.Text + "\n"));
@@ -350,7 +358,7 @@ internal sealed class MarkdownRenderer
         return GridTable(grid);
     }
 
-    private static string RenderSheetTable(Table table)
+    private string RenderSheetTable(Table table)
     {
         var columns = SheetColumns(table);
         if (columns.Count == 0)
@@ -362,7 +370,7 @@ internal sealed class MarkdownRenderer
         return GridTable(grid);
     }
 
-    private static string?[] SheetRowCells(TableRow row, IReadOnlyList<string> columns)
+    private string?[] SheetRowCells(TableRow row, IReadOnlyList<string> columns)
     {
         var line = new string?[columns.Count + 1];
         line[0] = row.Row?.ToString(CultureInfo.InvariantCulture) ?? "";
@@ -390,10 +398,11 @@ internal sealed class MarkdownRenderer
 
     private static string ColumnOf(string reference) => new([.. reference.TakeWhile(char.IsAsciiLetter)]);
 
-    private static string SheetCellText(TableCell cell)
+    private string SheetCellText(TableCell cell)
     {
         var text = SheetCellValue(cell);
-        return cell.Target is { } target && text.Length > 0 ? $"[{text}]({Target(target)})" : text;
+        var marks = string.Concat((cell.Comments ?? []).Select(id => $"[^c{CommentLabel(id)}]"));
+        return (cell.Target is { } target && text.Length > 0 ? $"[{text}]({Target(target)})" : text) + marks;
     }
 
     private static string SheetCellValue(TableCell cell)

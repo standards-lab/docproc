@@ -72,8 +72,12 @@ order its drawing anchors them. A docx's text box is read where its paragraph an
 paragraphs following that paragraph as its pictures do, and once, though Word writes it twice,
 as DrawingML and as its VML copy. A pptx's comments, legacy and PowerPoint 365's modern threaded
 ones, are footnotes as a docx's are, each thread's replies after it in order; a comment's place
-is its slide, so its marker follows the slide's heading, `# Slide 2[^c1]`. Joined in order, the
-lines' Markdown fragments are the whole rendering.
+is its slide, so its marker follows the slide's heading, `# Slide 2[^c1]`. An xlsx's notes and
+threaded comments, their replies with them, are footnotes too, marked after their cell's text in
+its table, `| 2 | Rent[^c1] |`; the note Excel writes on a threaded comment's cell as its copy is
+skipped. Their definitions follow the last sheet's lines on `rows` lines of their own, with no
+rows, each within 256 KiB or one definition. Joined in order, the lines' Markdown fragments are
+the whole rendering.
 
 ```text
 {"line":"document","schema":"2","format":"xlsx","properties":{"core":{"creator":"openpyxl",…}}}
@@ -123,8 +127,8 @@ The envelope these follow, its cases stated once for every tool, is
 
 - Pictures are listed with no layout, so a covered, off-slide, or cropped-away picture is still
   a media block.
-- Equations, SmartArt, and an xlsx's cell notes are not read. Each kind present gets one
-  warning, where the document first holds one:
+- Equations and SmartArt are not read. Each kind present gets one warning, where the document
+  first holds one:
   `docproc-ooxml: warning: slide 1: SmartArt not read`.
 - No formula is evaluated: a formula's value is the one the file caches, or none.
 - No number format is applied but the dates': a number is written as stored.

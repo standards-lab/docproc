@@ -98,7 +98,7 @@ internal static class GroundTruth
                     }
                     break;
                 case Table table when table.Rows.Any(row => row.Row is not null):
-                    elements.Add(new JsonObject { ["kind"] = "table", ["rows"] = SheetRows(table) });
+                    elements.Add(new JsonObject { ["kind"] = "table", ["rows"] = SheetRows(document, table) });
                     break;
                 case Table table:
                     elements.Add(new JsonObject { ["kind"] = "table", ["rows"] = Rows(document, table) });
@@ -168,14 +168,14 @@ internal static class GroundTruth
         return rows;
     }
 
-    private static JsonArray SheetRows(Table table) =>
+    private static JsonArray SheetRows(Document document, Table table) =>
         new([.. table.Rows.Select(row => new JsonObject
         {
             ["row"] = row.Row,
-            ["cells"] = new JsonArray([.. row.Cells.Select(SheetCell)]),
+            ["cells"] = new JsonArray([.. row.Cells.Select(cell => SheetCell(document, cell))]),
         })]);
 
-    private static JsonObject SheetCell(TableCell cell)
+    private static JsonObject SheetCell(Document document, TableCell cell)
     {
         var json = new JsonObject { ["ref"] = cell.Ref };
         if (cell.Value is { } value)
@@ -204,6 +204,10 @@ internal static class GroundTruth
         if (cell.Target is not null)
         {
             json["target"] = cell.Target;
+        }
+        if (cell.Comments is { } comments)
+        {
+            json["comments"] = new JsonArray([.. comments.Select(id => (JsonNode)Place(document.Comments, c => c.Id == id))]);
         }
         return json;
     }

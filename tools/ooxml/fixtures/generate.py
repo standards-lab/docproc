@@ -1308,7 +1308,8 @@ class Workbook:
     parts holds the parts openpyxl can't write, added to the package as they are: (name, bytes,
     content type), and relationships the relationships to them, by the part that holds them:
     (id, type, target). ole_sheets holds the sheets holding objects, and the namespaces their
-    objects' XML needs.
+    objects' XML needs. persons holds the threaded comments' authors, in the order they first
+    comment, and threaded counts the threaded comments made so far, which number their ids.
     """
 
     writer, extension, filter = "openpyxl", "xlsx", "xlsx:Calc MS Excel 2007 XML"
@@ -1325,6 +1326,8 @@ class Workbook:
         self.parts: list[tuple[str, bytes, str]] = []
         self.relationships: dict[str, list[tuple[str, str, str]]] = {}
         self.ole_sheets: list[tuple["Sheet", str]] = []
+        self.persons: list[str] = []
+        self.threaded = 0
 
     def sheet(self, title: str, state: str = "visible") -> "Sheet":
         ws = self.book.create_sheet(title)
@@ -1352,17 +1355,57 @@ class Workbook:
                 self.patches.append((f"xl/drawings/drawing{drawing}.xml", "</wsDr>", anchors + "</wsDr>"))
         for sheet, ns in self.ole_sheets:
             self.patches.append((sheet.part, "</worksheet>", f'<oleObjects {ns}>{"".join(sheet.ole_xml)}</oleObjects></worksheet>'))
+        self._threaded_parts()
         self.book.save(path)
         add_to_package(path, self.name, self.patches, self.parts, self.relationships)
 
+    def _threaded_parts(self) -> None:
+        """Writes each sheet's threaded comments to a threaded comments part, a reply naming its
+        thread's comment as its parent, and their authors to the workbook's persons part."""
+        parts = 0
+        for sheet in self.sheets:
+            comments = []
+            for thread in sheet.threads:
+                parent = None
+                for own, (author, text) in zip(thread["ids"], [(thread["author"], thread["text"]), *thread["replies"]]):
+                    if author not in self.persons:
+                        self.persons.append(author)
+                    linked = f' parentId="{parent}"' if parent else ""
+                    done = ' done="1"' if parent is None and thread["resolved"] else ""
+                    comments.append(
+                        f'<threadedComment ref="{thread["ref"]}" dT="2026-01-15T10:00:00.00" personId="{guid(4, self.persons.index(author))}"'
+                        f' id="{own}"{linked}{done}><text>{escape(text)}</text></threadedComment>'
+                    )
+                    parent = parent or own
+            if comments:
+                parts += 1
+                name = f"xl/threadedComments/threadedComment{parts}.xml"
+                xml = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<ThreadedComments xmlns="{THREADED}" xmlns:x="{SPREADSHEET}">{"".join(comments)}</ThreadedComments>'
+                self.parts.append((name, xml.encode(), CT_THREADED_COMMENTS))
+                self.relationships.setdefault(sheet.part, []).append((f"rIdThreaded{parts}", RT_THREADED_COMMENT, f"../threadedComments/{name.rsplit('/', 1)[1]}"))
+        if self.persons:
+            people = "".join(
+                f'<person displayName="{escape(name)}" id="{guid(4, n)}" userId="{escape(name)}" providerId="None"/>' for n, name in enumerate(self.persons)
+            )
+            xml = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<personList xmlns="{THREADED}" xmlns:x="{SPREADSHEET}">{people}</personList>'
+            self.parts.append(("xl/persons/person.xml", xml.encode(), CT_PERSONS))
+            self.relationships.setdefault("xl/workbook.xml", []).append(("rIdPersons", RT_PERSON, "persons/person.xml"))
+
     def _truth(self, variant: str) -> dict:
-        return {
-            "fixture": self.name,
-            "format": "xlsx",
-            "elements": [sheet.truth(variant) for sheet in self.sheets],
-            "absent": self.absent,
-            "once": [],
-        }
+        """The workbook's truth. A sheet's comments are its notes in cell order, then its threads
+        in the order they were made, each its place, from 1, in the workbook's comments, which
+        follow the sheets' order, on the cell it anchors."""
+        elements, comments = [], []
+        for sheet in self.sheets:
+            places: dict[str, list[int]] = {}
+            for thread in sheet.comment_threads(variant):
+                comments.append(thread_truth(thread))
+                places.setdefault(thread["ref"], []).append(len(comments))
+            elements.append(sheet.truth(variant, places))
+        truth = {"fixture": self.name, "format": "xlsx", "elements": elements, "absent": self.absent, "once": []}
+        if comments:
+            truth["comments"] = comments
+        return truth
 
     def truth(self) -> dict:
         return self._truth("openpyxl")
@@ -1416,6 +1459,16 @@ RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships"
 RT_OLE_OBJECT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"
 RT_PACKAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
 RT_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+THREADED = "http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments"
+SPREADSHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+RT_THREADED_COMMENT = "http://schemas.microsoft.com/office/2017/10/relationships/threadedComment"
+RT_PERSON = "http://schemas.microsoft.com/office/2017/10/relationships/person"
+CT_THREADED_COMMENTS = "application/vnd.ms-excel.threadedcomments+xml"
+CT_PERSONS = "application/vnd.ms-excel.person+xml"
+EXCEL_COPY = (
+    "[Threaded comment]\n\nYour version of Excel allows you to read this threaded comment; however, any edits to it will get "
+    "removed if the file is opened in a newer version of Excel. Learn more: https://go.microsoft.com/fwlink/?linkid=870924"
+)
 CT_OLE_OBJECT = "application/vnd.openxmlformats-officedocument.oleObject"
 CT_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -1442,7 +1495,8 @@ def payload_truth(kind: str, data: bytes, ext: str, content_type: str, prog_id: 
 class Sheet:
     """A worksheet and its truth: its cells by reference, each writer's truth of each (None where
     the writer leaves the cell out), then its charts, its pictures, and its objects, each
-    object's truth its preview's then its payload's, by writer."""
+    object's truth its preview's then its payload's, by writer; and its notes and threaded
+    comments, each a thread as thread_truth takes it with the reference of its cell."""
 
     def __init__(self, book: Workbook, ws, index: int):
         self.book = book
@@ -1453,6 +1507,8 @@ class Sheet:
         self.pictures: list[tuple[dict, str]] = []
         self.text_boxes: list[list[str]] = []
         self.objects: list[dict[str, list[dict]]] = []
+        self.notes: list[dict] = []
+        self.threads: list[dict] = []
 
     @property
     def part(self) -> str:
@@ -1576,12 +1632,45 @@ class Sheet:
         truth = {"ref": ref, "type": "text", "value": value}
         self._cell(ref, truth, dict(truth))
 
-    def note(self, ref: str, value: str, text: str) -> None:
-        """A text cell with a note (a legacy comment), which is not read."""
-        self.ws[ref] = value
-        self.ws[ref].comment = Comment(text, AUTHOR)
-        truth = {"ref": ref, "type": "text", "value": value}
+    def note(self, ref: str, value, text: str, author: str = AUTHOR, kind: str = "text") -> None:
+        """A cell with a note, a legacy comment, by its author; with no value an empty cell, which
+        the note alone puts in the table."""
+        self._commented(ref, value, kind)
+        self.ws[ref].comment = Comment(text, author)
+        self.notes.append({"ref": ref, "author": author, "text": text, "resolved": False, "replies": [], "modern": False})
+
+    def thread(self, ref: str, value, author: str, text: str, replies: list[tuple[str, str]] = (), resolved: bool = False) -> None:
+        """A text cell with a threaded comment and its replies, and the note Excel writes on the
+        same cell as its copy for older readers: its text the copy's notice, then the thread's
+        comments, by an author naming the thread's id."""
+        self._commented(ref, value, "text")
+        copy = EXCEL_COPY + "\n\nComment:\n    " + text.replace("\n", "\n    ")
+        copy += "".join(f"\nReply:\n    {reply}" for _, reply in replies)
+        ids = [guid(3, self.book.threaded + n) for n in range(1, len(replies) + 2)]
+        self.book.threaded += len(ids)
+        self.ws[ref].comment = Comment(copy, f"tc={ids[0]}")
+        self.threads.append({"ref": ref, "ids": ids, "author": author, "text": text, "resolved": resolved, "replies": list(replies), "modern": False})
+
+    def _commented(self, ref: str, value, kind: str) -> None:
+        if value is not None:
+            self.ws[ref] = value
+            truth = {"ref": ref, "type": kind, "value": value}
+        else:
+            truth = {"ref": ref}
         self._cell(ref, truth, dict(truth))
+
+    def comment_threads(self, variant: str) -> list[dict]:
+        """The sheet's threads in the order docproc-ooxml reads them, its notes and then its
+        threaded comments, each in the order the writer stores them: openpyxl's notes by row and
+        then column, its threaded comments as made, and LibreOffice's both by column and then
+        row."""
+
+        def stored(thread: dict) -> tuple[int, int]:
+            row, column = coordinate_to_tuple(thread["ref"])
+            return (row, column) if variant == "openpyxl" else (column, row)
+
+        threads = self.threads if variant == "openpyxl" else sorted(self.threads, key=stored)
+        return sorted(self.notes, key=stored) + threads
 
     def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
         """An object openpyxl can't write, added as raw XML and parts: an embedded package
@@ -1629,7 +1718,10 @@ class Sheet:
             self.book.ole_sheets.append((self, ns))
         return self._ole_xml
 
-    def truth(self, variant: str) -> dict:
+    def truth(self, variant: str, comments: dict[str, list[int]]) -> dict:
+        """The sheet's truth, each cell's comments its threads' places in comments, by its
+        reference."""
+
         def position(ref: str) -> tuple[int, int]:
             return coordinate_to_tuple(ref)
 
@@ -1637,7 +1729,7 @@ class Sheet:
         for ref in sorted(self.cells, key=position):
             cell = self.cells[ref][variant]
             if cell is not None:
-                rows.setdefault(position(ref)[0], []).append(cell)
+                rows.setdefault(position(ref)[0], []).append({**cell, "comments": comments[ref]} if ref in comments else cell)
         elements = []
         if rows:
             elements.append({"kind": "table", "rows": [{"row": r, "cells": cells} for r, cells in rows.items()]})
@@ -1817,7 +1909,7 @@ def dates_1904() -> Workbook:
 
 def sheet_links() -> Workbook:
     """Cells with external hyperlinks, a text and a number cell's, a cell with a hyperlink to a
-    place in the workbook, which stays text, and a cell with a note, which is not read."""
+    place in the workbook, which stays text, and a cell with a note."""
     f = Workbook("sheet-links")
     s = f.sheet("Links")
     s.link("A1", "The docproc guide", "https://example.invalid/docproc?page=1&lang=en")
@@ -1826,7 +1918,37 @@ def sheet_links() -> Workbook:
     s.cells["A2"]["openpyxl"]["target"] = s.cells["A2"]["libreoffice"]["target"] = "https://example.invalid/answer"
     s.internal_link("A3", "Back to the top", "'Links'!A1")
     s.note("B1", "Noted", "A note on this cell.")
-    f.absent = ["A note on this cell."]
+    return f
+
+
+def sheet_notes() -> Workbook:
+    """Notes by two authors on two sheets: on the first a number cell's, a text cell's holding
+    Markdown's characters, and one of two lines on an empty cell in a column no other cell uses;
+    on the second a text cell's."""
+    f = Workbook("sheet-notes")
+    s = f.sheet("Budget")
+    s.value("A1", "Item", "text")
+    s.value("B1", "Cost", "text")
+    s.value("A2", "Rent", "text")
+    s.note("B2", 1200, "Is this monthly?", "Ana Reviewer", kind="number")
+    s.note("A3", "Travel", "Two trips, one *cancelled*.", "Ben Author")
+    s.value("B3", 300, "number")
+    s.note("D3", None, "Add the insurance here.\nIt was missed.", "Ana Reviewer")
+    f.sheet("Staff").note("A1", "Hires", "Two are still open.", "Ben Author")
+    return f
+
+
+def sheet_threads() -> Workbook:
+    """Threaded comments, Excel 365's: an open thread of a comment and two replies by two authors,
+    a resolved comment of two lines by a third, each with the note Excel writes as its copy, which
+    is never read; and on a third cell a note of its own."""
+    f = Workbook("sheet-threads")
+    s = f.sheet("Plan")
+    s.value("A1", "Launch", "text")
+    s.thread("B1", "March", "Ana Reviewer", "Is the launch date fixed?", [("Ben Author", "It moved to March."), ("Ana Reviewer", "Thanks, noted.")])
+    s.thread("A2", "Supplier", "Cleo Editor", "Add the supplier risk.\nIt was raised last week.", resolved=True)
+    s.note("A3", "Budget", "Checked against the plan.", "Ben Author")
+    f.absent = ["[Threaded comment]", "Your version of Excel"]
     return f
 
 
@@ -1856,7 +1978,7 @@ def sheet_text_boxes() -> Workbook:
     return f
 
 
-XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings, sheet_text_boxes]
+XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings, sheet_text_boxes, sheet_notes, sheet_threads]
 
 
 TITLE_SLIDE, TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 0, 1, 5, 6
@@ -1930,7 +2052,8 @@ def modern_text(text: str) -> str:
 
 
 def thread_truth(thread: dict) -> dict:
-    """A comment thread's truth, in the docx comments' shape; a slide comment anchors no text."""
+    """A comment thread's truth, in the docx comments' shape; a slide's or a sheet's comment
+    anchors no text, and only a modern slide comment has a paragraph per line."""
 
     def paragraphs(text: str) -> list[dict]:
         return [{"kind": "paragraph", "text": line} for line in (text.split("\n") if thread["modern"] else [text])]

@@ -10,7 +10,7 @@ internal static class Fixtures
         "sections", "headers-even-off", "notes", "comments", "comments-plain", "media", "charts", "links", "text-boxes", "unread",
     ];
 
-    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904", "sheet-links", "sheet-embeddings", "sheet-text-boxes"];
+    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904", "sheet-links", "sheet-embeddings", "sheet-text-boxes", "sheet-notes", "sheet-threads"];
 
     public static readonly string[] Pptx = ["slides", "bullets", "groups", "slide-objects", "slide-links", "slide-embeddings", "slide-comments", "slide-threads"];
 

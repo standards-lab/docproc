@@ -22,16 +22,17 @@ internal static class Lines
                 table is null ? [] : MarkdownRenderer.SheetColumns(table),
                 table?.Rows ?? [],
                 [.. sheet.Blocks.Where(block => block is not Table)]);
-        }), output);
+        }), document.Comments ?? [], output);
     }
 
     /// <summary>Writes an xlsx document's lines to the output: its document line, holding the given
     /// properties and naming the given media, then each sheet's lines, each line written as its
     /// rows are enumerated, so a sheet read forward never waits in memory past one <c>rows</c>
-    /// line.</summary>
-    public static void WriteXlsx(Properties? properties, IReadOnlyList<Media> media, IEnumerable<SheetSource> sheets, Stream output)
+    /// line, then the comments' definitions on lines of their own.</summary>
+    public static void WriteXlsx(Properties? properties, IReadOnlyList<Media> media, IEnumerable<SheetSource> sheets, IReadOnlyList<Comment> comments, Stream output)
     {
         var writer = new LineWriter(output);
+        var renderer = MarkdownRenderer.ForFragments();
         writer.WriteDocument(SourceFormat.Xlsx, properties, "", media);
         var follows = false;
         foreach (var sheet in sheets)
@@ -39,11 +40,12 @@ internal static class Lines
             writer.WriteSheet(sheet.Name, sheet.Hidden, MarkdownRenderer.SheetFragment(sheet.Name, sheet.Hidden, sheet.Columns, follows));
             foreach (var row in sheet.Rows)
             {
-                writer.WriteRow(row, MarkdownRenderer.RowFragment(row, sheet.Columns));
+                writer.WriteRow(row, renderer.RowFragment(row, sheet.Columns));
             }
             writer.EndSheet(MarkdownRenderer.DrawingFragment(sheet.Drawings));
             follows = true;
         }
+        writer.WriteDefinitions(renderer.CommentFragments(comments));
     }
 
     internal static List<Media> MediaOf(Document document)

@@ -74,7 +74,7 @@ sheet     line, name, hidden?, markdown?   an xlsx sheet's header: its heading a
                                           header row
 rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formula?,
           shared_from?, col_span?, row_span?   the sheet's next rows, in order, and their
-          Markdown table rows
+          Markdown table rows; after the last sheet's, the comments' definitions
 ```
 
 - `markdown` is the document's Markdown rendering: headings, lists, GFM tables, charts as tables of
@@ -84,7 +84,10 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
   header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables, its
   pictures' links, and its shapes' paragraphs, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
-  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The lines'
+  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The
+  notes' and comments' footnote definitions follow the last sheet's lines on `rows` lines of their
+  own, with `markdown` and no `rows`, each holding as many of the next definitions as keep it
+  within 256 KiB, and at least one. The lines'
   Markdown fragments concatenate in order with nothing between them into the document's whole
   rendering: each ends in its own newline and opens with the blank line that separates it from the
   chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`, so a
@@ -135,8 +138,8 @@ The model the lines are written from is one tree for the three formats, its bloc
 order, every block but a media block the document's text, complete without inference. Each
 format is read as below; a warning's `<where>` is a docx `section n` or `comments`, an xlsx
 `sheet n` (its `sheet` line's ordinal, or for a sheet with no line its ordinal in the workbook),
-or a pptx `slide n`, and the unread kinds (equations, SmartArt, an xlsx's notes) are warned of
-once each, where the document first holds one
+or a pptx `slide n`, and the unread kinds (equations and SmartArt) are warned of once each,
+where the document first holds one
 ([`design-review.md`](design-review.md), OX-11).
 
 - **docx: the text.** Tracked changes are read accepted: insertions and a move's destination are
@@ -210,7 +213,8 @@ once each, where the document first holds one
   then the first failing row number or cell, in order, that no merge covers.
 - **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's
   reference is optional, and one without follows the cell before it. A table holds the cells
-  with a value or a formula. A merged range's anchor, its top-left cell, carries its spans, and
+  with a value or a formula, and the cells a note or comment anchors, whether the part holds them
+  or not, such a cell with nothing else its `ref` alone. A merged range's anchor, its top-left cell, carries its spans, and
   the cells it covers are left out; a range whose anchor holds nothing leaves nothing. Excel
   refuses overlapping ranges; where a file holds them, a cell is looked for only in the covering
   range that starts nearest its left. A shared formula's text is on its anchor, the first cell
@@ -241,6 +245,18 @@ once each, where the document first holds one
   diagram is not read. A worksheet's OLE object is
   its preview picture (its `objectPr`'s), then its payload: Excel writes the object twice in
   alternate content, the preview only in the choice's copy, both naming one relationship.
+- **xlsx: notes and comments.** A worksheet's threads are its legacy comments part's notes, first,
+  in stored order, then each threaded comments part's threads. A note (`comment`, its author
+  named by its part's `authors`) is its rich text flattened as a cell's, one paragraph, a thread
+  of its own, open, notes having no state. Excel writes a note on each threaded comment's cell as
+  that comment's copy for readers without threaded comments, its text beginning
+  `[Threaded comment]`, so a note on a cell a threaded comment anchors is skipped, whatever its
+  text. A threaded comment (`threadedComment`, its author the workbook persons part's person its
+  `personId` names) is its text, one paragraph; it is a reply in the thread of the comment its
+  `parentId` names, earlier in the sheet, and a thread of its own otherwise, resolved when its
+  `done` is set. A thread anchors its cell, or for a cell a merged range covers the range's
+  anchor; one whose reference is no cell anchors nothing. Ids number roots and replies from 1 in
+  reading order across the workbook.
 - **pptx.** Slides are read in presentation order, hidden ones included and marked, each slide's
   shapes in its shape tree's order, back to front, never re-sorted by position, a group in place. A
   title placeholder's text is the slide's heading, its paragraphs its lines; other shapes'
@@ -288,7 +304,9 @@ once each, where the document first holds one
   paragraph is on its label's line, the rest indented four spaces after a blank line. Each
   comment is its author, its thread's state, its anchor, its text, and its replies; a pptx's
   comments, which anchor no text, are marked after their slide's heading, `# Slide 2[^c1]`, so
-  their labels count in slide order. A list that follows another of its kind switches markers
+  their labels count in slide order, and an xlsx's after their cell's text in its table cell,
+  `| 2 | Rent[^c1] |`, so they count in sheet, row, and column order, a thread that anchors no
+  cell labeled after the rest. A list that follows another of its kind switches markers
   (`-` to `*`, `.` to `)`), since Markdown would join them; an item's other blocks are indented
   to its marker's width, a nested list tight. A line break in a paragraph is a hard break, a
   backslash at the line's end; each line is trimmed, since leading spaces make an indented code

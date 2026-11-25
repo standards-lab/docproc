@@ -26,6 +26,16 @@ covers docproc-ooxml only.
   definition as a docx's comment is, `[^cN]: Comment by <author> (open|resolved): <text>`, its
   replies after it; with no anchored text, its marker follows its slide's heading,
   `# Slide 2[^c1]`.
+- An xlsx's notes and threaded comments are read, and no longer warned of as `notes not read`:
+  legacy notes (`xl/commentsN.xml`, authors from its `authors`) and Excel 365's threaded comments
+  (`xl/threadedComments/`, authors from the workbook's persons part), their replies in order and
+  a resolved thread (`done="1"`) marked. The note Excel writes on a threaded comment's cell as
+  its copy for older readers is skipped. Each thread is a footnote definition as a docx's comment
+  is; its marker follows its cell's text in the sheet's table, `| 2 | Rent[^c1] |`, on a merged
+  range's anchor for a cell the range covers, and a cell with no value that a thread anchors is a
+  table cell, its `ref` alone in its row's `cells`. The definitions follow the last sheet's
+  lines on `rows` lines of their own, with `markdown` and no `rows`, each within 256 KiB or one
+  definition.
 
 ## [v0.1.2] - 2026-11-19
 

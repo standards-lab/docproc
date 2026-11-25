@@ -22,7 +22,10 @@
                 {
                   "ref": "B1",
                   "type": "text",
-                  "value": "Noted"
+                  "value": "Noted",
+                  "comments": [
+                    1
+                  ]
                 }
               ]
             },
@@ -52,8 +55,20 @@
       ]
     }
   ],
-  "absent": [
-    "A note on this cell."
-  ],
-  "once": []
+  "absent": [],
+  "once": [],
+  "comments": [
+    {
+      "author": "Fixture Author",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "A note on this cell."
+        }
+      ],
+      "replies": []
+    }
+  ]
 }
