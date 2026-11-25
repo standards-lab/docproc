@@ -24,9 +24,9 @@ func CheckRender(page, dpi int) error {
 	return nil
 }
 
-// HasText reports whether text, a page's text layer as Text reads it, holds any: the rule for a
-// page having a text layer is that its text isn't empty once whitespace is trimmed. A scanned
-// page, its text an image, has none.
+// HasText reports whether text, a page's text layer as a TextReader's Text reads it, holds any:
+// the rule for a page having a text layer is that its text isn't empty once whitespace is
+// trimmed. A scanned page, its text an image, has none.
 func HasText(text string) bool {
 	return strings.TrimSpace(text) != ""
 }

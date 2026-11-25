@@ -35,7 +35,7 @@ func pngSize(t *testing.T, path string) (int, int) {
 
 func TestImagesHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	for _, tc := range []struct {
 		set   string
 		pages int
@@ -68,7 +68,7 @@ func TestImagesHost(t *testing.T) {
 
 func TestImagesMaxPixelsHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	for _, tc := range []struct {
 		max  int64
 		dpi  int
@@ -89,7 +89,7 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 
 func TestImagesSharedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	for _, set := range []struct {
 		pdf       string
 		maxPixels int64
@@ -104,13 +104,14 @@ func TestImagesSharedHost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		tr := hostTextReader(t)
 		pngs, texts := make([][]byte, n), make([]string, n)
 		for i := range n {
 			var out bytes.Buffer
 			if err := g.Render(t.Context(), pdf, i+1, set.dpi, &out); err != nil {
 				t.Fatal(err)
 			}
-			if texts[i], err = g.Text(t.Context(), pdf, i+1); err != nil {
+			if texts[i], err = tr.Text(t.Context(), pdf, i+1); err != nil {
 				t.Fatal(err)
 			}
 			pngs[i] = out.Bytes()
@@ -172,7 +173,7 @@ func TestImagesSharedMessageHost(t *testing.T) {
 	if err := os.WriteFile(pdf, annotsNullPDF(3), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	req := document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1, PagesPerProcess: 3}
 	yielded := 0
 	for img, err := range p.Images(t.Context(), pdf, req) {
@@ -221,7 +222,7 @@ func TestImagesPageListHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	const dpi = 10
 	sampled := []int{1, 2, 600, 601, 1035, 1036, 1037, 1038, 1199, 1200}
 	for _, concurrency := range []int{1, 2} {
@@ -284,7 +285,7 @@ func TestImagesPageListHost(t *testing.T) {
 
 func TestImagesUnopenedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
 	pdf := filepath.Join(t.TempDir(), "unopened.pdf")
 	if err := os.WriteFile(pdf, []byte("not a PDF\n"), 0o600); err != nil {
 		t.Fatal(err)

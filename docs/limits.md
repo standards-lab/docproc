@@ -50,24 +50,25 @@ or routes by.
   docproc-mail, and docproc-onenote write are held to the cap only once written.
 - **document.** A PDF that needs a password is flagged and not read. An AcroForm whose qpdf JSON
   passes 64 MiB fails `QPDF.Form` rather than being held in memory. A page past the request's
-  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A PDF's pages
-  share gs processes: at concurrency C, lane k renders pages k, k+C, k+2C, and so on, up to
-  `ImagesRequest.PagesPerProcess` pages a process (zero is 8), with one process before it that
-  writes their text layers to a temporary directory of the stream's own, never the input's. Under
-  the container runner, which mounts only the PDF's directory, each page's text is read by a process
-  of its own while the renders still share. The run that counts the pages and the shared
-  processes work in that directory. A process's pages go to gs as a page list, each run of
-  consecutive pages a range, such as 1-8, and a batch ends early where its list would pass the
-  2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its own, as does a
-  batch of one page, and so does every page of a PDF portfolio, since a shared process would
-  render the portfolio's embedded documents in place of its pages; a portfolio page's own process
-  renders the cover's page. Every page's PNG and text are byte for byte what a process of its own
-  gives. A page's own processes work in the PDF's directory, as every tool's runs do, but keep
-  their temporary files in their run's own `TMPDIR`, so one ended early, by its bound or by the
-  stream stopping, leaves nothing beside the PDF. A shared process's bound is
+  MaxPixels is rendered at the largest DPI that fits; a page that fits at none fails. A page's text
+  is read by a pdftotext run of its own, in pdftotext's reading order: a multi-column page reads
+  column by column with no run of spaces padding it, but the paragraphs of columns that line up
+  may alternate between the columns, and a word hyphenated at a line's end is joined. A PDF's
+  pages share gs processes for their renders alone: at concurrency C, lane k renders pages k,
+  k+C, k+2C, and so on, up to `ImagesRequest.PagesPerProcess` pages a process (zero is 8). Through
+  the exec runner, the run that counts the pages and the shared processes work in a temporary
+  directory of the stream's own, never the input's. A process's pages go to gs as a page list,
+  each run of consecutive pages a range, such as 1-8, and a batch ends early where its list would
+  pass the 2047 bytes gs takes in an argument. A page MaxPixels lowers gets a process of its own,
+  as does a batch of one page, and so does every page of a PDF portfolio, since a shared process
+  would render the portfolio's embedded documents in place of its pages; a portfolio page's own
+  process renders the cover's page. Every page's PNG is byte for byte what a process of its own
+  gives. A page's own processes and its text run work in the PDF's directory, as every tool's runs
+  do, but keep their temporary files in their run's own `TMPDIR`, so one ended early, by its bound
+  or by the stream stopping, leaves nothing beside the PDF. A shared process's bound is
   `stages.Options.Timeout` read as an idle bound, between its pages, the time it waits on the
   consumer not counted. When one fails on the content, the pages it handed over stand and each
-  other page gets processes of its own, each bounded by the whole timeout, so only a page that
-  fails there fails.
+  other page is rendered in a process of its own, bounded by the whole timeout, so only a page
+  that fails there fails; a page whose text run fails fails alone, unrendered.
 - **audio and media.** A source ffprobe reports no duration for is refused. media reads files
   alone: no live source, stream URL, or capture.

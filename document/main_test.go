@@ -62,7 +62,7 @@ func withSettings(program func(s settings, args []string) int) tooltest.Program 
 }
 
 func standinText(page int) string {
-	return fmt.Sprintf("      The Harbor Survey\n      Page %d of the harbor survey.\n", page)
+	return fmt.Sprintf("The Harbor Survey\n\nPage %d of the harbor survey.\n\n", page)
 }
 
 func standinPage(page, dpi int) []byte {
@@ -75,14 +75,9 @@ func portfolioPage(doc, page, dpi int) []byte {
 	return tooltest.PNG(fmt.Sprintf("stand-in gs document %d page %d at %d dpi", doc, page, dpi))
 }
 
-func portfolioText(doc, page int) string {
-	return fmt.Sprintf("      Document %d\n      Page %d of document %d.\n", doc, page, doc)
-}
-
 type standinOutput struct {
 	page int
 	png  func(dpi int) []byte
-	text string
 }
 
 func outputs(s settings, args []string) []standinOutput {
@@ -90,13 +85,13 @@ func outputs(s settings, args []string) []standinOutput {
 	var out []standinOutput
 	if !s.Portfolio || strings.Contains(args[len(args)-1], " dopdfpages ") {
 		for _, page := range pages {
-			out = append(out, standinOutput{page, func(dpi int) []byte { return standinPage(page, dpi) }, standinText(page)})
+			out = append(out, standinOutput{page, func(dpi int) []byte { return standinPage(page, dpi) }})
 		}
 		return out
 	}
 	for doc := 1; doc <= portfolioDocuments; doc++ {
 		for _, page := range pages {
-			out = append(out, standinOutput{page, func(dpi int) []byte { return portfolioPage(doc, page, dpi) }, portfolioText(doc, page)})
+			out = append(out, standinOutput{page, func(dpi int) []byte { return portfolioPage(doc, page, dpi) }})
 		}
 	}
 	return out
@@ -157,8 +152,6 @@ func gs(s settings, args []string) int {
 				out += size + "\n"
 			}
 		}
-	case slices.Contains(args, "-sDEVICE=txtwrite"):
-		return standinTexts(s, args)
 	default:
 		dpi, _ := strconv.Atoi(strings.TrimPrefix(args[slices.IndexFunc(args, func(a string) bool { return strings.HasPrefix(a, "-r") })], "-r"))
 		messages := os.Stdout
@@ -192,32 +185,6 @@ func gs(s settings, args []string) int {
 	return 0
 }
 
-func standinTexts(s settings, args []string) int {
-	var file string
-	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
-			file = v
-		}
-	}
-	for i, o := range outputs(s, args) {
-		if o.page == s.FailText {
-			fmt.Fprint(os.Stderr, "told to fail")
-			return 1
-		}
-		var err error
-		if file == "-" {
-			_, err = os.Stdout.WriteString(o.text)
-		} else {
-			err = os.WriteFile(fmt.Sprintf(file, i+1), []byte(o.text), 0o600)
-		}
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return 2
-		}
-	}
-	return 0
-}
-
 func qpdf(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "--version" {
 		fmt.Printf("qpdf version %s\nRun qpdf --copyright to see copyright and license information.\n", s.Version)
@@ -239,7 +206,23 @@ func pdftotext(s settings, args []string) int {
 		fmt.Fprintf(os.Stderr, "pdftotext version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", s.Version)
 		return 0
 	}
-	return scripted(s, args)
+	page, err := strconv.Atoi(args[slices.Index(args, "-f")+1])
+	if err != nil || s.Stdout != nil || s.Exit != 0 {
+		return scripted(s, args)
+	}
+	if err := appendLog(s.Log, args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if page == s.FailText {
+		fmt.Fprint(os.Stderr, "told to fail")
+		return 1
+	}
+	if _, err := os.Stdout.WriteString(standinText(page) + "\f"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	return 0
 }
 
 func scripted(s settings, args []string) int {

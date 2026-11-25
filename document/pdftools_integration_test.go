@@ -145,6 +145,7 @@ func TestTextReaderReal(t *testing.T) {
 	r := hostTextReader(t)
 	pdf := fixtureCopy(t, "clean.pdf")
 	truth := truthOf(t, "clean")
+	var edits, chars, wedits, words int
 	for i := range truth {
 		text, err := r.Text(t.Context(), pdf, i+1)
 		if err != nil {
@@ -153,14 +154,22 @@ func TestTextReaderReal(t *testing.T) {
 		if !document.HasText(text) {
 			t.Errorf("clean.pdf page %d has no text layer, want one", i+1)
 		}
+		e, n := charErrors(truth[i], text)
+		we, wn := wordErrors(truth[i], text)
+		edits, chars, wedits, words = edits+e, chars+n, wedits+we, words+wn
+		if found := wordsFound(truth[i], text); found < 0.95 {
+			t.Errorf("clean.pdf page %d's text holds %.4f of its truth's words, want nearly all: %q", i+1, found, text)
+		}
 		if strings.Contains(text, "  ") {
 			t.Errorf("clean.pdf page %d holds a run of spaces: %q", i+1, text)
 		}
 		if strings.HasSuffix(text, "\f") {
 			t.Errorf("clean.pdf page %d ends in a form feed", i+1)
 		}
-		t.Logf("recorded: pdftotext clean.pdf page %d: %.4f of the truth's words found, %d bytes", i+1, wordsFound(truth[i], text), len(text))
+		t.Logf("recorded: pdftotext clean.pdf page %d: CER %.4f, WER %.4f, %.4f of the truth's words found, %d bytes",
+			i+1, rate(e, n), rate(we, wn), wordsFound(truth[i], text), len(text))
 	}
+	t.Logf("recorded: pdftotext clean.pdf, %d pages: CER %.4f, WER %.4f", len(truth), rate(edits, chars), rate(wedits, words))
 	page2, err := r.Text(t.Context(), pdf, 2)
 	if err != nil {
 		t.Fatal(err)

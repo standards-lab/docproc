@@ -14,7 +14,7 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-const adapterVersion = "6"
+const adapterVersion = "7"
 
 func versions(tools ...*tool.Tool) string {
 	lines := make([]string, len(tools))

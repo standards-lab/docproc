@@ -13,6 +13,7 @@ import (
 func TestMain(m *testing.M) {
 	tooltest.Main(m, map[string]tooltest.Program{
 		"gs":              gsStandin,
+		"pdftotext":       pdftotextStandin,
 		"ffmpeg":          ffmpegStandin,
 		"ffprobe":         ffprobeStandin,
 		"magick":          pictureStandin,

@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -36,10 +35,10 @@ func GhostscriptSpec() tool.Spec {
 	}
 }
 
-// Ghostscript is the PDF renderer: it counts, renders, and reads the text layer of a PDF's pages
-// with Ghostscript's gs, one process per call; the Preparer's shared processes take many pages
-// each, through gs's page list. Ghostscript is AGPL-licensed; the renderer runs gs
-// as a separate program through a tool.Tool and never links it.
+// Ghostscript is the PDF renderer: it counts and renders a PDF's pages with Ghostscript's gs, one
+// process per call; the Preparer's shared processes take many pages each, through gs's page list.
+// Ghostscript is AGPL-licensed; the renderer runs gs as a separate program through a tool.Tool and
+// never links it.
 //
 // gs reads the PDF by its path, which Count and Render make absolute, and each run's working
 // directory is the PDF's directory. The container runner mounts a run's working directory at the
@@ -164,8 +163,8 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 // reads the PDF through the non-portfolio branch of its runpdf, so a PDF portfolio's page is its
 // cover's own, one PNG, not its embedded documents' pages.
 //
-// gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone,
-// as it does for Text. gs asked for a page past the last exits zero, writing no PNG and its
+// gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone.
+// gs asked for a page past the last exits zero, writing no PNG and its
 // message, "Requested FirstPage is greater than the number of pages in the file", to stderr.
 // Render writes nothing to w unless stdout begins as a PNG, and returns gs's message as its error
 // when it doesn't. A page gs renders with a message, such as "**** Error: Page drawing error
@@ -197,43 +196,7 @@ func (g *Ghostscript) png(ctx context.Context, inv tool.Invocation, pdf string, 
 	return nil
 }
 
-const pastLast = "Requested FirstPage is greater than the number of pages"
-
 const gsStderrLimit = 4 << 10
-
-// Text returns the text of page, 1-based, of the PDF at pdf, as its text layer holds it, one gs
-// run with the txtwrite device: the page's text laid out in lines, gs's own spacing kept. A page
-// with no text layer, such as a scanned page, returns blank text, which HasText reports as none.
-// It refuses a page below 1 before gs runs, as CheckRender does. A gs that exits nonzero gives
-// the Tool's error, a *tool.ExitError carrying gs's stderr. gs reads the PDF through the
-// non-portfolio branch of its runpdf, so a PDF portfolio's page is its cover's own text alone.
-//
-// gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the text
-// alone. A page past the last prints gs's message there, "Requested FirstPage is greater than
-// the number of pages in the file", and exits zero; Text returns it as an error wrapping
-// ErrRequest.
-func (g *Ghostscript) Text(ctx context.Context, pdf string, page int) (string, error) {
-	if page < 1 {
-		return "", fmt.Errorf("document: page %d is below 1: %w", page, ErrRequest)
-	}
-	abs, err := filepath.Abs(pdf)
-	if err != nil {
-		return "", fmt.Errorf("document: ghostscript: %w", err)
-	}
-	var out strings.Builder
-	stderr := cli.LimitedBuffer{Limit: gsStderrLimit}
-	err = g.gs.Run(ctx, tool.Invocation{Args: textArgs(abs, page), Dir: filepath.Dir(abs), Stdout: &out, Stderr: &stderr})
-	if err != nil {
-		if exit, ok := errors.AsType[*tool.ExitError](err); ok && exit.Message == "" {
-			exit.Message = stderr.String()
-		}
-		return "", err
-	}
-	if msg := strings.TrimSpace(stderr.String()); strings.Contains(msg, pastLast) {
-		return "", fmt.Errorf("document: ghostscript: page %d of %s: %s: %w", page, abs, msg, ErrRequest)
-	}
-	return out.String(), nil
-}
 
 var errOutput = errors.New("gs's output doesn't hold the pages asked for")
 
@@ -261,27 +224,6 @@ func workDir(dir, pdf string) string {
 		return dir
 	}
 	return filepath.Dir(pdf)
-}
-
-func (g *Ghostscript) textPages(ctx context.Context, pdf string, pages []int, dir string) error {
-	abs, err := filepath.Abs(pdf)
-	if err != nil {
-		return fmt.Errorf("document: ghostscript: %w", err)
-	}
-	out := filepath.Join(strings.ReplaceAll(dir, "%", "%%"), "page-%d.txt")
-	if err := g.gs.Run(ctx, tool.Invocation{Args: sharedTextArgs(abs, pages, out), Dir: dir, Idle: g.gs.Timeout()}); err != nil {
-		return err
-	}
-	for i := range pages {
-		if _, err := os.Stat(textFile(dir, i+1)); err != nil {
-			return fmt.Errorf("document: ghostscript: text of page %d of %s: %w: %w", pages[i], abs, errOutput, err)
-		}
-	}
-	return nil
-}
-
-func textFile(dir string, i int) string {
-	return filepath.Join(dir, "page-"+strconv.Itoa(i)+".txt")
 }
 
 func pageList(pages []int) string {
@@ -317,19 +259,9 @@ func sharedRenderArgs(pdf string, pages []int, dpi int) []string {
 		pageListFlag + pageList(pages), "-sOutputFile=-", pdf}
 }
 
-func sharedTextArgs(pdf string, pages []int, out string) []string {
-	return []string{"-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
-		pageListFlag + pageList(pages), "-sOutputFile=" + out, pdf}
-}
-
 func renderArgs(pdf string, page, dpi int) []string {
 	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=png16m",
 		"-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-r" + strconv.Itoa(dpi),
-		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
-}
-
-func textArgs(pdf string, page int) []string {
-	return append([]string{"-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
 		"-dFirstPage=" + strconv.Itoa(page), "-dLastPage=" + strconv.Itoa(page), "-sOutputFile=-"}, ownPageArgs(pdf)...)
 }
 

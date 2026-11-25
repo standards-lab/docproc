@@ -184,7 +184,11 @@ func TestDocumentStageAttachmentBombReal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prep := document.NewPreparer(document.Config{Renderer: render})
+	text, err := document.NewTextReader(document.Config{PDFToText: pinned(t, document.PDFToTextSpec())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	prep := document.NewPreparer(document.Config{Renderer: render, Text: text})
 	pdf := input(t, "zeros.pdf", string(attachedPDF(t, "zeros.bin", make([]byte, 8<<20))))
 
 	d, work := newDispatcherIn(t, dispatch.Stages{route.Document: pdfStage(t, prep, gs, inspect.Options{})})

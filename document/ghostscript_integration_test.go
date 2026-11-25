@@ -4,7 +4,6 @@ package document_test
 
 import (
 	"bytes"
-	"errors"
 	"image/png"
 	"os"
 	"path/filepath"
@@ -85,6 +84,7 @@ func TestGhostscriptPortfolioHost(t *testing.T) {
 	if err := os.WriteFile(pdf, b, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	tr := hostTextReader(t)
 	pngs, texts := make([][]byte, 2), make([]string, 2)
 	for page := 1; page <= 2; page++ {
 		var out bytes.Buffer
@@ -99,7 +99,7 @@ func TestGhostscriptPortfolioHost(t *testing.T) {
 		if b := img.Bounds(); b.Dx() != 1275 || b.Dy() != 1650 || r.Len() != 0 {
 			t.Errorf("portfolio.pdf page %d is %dx%d with %d bytes after its PNG, want one PNG, letter at 150 dpi, 1275x1650", page, b.Dx(), b.Dy(), r.Len())
 		}
-		text, err := g.Text(t.Context(), pdf, page)
+		text, err := tr.Text(t.Context(), pdf, page)
 		if want := "Portfolio cover, page " + strconv.Itoa(page); err != nil || collapse(text) != want {
 			t.Errorf("Text(portfolio.pdf page %d) = %q, %v, want the cover's page alone, %q", page, text, err, want)
 		}
@@ -109,11 +109,7 @@ func TestGhostscriptPortfolioHost(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "Requested FirstPage is greater than the number of pages in the file: 2") {
 		t.Errorf("Render(portfolio.pdf page 3) of 2 pages returned %v, want gs's message", err)
 	}
-	_, err = g.Text(t.Context(), pdf, 3)
-	if !errors.Is(err, document.ErrRequest) || !strings.Contains(err.Error(), "Requested FirstPage is greater than the number of pages in the file: 2") {
-		t.Errorf("Text(portfolio.pdf page 3) of 2 pages returned %v, want document.ErrRequest with gs's message", err)
-	}
-	p := document.NewPreparer(document.Config{Renderer: g})
+	p := document.NewPreparer(document.Config{Renderer: g, Text: tr})
 	yielded := 0
 	for img, err := range p.Images(t.Context(), pdf, document.ImagesRequest{Dir: t.TempDir(), Concurrency: 2, Text: true}) {
 		if err != nil {
@@ -141,45 +137,6 @@ func TestGhostscriptRenderMessageHost(t *testing.T) {
 		t.Fatalf("compacted-syntax.pdf page 1 isn't a PNG: %v", err)
 	}
 	t.Logf("compacted-syntax.pdf page 1: %d PNG bytes, %v", out.Len(), img.Bounds())
-}
-
-func TestGhostscriptTextHost(t *testing.T) {
-	g, _ := hostGhostscript(t)
-	pdf := fixtureCopy(t, "clean.pdf")
-	var edits, chars, wedits, words int
-	for i, truth := range truthOf(t, "clean") {
-		text, err := g.Text(t.Context(), pdf, i+1)
-		if err != nil {
-			t.Fatalf("Text(clean.pdf page %d): %v", i+1, err)
-		}
-		if !document.HasText(text) {
-			t.Errorf("clean.pdf page %d has no text layer, want one", i+1)
-			continue
-		}
-		e, n := charErrors(truth, text)
-		we, wn := wordErrors(truth, text)
-		found := wordsFound(truth, text)
-		edits, chars, wedits, words = edits+e, chars+n, wedits+we, words+wn
-		if found < 0.95 {
-			t.Errorf("clean.pdf page %d's text layer holds %.4f of its truth's words, want nearly all: %q", i+1, found, text)
-		}
-		t.Logf("recorded: text layer clean.pdf page %d: CER %.4f, WER %.4f, %.4f of the truth's words found, %d bytes",
-			i+1, rate(e, n), rate(we, wn), found, len(text))
-	}
-	t.Logf("recorded: text layer clean.pdf, 6 pages: CER %.4f, WER %.4f", rate(edits, chars), rate(wedits, words))
-	scanned := fixtureCopy(t, "scanned.pdf")
-	for page := 1; page <= 7; page++ {
-		text, err := g.Text(t.Context(), scanned, page)
-		if err != nil {
-			t.Fatalf("Text(scanned.pdf page %d): %v", page, err)
-		}
-		if document.HasText(text) {
-			t.Errorf("scanned.pdf page %d has text layer %q, want none", page, text)
-		}
-	}
-	if _, err := g.Text(t.Context(), pdf, 7); !errors.Is(err, document.ErrRequest) {
-		t.Errorf("Text(clean.pdf page 7) of 6 pages returned %v, want document.ErrRequest", err)
-	}
 }
 
 func wordsFound(truth, got string) float64 {

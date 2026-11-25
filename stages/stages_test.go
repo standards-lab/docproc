@@ -81,6 +81,38 @@ func TestBuildRows(t *testing.T) {
 	}
 }
 
+func TestBuildDocumentNeedsPDFToText(t *testing.T) {
+	t.Parallel()
+	others := slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.Document })
+	for version, want := range map[string]string{"": "pdftotext: not found", "21.12.0": "older than"} {
+		var link string
+		if version != "" {
+			link = tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{Version: version})
+		}
+		lookup := func(program string) (string, error) {
+			if program == "pdftotext" && link != "" {
+				return link, nil
+			}
+			return "", errors.New("not here")
+		}
+		set, err := stages.Build(t.Context(), lookup, stages.Options{Exclude: others})
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := set.Rows[slices.Index(stages.Routes(), route.Document)]
+		if _, wired := set.Stages[route.Document]; wired || row.State != dispatch.Missing || !strings.Contains(row.Reason, want) {
+			t.Errorf("pdftotext %q: document %s, %q, wired %t; want Missing with %q", version, row.State, row.Reason, wired, want)
+		}
+		var programs []string
+		for _, tl := range set.Tools {
+			programs = append(programs, tl.Program)
+		}
+		if !slices.Equal(programs, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}) {
+			t.Errorf("pdftotext %q: tools %q, want the document stage's four", version, programs)
+		}
+	}
+}
+
 func TestBuildShim(t *testing.T) {
 	t.Parallel()
 	onenoteOnly := slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.OneNote })
