@@ -22,9 +22,9 @@ when:
   storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
   beside its own.
 
-**A later measurement.** The docproc-coverage goal's pdf-text-padding task measured
-["PDF page text"](#pdf-page-text) on 2026-11-25, gs txtwrite against pdftotext, the change
-v0.8.0 makes to a PDF page's text.
+**A later measurement.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
+pdftotext, the change v0.8.0 makes to a PDF page's text. The docproc-coverage goal's
+pdf-text-padding task measured it on 2026-11-25.
 
 **The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
 v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
@@ -953,11 +953,12 @@ done
 
 ## PDF page text
 
-The pdf-text-padding task measured it on 2026-11-25, on the same laptop, against the two ways
-docproc has read a PDF page's text: before, gs 10.08.0's txtwrite device as v0.7.0's
-`Ghostscript.Text` ran it, one gs process a page; after, poppler's pdftotext 26.10.0 as v0.8.0's
-`document.TextReader` runs it, `pdftotext -enc UTF-8 -f N -l N <pdf> -`, one run a page, the
-form feed ending the page dropped. Both read the copies in `~/docs` directly, outside docproc.
+This section compares the two ways docproc has read a PDF page's text. Before is gs 10.08.0's
+txtwrite device as v0.7.0's `Ghostscript.Text` ran it, one gs process a page. After is poppler's
+pdftotext 26.10.0 as v0.8.0's `document.TextReader` runs it,
+`pdftotext -enc UTF-8 -f N -l N <pdf> -`, one run a page, with the form feed ending the page
+dropped. The pdf-text-padding task ran both on 2026-11-25, on the same laptop, over the copies in
+`~/docs` directly, outside docproc.
 
 ### Pages and measures
 
@@ -998,8 +999,7 @@ reading order: a column read through before the next, where gs's lines cross bot
 `0b128dec…_page_4`'s 40 missing words are its table's figures, not lost text. The PDF's font
 codes for the ± and µ the page shows read as `6` and `m` under gs and as U+2AFE and U+242E under
 pdftotext, so gs's `3.161.3` and `mmol` are pdftotext's `3.1⫾1.3` and `␮mol`; neither reads the
-± or the µ. No other
-page lost a word.
+± or the µ. No other page lost a word.
 
 | cfr-2024-title32-vol1, 915 pages | Spaces | Longest run | Pages over 50% spaces | One run a page | One run, whole file |
 | --- | --- | --- | --- | --- | --- |
@@ -1008,9 +1008,9 @@ page lost a word.
 
 pdftotext kept 508,719 of gs's 557,714 words, 91.2%, and missed none: every word not kept is in
 pdftotext's letters and digits, and the most frequent are hyphenated words' halves, `re`,
-`tion`, `in`, `con`, and `ment`. A run a page is how both readers run; its time is the median of three passes over the
-915 pages, one run after another, with the three passes' range. The whole-file run, one process
-for the 915 pages, is for context.
+`tion`, `in`, `con`, and `ment`. One run a page is how docproc runs both readers. Its time is the
+median of three passes over the 915 pages, one run after another, with the three passes' range.
+The whole-file run, one process for the 915 pages, is for context.
 
 ### What doesn't improve
 

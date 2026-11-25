@@ -22,12 +22,13 @@ The module still requires golang.org/x/text alone.
 ### Added
 
 - `document.TextReader`, which reads a PDF page's text layer through poppler's pdftotext in its
-  reading-order mode, neither `-layout` nor `-raw`, one run a page; `document.NewTextReader`
+  reading-order mode, neither `-layout` nor `-raw`, one run a page. `document.NewTextReader`
   builds one over `document.Config.PDFToText`, `document.PDFToTextSpec` declares pdftotext, and
   `document.PDFToTextMinimum` is the oldest it accepts, 22.02. `TextReader.Text` drops the form
-  feed pdftotext ends a page with, refuses a page below 1 before pdftotext runs and a page past
-  the last, which pdftotext refuses with exit 99, with an error wrapping `document.ErrRequest`,
-  and gives any other failure as a `*tool.ExitError` carrying pdftotext's first 4 KiB of stderr.
+  feed pdftotext ends a page with. It refuses a page below 1 before pdftotext runs, and a page
+  past the last, which pdftotext refuses with exit 99, each with an error wrapping
+  `document.ErrRequest`. It gives any other failure as a `*tool.ExitError` carrying the first
+  4 KiB of pdftotext's stderr.
 - `document.Config.PDFToText`, the pdftotext Tool `NewTextReader` requires, and
   `document.Config.Text`, the `*document.TextReader` `NewPreparer` requires.
 - pdftotext is a required tool of the document stage, beside gs, qpdf, and pdfdetach:
@@ -50,12 +51,11 @@ The module still requires golang.org/x/text alone.
   `Config.Text` when it is nil.
 - The stage adapters' version, part of every adapter's configuration hash, is 7, from 6, since
   every PDF's page text changes shape: an index prepares every PDF again.
-- No wire value and no run directory's schema changes.
 
 ### Removed
 
-- `document.Ghostscript.Text` and gs's shared txtwrite run: gs counts and renders a
-  PDF's pages, and reads no text.
+- `document.Ghostscript.Text` and gs's shared txtwrite run: gs counts and renders a PDF's pages
+  and reads no text.
 - The text half of `document.ImagesRequest.PagesPerProcess`, which bounds a shared gs process's
   renders alone.
 

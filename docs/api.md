@@ -273,11 +273,11 @@ How `document` runs gs, and why (the measurements behind it are on
   can't be read.
 - The renders take `-sstdout=%stderr`, since gs otherwise writes its own messages to stdout, even
   under `-q`, ahead of a page it renders with one, such as `**** Error: Page drawing error
-  occurred.`. The count and the survey print with `=`, which writes to
-  `%stdout` as those messages do, so they don't take it. The survey prints the count, then, only
-  for a count above zero, whether the PDF is a portfolio, then, when asked, each page's size, its
-  page set up by `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the
-  released count run printed.
+  occurred.`. The count and the survey print with `=`, which writes to `%stdout` as those
+  messages do, so they don't take it. The survey prints the count, then, only for a count above
+  zero, whether the PDF is a portfolio, then, when asked, each page's size, its page set up by
+  `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the released
+  count run printed.
 - A page's PNG reaches its writer only once stdout begins with PNG's signature, so gs's message for
   a page past the last, written in place of a PNG, never reaches a page file. A shared render's
   stdout is split into PNGs by their chunks, through `IEND`, reading no chunk's data and checking
@@ -288,11 +288,11 @@ How `document` runs gs, and why (the measurements behind it are on
 - `Tool.Run` keeps stderr in its `*tool.ExitError` only when the caller passes no writer for it,
   so `Render`, which reads stderr, sets the message itself, from its first 4 KiB, as
   `TextReader.Text` does for pdftotext's.
-- A page's text is read by `TextReader.Text`, one pdftotext run a page in its reading-order mode,
+- `TextReader.Text` reads a page's text, one pdftotext run a page in its reading-order mode,
   neither `-layout` nor `-raw`, before the page renders, so no gs process reads text. A page whose
-  text run fails fails alone, at its `text` step, and isn't rendered; a shared process's pages are
-  those whose text read, and a page a failed shared process didn't hand over is rendered alone,
-  its text not read again.
+  text run fails fails alone, at its `text` step, and isn't rendered. A shared process renders
+  only the pages whose text was read, and a page a failed shared process didn't hand over is
+  rendered alone, its text not read again.
 - A shared process's failure is the content's when gs exits nonzero, dies by its own fault, passes
   its bound, or writes output that doesn't hold its pages, and its unhanded pages then run alone;
   any other failure is the run's, which a page's own process wouldn't change.

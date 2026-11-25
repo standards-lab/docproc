@@ -134,7 +134,7 @@ docproc v0.8.0, then storage/v0.1.6, postgres/v0.1.6 and cmd/docproc/v0.2.6 thro
 
 ## Progress
 
-slices 3/3 committed · standards ✓ · spec — · editor —
+slices 3/3 committed · standards ✓ · spec ✓ · editor ✓
 
 ## Decisions
 
@@ -143,15 +143,8 @@ slices 3/3 committed · standards ✓ · spec — · editor —
 - text-encoding-keys: held MsgKit at 3.0.6: 3.1.0 declined, it needs MimeKit.Core 5.
 - text-encoding-keys: held typed-path at 0.12.4: 0.13.0 declined, onenote_parser 2.1.0 requires
   ^0.12.3.
-- pdf-text-padding: page text is poppler's `pdftotext` in reading-order mode, one run per page; gs
-  counts and renders only.
-- pdf-text-padding: `Ghostscript.Text` and gs's shared txtwrite run are removed (breaking,
-  v0.8.0); `PagesPerProcess` bounds renders alone.
-- pdf-text-padding: the stage adapters' version is 7, so an index prepares every PDF's page text
-  again.
-- pdf-text-padding: pdftotext's minimum is poppler 22.02, as pdfdetach's, with line-end hyphens
-  joined. Raising it to 26.05 for `-remove-hyphens` was declined: no stable Debian or Ubuntu
-  carries 26.05.
+- pdf-text-padding: rejected raising pdftotext's minimum from 22.02 to 26.05 for
+  `-remove-hyphens`: no stable Debian or Ubuntu carries 26.05.
 - pdf-text-padding: rejected collapsing gs's space runs in Go. The columns stay interleaved and
   merged words stay merged, and a 2-space column gap can't be told from ordinary spacing.
 - pdf-text-padding: rejected `pdftotext -layout`: it still pads (up to 57.8% spaces).
@@ -169,6 +162,7 @@ slices 3/3 committed · standards ✓ · spec — · editor —
 - docs-corpus · once docproc-coverage syncs, tell corpus.docs (context/goals/corpus.docs.md, task
   docproc-final; standards-lab #219) the final release's tags, docproc, storage, postgres, and
   cmd/docproc, and the run-directory schema it writes; that `#!` scripts and other unlisted text
-  route text; and that exec-4's check:polyglot can reopen. Intermediate releases go untold.
+  route text; that a PDF page's text is pdftotext's reading order, with no column padding; and
+  that exec-4's check:polyglot can reopen. Intermediate releases go untold.
 - coordinator · roadmap/docproc-backlog.toml: a text retry for a part whose stage fails at
   runtime, such as a corrupt PDF.
