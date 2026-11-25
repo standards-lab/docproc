@@ -2184,9 +2184,10 @@ def groups() -> Deck:
 
 
 def slide_objects() -> Deck:
-    """A table with merged cells across columns and rows, a cell of two paragraphs, and a pipe;
-    a titled clustered column chart of two series with a missing value; the same picture on two
-    slides (one file) beside another, with titles and alternative text; notes beside a chart."""
+    """Four slides: a table with a cell merged across columns and one across rows, a cell of two
+    paragraphs, and a pipe; a titled clustered column chart of two series with a missing value,
+    with notes; a red picture with alternative text and a title, and a blue one with alternative
+    text alone placed over it; the red picture again on the last slide, its bytes one file."""
     f = Deck("slide-objects")
     red, blue = png((220, 40, 40)), png((40, 60, 200))
     t = f.slide(TITLE_ONLY)
