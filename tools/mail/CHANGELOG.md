@@ -9,6 +9,10 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+### Changed
+
+- The crate graph locks htmd 0.6.1, a patch release, in place of 0.6.0. The output is unchanged.
+
 ## [v0.1.4] - 2026-11-22
 
 ### Changed

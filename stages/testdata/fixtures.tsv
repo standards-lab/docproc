@@ -8,6 +8,7 @@ audio/testdata/speech-truncated.mp3	audio	prepared
 audio/testdata/speech.flac	audio	prepared
 audio/testdata/speech.truth.txt	text	prepared
 audio/testdata/windows-v0.9.0.txt	text	prepared
+cmd/docproc/internal/app/testdata/fallback.txt	text	prepared
 cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/956e499b5e521771b3584eaa57b659d9bae2cebed6c9b9a66b1bde9ef33ab03e.html	unrouted	no processor yet
 cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014.html	unrouted	no processor yet
 cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df.html	unrouted	no processor yet

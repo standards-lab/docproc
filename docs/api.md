@@ -668,6 +668,7 @@ package dispatch
 // Version is "1", grown by addition only. It versions the shapes below and the vocabularies
 // they carry (route's Kind and Route; inspect's Check, Class, and Flag), the index's shapes
 // (Key, Entry, Recorded, Child), the stage table, the Meta keys, and the record media types.
+// One change under it wasn't an addition: the text stage's encoding split in two.
 const Version = "1"
 type Event struct {
     Part     Part     `json:"part,omitzero"` // left out when zero: rundir's error line
@@ -885,9 +886,13 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
 - **text.** One UTF-8 text output named `text`, its line endings as stored. Its encoding is decided,
   never detected: a byte order mark, UTF-8's, UTF-32's (checked before the UTF-16 marks they begin
   with), or UTF-16's, which the output drops; else UTF-8, when the whole part is valid UTF-8; else
-  windows-1252, a fallback, with a warning that the text may be in another encoding. Bytes the
-  encoding can't decode become U+FFFD, golang.org/x/text decoding windows-1252's five undefined
-  bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d) so, and a warning at `text`, its `Tool` `text`, counts them.
+  windows-1252, a fallback, with a warning that the text may be in another encoding. The output's
+  `encoding` (`MetaEncoding`) is the charset, lowercase: `utf-8`, `utf-16le`, `utf-16be`,
+  `utf-32le`, `utf-32be`, or `windows-1252`. Its `encoding_by` (`MetaEncodingBy`) is `bom` when a
+  byte order mark chose the charset and `fallback` for windows-1252, and is absent for valid UTF-8
+  with no mark, an empty part included. Bytes the encoding can't decode become U+FFFD,
+  golang.org/x/text decoding windows-1252's five undefined bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d) so,
+  and a warning at `text`, its `Tool` `text`, counts them.
   It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
   never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
   other text is decoded, streamed, into a file, so a large part is never held in memory, and the
@@ -1124,7 +1129,13 @@ package's and `job`'s (docinfer's README, "Packages"), both versioned by `docinf
 Cerebro's `messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own
 data types ([`cerebro.md`](../context/cerebro.md), "Events"). `rundir/schema` aliases `dispatch`'s
 and `inspect`'s shapes ("Run directory"). The shapes grow by addition only, as the tools' contracts
-do.
+do, with one recorded exception. Under wire "1" and run schema "2" both, the text stage's
+`encoding`, once a combined value such as `windows-1252 (fallback)` or
+`utf-16le (byte order mark)`, became the charset alone, and `encoding_by` says how it was chosen.
+The combined value had to be parsed to recover the charset, and no reader could look it up as an
+encoding name. The split was made before more text sources were added. Its one known reader,
+docs-corpus's `tools/coverage`, decodes text outputs by it and changes in docs-corpus; a text
+output is always UTF-8, so a reader needs neither key to decode one.
 
 ## Run directory
 

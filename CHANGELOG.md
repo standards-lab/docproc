@@ -9,6 +9,39 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-11-25
+
+This release splits the text stage's encoding into the charset and how it was chosen, a breaking
+change to the text output's Meta, and moves the default LibreOffice image. The module still
+requires golang.org/x/text alone.
+
+### Added
+
+- `dispatch.MetaEncodingBy`, the text output's `encoding_by`: `bom` when a byte order mark chose
+  its encoding, `fallback` for windows-1252 taken because the text isn't UTF-8, and absent for
+  valid UTF-8 with no mark, an empty part included.
+
+### Changed
+
+- **Breaking:** the text output's `encoding` (`dispatch.MetaEncoding`) is the lowercase charset
+  alone, one of `utf-8`, `utf-16le`, `utf-16be`, `utf-32le`, `utf-32be`, or `windows-1252`, and
+  how it was chosen moves to `encoding_by`:
+  - `utf-8` → `encoding: utf-8`, no `encoding_by`;
+  - `windows-1252 (fallback)` → `encoding: windows-1252, encoding_by: fallback`;
+  - `<charset> (byte order mark)` → `encoding: <charset>, encoding_by: bom`.
+
+  dispatch's wire stays `"1"` and the run directory's schema `"2"`. The split is an exception to
+  their growth by addition only, which `dispatch.Version` and the [API page](docs/api.md) record.
+  The combined value had to be parsed to recover the charset, and no reader could look it up as an
+  encoding name. The split comes before more text sources are added. Its one known reader,
+  docs-corpus's `tools/coverage`, decodes text outputs by it and changes in docs-corpus; a text
+  output is always UTF-8, so a reader needs neither key to decode one.
+- The text stage's identity version is 3, from 2, so an index prepares its earlier text entries
+  again rather than replaying them.
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.1-libreoffice`, from 9.9.3-libreoffice,
+  pinned by its multi-arch index digest. The new image carries the same LibreOffice, 26.8.2.2, and
+  the pictures' golden sums are unchanged.
+
 ## [v0.4.2] - 2026-11-23
 
 This release moves the default container images that soffice and ffmpeg run in, and currency now
@@ -286,7 +319,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.5.0...HEAD
+[v0.5.0]: https://github.com/standards-lab/docproc/compare/v0.4.2...v0.5.0
 [v0.4.2]: https://github.com/standards-lab/docproc/compare/v0.4.1...v0.4.2
 [v0.4.1]: https://github.com/standards-lab/docproc/compare/v0.4.0...v0.4.1
 [v0.4.0]: https://github.com/standards-lab/docproc/compare/v0.3.0...v0.4.0

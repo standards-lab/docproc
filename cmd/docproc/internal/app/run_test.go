@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"iter"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -544,6 +545,18 @@ func TestRun_Record(t *testing.T) {
 	wantLine(t, r.stdout, `run `+regexp.QuoteMeta(run.manifest.Run))
 	if last := lastLine(r.stdout); last != "failed parts 0  error inputs 0" {
 		t.Errorf("summary's last line = %q, want the counts of failed parts and error inputs", last)
+	}
+}
+
+func TestRun_RecordsFallbackEncoding(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+
+	runOK(t, apptest.NoTools, filepath.Join("testdata", "fallback.txt"), "--out", out)
+
+	meta := onlyRun(t, out).line(t, schema.OutputEvent, "fallback.txt").Output.Meta
+	want := map[string]string{dispatch.MetaEncoding: "windows-1252", dispatch.MetaEncodingBy: "fallback"}
+	if !maps.Equal(meta, want) {
+		t.Errorf("output meta = %q, want %q", meta, want)
 	}
 }
 

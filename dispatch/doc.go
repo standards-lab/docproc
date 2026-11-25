@@ -149,7 +149,9 @@
 // dispatch yields, the index's [Key], [Entry], [Recorded], and [Child] the shapes it stores, and
 // [Tool], [Row], and [State] the stage table's, all on encoding/json and versioned by [Version],
 // with the Meta keys, every key a stage of package stages sets, and the record outputs' media
-// types. A field local to a process, such as a part's or an output's Path, never marshals.
+// types. They grow by addition only, with one exception [Version] records: the text stage's
+// [MetaEncoding] became the charset alone, and [MetaEncodingBy] says how it was chosen. A field
+// local to a process, such as a part's or an output's Path, never marshals.
 //
 // # Outputs and the caller's loop
 //
@@ -272,10 +274,10 @@
 //     [MetaPage], [MetaCount], [MetaWindow], [MetaFrame], [MetaSheet], [MetaDPI], and
 //     [MetaFields]; the windows' [MetaStart], [MetaEnd], [MetaCut], [MetaSamples],
 //     [MetaThreshold], [MetaSeamBefore], and [MetaSeamAfter]; the frames' [MetaTime],
-//     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding], and
-//     [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath], [MetaFormat], [MetaFolder],
-//     [MetaSubject], [MetaMessageID], [MetaTopic], [MetaMissed], [MetaEmbeddedIn], [MetaName],
-//     [MetaSection], and [MetaTitle]; and the record media types [MediaAudioPlan],
-//     [MediaVideoPlan], [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm], and
-//     [MediaMailConversation].
+//     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding],
+//     [MetaEncodingBy], and [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath],
+//     [MetaFormat], [MetaFolder], [MetaSubject], [MetaMessageID], [MetaTopic], [MetaMissed],
+//     [MetaEmbeddedIn], [MetaName], [MetaSection], and [MetaTitle]; and the record media types
+//     [MediaAudioPlan], [MediaVideoPlan], [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm],
+//     and [MediaMailConversation].
 package dispatch

@@ -10,6 +10,12 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+### Changed
+
+- The module requires `github.com/standards-lab/sqlate` v0.8.0, from v0.7.0, and
+  `sqlate/postgres` v0.9.0, from v0.8.0; both releases only add API, and the index's use of them
+  is unchanged.
+
 ## [v0.1.2] - 2026-11-23
 
 This release requires the docproc base module at v0.4.2. Its exported API is unchanged.

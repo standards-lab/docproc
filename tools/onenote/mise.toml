@@ -1,7 +1,7 @@
 # docproc-onenote's toolchain and its check, publish, golden, currency, and upgrade tasks.
 # See docs/tool-builds.md
 [tools]
-cargo-deny = "0.22.0"
+cargo-deny = "0.22.1"
 "github:EmbarkStudios/cargo-about" = "0.9.3"
 jq = "1.8.2"
 rust = { version = "1.100.0", profile = "minimal", components = "clippy,rustfmt", targets = "x86_64-unknown-linux-musl,aarch64-unknown-linux-musl" }
