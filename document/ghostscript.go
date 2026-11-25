@@ -164,11 +164,11 @@ func parseSurvey(out string, sizes bool) (survey, error) {
 // cover's own, one PNG, not its embedded documents' pages.
 //
 // gs runs with -sstdout=%stderr, so its own messages go to stderr and stdout holds the PNG alone.
-// gs asked for a page past the last exits zero, writing no PNG and its
-// message, "Requested FirstPage is greater than the number of pages in the file", to stderr.
-// Render writes nothing to w unless stdout begins as a PNG, and returns gs's message as its error
-// when it doesn't. A page gs renders with a message, such as "**** Error: Page drawing error
-// occurred.", renders, and the message is dropped, as the stderr of every run that succeeds is.
+// gs asked for a page past the last exits zero, writing no PNG and its message, "Requested
+// FirstPage is greater than the number of pages in the file", to stderr. Render writes nothing to
+// w unless stdout begins as a PNG, and returns gs's message as its error when it doesn't. A page
+// gs renders with a message, such as "**** Error: Page drawing error occurred.", renders, and the
+// message is dropped, as the stderr of every run that succeeds is.
 func (g *Ghostscript) Render(ctx context.Context, pdf string, page, dpi int, w io.Writer) error {
 	if err := CheckRender(page, dpi); err != nil {
 		return err

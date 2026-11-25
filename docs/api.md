@@ -266,13 +266,14 @@ How `document` runs gs, and why (the measurements behind it are on
   A page's own run opens the PDF in PostScript and runs `runpdf`'s other branch, word for word:
   `runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend`. A portfolio's page is
   then its cover's own, and any other PDF's page is byte for byte what the file named on the
-  command line gives, its PNG and gs's messages, as gs 10.08.0 gives them over every fixture. A shared run names the PDF on its command line, so a portfolio never shares one.
+  command line gives, its PNG and gs's messages, as gs 10.08.0 gives them over every fixture. A
+  shared run names the PDF on its command line, so a portfolio never shares one.
 - The path is a PostScript string, its backslashes and parentheses escaped, and `-dSAFER` is
   permitted to read that one file. gs splits a permitted path at a colon, so a path holding one
   can't be read.
-- The renders take `-sstdout=%stderr`, since gs otherwise writes its own
-  messages to stdout, even under `-q`, ahead of a page it renders with one, such as `**** Error:
-  Page drawing error occurred.`. The count and the survey print with `=`, which writes to
+- The renders take `-sstdout=%stderr`, since gs otherwise writes its own messages to stdout, even
+  under `-q`, ahead of a page it renders with one, such as `**** Error: Page drawing error
+  occurred.`. The count and the survey print with `=`, which writes to
   `%stdout` as those messages do, so they don't take it. The survey prints the count, then, only
   for a count above zero, whether the PDF is a portfolio, then, when asked, each page's size, its
   page set up by `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the

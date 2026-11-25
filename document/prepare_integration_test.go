@@ -89,7 +89,8 @@ func TestImagesMaxPixelsHost(t *testing.T) {
 
 func TestImagesSharedHost(t *testing.T) {
 	g, _ := hostGhostscript(t)
-	p := document.NewPreparer(document.Config{Renderer: g, Text: hostTextReader(t)})
+	tr := hostTextReader(t)
+	p := document.NewPreparer(document.Config{Renderer: g, Text: tr})
 	for _, set := range []struct {
 		pdf       string
 		maxPixels int64
@@ -104,7 +105,6 @@ func TestImagesSharedHost(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tr := hostTextReader(t)
 		pngs, texts := make([][]byte, n), make([]string, n)
 		for i := range n {
 			var out bytes.Buffer
