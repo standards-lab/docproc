@@ -356,6 +356,8 @@ it.
 - **PI-9 · The unit tier ran real programs and read ~/docs.** Merged into PX-9; decision 18.
 - **PI-10 · Routing refused content its stage would read.** Accepted → library.
 - **PI-11 · Two- and three-byte signatures outranked a text extension.** Accepted → library.
+  Superseded by text-last-resort, which removed the text-extension list: a name's extension never
+  makes content text ([`limits.md`](limits.md)).
 - **PI-12 · The encrypted-package check and the extension tables existed twice.** Merged into
   PX-10.
 - **PI-13 · The PDF name scan flagged random bytes and saw no object stream.** Accepted →
@@ -370,6 +372,8 @@ it.
 - **PI-18 · ClamAV doesn't fit Inspect's contract.** Backlog: the roadmap's comment is reworded.
 - **PI-19 · Formats the spike left unrouted weren't in the backlog.** Backlog.
 - **HTML is unrouted by design.** Backlog: no task carries saved web pages or HTML `.xls`.
+  Superseded by text-last-resort: HTML now routes Text, read as raw text
+  ([`limits.md`](limits.md)).
 
 ### Tool runners and readers
 

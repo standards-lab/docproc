@@ -9,6 +9,38 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Changed
+
+- Content no processor claims, or that fails a claim's own check, falls back on its head: it
+  routes `text` when its first `route.HeadLen` bytes hold no NUL byte, and `unrouted` otherwise.
+  HTML, CSS, JavaScript, an EPUB's entries, a LICENSE, and other text of no signature, which were
+  unrouted, are read as raw text, with no structure. UTF-16 without a byte order mark holds NULs,
+  so it is unrouted. An OLE2 file with neither a legacy nor a `.msg` extension falls back, and is
+  unrouted as not text.
+- The text-extension list is gone, with the rule by which it outranked a short signature: a name's
+  extension never makes content text. A `.txt` whose head holds a NUL byte is unrouted.
+- A `#!` script routes `text`, its kind still `shebang` and inspect still flagging it executable;
+  before, it was unrouted.
+- An mbox is claimed only by its `From ` line followed by a header block whose first line is a
+  field and which holds From and either Date or Received. Without one, the content falls back.
+- Content named `.eml` or stored as `message/rfc822` or `message/global` whose header isn't
+  message-shaped falls back, where before it was unrouted. A stored audio or video type claims
+  content of no signature only when its head holds a NUL byte; text stored as audio routes
+  `text`.
+- Route reasons: the fallback's reason is the claim it failed, or `no routed signature`, then
+  `, text by its head` or `, not text`, such as `OLE2 signature without a legacy or .msg
+  extension, not text` and `mbox "From " line without a message header, text by its head`; a
+  message that isn't header-shaped is `a message by its <name or type>, but not header-shaped`,
+  then `; text by its head` when it is text. A script's is `"#!" line, a script`, from `"#!"
+  line, an executable script`. `text by its <ext> extension`, its short-signature form, and
+  `no routed signature` alone are gone.
+- inspect's ZIP end-of-central-directory scan reaches `#!` scripts, content of no signature, and
+  text after a byte order mark, so one with a ZIP appended is flagged polyglot. The PDF-header
+  pattern still skips those kinds, so text quoting `%PDF-` isn't flagged. Evidence for content of
+  no signature reads `in content of no signature`.
+- No wire value is new, and the text stage's output is unchanged. An index recorded nothing for
+  content that was unrouted; the next dispatch prepares what now routes `text`.
+
 ## [v0.6.0] - 2026-11-25
 
 This release reads RAR, xz, and bzip2 archives, which routed to no stage, and routes MPEG program

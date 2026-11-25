@@ -1,12 +1,15 @@
 # Limits
 
-ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; ISO and
-HTML route to no stage. docproc runs no virus scan and flags no macro in an OLE2 file. It detects no
-text's encoding: text is read by its byte order mark, as UTF-8, or else as windows-1252. Beyond
-that, each stage inherits its tool's limits, as the tools' READMEs
-([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
-[docproc-onenote](../tools/onenote/README.md)) state them in full; these are the ones a host sizes
-or routes by.
+ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; ISO
+routes to no stage. docproc runs no virus scan and flags no macro in an OLE2 file. Content no
+processor claims is read as text when its first 4096 bytes hold no NUL byte, whatever its name, and
+is unrouted when they do: HTML and an EPUB's entries are read as raw text, with no structure, and
+UTF-16 without a byte order mark is refused, since it holds NULs. It detects no text's encoding:
+text is read by its byte order mark, as UTF-8, or else as windows-1252, so a legacy multibyte
+encoding such as Shift-JIS, EUC-JP, or ISO-2022-JP reads as mojibake. Beyond that, each stage
+inherits its tool's limits, as the tools' READMEs ([docproc-ooxml](../tools/ooxml/README.md),
+[docproc-mail](../tools/mail/README.md), [docproc-onenote](../tools/onenote/README.md)) state them
+in full; these are the ones a host sizes or routes by.
 
 - **office.** Pictures are listed with no layout, so a picture another covers, that sits off the
   slide or page, or that is cropped away is still listed and handed onward. Text boxes,
