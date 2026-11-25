@@ -22,6 +22,10 @@ when:
   storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
   beside its own.
 
+**A later measurement.** The docproc-coverage goal's pdf-text-padding task measured
+["PDF page text"](#pdf-page-text) on 2026-11-25, gs txtwrite against pdftotext, the change
+v0.8.0 makes to a PDF page's text.
+
 **The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
 v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
 
@@ -946,3 +950,151 @@ done
    `audio.Join` at its defaults, and scores the join with `textscore.NormalizedWordErrors`
    against the truths above. The median is of the 3 runs' rates, and the spread their max less
    min.
+
+## PDF page text
+
+The pdf-text-padding task measured it on 2026-11-25, on the same laptop, against the two ways
+docproc has read a PDF page's text: before, gs 10.08.0's txtwrite device as v0.7.0's
+`Ghostscript.Text` ran it, one gs process a page; after, poppler's pdftotext 26.10.0 as v0.8.0's
+`document.TextReader` runs it, `pdftotext -enc UTF-8 -f N -l N <pdf> -`, one run a page, the
+form feed ending the page dropped. Both read the copies in `~/docs` directly, outside docproc.
+
+### Pages and measures
+
+The pages are `~/docs/pdf/scanned/olmocr-bench`'s six multi-column pages,
+`multi_column-*_pg1.pdf`, each a one-page PDF with a text layer, and the 915 pages of
+`~/docs/pdf/large/cfr-2024-title32-vol1.pdf`, the Code of Federal Regulations set in two columns.
+
+- **Spaces** is the share of the text's characters that are spaces, and **longest run** the most
+  spaces in a row.
+- **Words** are the text's runs of letters and digits, lowercased. **Words kept** is the share of
+  gs's words, counted as a multiset, that pdftotext's words also hold: it measures the before-text
+  against the after-text, and an after-text word gs's text lacks counts for nothing. A gs word
+  missed is not always a word lost. gs runs words together where its layout drops the space
+  (`thepivotalrolesforhyperuricemiaandhypokalemia`), and splits a word hyphenated at a line's end
+  in two (`informa`, `tion`), which pdftotext joins (`information`). **Missing** counts the gs
+  words not kept whose letters and digits appear nowhere in pdftotext's text with every other
+  character removed: the words lost.
+- **Order checks** are olmocr-bench's 30 "order" checks in `multi_column.truth.jsonl`, five a
+  page: a check passes when its `before` text comes before its `after` text, both reduced to
+  their letters and digits, lowercased, matched exactly; the checks' `max_diffs` allowance is not
+  used.
+
+### Results
+
+| Page | gs spaces | gs longest run | pdftotext spaces | pdftotext longest run | Words kept | Missing | gs order checks | pdftotext order checks |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `013a3686…_page_6` | 40.4% | 143 | 13.6% | 1 | 793 of 797, 99.5% | 0 | 0 of 5 | 0 of 5 |
+| `0925342e…_page_6` | 71.0% | 127 | 11.8% | 1 | 622 of 670, 92.8% | 0 | 0 of 5 | 4 of 5 |
+| `09f90a8f…_page_1` | 97.0% | 2,626 | 13.1% | 1 | 616 of 689, 89.4% | 0 | 0 of 5 | 3 of 5 |
+| `0a2b678b…_page_8` | 66.6% | 331 | 14.8% | 1 | 266 of 276, 96.4% | 0 | 1 of 5 | 2 of 5 |
+| `0b128dec…_page_4` | 32.7% | 43 | 13.7% | 1 | 759 of 805, 94.3% | 40 | 2 of 5 | 5 of 5 |
+| `0e5f0c34…_page_8` | 31.4% | 59 | 13.8% | 1 | 692 of 750, 92.3% | 0 | 0 of 5 | 5 of 5 |
+| All six | 31.4–97.0% | 2,626 | 11.8–14.8% | 1 | | 40 | 3 of 30 | 19 of 30 |
+
+pdftotext writes no two spaces in a row on any page. Its 19 order checks to gs's 3 are its
+reading order: a column read through before the next, where gs's lines cross both columns.
+
+`0b128dec…_page_4`'s 40 missing words are its table's figures, not lost text. The PDF's font
+codes for the ± and µ the page shows read as `6` and `m` under gs and as U+2AFE and U+242E under
+pdftotext, so gs's `3.161.3` and `mmol` are pdftotext's `3.1⫾1.3` and `␮mol`; neither reads the
+± or the µ. No other
+page lost a word.
+
+| cfr-2024-title32-vol1, 915 pages | Spaces | Longest run | Pages over 50% spaces | One run a page | One run, whole file |
+| --- | --- | --- | --- | --- | --- |
+| gs txtwrite | 50.4% | 245 | 310 | 34.1 s (32.7–34.1) | 8.2 s |
+| pdftotext | 12.8% | 1 | 0 | 12.1 s (11.7–12.7) | 1.1 s |
+
+pdftotext kept 508,719 of gs's 557,714 words, 91.2%, and missed none: every word not kept is in
+pdftotext's letters and digits, and the most frequent are hyphenated words' halves, `re`,
+`tion`, `in`, `con`, and `ment`. A run a page is how both readers run; its time is the median of three passes over the
+915 pages, one run after another, with the three passes' range. The whole-file run, one process
+for the 915 pages, is for context.
+
+### What doesn't improve
+
+- The paragraphs of columns that line up may alternate between the columns: pdftotext reads
+  `document/testdata/clean.pdf`'s page 2, two columns of paragraphs side by side, a paragraph
+  from each in turn.
+- A word hyphenated at a line's end is joined, its hyphen dropped: `informa-` and `tion` read as
+  `information`.
+- A right-to-left word the PDF's glyph runs split stays split: pdftotext reads
+  `~/docs/pdf/multilang/multilang-rtl.pdf`'s `العربية` as `العربي` and `ة`.
+
+### Recipe
+
+`python3 -I pagetext.py`, with gs, pdftotext, and pdfinfo on `PATH`, prints each olmocr-bench
+page's row, `|`-separated in the table's order, then cfr's two rows and its words kept. Run it
+three times; the figures other than time match each run. The whole-file times are of
+`gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=txtwrite -sOutputFile=- <pdf>` and
+`pdftotext -enc UTF-8 <pdf> -`, stdout discarded.
+
+```python
+import collections, glob, json, os, re, subprocess, time
+
+docs = os.path.expanduser("~/docs/pdf")
+
+
+def gs(pdf, n):
+    return subprocess.run(["gs", "-q", "-dNOPAUSE", "-dBATCH", "-dSAFER", "-sstdout=%stderr", "-sDEVICE=txtwrite",
+                           f"-dFirstPage={n}", f"-dLastPage={n}", "-sOutputFile=-", f"--permit-file-read={pdf}", "-c",
+                           f"({pdf}) (r) file runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend"],
+                          capture_output=True, check=True).stdout.decode()
+
+
+def pdftotext(pdf, n):
+    return subprocess.run(["pdftotext", "-enc", "UTF-8", "-f", str(n), "-l", str(n), pdf, "-"],
+                          capture_output=True, check=True).stdout.decode().removesuffix("\f")
+
+
+def spaces(t):
+    return t.count(" "), len(t), max([0] + [len(m) for m in re.findall(r" +", t)])
+
+
+def words(t):
+    return collections.Counter(re.findall(r"[^\W_]+", t.lower()))
+
+
+def alnum(t):
+    return re.sub(r"[\W_]+", "", t.lower())
+
+
+def kept(before, after):
+    b, a, stream = words(before), words(after), alnum(after)
+    missing = sum(1 for w in (b - a).elements() if w not in stream)
+    return sum((b & a).values()), sum(b.values()), missing
+
+
+def order(t, checks):
+    t = alnum(t)
+    return sum(0 <= t.find(alnum(c["before"])) < t.find(alnum(c["after"])) for c in checks)
+
+
+bench = f"{docs}/scanned/olmocr-bench"
+truth = collections.defaultdict(list)
+for line in open(f"{bench}/multi_column.truth.jsonl"):
+    c = json.loads(line)
+    truth[os.path.basename(c["pdf"])].append(c)
+for pdf in sorted(glob.glob(f"{bench}/multi_column-*.pdf")):
+    name = os.path.basename(pdf).removeprefix("multi_column-")
+    before, after = gs(pdf, 1), pdftotext(pdf, 1)
+    (bs, bl, br), (as_, al, ar) = spaces(before), spaces(after)
+    k, n, missing = kept(before, after)
+    print(f"{name[:12]} | {bs / bl:.1%} | {br} | {as_ / al:.1%} | {ar} | {k}/{n}, {k / n:.1%} | {missing}"
+          f" | {order(before, truth[name])} | {order(after, truth[name])}")
+
+cfr = f"{docs}/large/cfr-2024-title32-vol1.pdf"
+pages = int(re.search(r"^Pages:\s+(\d+)", subprocess.run(["pdfinfo", cfr], capture_output=True).stdout.decode(),
+                      re.M).group(1))
+text = {}
+for label, read in (("gs", gs), ("pdftotext", pdftotext)):
+    start = time.monotonic()
+    text[label] = [read(cfr, p) for p in range(1, pages + 1)]
+    secs = time.monotonic() - start
+    s = [spaces(t) for t in text[label]]
+    print(f"cfr {label} | {sum(x[0] for x in s) / sum(x[1] for x in s):.1%} | {max(x[2] for x in s)}"
+          f" | {sum(1 for sp, ln, _ in s if ln and sp / ln > 0.5)} | {secs:.1f} s")
+k, n, missing = kept("\f".join(text["gs"]), "\f".join(text["pdftotext"]))
+print(f"cfr words | {k}/{n}, {k / n:.1%} | {missing}")
+```

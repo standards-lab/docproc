@@ -9,6 +9,16 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-11-25
+
+This release reads a PDF page's text with poppler's pdftotext in its reading order, where gs's
+txtwrite laid it out: a multi-column page reads column by column, without the runs of spaces gs
+padded its columns with ([`docs/acceptance.md`](docs/acceptance.md), "PDF page text").
+`document.Ghostscript.Text` is removed, a breaking change in a minor release before 1.0, and the
+document stage requires pdftotext beside gs, qpdf, and pdfdetach. The stage adapters' version is
+7, so an index prepares every PDF again. No wire value and no run directory's schema changes.
+The module still requires golang.org/x/text alone.
+
 ### Added
 
 - `document.TextReader`, which reads a PDF page's text layer through poppler's pdftotext in its
@@ -456,7 +466,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.8.0...HEAD
+[v0.8.0]: https://github.com/standards-lab/docproc/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/standards-lab/docproc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/standards-lab/docproc/compare/v0.4.2...v0.5.0
