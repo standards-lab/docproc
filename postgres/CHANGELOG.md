@@ -10,6 +10,22 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.5] - 2026-11-25
+
+This release requires the docproc base module at v0.7.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.7.0, from v0.6.0, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  Content that routed to no stage, such as HTML, an EPUB's entries, a `#!` script, or unlisted
+  text, was no processor yet and recorded nothing in the index, so it has no entry and is
+  prepared under the text stage at the next dispatch. Content whose route moves between stages,
+  such as text stored as audio or video, or an mbox without a message header, has no entry under
+  its new stage's identity and is prepared again; a `.txt` whose head holds a NUL byte, now
+  unrouted, keeps its text entry, which no dispatch reads. The index itself is unchanged and reads
+  none of a part's kind or route.
+
 ## [v0.1.4] - 2026-11-25
 
 This release requires the docproc base module at v0.6.0. Its exported API is unchanged.
@@ -99,7 +115,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.5...HEAD
+[v0.1.5]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...postgres/v0.1.5
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...postgres/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...postgres/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.1...postgres/v0.1.2

@@ -10,6 +10,39 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.5] - 2026-11-25
+
+This release requires the docproc base module at v0.7.0, whose changes reach `docproc run` as
+Changed says. Its command line and exit codes are unchanged; its run directory's routes change for
+content a name's extension made text and for an mbox without a message header, both breaking
+changes.
+
+### Changed
+
+- The module requires the docproc base module at v0.7.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - `docproc run` prepares HTML, CSS, JavaScript, an EPUB's entries, `#!` scripts, and other text
+    of no signature as raw text, with no structure, recording them under the `text` route in
+    `record.jsonl`, where each was `unrouted` and had no processor. Content no processor claims,
+    or that fails a claim's own check, routes `text` unless its first 4096 bytes hold a NUL byte.
+    Content named `.eml` or stored as a message whose header isn't a message's shape, and text
+    stored as audio or video, route `text` too. A `#!` script keeps its kind, `shebang`, and its
+    executable flag.
+  - **Breaking:** a name's extension never makes content text. A `.txt`, or content of another
+    extension the text list held, whose head holds a NUL byte is `unrouted` in `record.jsonl`,
+    from `text`, and has no processor; one whose content carries a signature or a message's header
+    routes by it. The run directory's schema stays `"2"`.
+  - **Breaking:** an mbox is claimed only when its `From ` line is followed by a header block
+    whose first line is a field and which holds From and either Date or Received. Content that
+    begins `From ` without one routes `text`, from `nested`, and is read as raw text.
+  - `route_reason` in `record.jsonl` changes for content that falls back: it names the claim the
+    content failed, or `no routed signature`, then `, text by its head` or `, not text`. A `#!`
+    script's is `"#!" line, a script`, and `text by its <ext> extension` is gone.
+  - A `#!` script, content of no signature, or text after a byte order mark carries the
+    `polyglot` flag when a ZIP is appended to it.
+  - A run over an index prepares content that was unrouted at its next dispatch, since the index
+    recorded nothing for it.
+
 ## [v0.2.4] - 2026-11-25
 
 This release requires the docproc base module at v0.6.0, whose changes reach `docproc run` as
@@ -189,7 +222,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.5...HEAD
+[v0.2.5]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...cmd/docproc/v0.2.5
 [v0.2.4]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...cmd/docproc/v0.2.4
 [v0.2.3]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...cmd/docproc/v0.2.3
 [v0.2.2]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...cmd/docproc/v0.2.2
