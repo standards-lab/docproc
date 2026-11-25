@@ -116,32 +116,17 @@ inspection are two-way until the tags are pushed.
 
 ## Progress
 
-slices 2/5 committed · standards — · spec — · editor —
+slices 5/5 committed · standards ✓ (655bdde) · spec ✓ no gaps · editor ✓
 - corpus.docs asked (standards-lab #219) to be told only the final release, at sync: the
   docs-corpus pending edit now says so.
 
 ## Decisions
 
-- goal: XPS (mutool) and web-content (pandoc) moved to docproc-backlog; text-last-resort replaces
-  web-content, right after archives-and-mpeg, and reads HTML and EPUB as raw text.
-- text-encoding-keys: docs-corpus's tools/coverage, the one reader of the combined value, decodes
-  outputs by it and is corpus.docs's to fix (outputs are always UTF-8).
 - text-encoding-keys: held MimeKit at 4.18.2: 5.0.0 declined, PstBuilder.Eml 1.3.0 is built on
   MimeKit 4.
 - text-encoding-keys: held MsgKit at 3.0.6: 3.1.0 declined, it needs MimeKit.Core 5.
 - text-encoding-keys: held typed-path at 0.12.4: 0.13.0 declined, onenote_parser 2.1.0 requires
   ^0.12.3.
-- text-last-resort: route keeps no text-extension list. Processors claim formats by their own
-  checks, and content no processor claims, or that fails a claim's check, routes Text when its
-  first 4096 bytes hold no NUL. PE, ELF, Mach-O, XPS, and .ost stay Unrouted.
-- text-last-resort: a `#!` script routes Text, keeping the kind `shebang` and the Executable flag.
-- text-last-resort: an mbox is a "From " line followed by a header block with From and Date or
-  Received. A .eml or stored message that isn't header-shaped falls back to text.
-- text-last-resort: a stored audio or video MIME type claims only content the text fallback
-  refuses. An OLE2 without a legacy or .msg extension falls through and stays Unrouted as not
-  text.
-- text-last-resort: inspect's EOCD polyglot scan reaches shebang, no-signature, and BOM content;
-  the %PDF- pattern doesn't.
 
 ## Pending edits
 

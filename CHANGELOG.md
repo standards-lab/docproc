@@ -31,9 +31,9 @@ tool under `tools/` keeps its own.
   `, text by its head` or `, not text`, such as `OLE2 signature without a legacy or .msg
   extension, not text` and `mbox "From " line without a message header, text by its head`; a
   message that isn't header-shaped is `a message by its <name or type>, but not header-shaped`,
-  then `; text by its head` when it is text. A script's is `"#!" line, a script`, from `"#!"
-  line, an executable script`. `text by its <ext> extension`, its short-signature form, and
-  `no routed signature` alone are gone.
+  then `; text by its head` when it is text. A script's reason is `"#!" line, a script`, where it
+  was `"#!" line, an executable script`. `text by its <ext> extension`, its short-signature form,
+  and `no routed signature` alone are gone.
 - inspect's ZIP end-of-central-directory scan reaches `#!` scripts, content of no signature, and
   text after a byte order mark, so one with a ZIP appended is flagged polyglot. The PDF-header
   pattern still skips those kinds, so text quoting `%PDF-` isn't flagged. Evidence for content of
