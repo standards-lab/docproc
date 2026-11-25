@@ -1,6 +1,6 @@
 # goal · docproc-coverage
 
-- **State:** building
+- **State:** brief ready
 - **Task:** text-last-resort
 - **Branch:** text-last-resort
 
