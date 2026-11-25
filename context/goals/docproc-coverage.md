@@ -1,6 +1,6 @@
 # goal · docproc-coverage
 
-- **State:** building
+- **State:** brief ready
 - **Task:** pdf-text-padding
 - **Branch:** pdf-text-padding
 
