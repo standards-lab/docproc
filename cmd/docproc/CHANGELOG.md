@@ -10,6 +10,25 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.3] - 2026-11-25
+
+This release requires the docproc base module at v0.5.0, whose changes reach `docproc run` as
+Changed says. Its command line and exit codes are unchanged; its run directory's text outputs
+change, a breaking change for a reader of the combined encoding value.
+
+### Changed
+
+- The module requires the docproc base module at v0.5.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - **Breaking:** a text output in `record.jsonl` carries `encoding`, the lowercase charset alone,
+    and `encoding_by`, `bom` or `fallback`, in place of the combined value, such as
+    `windows-1252 (fallback)`; valid UTF-8 with no byte order mark has no `encoding_by`. The run
+    directory's schema stays `"2"`, an exception to its growth by addition only.
+  - The text stage's identity version is 3, from 2, so a run over an index prepares its earlier
+    text entries again rather than replaying them.
+  - soffice runs in `gotenberg/gotenberg:9.10.1-libreoffice`, which carries the same LibreOffice,
+    26.8.2.2, pinned by its multi-arch index digest.
+
 ## [v0.2.2] - 2026-11-23
 
 This release requires the docproc base module at v0.4.2, whose default container images reach
@@ -146,7 +165,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...HEAD
+[v0.2.3]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...cmd/docproc/v0.2.3
 [v0.2.2]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...cmd/docproc/v0.2.2
 [v0.2.1]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.0...cmd/docproc/v0.2.1
 [v0.2.0]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.1.0...cmd/docproc/v0.2.0

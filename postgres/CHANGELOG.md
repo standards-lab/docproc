@@ -10,8 +10,18 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.3] - 2026-11-25
+
+This release requires the docproc base module at v0.5.0, sqlate at v0.8.0, and sqlate's
+`postgres` dialect at v0.9.0. Its exported API is unchanged.
+
 ### Changed
 
+- The module requires the docproc base module at v0.5.0, from v0.4.2, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  The text stage's identity version is 3, from 2, so the index holds a caller's earlier text
+  entries under the old identity and a run over it prepares them again; the index itself is
+  unchanged and reads none of a text output's Meta.
 - The module requires `github.com/standards-lab/sqlate` v0.8.0, from v0.7.0, and
   `sqlate/postgres` v0.9.0, from v0.8.0; both releases only add API, and the index's use of them
   is unchanged.
@@ -74,7 +84,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...HEAD
+[v0.1.3]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...postgres/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.1...postgres/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.0...postgres/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/postgres/v0.1.0
