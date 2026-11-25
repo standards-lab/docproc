@@ -547,6 +547,28 @@ func TestRun_Record(t *testing.T) {
 	}
 }
 
+func TestRun_RecordsFallbackEncoding(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "out")
+
+	runOK(t, apptest.NoTools, filepath.Join("testdata", "fallback.txt"), "--out", out)
+
+	run := onlyRun(t, out)
+	b, err := os.ReadFile(filepath.Join(out, "runs", run.manifest.Run, "record.jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outputs []string
+	for line := range strings.Lines(string(b)) {
+		if strings.Contains(line, `"event":"output"`) {
+			outputs = append(outputs, line)
+		}
+	}
+	if len(outputs) != 1 || !strings.Contains(outputs[0], `"encoding":"windows-1252"`) ||
+		!strings.Contains(outputs[0], `"encoding_by":"fallback"`) {
+		t.Errorf("output lines = %q, want one carrying encoding windows-1252 and encoding_by fallback", outputs)
+	}
+}
+
 func TestRun_ReRunReplaysSeenParts(t *testing.T) {
 	in := write(t, t.TempDir(), "hello.txt", helloText, "notes.zip", string(zipOf(t, "notes.txt", notesText)))
 	out := filepath.Join(t.TempDir(), "out")

@@ -16,6 +16,13 @@ import "github.com/standards-lab/docproc/route"
 //     record outputs' media types, [MediaAudioPlan] and the rest.
 //
 // The content store's layout, [ContentFile], is stated stable apart from it.
+//
+// One change was made under "1" that wasn't an addition: the text stage's [MetaEncoding], once a
+// combined value such as "windows-1252 (fallback)" or "utf-16le (byte order mark)", became the
+// charset alone, with how it was chosen moved to [MetaEncodingBy]. The combined value had to be
+// parsed to recover the charset and was no encoding name a reader could look up; the split was
+// made before more text sources were added; its one known reader, docs-corpus's tools/coverage,
+// is fixed with it; and a text output is always UTF-8 either way.
 const Version = "1"
 
 // ContentType is what routing read of a part: the kind its signature names, its route and why, and
@@ -135,8 +142,8 @@ const (
 	// MetaFrom is the kind of picture an image was converted from, a route.Kind: the picture
 	// stage's image outputs.
 	MetaFrom = "from"
-	// MetaEncoding is the charset a text was decoded from, in lowercase, such as "utf-8",
-	// "utf-16le", or "windows-1252": the text stage's text output.
+	// MetaEncoding is the charset a text was decoded from, in lowercase: "utf-8", "utf-16le",
+	// "utf-16be", "utf-32le", "utf-32be", or "windows-1252": the text stage's text output.
 	MetaEncoding = "encoding"
 	// MetaEncodingBy is how the text stage chose a text's [MetaEncoding] when the text alone
 	// didn't settle it: "bom" for a byte order mark, "fallback" for windows-1252 taken because
