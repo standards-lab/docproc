@@ -135,8 +135,8 @@ The model the lines are written from is one tree for the three formats, its bloc
 order, every block but a media block the document's text, complete without inference. Each
 format is read as below; a warning's `<where>` is a docx `section n` or `comments`, an xlsx
 `sheet n` (its `sheet` line's ordinal, or for a sheet with no line its ordinal in the workbook),
-or a pptx `slide n`, and the unread kinds (equations, SmartArt, a pptx's comments, an xlsx's
-notes) are warned of once each, where the document first holds one
+or a pptx `slide n`, and the unread kinds (equations, SmartArt, an xlsx's notes) are warned of
+once each, where the document first holds one
 ([`design-review.md`](design-review.md), OX-11).
 
 - **docx: the text.** Tracked changes are read accepted: insertions and a move's destination are
@@ -260,7 +260,16 @@ notes) are warned of once each, where the document first holds one
   object's frame is its preview picture, then its payload, PowerPoint writing the object twice with
   the preview only in the fallback's copy. A notes page's text is its body placeholders' paragraphs,
   never the slide image, number, header, footer, or date, their bullets from their own list style
-  and the notes master's. A slide's comments, legacy or modern, are not read.
+  and the notes master's.
+- **pptx: comments.** A slide's comments are its legacy comments part's, first, in stored order,
+  then each modern comments part's. A legacy comment (`p:cm`, its author named by
+  `commentAuthors.xml`) is its `p:text`, one paragraph; it is a reply in the thread of the comment
+  its PowerPoint 2013 threading extension (`p15:parentCm`) names by author and index, earlier on
+  the slide, and a thread of its own otherwise, open, legacy comments having no state. A modern
+  comment (`p188:cm`, its author named by `authors.xml`) is a thread, its text body read as a text
+  box's paragraphs and lists with its own list style alone, its reply list's replies in stored
+  order, and resolved when its status is `resolved`. A thread anchors no text: its place is its
+  slide.
 - **Charts.** A chart is its part's cached data, never its rendering or its embedded workbook. A
   DrawingML chart, Transitional or ISO 29500 Strict (its namespaces renamed to Transitional's),
   takes its type from its first plot's kind; a chartEx chart, which Word and PowerPoint refer to
@@ -277,13 +286,15 @@ notes) are warned of once each, where the document first holds one
   reaches their references (`[^1]`, `[^2]`), so their ids never collide; comments have their own
   (`[^c1]`). A note no reference reached is labeled after the rest. A definition's first
   paragraph is on its label's line, the rest indented four spaces after a blank line. Each
-  comment is its author, its thread's state, its anchor, its text, and its replies. A list that
-  follows another of its kind switches markers (`-` to `*`, `.` to `)`), since Markdown would
-  join them; an item's other blocks are indented to its marker's width, a nested list tight. A
-  line break in a paragraph is a hard break, a backslash at the line's end; each line is trimmed,
-  since leading spaces make an indented code block, each text run escaped on its own, and a line
-  left empty dropped. A hyperlink's text keeps to one line, and one with no text is nothing. A
-  docx table is a GFM table, its first row the header, a merged cell's text in its top-left
+  comment is its author, its thread's state, its anchor, its text, and its replies; a pptx's
+  comments, which anchor no text, are marked after their slide's heading, `# Slide 2[^c1]`, so
+  their labels count in slide order. A list that follows another of its kind switches markers
+  (`-` to `*`, `.` to `)`), since Markdown would join them; an item's other blocks are indented
+  to its marker's width, a nested list tight. A line break in a paragraph is a hard break, a
+  backslash at the line's end; each line is trimmed, since leading spaces make an indented code
+  block, each text run escaped on its own, and a line left empty dropped. A hyperlink's text
+  keeps to one line, and one with no text is nothing. A docx table is a GFM table, its first
+  row the header, a merged cell's text in its top-left
   position and the positions it covers or a late row skips empty, a cell's lines and blocks
   joined by `<br>`; a chart in a cell renders after the table, its title left in the cell. A
   sheet is a heading of its name, marked when hidden, then a table headed by the column letters

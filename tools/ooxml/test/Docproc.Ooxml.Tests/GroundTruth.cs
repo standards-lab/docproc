@@ -124,6 +124,10 @@ internal static class GroundTruth
                     {
                         element["notes"] = Array(document, notes);
                     }
+                    if (slide.Comments is { } comments)
+                    {
+                        element["comments"] = new JsonArray([.. comments.Select(id => (JsonNode)Place(document.Comments, c => c.Id == id))]);
+                    }
                     elements.Add(element);
                     break;
                 case Media media:

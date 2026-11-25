@@ -297,7 +297,8 @@ internal sealed class MarkdownRenderer
 
     private string RenderSlide(Slide slide)
     {
-        var heading = "# Slide " + slide.Number.ToString(CultureInfo.InvariantCulture) + (slide.Hidden ? " (hidden)" : "");
+        var heading = "# Slide " + slide.Number.ToString(CultureInfo.InvariantCulture) + (slide.Hidden ? " (hidden)" : "")
+            + string.Concat((slide.Comments ?? []).Select(id => $"[^c{CommentLabel(id)}]"));
         headingShift++;
         List<string> chunks = [heading, .. RenderBlocks(slide.Blocks).Select(c => c.Text)];
         if (slide.Notes is { } notes && RenderBlocks(notes) is { Count: > 0 } notesChunks)

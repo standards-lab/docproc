@@ -70,8 +70,10 @@ lines, each holding the sheet's next rows and their typed cells, within 256 KiB 
 sheet's charts, pictures, and text boxes' paragraphs ride on its closing `rows` line, in the
 order its drawing anchors them. A docx's text box is read where its paragraph anchors it, its
 paragraphs following that paragraph as its pictures do, and once, though Word writes it twice,
-as DrawingML and as its VML copy. Joined in order, the lines' Markdown fragments are the whole
-rendering.
+as DrawingML and as its VML copy. A pptx's comments, legacy and PowerPoint 365's modern threaded
+ones, are footnotes as a docx's are, each thread's replies after it in order; a comment's place
+is its slide, so its marker follows the slide's heading, `# Slide 2[^c1]`. Joined in order, the
+lines' Markdown fragments are the whole rendering.
 
 ```text
 {"line":"document","schema":"2","format":"xlsx","properties":{"core":{"creator":"openpyxl",…}}}
@@ -121,9 +123,9 @@ The envelope these follow, its cases stated once for every tool, is
 
 - Pictures are listed with no layout, so a covered, off-slide, or cropped-away picture is still
   a media block.
-- Equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read. Each kind
-  present gets one warning, where the document first holds one:
-  `docproc-ooxml: warning: slide 1: comments not read`.
+- Equations, SmartArt, and an xlsx's cell notes are not read. Each kind present gets one
+  warning, where the document first holds one:
+  `docproc-ooxml: warning: slide 1: SmartArt not read`.
 - No formula is evaluated: a formula's value is the one the file caches, or none.
 - No number format is applied but the dates': a number is written as stored.
 - Tracked changes are read accepted only.

@@ -19,6 +19,13 @@ covers docproc-ooxml only.
   sheet's closing `rows` line with its charts and pictures. Other alternate content in an xlsx
   drawing is read once, as its first branch that holds anything read, rather than through every
   branch.
+- A pptx's comments are read, and no longer warned of as `comments not read`: legacy comments
+  (`p:cmLst` with `commentAuthors.xml`), a reply named by PowerPoint 2013's threading extension
+  following its thread, and PowerPoint 365's modern threaded comments (`p188:cmLst` with
+  `authors.xml`), their replies in order and a resolved thread marked. Each thread is a footnote
+  definition as a docx's comment is, `[^cN]: Comment by <author> (open|resolved): <text>`, its
+  replies after it; with no anchored text, its marker follows its slide's heading,
+  `# Slide 2[^c1]`.
 
 ## [v0.1.2] - 2026-11-19
 

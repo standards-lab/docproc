@@ -7,7 +7,6 @@ internal sealed class UnreadKinds(List<Warning> warnings)
 {
     public const string Equations = "equations";
     public const string SmartArt = "SmartArt";
-    public const string Comments = "comments";
     public const string Notes = "notes";
 
     /// <summary>The graphic data URI of a SmartArt diagram.</summary>

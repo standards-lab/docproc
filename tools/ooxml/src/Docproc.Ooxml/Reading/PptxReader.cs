@@ -10,7 +10,7 @@ using P = DocumentFormat.OpenXml.Presentation;
 namespace Docproc.Ooxml.Reading;
 
 // See docs/tool-contract.md, "docproc-ooxml".
-internal static class PptxReader
+internal static partial class PptxReader
 {
     public static Conversion Read(PresentationDocument package)
     {
@@ -20,6 +20,7 @@ internal static class PptxReader
         var warnings = new List<Warning>();
         var properties = PropertiesReader.Read(package, warnings);
         var unread = new UnreadKinds(warnings);
+        var comments = new SlideComments(presentationPart, unread);
         var blocks = new List<Block>();
         foreach (var slideId in presentation.SlideIdList?.Elements<P.SlideId>() ?? [])
         {
@@ -34,14 +35,15 @@ internal static class PptxReader
             blocks.Add(new Model.Slide(blocks.Count + 1, slide.Show?.Value == false, reader.ReadShapes(slide.CommonSlideData?.ShapeTree))
             {
                 Notes = ReadNotes(slidePart.NotesSlidePart, unread, place) is { Count: > 0 } notes ? notes : null,
+                Comments = comments.Read(slidePart, place) is { Count: > 0 } ids ? ids : null,
             });
-            if (slidePart.SlideCommentsPart?.CommentList?.HasChildren == true
-                || slidePart.GetPartsOfType<PowerPointCommentPart>().Any(comments => comments.RootElement?.HasChildren == true))
-            {
-                unread.Found(place, UnreadKinds.Comments);
-            }
         }
-        return new Conversion(new Document(SourceFormat.Pptx, blocks) { Properties = properties }, media.Files) { Warnings = warnings };
+        var document = new Document(SourceFormat.Pptx, blocks)
+        {
+            Properties = properties,
+            Comments = comments.All.Count > 0 ? comments.All : null,
+        };
+        return new Conversion(document, media.Files) { Warnings = warnings };
     }
 
     internal sealed record TextScope(OpenXmlPart Part, UnreadKinds Unread, string Place);

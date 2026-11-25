@@ -1861,6 +1861,14 @@ XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_li
 
 TITLE_SLIDE, TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 0, 1, 5, 6
 A = nsdecls("a")
+P15 = "http://schemas.microsoft.com/office/powerpoint/2012/main"
+P188 = "http://schemas.microsoft.com/office/powerpoint/2018/8/main"
+PC = "http://schemas.microsoft.com/office/powerpoint/2013/main/command"
+THREADING_EXTENSION = "{C676402C-5697-4E1C-873F-D02D1690AC5C}"
+CT_MODERN_COMMENTS = "application/vnd.ms-powerpoint.comments+xml"
+CT_MODERN_AUTHORS = "application/vnd.ms-powerpoint.authors+xml"
+RT_MODERN_COMMENTS = "http://schemas.microsoft.com/office/2018/10/relationships/comments"
+RT_MODERN_AUTHORS = "http://schemas.microsoft.com/office/2018/10/relationships/authors"
 ABSENT_ON_SLIDES = ["Click to edit Master title style", "Click to edit Master text styles", "Click to edit Master subtitle style", "<number>"]
 
 
@@ -1905,13 +1913,44 @@ def layout_none(level: int) -> bool | None:
     return None
 
 
+def guid(kind: int, n: int) -> str:
+    """A fixed GUID, as PowerPoint's modern comments name their authors (kind 1) and comments
+    (kind 2), so a rerun writes the same."""
+    return f"{{{kind:08X}-0000-4000-8000-{n:012X}}}"
+
+
+def initials(name: str) -> str:
+    return "".join(word[0] for word in name.split())
+
+
+def modern_text(text: str) -> str:
+    """A modern comment's or reply's text body, a paragraph per line."""
+    paragraphs = "".join(f'<a:p><a:r><a:rPr lang="en-US"/><a:t>{escape(line)}</a:t></a:r></a:p>' for line in text.split("\n"))
+    return f"<p188:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</p188:txBody>"
+
+
+def thread_truth(thread: dict) -> dict:
+    """A comment thread's truth, in the docx comments' shape; a slide comment anchors no text."""
+
+    def paragraphs(text: str) -> list[dict]:
+        return [{"kind": "paragraph", "text": line} for line in (text.split("\n") if thread["modern"] else [text])]
+
+    return {
+        "author": thread["author"],
+        "anchor": "",
+        "resolved": thread["resolved"],
+        "elements": paragraphs(thread["text"]),
+        "replies": [{"author": author, "elements": paragraphs(text)} for author, text in thread["replies"]],
+    }
+
+
 class Deck:
     """A python-pptx presentation and its ground truth, built side by side. absent starts with
     the prompt texts of python-pptx's default layouts and master, which no slide holds, and the
     slide-number field LibreOffice writes in each notes page's slide-number placeholder.
-    libreoffice is how the LibreOffice re-save's ground truth differs, when it does.
-    comment_authors is the comment authors' part, made with the first comment; comments and
-    payloads count the comments and payloads made so far, which number their parts."""
+    libreoffice is how the LibreOffice re-save's ground truth differs, when it does. payloads
+    counts the payloads made so far, which number their parts. The comment parts and their
+    authors' parts are written on saving, from each slide's threads."""
 
     writer, extension, filter = "python-pptx", "pptx", "pptx:Impress MS PowerPoint 2007 XML"
 
@@ -1923,8 +1962,6 @@ class Deck:
         self.absent: list[str] = list(ABSENT_ON_SLIDES)
         self.once: list[str] = []
         self.libreoffice = None
-        self.comment_authors = None
-        self.comments = 0
         self.payloads = 0
 
     def slide(self, layout: int, hidden: bool = False) -> "DeckSlide":
@@ -1946,19 +1983,105 @@ class Deck:
         self.order = order
 
     def save(self, path: pathlib.Path) -> None:
+        self._comment_parts()
         self.prs.save(path)
+
+    def _comment_parts(self) -> None:
+        """Writes each slide's legacy threads to a legacy comments part, a reply naming its
+        thread's first comment in PowerPoint 2013's threading extension, and its modern threads to
+        a modern comments part, then each form's authors' part."""
+        package = self.prs.part.package
+        legacy_authors: list[str] = []
+        modern_authors: list[str] = []
+        last_index: dict[int, int] = {}
+        legacy_parts = 0
+        modern_comments = 0
+        for s in self.slides:
+            comments = []
+            for thread in s.legacy_threads():
+                parent = None
+                for author, text in [(thread["author"], thread["text"]), *thread["replies"]]:
+                    if author not in legacy_authors:
+                        legacy_authors.append(author)
+                    author_id = legacy_authors.index(author)
+                    index = last_index[author_id] = last_index.get(author_id, 0) + 1
+                    threading = (
+                        ""
+                        if parent is None
+                        else f'<p:extLst><p:ext uri="{THREADING_EXTENSION}"><p15:threadingInfo xmlns:p15="{P15}" timeZoneBias="0">'
+                        f'<p15:parentCm authorId="{parent[0]}" idx="{parent[1]}"/></p15:threadingInfo></p:ext></p:extLst>'
+                    )
+                    comments.append(
+                        f'<p:cm authorId="{author_id}" dt="2026-01-15T10:00:00.000" idx="{index}">'
+                        f'<p:pos x="10" y="{10 + 100 * len(comments)}"/><p:text>{escape(text)}</p:text>{threading}</p:cm>'
+                    )
+                    parent = parent or (author_id, index)
+            if comments:
+                legacy_parts += 1
+                xml = f'<p:cmLst {pptx_nsdecls("p")}>{"".join(comments)}</p:cmLst>'
+                part = PptxPart.load(PptxPackURI(f"/ppt/comments/comment{legacy_parts}.xml"), PCT.PML_COMMENTS, package, xml.encode())
+                s.slide.part.relate_to(part, PRT.COMMENTS)
+            comments = []
+            for thread in s.modern_threads():
+                if thread["author"] not in modern_authors:
+                    modern_authors.append(thread["author"])
+                replies = []
+                for author, text in thread["replies"]:
+                    if author not in modern_authors:
+                        modern_authors.append(author)
+                    modern_comments += 1
+                    replies.append(
+                        f'<p188:reply id="{guid(2, modern_comments)}" authorId="{guid(1, modern_authors.index(author))}" created="{DATE}">'
+                        f"{modern_text(text)}</p188:reply>"
+                    )
+                modern_comments += 1
+                status = ' status="resolved"' if thread["resolved"] else ""
+                reply_list = f"<p188:replyLst>{''.join(replies)}</p188:replyLst>" if replies else ""
+                comments.append(
+                    f'<p188:cm id="{guid(2, modern_comments)}" authorId="{guid(1, modern_authors.index(thread["author"]))}" created="{DATE}"{status}>'
+                    f'<pc:sldMkLst xmlns:pc="{PC}"><pc:docMk/><pc:sldMk cId="0" sldId="{s.slide.slide_id}"/></pc:sldMkLst>'
+                    f'{reply_list}{modern_text(thread["text"])}</p188:cm>'
+                )
+            if comments:
+                xml = f'<p188:cmLst {pptx_nsdecls("a", "r")} xmlns:p188="{P188}">{"".join(comments)}</p188:cmLst>'
+                name = f"/ppt/comments/modernComment_{s.slide.slide_id:X}_0.xml"
+                part = PptxPart.load(PptxPackURI(name), CT_MODERN_COMMENTS, package, xml.encode())
+                s.slide.part.relate_to(part, RT_MODERN_COMMENTS)
+        if legacy_authors:
+            authors = "".join(
+                f'<p:cmAuthor id="{n}" name="{escape(name)}" initials="{initials(name)}" lastIdx="{last_index[n]}" clrIdx="{n}"/>'
+                for n, name in enumerate(legacy_authors)
+            )
+            xml = f'<p:cmAuthorLst {pptx_nsdecls("p")}>{authors}</p:cmAuthorLst>'
+            part = PptxPart.load(PptxPackURI("/ppt/commentAuthors.xml"), PCT.PML_COMMENT_AUTHORS, package, xml.encode())
+            self.prs.part.relate_to(part, PRT.COMMENT_AUTHORS)
+        if modern_authors:
+            authors = "".join(
+                f'<p188:author id="{guid(1, n)}" name="{escape(name)}" initials="{initials(name)}" userId="{escape(name)}" providerId="None"/>'
+                for n, name in enumerate(modern_authors)
+            )
+            xml = f'<p188:authorLst xmlns:p188="{P188}">{authors}</p188:authorLst>'
+            part = PptxPart.load(PptxPackURI("/ppt/authors.xml"), CT_MODERN_AUTHORS, package, xml.encode())
+            self.prs.part.relate_to(part, RT_MODERN_AUTHORS)
 
     def presented(self) -> list["DeckSlide"]:
         return [self.slides[i] for i in self.order] if self.order is not None else self.slides
 
     def truth(self) -> dict:
-        return {
-            "fixture": self.name,
-            "format": "pptx",
-            "elements": [s.truth(n) for n, s in enumerate(self.presented())],
-            "absent": self.absent,
-            "once": self.once,
-        }
+        """The deck's truth. A slide's comments are its legacy threads, then its modern ones, each
+        its place, from 1, in the deck's comments, which follow the slides' order."""
+        elements, comments = [], []
+        for n, s in enumerate(self.presented()):
+            element = s.truth(n)
+            threads = s.legacy_threads() + s.modern_threads()
+            if threads:
+                element["comments"] = list(range(len(comments) + 1, len(comments) + 1 + len(threads)))
+                comments += [thread_truth(t) for t in threads]
+            elements.append(element)
+        truth = {"fixture": self.name, "format": "pptx", "elements": elements, "absent": self.absent, "once": self.once}
+        if comments:
+            truth["comments"] = comments
+        return truth
 
     def libreoffice_truth(self) -> dict | None:
         if self.libreoffice is None:
@@ -1978,6 +2101,7 @@ class DeckSlide:
         self.hidden = hidden
         self.elements: list = []
         self.notes: list[dict] = []
+        self.threads: list[dict] = []
 
     def title(self, text: str) -> None:
         self.slide.shapes.title.text = text
@@ -2090,23 +2214,18 @@ class DeckSlide:
                 )
         self.elements.append({"kind": "paragraph", "text": "".join(text for text, _, _ in runs)})
 
-    def comment(self, text: str) -> None:
-        """A comment on the slide, in a legacy comments part, which is not read."""
-        package = self.deck.prs.part.package
-        if self.deck.comment_authors is None:
-            authors = (
-                f'<p:cmAuthorLst {pptx_nsdecls("p")}><p:cmAuthor id="0" name="{AUTHOR}" initials="FA" lastIdx="1" clrIdx="0"/></p:cmAuthorLst>'
-            )
-            self.deck.comment_authors = PptxPart.load(PptxPackURI("/ppt/commentAuthors.xml"), PCT.PML_COMMENT_AUTHORS, package, authors.encode())
-            self.deck.prs.part.relate_to(self.deck.comment_authors, PRT.COMMENT_AUTHORS)
-        self.deck.comments += 1
-        xml = (
-            f'<p:cmLst {pptx_nsdecls("p")}><p:cm authorId="0" dt="2026-01-15T10:00:00.000" idx="1">'
-            f'<p:pos x="10" y="10"/><p:text>{escape(text)}</p:text></p:cm></p:cmLst>'
-        )
-        part = PptxPart.load(PptxPackURI(f"/ppt/comments/comment{self.deck.comments}.xml"), PCT.PML_COMMENTS, package, xml.encode())
-        self.slide.part.relate_to(part, PRT.COMMENTS)
-        self.deck.absent.append(text)
+    def comment(self, author: str, text: str, replies: list[tuple[str, str]] = (), modern: bool = False, resolved: bool = False) -> None:
+        """A comment thread on the slide: its author, its text (a newline between a modern
+        comment's paragraphs), and its replies of (author, text), legacy as PowerPoint 2019 and
+        earlier write it, or modern, PowerPoint 365's threaded comments, resolved or not. A
+        legacy comment has no state, so its thread is open."""
+        self.threads.append({"author": author, "text": text, "replies": list(replies), "modern": modern, "resolved": resolved})
+
+    def legacy_threads(self) -> list[dict]:
+        return [t for t in self.threads if not t["modern"]]
+
+    def modern_threads(self) -> list[dict]:
+        return [t for t in self.threads if t["modern"]]
 
     def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
         """An embedded package (kind "embedded") or OLE object ("ole") in a graphic frame, its
@@ -2300,7 +2419,7 @@ def slide_objects() -> Deck:
 
 def slide_links() -> Deck:
     """A paragraph with an external hyperlink and a hyperlink to another slide, which stays
-    text; a comment on the first slide, which is not read."""
+    text."""
     f = Deck("slide-links")
     first = f.slide(TITLE_ONLY)
     second = f.slide(TITLE_ONLY)
@@ -2314,7 +2433,6 @@ def slide_links() -> Deck:
             (".", None, None),
         ]
     )
-    first.comment("A comment on the first slide.")
     second.title("The next slide")
     return f
 
@@ -2342,7 +2460,63 @@ def slide_embeddings() -> Deck:
     return f
 
 
-PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings]
+def slide_comments() -> Deck:
+    """Legacy comments by two authors on two of three slides: two threads on the first, one
+    holding Markdown's characters, and on the third a thread with a reply that names it in
+    PowerPoint 2013's threading extension; the second slide has none."""
+    f = Deck("slide-comments")
+    first = f.slide(TITLE_ONLY)
+    first.title("Budget")
+    first.comment("Ana Reviewer", "Is the *total* right?")
+    first.comment("Ben Author", "The figures are from the ledger.")
+    second = f.slide(TITLE_ONLY)
+    second.title("Timeline")
+    third = f.slide(TITLE_ONLY)
+    third.title("Staffing")
+    third.comment("Ben Author", "Two hires are still open.", [("Ana Reviewer", "One closes next week.")])
+
+    def libreoffice(truth: dict) -> None:
+        """LibreOffice drops the threading extension, so the reply is a thread of its own."""
+        comments = []
+        for slide in truth["elements"]:
+            if "comments" not in slide:
+                continue
+            flat = []
+            for n in slide["comments"]:
+                thread = truth["comments"][n - 1]
+                flat.append({**thread, "replies": []})
+                flat += [{"author": r["author"], "anchor": "", "resolved": False, "elements": r["elements"], "replies": []} for r in thread["replies"]]
+            slide["comments"] = list(range(len(comments) + 1, len(comments) + 1 + len(flat)))
+            comments += flat
+        truth["comments"] = comments
+
+    f.libreoffice = libreoffice
+    return f
+
+
+def slide_threads() -> Deck:
+    """Modern comments, PowerPoint 365's threaded ones: on the first slide an open thread of a
+    comment and two replies by two authors, on the second a resolved comment of two paragraphs
+    by a third."""
+    f = Deck("slide-threads")
+    first = f.slide(TITLE_ONLY)
+    first.title("Roadmap")
+    first.comment("Ana Reviewer", "Is the launch date fixed?", [("Ben Author", "It moved to March."), ("Ana Reviewer", "Thanks, noted.")], modern=True)
+    second = f.slide(TITLE_ONLY)
+    second.title("Risks")
+    second.comment("Cleo Editor", "Add the supplier risk.\nIt was raised last week.", modern=True, resolved=True)
+
+    def libreoffice(truth: dict) -> None:
+        """LibreOffice reads no modern comments, so its re-save has none."""
+        del truth["comments"]
+        for slide in truth["elements"]:
+            slide.pop("comments", None)
+
+    f.libreoffice = libreoffice
+    return f
+
+
+PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings, slide_comments, slide_threads]
 
 
 REFUSED = GENERATED / "refused"

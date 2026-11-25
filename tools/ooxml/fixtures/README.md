@@ -105,16 +105,18 @@ The pptx fixtures are in `generated/pptx/`:
 - `<name>.python-pptx.pptx`: written by python-pptx on its default template, with what it has no
   API for set on its XML: a hidden slide's `show="0"`, the presentation's slide order, each
   paragraph's own bullet (`buNone`, `buChar`, `buAutoNum`), the pictures' alternative text
-  and title, a hyperlink to another slide, the comments and comment authors parts, and the OLE
-  objects' graphic frames (one in PowerPoint 2010's alternate content) with their payload
-  parts. Its charts are its own, with an embedded workbook and cached series.
+  and title, a hyperlink to another slide, the legacy comments and comment authors parts (a
+  reply's PowerPoint 2013 threading extension among them), PowerPoint 365's modern comments and
+  authors parts, and the OLE objects' graphic frames (one in PowerPoint 2010's alternate content)
+  with their payload parts. Its charts are its own, with an embedded workbook and cached series.
 - `<name>.libreoffice.pptx`: that file re-saved by LibreOffice.
 - `<name>.truth.json` and `<name>.libreoffice.truth.json`: each slide in presentation order, its
   `number`, whether it is `hidden`, its elements in the docx truth's shape (a title is a level-1
   `heading`; a picture's `media` and a payload's `embedded` or `ole` have their `slide`, the
-  slide's index), and its `notes`' elements when it has notes. `absent` holds the layouts' and
-  master's prompt texts and LibreOffice's notes-page slide-number field, which must appear
-  nowhere.
+  slide's index), its `notes`' elements when it has notes, and its `comments`, each its thread's
+  place, from 1, in the truth's `comments`, which are in the docx truth's shape, with no anchored
+  text. `absent` holds the layouts' and master's prompt texts and LibreOffice's notes-page
+  slide-number field, which must appear nowhere.
 
 | Fixture | Covers |
 | --- | --- |
@@ -145,8 +147,10 @@ The pptx fixtures are in `generated/pptx/`:
 | `bullets` (pptx) | a content placeholder's master bullets nested three levels and back, a paragraph whose own bullet is none between lists, a numbered list with a bullet nested in it, a bullet list right after it at the same level; a text box's plain paragraph, its own bullets nested, its own number, an empty paragraph |
 | `groups` (pptx) | a text box, a group of a text box and a nested group (a text box and a picture), and a text box placed above them all but last in the shape tree |
 | `slide-objects` (pptx) | a table with a cell merged across columns and one across rows, a cell of two paragraphs, a pipe; a titled clustered column chart of two series with a missing value, with notes; the same picture on two slides, with another placed over it on the first; alternative text and a title |
-| `slide-links` (pptx) | a paragraph's external hyperlink and its hyperlink to the next slide, which stays text; a comment, which is not read |
+| `slide-links` (pptx) | a paragraph's external hyperlink and its hyperlink to the next slide, which stays text |
 | `slide-embeddings` (pptx) | on a second slide, an OLE object (the refused set's Word 97-2003 document) in PowerPoint 2010's alternate content and an embedded package (a docx), each with its preview picture; on the first, a chart whose source workbook python-pptx embeds, which is never media |
+| `slide-comments` (pptx) | legacy comments by two authors on the first and third of three slides: two threads on the first, one holding Markdown's characters; on the third a thread and a reply its threading extension names |
+| `slide-threads` (pptx) | modern comments: an open thread of a comment and two replies by two authors, and on a second slide a resolved comment of two paragraphs |
 
 What LibreOffice's re-save changes, checked by unzipping it:
 
@@ -211,6 +215,9 @@ And in a pptx file, where python-pptx's file and LibreOffice's differ:
 - LibreOffice keeps an OLE object's compound file as it is but stores it as a Word 97-2003
   document part (`.doc`, `application/msword`), and keeps the embedded package and both
   previews (`slide-embeddings`: its LibreOffice truth says so).
+- LibreOffice keeps legacy comments and their authors but drops the threading extension, so a
+  reply is a thread of its own (`slide-comments`), and drops modern comments altogether
+  (`slide-threads`): their LibreOffice truths say so.
 
 ## Refused set
 
@@ -340,13 +347,21 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/pptx/slide-objects.libreoffice.pptx` | `7c0b5e40f22001166b9e4ee6f3b8e68a5c21fc6ea73e8ed77e15caffd4918995` |
 | `generated/pptx/slide-objects.truth.json` | `e01a1d4068f68da865feefd2bc1f0acd25faa9eaee5164ed37102a3408a52cac` |
 | `generated/pptx/slide-objects.libreoffice.truth.json` | `aca5bab816c442c3e83e98033bf66aea784d1fac2a8012db2241fe36f05f3952` |
-| `generated/pptx/slide-links.python-pptx.pptx` | `99c2e62124d1669b7d6fd6d261820953b2ee30e62c490d41fd4a0b976206421b` |
-| `generated/pptx/slide-links.libreoffice.pptx` | `db498f0b4772123ae532b0742ffd44d525508a641cd8e51c702353e0aef896b9` |
-| `generated/pptx/slide-links.truth.json` | `4400457f735fc5da691debb66c1ba07e17ef5dc3d74203f6f8cfb1ef8dcffc56` |
+| `generated/pptx/slide-links.python-pptx.pptx` | `0cd38bbe083b6fce39cf6c5a08bd6b99907e393c7f11712981bd62a416f0bf28` |
+| `generated/pptx/slide-links.libreoffice.pptx` | `50cbfbc0e026e60fa86e26a33c29e28cb4cc0d6f7ee173d6ec5010e124b846d8` |
+| `generated/pptx/slide-links.truth.json` | `9530ae50741ce1d78283cbd4cbe48a045dc9030e41afd1fae9b408d470a29180` |
 | `generated/pptx/slide-embeddings.python-pptx.pptx` | `2cbd0b86d761d999d220f7143030d8bcfecce1744e3dcbf829d818033a157de0` |
 | `generated/pptx/slide-embeddings.libreoffice.pptx` | `2453a3a5fe8cf8cfb5cc25c9feb1fba1133a3481023684a29fb40fa2a418ac55` |
 | `generated/pptx/slide-embeddings.truth.json` | `d77eb43f7bb3f94f42cc9078abbf02f48a2ea7cb26fcc98b0c2612d2b94c228c` |
 | `generated/pptx/slide-embeddings.libreoffice.truth.json` | `0d02978be5b48c1a40ae707e26cdbcd220905ba32af4b7110159550c7c0d57d7` |
+| `generated/pptx/slide-comments.python-pptx.pptx` | `baebd558eaa5eab4208a234f3f7e4442dbdf87807d4b4be493b249bf85759b97` |
+| `generated/pptx/slide-comments.libreoffice.pptx` | `c06523e4db6840b61f26530ee8f96b7669d588a0a47b35651a735c4f64e1dd09` |
+| `generated/pptx/slide-comments.truth.json` | `adee0048304abcad4c2bd6c15a8b69be8b0bc0f2f33b9774e3225d39d22b09a7` |
+| `generated/pptx/slide-comments.libreoffice.truth.json` | `ac3977bac978e58b6a3f341912e6130d9ef5e6bcd436d350af9116f52dad9f9c` |
+| `generated/pptx/slide-threads.python-pptx.pptx` | `a2d72c8449cb01ae5c92a2fc60f84b0aef9931a8c840ba858f1b82c204440092` |
+| `generated/pptx/slide-threads.libreoffice.pptx` | `ae13eb2ba14abce1146fc160374a7ac1e073756a4dc1e031a2b319ed05d39962` |
+| `generated/pptx/slide-threads.truth.json` | `9c8e471cb599702af92f4f97bdab4baf8828c1201b5a4910943417c6aa9186b9` |
+| `generated/pptx/slide-threads.libreoffice.truth.json` | `a63267d5572ff9da1e3a549bfddb2c219a52520ec252c87b790d7633313c5657` |
 | `generated/refused/encrypted.libreoffice.docx` | `aee62a814f3d872d211d57c598bf8d4e9c88f1322ec4a5083d07c9b23c4bf9a6` |
 | `generated/refused/legacy.libreoffice.doc` | `6c1632e53bcc4f90f95756dd1c7a05d207433a4474550da7e689a4a09b5a77ab` |
 <!-- generated: end -->
