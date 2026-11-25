@@ -90,6 +90,7 @@ func File(path, name, mimeType string) (Route, string, error) // the route, and 
 func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, string, error)
 func Ext(name string) string                                   // trimmed and lowercased
 func EncryptedPackage(r io.ReaderAt, size int64) (bool, error) // an OLE2 EncryptedPackage
+func RARVolume(head []byte) bool                               // a RAR's main header marks a volume
 func LegacyTarget(ext string) string // the OOXML extension a legacy one converts to
 
 package inspect

@@ -444,7 +444,7 @@ var extensionKinds = map[string][]route.Kind{
 	".zip": {route.ZIP}, ".jar": {route.ZIP}, ".epub": {route.ZIP, route.ODF},
 	".7z": {route.SevenZip}, ".gz": {route.Gzip}, ".tgz": {route.Gzip}, ".zst": {route.Zstd},
 	".tar": {route.Tar},
-	".wav": {route.WAV}, ".flac": {route.FLAC}, ".mp3": {route.MP3}, ".ogg": {route.Ogg},
+	".wav": {route.WAV}, ".flac": {route.FLAC}, ".mp3": {route.MP3}, ".ogg": {route.Ogg, route.OggVideo},
 	".m4a": {route.M4A}, ".mp4": {route.MP4}, ".mkv": {route.MKV}, ".webm": {route.WebM},
 	".avi": {route.AVI},
 	".exe": {route.PE}, ".dll": {route.PE}, ".scr": {route.PE},

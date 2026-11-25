@@ -9,10 +9,13 @@
 // first entry, mimetype, names an OpenDocument type; an RTF or a WordPerfect document; a .pst or
 // an .ost, by the PST header's client magic, and an mbox, by its first line's "From ", as mail
 // sniffs them; a OneNote OneStore file or a cabinet (MSCF); a WAV, FLAC, MP3, Ogg, or M4A; an
-// MP4, Matroska, WebM, or AVI; a tar, gzip, zstd, or 7z archive; a PE executable, by "MZ" and the
-// PE signature its DOS header points to, an ELF or Mach-O executable, or a script's "#!" line
-// naming an absolute path; or text marked by a byte order mark. A short signature is checked
-// past its bytes where its format allows: an MP3's ID3 tag by its version and size bytes.
+// MP4, Matroska, WebM, or AVI; an MPEG program stream, by its pack start code; an Ogg whose first
+// pages begin a Theora, VP8, Dirac, or OGM video stream; a tar, gzip, zstd, 7z, RAR4, RAR5, or xz
+// archive; a bzip2 stream, by "BZh", its block size digit, and its first block's or end's magic;
+// a PE executable, by "MZ" and the PE signature its DOS header points to, an ELF or Mach-O
+// executable, or a script's "#!" line naming an absolute path; or text marked by a byte order
+// mark. A short signature is checked past its bytes where its format allows: an MP3's ID3 tag by
+// its version and size bytes.
 //
 // [File] routes the file at a path, and [At] the same content already open, by its kind, never by
 // its stored MIME type, and by its name's extension, as [Ext] reads it, only where the content
@@ -45,10 +48,10 @@
 //     with a text extension.
 //   - [OneNote]: a OneNote section or table of contents, by its OneStore signature, or a cabinet
 //     named .onepkg, a OneNote package.
-//   - [Archive]: a ZIP that is neither office's nor ODF, a tar, gzip, zstd, or 7z archive, or a
-//     cabinet not named .onepkg.
-//   - [Audio]: WAV, FLAC, MP3, Ogg, or M4A.
-//   - [Video]: MP4, Matroska, WebM, or AVI.
+//   - [Archive]: a ZIP that is neither office's nor ODF, a tar, gzip, zstd, 7z, RAR4, RAR5, xz,
+//     or bzip2 archive, or a cabinet not named .onepkg.
+//   - [Audio]: WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A.
+//   - [Video]: MP4, Matroska, WebM, AVI, an MPEG program stream, or an Ogg video.
 //   - [Text]: content of no signature named with a text extension, such as .txt, .csv, or
 //     .json, or marked by a byte order mark; and text named so whose head a short signature
 //     begins, such as a note that begins "#!/bin/sh".
@@ -63,10 +66,11 @@
 //   - [Kind] names the format a signature identifies, [Unknown] for none: [PDF]; [PNG], [JPEG],
 //     [GIF], and [BMP]; [TIFF], [EMF], [WMF], [SVG], [HEIC], [WebP], and [AVIF]; [ZIP], [OLE2],
 //     [ODF], [RTF], and [WordPerfect]; [PST], [OST], and [Mbox]; [OneStore] and [MSCF]; [WAV],
-//     [FLAC], [MP3], [Ogg], and [M4A]; [MP4], [MKV], [WebM], and [AVI]; [Gzip], [Zstd],
-//     [SevenZip], and [Tar]; [PE], [ELF], [MachO], and [Shebang]; and [UTF8BOM], [UTF16BOM],
-//     and [UTF32BOM].
+//     [FLAC], [MP3], [Ogg], and [M4A]; [MP4], [MKV], [WebM], [AVI], [MPEGPS], and [OggVideo];
+//     [Gzip], [Zstd], [SevenZip], [Tar], [RAR4], [RAR5], [XZ], and [Bzip2]; [PE], [ELF],
+//     [MachO], and [Shebang]; and [UTF8BOM], [UTF16BOM], and [UTF32BOM].
 //   - [Identify] names the Kind a file's first bytes begin.
+//   - [RARVolume] reports whether a RAR's head marks it one volume of a split set.
 //   - [HeadLen] is the most of a file's first bytes Identify reads.
 //   - [PNGSignature] is the eight bytes every PNG begins with.
 //   - [Route] names the stage content goes to next: [Document], [Office], [Vision],

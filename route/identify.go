@@ -65,12 +65,25 @@ const (
 	MKV  Kind = "mkv"
 	WebM Kind = "webm"
 	AVI  Kind = "avi"
+	// MPEGPS is an MPEG-1 or MPEG-2 program stream, by its pack start code.
+	MPEGPS Kind = "mpeg-ps"
+	// OggVideo is an Ogg file whose first pages, within the head, begin a Theora, VP8, Dirac, or
+	// OGM video stream; any other Ogg is [Ogg].
+	OggVideo Kind = "ogg-video"
 
 	Gzip     Kind = "gzip"
 	Zstd     Kind = "zstd"
 	SevenZip Kind = "7z"
 	// Tar is a POSIX or GNU tar archive, by the "ustar" magic at offset 257 of its first header.
 	Tar Kind = "tar"
+	// RAR4 and RAR5 are RAR archives of the two formats, by their signatures; [RARVolume] reads
+	// whether one is a volume of a split set.
+	RAR4 Kind = "rar4"
+	RAR5 Kind = "rar5"
+	XZ   Kind = "xz"
+	// Bzip2 is a bzip2 stream, by "BZh", its block size digit, and the magic of its first block
+	// or, for an empty stream, of its end.
+	Bzip2 Kind = "bzip2"
 
 	PE      Kind = "pe"
 	ELF     Kind = "elf"
@@ -121,6 +134,13 @@ var (
 	gzipSignature = []byte{0x1f, 0x8b}
 	zstdSignature = []byte{0x28, 0xb5, 0x2f, 0xfd}
 	sevenZip      = []byte{'7', 'z', 0xbc, 0xaf, 0x27, 0x1c}
+	rar4Signature = []byte("Rar!\x1a\x07\x00")
+	rar5Signature = []byte("Rar!\x1a\x07\x01\x00")
+	xzSignature   = []byte{0xfd, '7', 'z', 'X', 'Z', 0x00}
+	bzip2Magic    = []byte("BZh")
+	bzip2Block    = []byte{0x31, 0x41, 0x59, 0x26, 0x53, 0x59}
+	bzip2End      = []byte{0x17, 0x72, 0x45, 0x38, 0x50, 0x90}
+	mpegPack      = []byte{0x00, 0x00, 0x01, 0xba}
 	peSignature   = []byte("MZ")
 	elfSignature  = []byte("\x7fELF")
 	shebang       = []byte("#!")
@@ -138,6 +158,8 @@ var machOMagics = [][]byte{
 	{0xce, 0xfa, 0xed, 0xfe}, {0xcf, 0xfa, 0xed, 0xfe},
 	{0xca, 0xfe, 0xba, 0xbe},
 }
+
+var oggVideoCodecs = [][]byte{[]byte("\x80theora"), []byte("OVP80"), []byte("BBCD\x00"), []byte("\x01video")}
 
 var bmpHeaderSizes = map[uint32]bool{12: true, 40: true, 52: true, 56: true, 64: true, 108: true, 124: true}
 
@@ -186,12 +208,17 @@ var signatures = []func([]byte) Kind{
 	isRIFF,
 	prefix(flacSignature, FLAC),
 	isID3,
-	prefix(oggSignature, Ogg),
+	isOgg,
 	isISOBMFF,
 	isEBML,
+	prefix(mpegPack, MPEGPS),
 	prefix(gzipSignature, Gzip),
 	prefix(zstdSignature, Zstd),
 	prefix(sevenZip, SevenZip),
+	prefix(rar4Signature, RAR4),
+	prefix(rar5Signature, RAR5),
+	prefix(xzSignature, XZ),
+	isBzip2,
 	isTar,
 	prefix(elfSignature, ELF),
 	isMachO,
@@ -338,6 +365,48 @@ func isTar(head []byte) Kind {
 		return Tar
 	}
 	return Unknown
+}
+
+func isBzip2(head []byte) Kind {
+	if len(head) < 10 || !bytes.HasPrefix(head, bzip2Magic) || head[3] < '1' || head[3] > '9' {
+		return Unknown
+	}
+	if magic := head[4:10]; bytes.Equal(magic, bzip2Block) || bytes.Equal(magic, bzip2End) {
+		return Bzip2
+	}
+	return Unknown
+}
+
+const (
+	oggPageHeader = 27
+	oggBOS        = 0x02
+)
+
+func isOgg(head []byte) Kind {
+	if !bytes.HasPrefix(head, oggSignature) {
+		return Unknown
+	}
+	for at := 0; at+oggPageHeader <= len(head) && bytes.HasPrefix(head[at:], oggSignature); {
+		if head[at+5]&oggBOS == 0 {
+			break
+		}
+		segments := int(head[at+26])
+		table := at + oggPageHeader
+		if table+segments > len(head) {
+			break
+		}
+		body := table + segments
+		for _, codec := range oggVideoCodecs {
+			if bytes.HasPrefix(head[body:], codec) {
+				return OggVideo
+			}
+		}
+		for _, n := range head[table:body] {
+			body += int(n)
+		}
+		at = body
+	}
+	return Ogg
 }
 
 func isRIFF(head []byte) Kind {

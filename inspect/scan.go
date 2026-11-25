@@ -27,6 +27,7 @@ var containerKinds = map[route.Kind]bool{
 	route.ZIP: true, route.ODF: true, route.OLE2: true, route.PST: true, route.OST: true,
 	route.Mbox: true, route.Tar: true, route.MSCF: true, route.OneStore: true,
 	route.SevenZip: true, route.Gzip: true, route.Zstd: true,
+	route.RAR4: true, route.RAR5: true, route.XZ: true, route.Bzip2: true,
 	route.Unknown: true, route.UTF8BOM: true, route.UTF16BOM: true, route.UTF32BOM: true,
 	route.Shebang: true,
 }
