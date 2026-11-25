@@ -45,8 +45,9 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   data, no embedded workbook), a picture part of its own and a linked picture's external
   relationship, the footnotes and endnotes parts (with Word's separator and continuation notes),
   the comments and commentsExtended parts, the hyperlinks and bookmarks, the custom properties
-  part, and the kinds docproc-ooxml doesn't read: a VML text box, an equation, and a SmartArt
-  diagram with its four diagram parts.
+  part, the text boxes (Word's DrawingML text box in alternate content with its VML copy as the
+  fallback, and a VML text box alone), and the kinds docproc-ooxml doesn't read: an equation and
+  a SmartArt diagram with its four diagram parts.
 - `<name>.libreoffice.docx`: that file opened and saved again by LibreOffice, so the set also
   carries a real application's XML. Both are kept: the first is the XML the script means to
   write, the second what an editor makes of it, and docproc-ooxml must read both the same way.
@@ -55,7 +56,8 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   against it element by element. It holds:
   - `elements`: the accepted-state text of each element in document order:
     - `heading`, with its level.
-    - `paragraph`.
+    - `paragraph`; a text box's paragraphs follow the paragraph that anchors it, as its
+      pictures do.
     - `listItem`, with its nesting level, whether its level is ordered, and whether it starts a
       list rather than continuing the one before it; on an ordered list's first item, its first
       number, `startAt`, when that isn't 1.
@@ -72,7 +74,8 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   - `marks` on a paragraph or list item: each note or comment reference's offset in the text,
     its kind, and its note's or comment's place, from 1, in the truth's list of them.
   - `absent`: the strings that must appear nowhere in docproc-ooxml's output (deleted text).
-  - `once`: the strings that must appear exactly once (moved text).
+  - `once`: the strings that must appear exactly once (moved text, and a text box's text that
+    the document holds twice).
   - `sections`: each section's headers and footers as its pages show them, kind and elements.
   - `footnotes` and `endnotes`: the notes, in the order the text first references them.
   - `comments`: each thread's author, anchored text, resolved state, elements, and replies.
@@ -84,7 +87,7 @@ The xlsx fixtures are in `generated/xlsx/`, the same three or four files each:
 
 - `<name>.openpyxl.xlsx`: written by openpyxl, with what openpyxl can't write patched in as raw
   XML: the shared formula, the cell stored as an ISO date (`t="d"`), the pictures' alternative
-  text, and the OLE objects (`oleObjects`, one in Excel 2010's alternate content) with their
+  text, the text box shapes, and the OLE objects (`oleObjects`, one in Excel 2010's alternate content) with their
   payload and preview parts.
 - `<name>.libreoffice.xlsx`: that file re-saved by LibreOffice.
 - `<name>.truth.json` and `<name>.libreoffice.truth.json`: each sheet in workbook order, its name,
@@ -93,7 +96,7 @@ The xlsx fixtures are in `generated/xlsx/`, the same three or four files each:
   8601, from the date the script gave openpyxl), its `formula` or its shared formula's anchor
   (`sharedFrom`), its `colSpan` and `rowSpan` when merged, and its external hyperlink's
   `target`; then its charts and pictures, a picture with its `sheet` (the sheet's index, from
-  0), then its objects, each its preview's `media` and its payload's `embedded` or `ole`. The
+  0), then its text boxes' paragraphs, then its objects, each its preview's `media` and its payload's `embedded` or `ole`. The
   re-save has its own truth wherever its cells differ, which is in every fixture with a formula,
   a boolean, or an error.
 
@@ -127,7 +130,8 @@ The pptx fixtures are in `generated/pptx/`:
 | `media` | a picture on its own line, one between text, the first picture's bytes again through the same part and through a part of its own, an EMF, a linked picture, a deleted picture, one in a table cell, one in a second section |
 | `charts` | a clustered bar chart of two series with a missing value, an untitled pie chart, a line chart |
 | `links` | an external hyperlink whose URL holds `&`, an internal one to a bookmark, which stays text, a hyperlink followed by a footnote's reference; text holding the private-use characters U+E000 and U+E001 beside a footnote's reference; a chart in a table cell; core properties and custom ones of five variant types, one name given twice |
-| `unread` | two VML text boxes, an equation, and a SmartArt diagram, each kind warned of once and none of their text read |
+| `text-boxes` | a text box of two paragraphs in alternate content, DrawingML with its VML copy as the fallback, read once; a VML text box alone; a text box anchored in a paragraph of no text; a text box in a table cell |
+| `unread` | two equations and a SmartArt diagram, each kind warned of once and none of their text read |
 | `cells` (xlsx) | text, rich text, numbers, booleans, errors; dates, datetimes, and times in default, built-in (14, 22, 20), and custom formats, among them quoted text and AM/PM; numbers in formats that aren't dates (`0.00%`, `#,##0`, and letters quoted, bracketed, and escaped); dates either side of the 1900 system's 29 February; a cell stored as an ISO date; text holding `_x0009_` and the escaped underscore `_x005F_`; a duration past a day in the elapsed format `[h]:mm`; a styled cell with no value; a sparse far corner |
 | `formulas` (xlsx) | formulas whose results are a number, text, an error, a boolean, and a date by its format; a shared formula over three cells; an array formula over three |
 | `sheets` (xlsx) | five sheets in an order that isn't their names': a hidden, an empty, and a very hidden one; merged cells across columns, rows, and both |
@@ -135,6 +139,7 @@ The pptx fixtures are in `generated/pptx/`:
 | `drawings` (xlsx) | a bar chart over the sheet's cells; the same picture twice on one sheet; a second sheet's picture |
 | `dates-1904` (xlsx) | dates and a datetime on the 1904 date system's first day (serial 0.5), and a plain number |
 | `sheet-links` (xlsx) | external hyperlinks on a text cell and a number cell, a hyperlink to a place in the workbook, which stays text, and a cell's note, which is not read |
+| `sheet-text-boxes` (xlsx) | a sheet's picture and, after it in the drawing part, a text box of two paragraphs and one of one; a second sheet with no drawing |
 | `sheet-embeddings` (xlsx) | on a second sheet, an OLE object (the refused set's Word 97-2003 document as its compound file) in Excel 2010's alternate content and an embedded package (a docx), each with its preview picture |
 | `slides` (pptx) | five slides presented in an order that isn't their parts' (welcome, hidden, agenda, closing, questions), a hidden slide, notes of one and two paragraphs on three slides, a title slide's subtitle whose layout turns the master's bullets off, a text box, and a content placeholder left empty |
 | `bullets` (pptx) | a content placeholder's master bullets nested three levels and back, a paragraph whose own bullet is none between lists, a numbered list with a bullet nested in it, a bullet list right after it at the same level; a text box's plain paragraph, its own bullets nested, its own number, an empty paragraph |
@@ -160,6 +165,8 @@ What LibreOffice's re-save changes, checked by unzipping it:
   the truth is the same, but only the python-docx file has the case.
 - It keeps the charts' cached data, the notes (renumbering them, the separators too), the
   comments' replies and resolved state (in its own commentsExtended), and the linked picture.
+- It writes every text box as DrawingML in alternate content: it keeps the VML fallback of one
+  written both ways and gives a VML one alone an empty fallback (`text-boxes`).
 - It moves a footnote's reference that follows a hyperlink into the hyperlink (`links`), keeps
   the first of two custom properties of one name and drops the second, and writes the custom
   properties in its own order.
@@ -283,9 +290,12 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/docx/links.python-docx.docx` | `a505f8b03b3ab5f7eda25f86fbdd9e56d00c0e9601b85b994a8a39e19f428d9f` |
 | `generated/docx/links.libreoffice.docx` | `70deb217075b33d0bd16ee09bb2130b718fb521c6206a0945f01ed877db031f7` |
 | `generated/docx/links.truth.json` | `07aa01c7acc1179c2aa9f4e3f559fa8d14455bc5ab29325429e30e5d4fd70acf` |
-| `generated/docx/unread.python-docx.docx` | `52523a35b6bc3d1bd8386ef5333cfd67633fff56c83a39d556bc7d2498697d18` |
-| `generated/docx/unread.libreoffice.docx` | `9273b6e95a5541eb2ae796969f78775a5585d00ddda919cd29e137924f9e1c7a` |
-| `generated/docx/unread.truth.json` | `7fca2bf27bc1b6ab6b7259061b28592ccf1a41bdace61d52564880e0bef37e7f` |
+| `generated/docx/text-boxes.python-docx.docx` | `b8383a66d39f4d113324bce294f2bded534190ee172e89d7ae531b5183dae198` |
+| `generated/docx/text-boxes.libreoffice.docx` | `e5fc72ce47f9d775bab6deaea3bc52981c5db66560a4eadaea28e1298cb0da84` |
+| `generated/docx/text-boxes.truth.json` | `974954b94156a156b711f9dfb97eb1aa944b091649934858f404204c33b38780` |
+| `generated/docx/unread.python-docx.docx` | `2ed15e4c4ba8edfbbae80d36efbfe635886a877cc3db30ed5789bab86becabcd` |
+| `generated/docx/unread.libreoffice.docx` | `343f0c6e3fc8724993fa5dae75602df9ad36fdec912ce9759067f6d22e161f7b` |
+| `generated/docx/unread.truth.json` | `dc145e0e026ec6bf2d7ee64858d3d637ebdb2fa17ade13c7602bd89ab8677efc` |
 | `generated/xlsx/cells.openpyxl.xlsx` | `b19f98987db897942dccb5eb3c390719713e60508dfe2ca1f8dddf91096e80ee` |
 | `generated/xlsx/cells.libreoffice.xlsx` | `c0f7a44e8229d67faed7e0d38b5e183d6e36759cbd2caf37724cd233db7aa17b` |
 | `generated/xlsx/cells.truth.json` | `663de2ede46fffb3c6763687ae877b4b25ee8d8fb2dd77ea4c57a57214f29200` |
@@ -314,6 +324,9 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/xlsx/sheet-embeddings.libreoffice.xlsx` | `6106baa33d76baf243fe2f2b0234e25ad6f4bff38f7d32246601bf58e6324dd5` |
 | `generated/xlsx/sheet-embeddings.truth.json` | `a76fb0d073c3b70cc2e5f8df5c8d816e717db37b42d4ae7ed06dc8d023ca578b` |
 | `generated/xlsx/sheet-embeddings.libreoffice.truth.json` | `e2bbd07b591e4fe7c0e92c5c1540b57a434f6dd94d4945828a2bd506f76ac06d` |
+| `generated/xlsx/sheet-text-boxes.openpyxl.xlsx` | `f790c20ae0f12559b9ae45cceb0c5e276486adc29b35885a1b79d36a03fc9ea2` |
+| `generated/xlsx/sheet-text-boxes.libreoffice.xlsx` | `3977cb4854f58844dbf4477136e44b17ddb10882f03f7cee4af3a3522158e125` |
+| `generated/xlsx/sheet-text-boxes.truth.json` | `710e9222ced77d04f4b0ab3676cc7ea5aff5add514ac06c084e5be0f95a20c71` |
 | `generated/pptx/slides.python-pptx.pptx` | `fc9f5f4fb65f618489c0561fa1b6aa4c1395d815fc438535058d86711cbe47f0` |
 | `generated/pptx/slides.libreoffice.pptx` | `956895b6d18ea6609ac03cbb8e723dd639b131beade1b4d2bde17da2ae71736b` |
 | `generated/pptx/slides.truth.json` | `feca71bc485c7f545641188beb60ef4bef05a54c52e9b406574c32a15abc4635` |

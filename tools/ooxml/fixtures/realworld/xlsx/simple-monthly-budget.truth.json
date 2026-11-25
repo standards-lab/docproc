@@ -396,6 +396,10 @@
               ]
             }
           ]
+        },
+        {
+          "kind": "paragraph",
+          "text": "Need to add more entries? Start typing below the last entry and the table will automatically expand when you press Enter."
         }
       ]
     }

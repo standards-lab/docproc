@@ -82,8 +82,8 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   Markdown is split along its lines, and each sheet's text exists once: the `document` line holds
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
-  header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables and its
-  pictures' links, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
+  header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables, its
+  pictures' links, and its shapes' paragraphs, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
   bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The lines'
   Markdown fragments concatenate in order with nothing between them into the document's whole
   rendering: each ends in its own newline and opens with the blank line that separates it from the
@@ -135,8 +135,8 @@ The model the lines are written from is one tree for the three formats, its bloc
 order, every block but a media block the document's text, complete without inference. Each
 format is read as below; a warning's `<where>` is a docx `section n` or `comments`, an xlsx
 `sheet n` (its `sheet` line's ordinal, or for a sheet with no line its ordinal in the workbook),
-or a pptx `slide n`, and the unread kinds (text boxes, equations, SmartArt, a pptx's comments,
-an xlsx's notes) are warned of once each, where the document first holds one
+or a pptx `slide n`, and the unread kinds (equations, SmartArt, a pptx's comments, an xlsx's
+notes) are warned of once each, where the document first holds one
 ([`design-review.md`](design-review.md), OX-11).
 
 - **docx: the text.** Tracked changes are read accepted: insertions and a move's destination are
@@ -150,8 +150,8 @@ an xlsx's notes) are warned of once each, where the document first holds one
   instructions, not text; a field's result is ordinary runs. A ruby's base text is read and its
   annotation left out. An external hyperlink's text links to its target; an internal one's, to a
   bookmark, stays text. Empty paragraphs and headings are spacing and left out; an empty list
-  item is kept. A paragraph's pictures and charts follow it as blocks in the order they occur,
-  inside a list item after its paragraph.
+  item is kept. A paragraph's pictures, charts, and text boxes follow it as blocks in the order
+  they occur, inside a list item after its paragraph.
 - **docx: headings and lists.** A heading's level is the paragraph's own outline level or else its
   style chain's (each style's `basedOn`, nearest first, a cycle ending it; a paragraph with no
   style has the default paragraph style): an outline level, or a style named `heading N`; outline
@@ -177,9 +177,13 @@ an xlsx's notes) are warned of once each, where the document first holds one
   order with the drawing's description and title, a picture's blip embedding a part or linking a
   target. A VML picture's title is its alternative text, VML having no other. A VML object's payload
   is its `o:OLEObject`'s, or a Word 2010 `w:objectEmbed`'s, relationship. A chartEx chart, in an
-  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never both;
-  any other alternate content is not read. A text box's text, a SmartArt diagram, and an equation
-  are not read, wherever they are.
+  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never both.
+  A text box, DrawingML's `wps:txbx` or VML's `v:textbox`, is its `w:txbxContent`'s blocks, read
+  as the body's are; one inside another is the outer one's content, and a drawing's pictures and
+  objects are looked for outside its text boxes, so nothing in a text box is read twice. Any other
+  alternate content is read for its text boxes alone, from the first choice that holds one or else
+  the fallback, so a text box Word writes as DrawingML with its VML copy as the fallback is read
+  once. A SmartArt diagram and an equation are not read, wherever they are.
 - **docx: sections, notes, and comments.** A section is a paragraph's `w:sectPr`, the body's own
   the last. Each section's headers and footers are those its pages show: its own, or the previous
   section's where it has none of a kind; a first-page one counts only with a title page and an
@@ -228,10 +232,13 @@ an xlsx's notes) are warned of once each, where the document first holds one
   pass a day, so its value stays a number. In the 1900 date system serial 1 is 1 January 1900
   and serial 60 is 29 February 1900, a day that never was, kept from Lotus 1-2-3; in the 1904
   system serial 0 is 1 January 1904. Times are rounded to the millisecond.
-- **xlsx: drawings and objects.** A drawing's pictures and charts are read in the order it anchors
-  them, through groups, each picture with its own drawing properties' alternative text and
-  title; a chartEx chart is read as in a docx, and any other alternate content is read through.
-  A shape's text, a text box's, and a SmartArt diagram are not read. A worksheet's OLE object is
+- **xlsx: drawings and objects.** A drawing's pictures, charts, and shapes' text are read in the
+  order it anchors them, through groups, each picture with its own drawing properties'
+  alternative text and title; a chartEx chart is read as in a docx, and any other alternate
+  content is read as its first branch, the choices in order and then the fallback, that holds
+  anything read, so a shape written twice is read once. A shape's text, a text box's among them,
+  is its paragraphs and lists, read as a pptx text box's with its own list style alone. A SmartArt
+  diagram is not read. A worksheet's OLE object is
   its preview picture (its `objectPr`'s), then its payload: Excel writes the object twice in
   alternate content, the preview only in the choice's copy, both naming one relationship.
 - **pptx.** Slides are read in presentation order, hidden ones included and marked, each slide's

@@ -9,6 +9,17 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+### Added
+
+- Text boxes are read, and no longer warned of as `text boxes not read`. A docx text box's
+  paragraphs, lists, and tables follow the paragraph that anchors it, as its pictures do, in the
+  Markdown and the model; one Word writes twice, as DrawingML in alternate content with its VML
+  copy as the fallback, is read once, and a VML one alone is read too. An xlsx shape's text, a
+  text box's among them, is read as paragraphs and lists in its sheet's drawing order, on the
+  sheet's closing `rows` line with its charts and pictures. Other alternate content in an xlsx
+  drawing is read once, as its first branch that holds anything read, rather than through every
+  branch.
+
 ## [v0.1.2] - 2026-11-19
 
 ### Changed

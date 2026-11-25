@@ -3,9 +3,9 @@
 docproc's system tool for Office Open XML documents: a command-line utility on Microsoft's
 [Open XML SDK](https://github.com/dotnet/Open-XML-SDK) that reads one docx, xlsx, or pptx file
 and writes it to stdout as JSON Lines, schema `"2"`, with its Markdown rendering inside the lines
-as the text layer. Its headings, paragraphs, lists, tables, notes and comments, sheets and their
-typed cells, slides and their notes, charts' cached data, document properties, and hyperlinks
-are read; its pictures, embedded packages, and OLE objects are written out as media files.
+as the text layer. Its headings, paragraphs, lists, tables, text boxes, notes and comments,
+sheets and their typed cells, slides and their notes, charts' cached data, document properties,
+and hyperlinks are read; its pictures, embedded packages, and OLE objects are written out as media files.
 
 It is one NativeAOT binary each for linux-x64 and linux-arm64, built with .NET 11, needing no
 .NET runtime on the host, for docproc to run like any other system tool. It renders no page
@@ -67,8 +67,11 @@ its placement: the docx section (from 0), the xlsx sheet's `sheet` line (from 1)
 slide (from 0). An xlsx's Markdown is split across its lines so no line holds a whole sheet:
 each sheet in workbook order is a `sheet` line, its heading and its table's header, then `rows`
 lines, each holding the sheet's next rows and their typed cells, within 256 KiB or one row. A
-sheet's charts and pictures ride on its closing `rows` line. Joined in order, the lines'
-Markdown fragments are the whole rendering.
+sheet's charts, pictures, and text boxes' paragraphs ride on its closing `rows` line, in the
+order its drawing anchors them. A docx's text box is read where its paragraph anchors it, its
+paragraphs following that paragraph as its pictures do, and once, though Word writes it twice,
+as DrawingML and as its VML copy. Joined in order, the lines' Markdown fragments are the whole
+rendering.
 
 ```text
 {"line":"document","schema":"2","format":"xlsx","properties":{"core":{"creator":"openpyxl",…}}}
@@ -118,8 +121,8 @@ The envelope these follow, its cases stated once for every tool, is
 
 - Pictures are listed with no layout, so a covered, off-slide, or cropped-away picture is still
   a media block.
-- Text boxes, equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read.
-  Each kind present gets one warning, where the document first holds one:
+- Equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read. Each kind
+  present gets one warning, where the document first holds one:
   `docproc-ooxml: warning: slide 1: comments not read`.
 - No formula is evaluated: a formula's value is the one the file caches, or none.
 - No number format is applied but the dates': a number is written as stored.

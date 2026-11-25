@@ -4,6 +4,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
 using Docproc.Ooxml.Writing;
+using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
@@ -251,15 +252,15 @@ internal static partial class XlsxReader
                         ReadDrawing(context, drawings, chartEx.Fallback, sheet, blocks);
                     }
                     break;
-                case Xdr.Shape shape:
-                    if (!string.IsNullOrWhiteSpace(shape.TextBody?.InnerText))
-                    {
-                        context.Unread.Found(Place(sheet), UnreadKinds.TextBoxes);
-                    }
-                    if (shape.TextBody is { } body && UnreadKinds.HoldsEquation(body))
+                case Xdr.Shape shape when shape.TextBody is { } body:
+                    blocks.AddRange(PptxReader.ReadText(body, [body.GetFirstChild<A.ListStyle>()], new PptxReader.TextScope(drawings, context.Unread, Place(sheet))));
+                    if (UnreadKinds.HoldsEquation(body))
                     {
                         context.Unread.Found(Place(sheet), UnreadKinds.Equations);
                     }
+                    break;
+                case AlternateContent content:
+                    ReadBranch(context, drawings, content, sheet, blocks);
                     break;
                 case Xdr.GraphicFrame frame when UnreadKinds.HoldsSmartArt(frame):
                     context.Unread.Found(Place(sheet), UnreadKinds.SmartArt);
@@ -267,6 +268,20 @@ internal static partial class XlsxReader
                 default:
                     ReadDrawing(context, drawings, element, sheet, blocks);
                     break;
+            }
+        }
+    }
+
+    private static void ReadBranch(XlsxContext context, DrawingsPart drawings, AlternateContent content, int sheet, List<Block> blocks)
+    {
+        foreach (var branch in content.Elements<AlternateContentChoice>().Concat<OpenXmlElement>(content.Elements<AlternateContentFallback>()))
+        {
+            var read = new List<Block>();
+            ReadDrawing(context, drawings, branch, sheet, read);
+            if (read.Count > 0)
+            {
+                blocks.AddRange(read);
+                return;
             }
         }
     }

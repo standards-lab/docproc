@@ -241,7 +241,7 @@ public sealed class ConverterTests : IDisposable
 
         var blocks = Assert.IsType<Sheet>(OfficeReader.Read(path).Blocks[0]).Blocks;
         var original = Assert.IsType<Sheet>(OfficeReader.Read(Fixtures.DocumentPath("with-drawing", Fixtures.RealWorld)).Blocks[0]).Blocks;
-        Assert.Equal([original[0], .. original.Skip(1)], [blocks[0], .. blocks.Skip(2)]);
+        Assert.Equal(Truth(original), Truth([blocks[0], .. blocks.Skip(2)]));
         if (cached)
         {
             var chart = Assert.IsType<Chart>(blocks[1]);
@@ -279,6 +279,9 @@ public sealed class ConverterTests : IDisposable
         Write(zip, part, WithoutPoints(xml));
         return path;
     }
+
+    private static string Truth(IReadOnlyList<Block> blocks) =>
+        new JsonArray([.. GroundTruth.Elements(new Document(SourceFormat.Xlsx, blocks))]).ToJsonString();
 
     private static string WithoutPoints(string chartEx) =>
         Regex.Replace(chartEx, "<cx:pt [^>]*>[^<]*</cx:pt>", "");

@@ -44,7 +44,7 @@ internal static class PptxReader
         return new Conversion(new Document(SourceFormat.Pptx, blocks) { Properties = properties }, media.Files) { Warnings = warnings };
     }
 
-    private sealed record TextScope(OpenXmlPart Part, UnreadKinds Unread, string Place);
+    internal sealed record TextScope(OpenXmlPart Part, UnreadKinds Unread, string Place);
 
     private static List<Block> ReadNotes(NotesSlidePart? part, UnreadKinds unread, string place)
     {
@@ -216,7 +216,7 @@ internal static class PptxReader
         }
     }
 
-    private static List<Block> ReadText(OpenXmlElement body, List<OpenXmlElement?> styles, TextScope scope)
+    internal static List<Block> ReadText(OpenXmlElement body, List<OpenXmlElement?> styles, TextScope scope)
     {
         var blocks = new TextBlocks();
         foreach (var paragraph in body.Elements<A.Paragraph>())

@@ -93,6 +93,9 @@ CUSTOM_PROPERTIES = "http://schemas.openxmlformats.org/officeDocument/2006/custo
 VARIANT_TYPES = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
 MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+VML = "urn:schemas-microsoft-com:vml"
 RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 DRAWING_SIDE_EMU = 457200
 
@@ -120,10 +123,14 @@ class Fixture:
     - "link": (text, URL), the text in an external hyperlink; "anchor": (text, bookmark), the
       text in an internal one, to a bookmark; both are text of the paragraph;
     - "bookmark": a bookmark's name, the start and end of an empty bookmark;
-    - "raw": a run's XML as it is, which adds no text, such as a text box or an equation.
+    - "textBox": (form, paragraphs), a text box of those paragraphs' text, written as Word
+      writes it, a DrawingML text box in alternate content with its VML copy as the fallback
+      ("alternate"), or as VML alone ("vml");
+    - "raw": a run's XML as it is, which adds no text, such as an equation.
 
-    References, pictures, and charts add no text; a reference marks its offset in the text, and
-    a picture or chart is a block of its own after its paragraph. A paragraph's ground truth is
+    References, pictures, charts, and text boxes add no text; a reference marks its offset in
+    the text, and a picture or chart is a block of its own after its paragraph, a text box its
+    paragraphs. A paragraph's ground truth is
     the paragraph unless it holds no text and no reference (then it is spacing), then the blocks
     after it.
     """
@@ -323,6 +330,10 @@ class Fixture:
             elif kind == "bookmark":
                 bookmark = self.next_id()
                 xml.append(f'<w:bookmarkStart w:id="{bookmark}" w:name="{value}"/><w:bookmarkEnd w:id="{bookmark}"/>')
+            elif kind == "textBox":
+                form, paragraphs = value
+                xml.append(self._text_box(form, paragraphs))
+                after += [{"kind": "paragraph", "text": text} for text in paragraphs]
             elif kind == "raw":
                 xml.append(value)
             else:
@@ -464,6 +475,34 @@ class Fixture:
             f'<w:drawing>{self._inline_open(shape_id, "", "")}'
             f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">'
             f'<c:chart r:id="{rid}"/></a:graphicData></a:graphic></wp:inline></w:drawing>'
+        )
+
+    def _text_box(self, form: str, paragraphs: list[str]) -> str:
+        shape_id = self.next_id()
+        content = "<w:txbxContent>" + "".join(f"<w:p>{self._run(text)}</w:p>" for text in paragraphs) + "</w:txbxContent>"
+        vml = (
+            f'<w:pict><v:shape xmlns:v="{VML}" id="Text Box {shape_id}" type="#_x0000_t202" style="width:180pt;height:60pt">'
+            f"<v:textbox>{content}</v:textbox></v:shape></w:pict>"
+        )
+        if form == "vml":
+            return f"<w:r>{vml}</w:r>"
+        side = 2286000
+        drawing = (
+            f'<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264"'
+            f' behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/>'
+            f'<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>'
+            f'<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+            f'<wp:extent cx="{side}" cy="{side // 3}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>'
+            f'<wp:docPr id="{shape_id}" name="Text Box {shape_id}"/><wp:cNvGraphicFramePr/>'
+            f'<a:graphic><a:graphicData uri="{WPS}"><wps:wsp><wps:cNvSpPr txBox="1"/>'
+            f'<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{side}" cy="{side // 3}"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>'
+            f'<wps:txbx>{content}</wps:txbx><wps:bodyPr anchor="t"><a:noAutofit/></wps:bodyPr></wps:wsp>'
+            f"</a:graphicData></a:graphic></wp:anchor></w:drawing>"
+        )
+        return (
+            f'<w:r><mc:AlternateContent xmlns:mc="{MC}" xmlns:wps="{WPS}"><mc:Choice Requires="wps">{drawing}</mc:Choice>'
+            f"<mc:Fallback>{vml}</mc:Fallback></mc:AlternateContent></w:r>"
         )
 
     @staticmethod
@@ -1181,11 +1220,21 @@ def links() -> Fixture:
     return f
 
 
-TEXT_BOX_RUN = (
-    f'<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" style="width:120pt;height:40pt">'
-    f"<v:textbox><w:txbxContent><w:p><w:r><w:t>Text in a box</w:t></w:r></w:p></w:txbxContent></v:textbox>"
-    f"</v:shape></w:pict></w:r>"
-)
+def text_boxes() -> Fixture:
+    """Text boxes, each read once where its paragraph anchors it: one of two paragraphs Word's
+    way, a DrawingML text box in alternate content with its VML copy as the fallback; a VML text
+    box alone; a text box anchored in a paragraph of no text of its own; one in a table cell."""
+    f = Fixture("text-boxes")
+    f.heading("Text boxes", 1)
+    f.tracked([("text", "A text box written both ways follows."), ("textBox", ("alternate", ["The box's first paragraph.", "Its second paragraph."]))])
+    f.tracked([("text", "A VML text box follows."), ("textBox", ("vml", ["Text in a VML box."]))])
+    f.tracked([("textBox", ("alternate", ["A box anchored on an empty line."]))])
+    f.tracked_table([[("text", "A box in a cell"), ("textBox", ("alternate", ["Text in the cell's box."]))], [("text", "Plain cell")]])
+    f.paragraph("The end.")
+    f.once = ["The box's first paragraph.", "Its second paragraph.", "Text in a VML box.", "A box anchored on an empty line.", "Text in the cell's box."]
+    return f
+
+
 EQUATION = f'<m:oMath xmlns:m="{MATH}"><m:r><m:t>x=2y</m:t></m:r></m:oMath>'
 DIAGRAM_PARTS = [
     ("data", "diagramData", "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
@@ -1202,14 +1251,13 @@ DIAGRAM_PARTS = [
 
 
 def unread() -> Fixture:
-    """The kinds docproc-ooxml doesn't read, each warned of once: two text boxes (VML), an
-    equation (Office Math), and a SmartArt diagram, whose parts are as small as the package
-    allows, among paragraphs that are read."""
+    """The kinds docproc-ooxml doesn't read, each warned of once: two equations (Office Math)
+    and a SmartArt diagram, whose parts are as small as the package allows, among paragraphs
+    that are read."""
     f = Fixture("unread")
     f.heading("Unread", 1)
-    f.tracked([("text", "A text box follows."), ("raw", TEXT_BOX_RUN)])
-    f.tracked([("text", "A second text box follows."), ("raw", TEXT_BOX_RUN.replace("Text in a box", "More text in a box"))])
     f.tracked([("text", "An equation follows: "), ("raw", EQUATION)])
+    f.tracked([("text", "A second equation follows: "), ("raw", EQUATION.replace("x=2y", "z=3w"))])
     ids = {
         kind: f.raw_part(f"/word/diagrams/{kind}1.xml", content_type, f"http://schemas.openxmlformats.org/officeDocument/2006/relationships/{reltype}", xml)
         for kind, reltype, content_type, xml in DIAGRAM_PARTS
@@ -1223,11 +1271,11 @@ def unread() -> Fixture:
     )
     f.tracked([("text", "A diagram follows."), ("raw", smartart)])
     f.paragraph("The end.")
-    f.absent = ["Text in a box", "More text in a box", "A diagram node"]
+    f.absent = ["A diagram node"]
     return f
 
 
-FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, unread]
+FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, text_boxes, unread]
 
 
 CT_PNG = "image/png"
@@ -1299,6 +1347,9 @@ class Workbook:
                 self.patches.append(
                     (f"xl/drawings/drawing{drawing}.xml", f'name="Image {i}" descr="Picture"', f'name="Image {i}" descr="{escape(alt)}"')
                 )
+            if sheet.text_boxes:
+                anchors = "".join(text_box_anchor(n, paragraphs) for n, paragraphs in enumerate(sheet.text_boxes))
+                self.patches.append((f"xl/drawings/drawing{drawing}.xml", "</wsDr>", anchors + "</wsDr>"))
         for sheet, ns in self.ole_sheets:
             self.patches.append((sheet.part, "</worksheet>", f'<oleObjects {ns}>{"".join(sheet.ole_xml)}</oleObjects></worksheet>'))
         self.book.save(path)
@@ -1400,6 +1451,7 @@ class Sheet:
         self.cells: dict[str, dict[str, dict | None]] = {}
         self.charts: list[dict[str, dict]] = []
         self.pictures: list[tuple[dict, str]] = []
+        self.text_boxes: list[list[str]] = []
         self.objects: list[dict[str, list[dict]]] = []
 
     @property
@@ -1505,6 +1557,11 @@ class Sheet:
         }
         self.pictures.append((truth, alt))
 
+    def text_box(self, paragraphs: list[str]) -> None:
+        """A text box shape of those paragraphs, patched into the sheet's drawing part after its
+        charts and pictures, so the sheet needs one of them for openpyxl to write the part."""
+        self.text_boxes.append(paragraphs)
+
     def link(self, ref: str, value: str, target: str) -> None:
         """A text cell with an external hyperlink, which its truth carries as its target."""
         self.ws[ref] = value
@@ -1586,6 +1643,7 @@ class Sheet:
             elements.append({"kind": "table", "rows": [{"row": r, "cells": cells} for r, cells in rows.items()]})
         elements += [chart[variant] for chart in self.charts]
         elements += [picture for picture, _ in self.pictures]
+        elements += [{"kind": "paragraph", "text": text} for paragraphs in self.text_boxes for text in paragraphs]
         elements += [element for obj in self.objects for element in obj[variant]]
         return {
             "kind": "sheet",
@@ -1593,6 +1651,20 @@ class Sheet:
             "hidden": self.ws.sheet_state != "visible",
             "elements": elements,
         }
+
+
+def text_box_anchor(n: int, paragraphs: list[str]) -> str:
+    """A two-cell anchor of a text box shape, the n-th on its sheet, in openpyxl's unprefixed
+    drawing namespace."""
+    body = "".join(f'<a:p><a:r><a:rPr lang="en-US"/><a:t>{escape(text)}</a:t></a:r></a:p>' for text in paragraphs)
+    return (
+        f"<twoCellAnchor><from><col>{4 + 4 * n}</col><colOff>0</colOff><row>1</row><rowOff>0</rowOff></from>"
+        f"<to><col>{7 + 4 * n}</col><colOff>0</colOff><row>5</row><rowOff>0</rowOff></to>"
+        f'<sp macro="" textlink="" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'<nvSpPr><cNvPr id="{100 + n}" name="TextBox {100 + n}"/><cNvSpPr txBox="1"/></nvSpPr>'
+        f'<spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="731520"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></spPr>'
+        f'<txBody><a:bodyPr wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>{body}</txBody></sp><clientData/></twoCellAnchor>'
+    )
 
 
 def cells() -> Workbook:
@@ -1745,7 +1817,7 @@ def dates_1904() -> Workbook:
 
 def sheet_links() -> Workbook:
     """Cells with external hyperlinks, a text and a number cell's, a cell with a hyperlink to a
-    place in the workbook, a cell with a note, and a text box, which are not read."""
+    place in the workbook, which stays text, and a cell with a note, which is not read."""
     f = Workbook("sheet-links")
     s = f.sheet("Links")
     s.link("A1", "The docproc guide", "https://example.invalid/docproc?page=1&lang=en")
@@ -1771,7 +1843,20 @@ def sheet_embeddings() -> Workbook:
     return f
 
 
-XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings]
+def sheet_text_boxes() -> Workbook:
+    """A sheet's text boxes, after its picture in its drawing part: one of two paragraphs and one
+    of one; a second sheet, with no drawing, between them and the end."""
+    f = Workbook("sheet-text-boxes")
+    s = f.sheet("Boxes")
+    s.value("A1", "A picture and two text boxes follow.", "text")
+    s.picture("B3", png((40, 160, 80)), "A green square")
+    s.text_box(["A text box on the sheet.", "Its second paragraph."])
+    s.text_box(["Another text box."])
+    f.sheet("After").value("A1", "No drawing here.", "text")
+    return f
+
+
+XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings, sheet_text_boxes]
 
 
 TITLE_SLIDE, TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 0, 1, 5, 6

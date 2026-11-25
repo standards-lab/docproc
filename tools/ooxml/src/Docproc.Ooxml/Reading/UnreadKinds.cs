@@ -5,7 +5,6 @@ namespace Docproc.Ooxml.Reading;
 
 internal sealed class UnreadKinds(List<Warning> warnings)
 {
-    public const string TextBoxes = "text boxes";
     public const string Equations = "equations";
     public const string SmartArt = "SmartArt";
     public const string Comments = "comments";
