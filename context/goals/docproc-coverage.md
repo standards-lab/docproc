@@ -134,7 +134,7 @@ docproc v0.8.0, then storage/v0.1.6, postgres/v0.1.6 and cmd/docproc/v0.2.6 thro
 
 ## Progress
 
-slices 2/3 committed · standards — · spec — · editor —
+slices 3/3 committed · standards — · spec — · editor —
 
 ## Decisions
 
