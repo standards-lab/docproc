@@ -84,32 +84,54 @@ func TestBuildRows(t *testing.T) {
 func TestBuildDocumentNeedsPDFToText(t *testing.T) {
 	t.Parallel()
 	others := slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.Document })
-	for version, want := range map[string]string{"": "pdftotext: not found", "21.12.0": "older than"} {
-		var link string
-		if version != "" {
-			link = tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{Version: version})
-		}
-		lookup := func(program string) (string, error) {
-			if program == "pdftotext" && link != "" {
-				return link, nil
+	for name, c := range map[string]struct {
+		version string
+		text    bool
+		want    dispatch.State
+		reason  string
+	}{
+		"present":                 {version: "26.10.0", text: true, want: dispatch.Wired},
+		"absent":                  {text: true, want: dispatch.Missing, reason: "pdftotext: not found"},
+		"absent, reading no text": {want: dispatch.Missing, reason: "pdftotext: not found"},
+		"too old":                 {version: "21.12.0", text: true, want: dispatch.Missing, reason: "older than"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			links := map[string]string{
+				"gs":        tooltest.Link(t, t.TempDir(), "gs", gsSettings{}),
+				"qpdf":      tooltest.Link(t, t.TempDir(), "qpdf", nil),
+				"pdfdetach": tooltest.Link(t, t.TempDir(), "pdfdetach", nil),
 			}
-			return "", errors.New("not here")
-		}
-		set, err := stages.Build(t.Context(), lookup, stages.Options{Exclude: others})
-		if err != nil {
-			t.Fatal(err)
-		}
-		row := set.Rows[slices.Index(stages.Routes(), route.Document)]
-		if _, wired := set.Stages[route.Document]; wired || row.State != dispatch.Missing || !strings.Contains(row.Reason, want) {
-			t.Errorf("pdftotext %q: document %s, %q, wired %t; want Missing with %q", version, row.State, row.Reason, wired, want)
-		}
-		var programs []string
-		for _, tl := range set.Tools {
-			programs = append(programs, tl.Program)
-		}
-		if !slices.Equal(programs, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}) {
-			t.Errorf("pdftotext %q: tools %q, want the document stage's four", version, programs)
-		}
+			if c.version != "" {
+				links["pdftotext"] = tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{Version: c.version})
+			}
+			lookup := func(program string) (string, error) {
+				if link, ok := links[program]; ok {
+					return link, nil
+				}
+				return "", errors.New("not here")
+			}
+			opts := stages.Options{Exclude: others, Document: document.ImagesRequest{Text: c.text}}
+			set, err := stages.Build(t.Context(), lookup, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			row := set.Rows[slices.Index(stages.Routes(), route.Document)]
+			_, wired := set.Stages[route.Document]
+			if row.State != c.want || wired != (c.want == dispatch.Wired) || !strings.Contains(row.Reason, c.reason) {
+				t.Errorf("document %s, %q, wired %t; want %s with %q", row.State, row.Reason, wired, c.want, c.reason)
+			}
+			var programs []string
+			for _, tl := range set.Tools {
+				programs = append(programs, tl.Program)
+				if tl.Program != "pdftotext" && tl.Err != nil {
+					t.Errorf("%s: %v, want it built", tl.Program, tl.Err)
+				}
+			}
+			if !slices.Equal(programs, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}) {
+				t.Errorf("tools %q, want the document stage's four", programs)
+			}
+		})
 	}
 }
 
