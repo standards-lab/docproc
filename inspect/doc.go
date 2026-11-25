@@ -39,8 +39,8 @@
 //     the sizes it declares, its ratio against its compressed size, or against the whole
 //     archive's where its format shares one or declares none; an archive whose entries' declared
 //     sizes sum past the rule against its own size; a ZIP whose entries' declared compressed
-//     sizes sum past its own size, whatever the rule; and a gzip or zstd stream, or a PDF's
-//     embedded file, past the rule as a stage writes it. An unreadable directory: a ZIP whose
+//     sizes sum past its own size, whatever the rule; and a gzip, bzip2, zstd, or xz stream, or a
+//     PDF's embedded file, past the rule as a stage writes it. An unreadable directory: a ZIP whose
 //     central directory can't be read, or a tar whose headers can't all be, or either holding
 //     more entries than the Options allow.
 //
@@ -67,8 +67,9 @@
 // compressed object stream is unseen, its stream data skipped; legacy OLE2 documents' macros and
 // ODF packages' scripts aren't checked; and a container's members are not inspected here, but as
 // parts of their own once the stage that extracts them yields them, the stage enforcing the bomb
-// rule on the bytes it writes, since a declared size may lie. A gzip stream is checked as a gzip
-// no further: the tar a .tar.gz holds is inspected once the stage decompresses it.
+// rule on the bytes it writes, since a declared size may lie. A gzip or bzip2 stream is checked as
+// a stream no further: the tar a .tar.gz or .tar.bz2 holds is inspected once the stage
+// decompresses it.
 //
 // Its exported identifiers:
 //

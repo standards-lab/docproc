@@ -19,10 +19,6 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-var sevenZipFixtures = filepath.Join("..", "sevenzip", "testdata")
-
-func sevenZipFixture(name string) string { return filepath.Join(sevenZipFixtures, name) }
-
 func sevenZipConfig(t *testing.T, opts inspect.Options) stages.ArchiveConfig {
 	t.Helper()
 	tl := pinned(t, sevenzip.SevenZipSpec())

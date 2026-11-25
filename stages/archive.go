@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/standards-lab/docproc/dispatch"
@@ -71,6 +72,8 @@ func (s *archiveStage) Prepare(ctx context.Context, p dispatch.Part, dir string)
 			s.tar(ctx, p, dir, yield)
 		case route.Gzip:
 			s.gzip(ctx, p, dir, yield)
+		case route.Bzip2:
+			s.bzip2(ctx, p, dir, yield)
 		case route.Zstd, route.XZ:
 			s.stream(ctx, p, dir, yield)
 		case route.RAR4, route.RAR5:
@@ -244,14 +247,14 @@ func (b *bombWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-func streamStem(name, ext, short string) string {
+func streamStem(name, ext string, shorts ...string) string {
 	got := path.Ext(name)
-	switch strings.ToLower(got) {
-	case ext:
+	switch lower := strings.ToLower(got); {
+	case lower == ext:
 		if stem := strings.TrimSuffix(name, got); stem != "" {
 			return stem
 		}
-	case short:
+	case slices.Contains(shorts, lower):
 		return strings.TrimSuffix(name, got) + ".tar"
 	}
 	return name

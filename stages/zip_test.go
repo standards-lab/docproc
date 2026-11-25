@@ -24,6 +24,10 @@ import (
 
 var inspectFixtures = filepath.Join("..", "inspect", "testdata")
 
+var sevenZipFixtures = filepath.Join("..", "sevenzip", "testdata")
+
+func sevenZipFixture(name string) string { return filepath.Join(sevenZipFixtures, name) }
+
 const pngBytes = "\x89PNG\r\n\x1a\n\x00\x00\x00\x0dIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde"
 
 type zent struct {

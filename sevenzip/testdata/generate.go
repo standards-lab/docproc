@@ -243,6 +243,7 @@ func sevenZips(zeros, cleanTar []byte) error {
 	}
 	addReproducibly := []string{"a", "-mtm-", "-mtc-", "-mta-", "-mmt=1", "-bd"}
 	addStream := []string{"a", "-txz", "-mmt=1", "-bd"}
+	addBzip2 := []string{"a", "-tbzip2", "-mmt=1", "-bd"}
 	sz := func(args ...string) error {
 		cmd := exec.Command("7zz", args...)
 		cmd.Dir = src
@@ -279,13 +280,26 @@ func sevenZips(zeros, cleanTar []byte) error {
 		append(append([]string{}, addStream...), archive("notes.txt.xz"), "notes.txt"),
 		append(append([]string{}, addStream...), archive("clean.txz"), "clean.tar"),
 		append(append([]string{}, addStream...), archive("bomb.xz"), "zeros.bin"),
+		append(append([]string{}, addBzip2...), archive("notes.txt.bz2"), "notes.txt"),
+		append(append([]string{}, addBzip2...), archive("clean.tbz2"), "clean.tar"),
+		append(append([]string{}, addBzip2...), archive("bomb.bz2"), "zeros.bin"),
+		append(append([]string{}, addBzip2...), filepath.Join(src, "first.bz2"), "notes.txt"),
+		append(append([]string{}, addBzip2...), filepath.Join(src, "second.bz2"), "evil.txt"),
 	}
 	for _, args := range steps {
 		if err := sz(args...); err != nil {
 			return err
 		}
 	}
-	return nil
+	var concatenated []byte
+	for _, name := range []string{"first.bz2", "second.bz2"} {
+		b, err := os.ReadFile(filepath.Join(src, name))
+		if err != nil {
+			return err
+		}
+		concatenated = append(concatenated, b...)
+	}
+	return os.WriteFile(filepath.Join(outAbs, "concatenated.txt.bz2"), concatenated, 0o644)
 }
 
 func lines(file string, n int) []byte {

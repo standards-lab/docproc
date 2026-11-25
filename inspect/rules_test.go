@@ -251,6 +251,14 @@ func TestNameAndContent(t *testing.T) {
 	if got := inspect.Name("report.pdf", route.PNG); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
 		t.Errorf("a PNG named .pdf: %v, want signature-mismatch", got)
 	}
+	for _, name := range []string{"notes.txt.bz2", "clean.TBZ2", "clean.tbz"} {
+		if got := inspect.Name(name, route.Bzip2); len(got) != 0 {
+			t.Errorf("a bzip2 stream named %q: %v, want no mismatch", name, got)
+		}
+	}
+	if got := inspect.Name("clean.tar.gz", route.Bzip2); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
+		t.Errorf("a bzip2 stream named .gz: %v, want signature-mismatch", got)
+	}
 	for _, name := range []string{"encrypted.xlsx", "blob", "old.doc"} {
 		r := mustInspect(t, filepath.Join("testdata", "encrypted.xlsx"), name, inspect.Options{})
 		if !slices.Contains(checks(r), inspect.OOXMLEncrypted) {

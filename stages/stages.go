@@ -37,9 +37,9 @@ type Options struct {
 	// Inspect are the inspection options, validated once: the archive and document stages' bomb
 	// rule and the archive stage's Entries, in their identities, and Set.Inspect, for
 	// dispatch.Config.Inspect, so one value exists. The bomb rule, none when BombRatio and
-	// BombSize are zero, is the one an archive entry's, a gzip or zstd stream's, and a PDF's
-	// embedded file's written bytes may not pass; Entries bounds a 7-Zip listing; and Policy is
-	// the one a 7-Zip listing's flags are weighed under, as inspect.CheckListing weighs them.
+	// BombSize are zero, is the one an archive entry's, a gzip, bzip2, zstd, or xz stream's, and a
+	// PDF's embedded file's written bytes may not pass; Entries bounds a 7-Zip listing; and Policy
+	// is the one a 7-Zip listing's flags are weighed under, as inspect.CheckListing weighs them.
 	Inspect inspect.Options
 	// Timeout is a unit run's bound, on every run of a tool whose runs are units: gs, qpdf,
 	// pdfdetach, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.

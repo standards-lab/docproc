@@ -185,12 +185,15 @@ sevenzip/testdata/generate.go	unrouted	no processor yet
 sevenzip/testdata/generated/absolute.7z	archive	prepared
 sevenzip/testdata/generated/absolute.cab	archive	prepared
 sevenzip/testdata/generated/bomb.7z	archive	prepared
+sevenzip/testdata/generated/bomb.bz2	archive	prepared
 sevenzip/testdata/generated/bomb.cab	archive	prepared
 sevenzip/testdata/generated/bomb.xz	archive	prepared
 sevenzip/testdata/generated/bomb.zst	archive	prepared
 sevenzip/testdata/generated/clean.7z	archive	prepared
 sevenzip/testdata/generated/clean.tar.zst	archive	prepared
+sevenzip/testdata/generated/clean.tbz2	archive	prepared
 sevenzip/testdata/generated/clean.txz	archive	prepared
+sevenzip/testdata/generated/concatenated.txt.bz2	archive	prepared
 sevenzip/testdata/generated/declared-bomb.zst	archive	quarantined
 sevenzip/testdata/generated/device.7z	archive	prepared
 sevenzip/testdata/generated/encrypted-headers.7z	archive	encrypted
@@ -199,6 +202,7 @@ sevenzip/testdata/generated/linebreak.cab	archive	prepared
 sevenzip/testdata/generated/mixed.7z	archive	prepared
 sevenzip/testdata/generated/multiblock.7z	archive	prepared
 sevenzip/testdata/generated/notebook.cab	archive	prepared
+sevenzip/testdata/generated/notes.txt.bz2	archive	prepared
 sevenzip/testdata/generated/notes.txt.xz	archive	prepared
 sevenzip/testdata/generated/symlink.7z	archive	prepared
 sevenzip/testdata/generated/traversal.7z	archive	prepared

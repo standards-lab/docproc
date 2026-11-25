@@ -1,7 +1,8 @@
 # testdata
 
 The sevenzip package's fixtures, which the dispatch package's archive stage reads too: archives
-7-Zip reads and the standard library doesn't. They are committed and never fetched or generated
+7-Zip reads and the standard library doesn't, and bzip2 streams, which 7-Zip writes and the
+archive stage reads through `compress/bzip2`. They are committed and never fetched or generated
 in the check, which holds each to its SHA-256 below (`TestFixtureSums`).
 
 ## commons-compress
@@ -83,10 +84,11 @@ What each holds:
 
 This repository's, Apache-2.0, written by `generate.go`: run `mise exec -- go run generate.go` in
 this directory. It writes the zstd streams and cabinets by hand, every byte fixed, and the 7z
-archives and xz streams through the 7zz mise pins, from files whose content, mode, and order are
-fixed, with no times stored and one thread, so a rerun writes the same bytes, the 7z archives with
-7zz 26.05 and 26.06 alike and the xz streams with 26.06, but for the two encrypted 7z archives,
-whose salt and IV 7zz draws at random: a rerun writes them anew, and their sums below then change.
+archives and xz and bzip2 streams through the 7zz mise pins, from files whose content, mode, and
+order are fixed, with no times stored and one thread, so a rerun writes the same bytes, the 7z
+archives with 7zz 26.05 and 26.06 alike and the xz and bzip2 streams with 26.06, but for the two
+encrypted 7z archives, whose salt and IV 7zz draws at random: a rerun writes them anew, and their
+sums below then change.
 Their password is `infected`, which no test gives. `~/docs`' archives aren't redistributable, so
 none is copied; the integration tier reads `~/docs` itself when the machine has it.
 
@@ -113,6 +115,10 @@ none is copied; the integration tier reads `~/docs` itself when the machine has 
 | `generated/notes.txt.xz` | `generate.go`, 7zz | Apache-2.0 | 72 | `7a4308af2664a08b673a34e3469cefde312b6c462dc8e52921c110d730764192` |
 | `generated/clean.txz` | `generate.go`, 7zz | Apache-2.0 | 232 | `84c171f622cb9a10bac27c35ac58644447ae20bdacc07ae8ba361ae216bcafe2` |
 | `generated/bomb.xz` | `generate.go`, 7zz | Apache-2.0 | 1352 | `bd4d2095a33dcdc1b2f18bf5576f15dee5c27050a0afca22ed5af0989abca140` |
+| `generated/notes.txt.bz2` | `generate.go`, 7zz | Apache-2.0 | 54 | `643b9d1ad07bb4ce0fa7906e0859dbfd025c44e8e70ca2e69c41290088958011` |
+| `generated/clean.tbz2` | `generate.go`, 7zz | Apache-2.0 | 228 | `acdef87070f170a45c40d9501fea549959c31ec15ddd797c235930703e706018` |
+| `generated/bomb.bz2` | `generate.go`, 7zz | Apache-2.0 | 50 | `fc37914bf8e2b342bad133ebf198fa5ba21c667ec8900f529d498dc81df6712f` |
+| `generated/concatenated.txt.bz2` | `generate.go`, 7zz | Apache-2.0 | 124 | `6194c14ddc1820801ee2223edc47a4f4c481516ac53ac544c9dff27d5e45f86e` |
 
 What each holds:
 
@@ -167,3 +173,10 @@ What each holds:
   `clean.tar`.
 - `bomb.xz`: 8 MiB of zeros, about 6,200:1, its size declared: past the default ratio, under the
   default size, as `bomb.7z` is.
+- `notes.txt.bz2`: `notes.txt`, 18 bytes, as one bzip2 stream (`-tbzip2`), which declares no
+  size.
+- `clean.tbz2`: inspect's `clean.tar` as one bzip2 stream, named `.tbz2`, so its content is named
+  `clean.tar`.
+- `bomb.bz2`: 8 MiB of zeros, about 168,000:1: past the default ratio, under the default size.
+- `concatenated.txt.bz2`: two bzip2 streams, `notes.txt`'s and `evil.txt`'s, each written by 7zz
+  and joined by `generate.go`, 59 bytes read whole, as `bzip2 -d` reads them.
