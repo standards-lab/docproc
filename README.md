@@ -100,9 +100,9 @@ made fails before the tool starts.
 | `7zz` | 7-Zip | 26.06 | archive |
 | `ffmpeg`, `ffprobe` | FFmpeg | 9.0 | audio, video |
 
-7zz's minimum is its mise pin, 26.06: RAR's decoder is fixed of CVE-2025-53816 in 25.00, xz's of
-CVE-2026-14266 in 26.02, and 26.03 through 26.06 fix vulnerabilities they don't name. The vision
-and text stages run no tool.
+7zz's minimum is its mise pin, 26.06: 25.00 fixes CVE-2025-53816 in RAR's decoder, 26.02 fixes
+CVE-2026-14266 in xz's, and 26.03 through 26.06 fix vulnerabilities they don't name. The vision and
+text stages run no tool.
 
 The container runner runs a tool inside a digest-pinned image through the docker CLI, 20.10 or
 later: `audio.FFmpegImage` for ffmpeg and ffprobe, `picture.LibreOfficeImage` for soffice.

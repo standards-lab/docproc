@@ -38,10 +38,11 @@ What each holds:
 Three ZIPs and nine RARs from [libarchive](https://github.com/libarchive/libarchive)'s test suite,
 `libarchive/test/`, at its release `v3.8.11` (commit `03036ffa409a2aa1c5bbad35be2202641a040fda`),
 under libarchive's 2-clause BSD license, its `COPYING` beside them. libarchive keeps them
-uuencoded; each `.uu` was fetched from raw.githubusercontent.com at that commit and decoded, with
-Python's `binascii.a2b_uu`, to the file below, which 7zz tested whole before it was copied: the
-ZIPs with 26.05, the RARs with 26.06, an encrypted one with its password from libarchive's test,
-and a split set's first volume with the set's other volumes beside it, which aren't copied.
+uuencoded; each `.uu` was fetched from raw.githubusercontent.com at that commit and decoded with
+Python's `binascii.a2b_uu` to the file below. 7zz tested each file whole before it was copied: the
+ZIPs with 26.05 and the RARs with 26.06. An encrypted RAR was tested with its password from
+libarchive's test, and a split set's first volume with the set's other volumes beside it; those
+other volumes aren't copied.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -62,35 +63,36 @@ and a split set's first volume with the set's other volumes beside it, which are
 What each holds:
 
 - The three ZIPs: `vimrc`, 912 bytes, CRC-32 `BA8E3BAA`, under one method each.
-- `test_read_format_rar.rar`: a RAR4 of `test.txt` and `testdir/test.txt`, 20 bytes each,
-  `testlink`, a symbolic link, its Unix mode `lrwxrwxrwx`, and two directories.
+- `test_read_format_rar.rar`: a RAR4 of `test.txt` and `testdir/test.txt`, 20 bytes each;
+  `testlink`, a symbolic link of Unix mode `lrwxrwxrwx`; and two directories.
 - `test_read_format_rar_encryption_partially.rar`: a RAR4 of `foo.txt`, encrypted (password
-  `12345678`), and `bar.txt`, not, its headers clear.
+  `12345678`), and `bar.txt`, unencrypted, under clear headers.
 - `test_read_format_rar_encryption_header.rar`: a RAR4 whose headers are encrypted (password
   `12345678`), so nothing lists without it.
 - `test_read_format_rar_multivolume.part0001.rar`: the first of a RAR4 split set's four volumes,
   its main header's volume flag set.
 - `test_read_format_rar5_compressed.rar`: a RAR5 of `test.bin`, 1,200 bytes.
-- `test_read_format_rar5_encrypted.rar`: a RAR5 of `a.txt` and `c.txt`, not encrypted, and
-  `b.txt` and `d.txt`, encrypted (passwords `password` and `password2`), its headers clear.
+- `test_read_format_rar5_encrypted.rar`: a RAR5 of `a.txt` and `c.txt`, unencrypted, and `b.txt`
+  and `d.txt`, encrypted (passwords `password` and `password2`), under clear headers.
 - `test_read_format_rar5_encrypted_filenames.rar`: a RAR5 whose headers are encrypted (password
-  `password`): its encryption header comes first, so its volume flag, clear, can't be read either.
-- `test_read_format_rar5_symlink.rar`: a RAR5 of `file.txt`, `symlink.txt` and `dirlink`,
-  symbolic links, and the directory `dir`.
+  `password`). Its encryption header comes first, so its volume flag, which is clear, can't be read
+  either.
+- `test_read_format_rar5_symlink.rar`: a RAR5 of `file.txt`; `symlink.txt` and `dirlink`, symbolic
+  links; and the directory `dir`.
 - `test_read_format_rar5_multiarchive.part01.rar`: the first of a RAR5 split set's eight volumes,
   its archive flags' volume bit set.
 
 ## generated
 
 This repository's, Apache-2.0, written by `generate.go`: run `mise exec -- go run generate.go` in
-this directory. It writes the zstd streams and cabinets by hand, every byte fixed, and the 7z
-archives and xz and bzip2 streams through the 7zz mise pins, from files whose content, mode, and
-order are fixed, with no times stored and one thread, so a rerun writes the same bytes, the 7z
-archives with 7zz 26.05 and 26.06 alike and the xz and bzip2 streams with 26.06, but for the two
-encrypted 7z archives, whose salt and IV 7zz draws at random: a rerun writes them anew, and their
-sums below then change.
-Their password is `infected`, which no test gives. `~/docs`' archives aren't redistributable, so
-none is copied; the integration tier reads `~/docs` itself when the machine has it.
+this directory. It writes the zstd streams and cabinets by hand, every byte fixed. It writes the 7z
+archives and the xz and bzip2 streams through the 7zz mise pins, from files whose content, mode,
+and order are fixed, with no times stored and one thread, so a rerun writes the same bytes: the 7z
+archives with 7zz 26.05 and 26.06 alike, and the xz and bzip2 streams with 26.06. The two
+encrypted 7z archives are the exception: 7zz draws their salt and IV at random, so a rerun writes
+them anew and their sums below change. Their password is `infected`, which no test gives.
+`~/docs`' archives aren't redistributable, so none is copied; the integration tier reads `~/docs`
+itself when the machine has it.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -171,12 +173,13 @@ What each holds:
   index.
 - `clean.txz`: inspect's `clean.tar` as one xz stream, named `.txz`, so its content is named
   `clean.tar`.
-- `bomb.xz`: 8 MiB of zeros, about 6,200:1, its size declared: past the default ratio, under the
-  default size, as `bomb.7z` is.
+- `bomb.xz`: 8 MiB of zeros at about 6,200:1, its size declared. Like `bomb.7z`, it is past the
+  default ratio and under the default size.
 - `notes.txt.bz2`: `notes.txt`, 18 bytes, as one bzip2 stream (`-tbzip2`), which declares no
   size.
 - `clean.tbz2`: inspect's `clean.tar` as one bzip2 stream, named `.tbz2`, so its content is named
   `clean.tar`.
-- `bomb.bz2`: 8 MiB of zeros, about 168,000:1: past the default ratio, under the default size.
-- `concatenated.txt.bz2`: two bzip2 streams, `notes.txt`'s and `evil.txt`'s, each written by 7zz
-  and joined by `generate.go`, 59 bytes read whole, as `bzip2 -d` reads them.
+- `bomb.bz2`: 8 MiB of zeros at about 168,000:1, past the default ratio and under the default
+  size.
+- `concatenated.txt.bz2`: two bzip2 streams, of `notes.txt` and `evil.txt`, each written by 7zz
+  and joined by `generate.go`. Read whole, as `bzip2 -d` reads them, they hold 59 bytes.

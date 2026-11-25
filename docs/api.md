@@ -938,36 +938,37 @@ How the archive stage reads each kind, and why:
   routes it again, so a `.tar.gz` is a gzip part holding a tar part. The bomb rule weighs it against
   the stream's size; content that doesn't decompress, or passes the bomb rule, is an unread child,
   and a header that doesn't read fails the part.
-- A bzip2 stream is read as a gzip stream is, through compress/bzip2, its streams concatenated as
-  bzip2 concatenates them, into one part, found `bzip2 content <name>`, named by its name without
-  its `.bz2`, or with a `.tbz2`'s or `.tbz`'s `.tar`, else by its own name, so a `.tar.bz2` is a
-  bzip2 part holding a tar part. bzip2 has no header past the signature route already checked, so
-  no bzip2 part fails whole: content that doesn't decompress, cut or corrupt, or passes the bomb
-  rule, is an unread child.
+- A bzip2 stream is decompressed through compress/bzip2 into one part, as a gzip stream is, its
+  streams concatenated as bzip2 concatenates them, and found `bzip2 content <name>`. The part takes
+  the stream's name without its `.bz2`, or with `.tar` in place of `.tbz2` or `.tbz`, else the
+  stream's own name, so a `.tar.bz2` is a bzip2 part holding a tar part. bzip2 has no header past
+  the signature route already checked, so no bzip2 part fails whole: content that doesn't
+  decompress, cut or corrupt, or that passes the bomb rule, is an unread child.
 - A 7z, a RAR, or a cabinet not named `.onepkg` is listed first by 7zz's technical listing, bounded
-  by `Entries`, and the listing checked by `inspect.CheckListing` under the rules inspect holds a
+  by `Entries`, and the listing is checked by `inspect.CheckListing` under the rules inspect holds a
   tar to, before anything is extracted. The listing's flags are yielded as the archive's own,
   through `Item.Flag`, and a verdict to quarantine them stops the stage, nothing extracted.
   Otherwise its files are read in the listing's order through one 7zz run of the whole archive to
   its stdout, an unsized or encrypted entry alone, and found `7z entry <name>`, `RAR entry <name>`,
   or `cabinet entry <name>`; a directory is no part. The bomb rule weighs the bytes against the
   whole archive's size, since a 7z's or a cabinet's entries share their packed blocks, as a solid
-  RAR's do, and the bytes are held to the listing's size, and its CRC-32 where it declares one. A
-  link, a device, a traversing or absolute name, and an encrypted entry are unread children, as a
-  ZIP's are; a 7z or a RAR whose headers are encrypted, so nothing of it lists, ends with
+  RAR's do. The bytes are held to the listing's size, and to its CRC-32 where the listing declares
+  one. A link, a device, a traversing or absolute name, and an encrypted entry are unread children,
+  as a ZIP's are; a 7z or a RAR whose headers are encrypted, so nothing of it lists, ends with
   `ErrEncrypted` at once.
-- A RAR4 is read through 7zz's rar handler and a RAR5 through its rar5 handler, each refusing the
-  other's version. A RAR that is one volume of a split set opens its sibling volumes by name, so
-  the stage reads the part's head first and ends a volume, as `route.RARVolume` reports its first
-  header's mark, with `ErrNoProcessor`, "a split RAR volume", before 7zz runs: no sibling volume
-  is opened, and the volume is unread. A RAR5 volume whose headers are encrypted hides the mark,
-  so it lists as any RAR5 with encrypted headers does and ends with `ErrEncrypted`.
-- A zstd or xz stream is read through 7-Zip into one part, as a gzip stream is, found
-  `zstd content <name>` or `xz content <name>`, named by its name without its `.zst` or `.xz`, or
-  with a `.tzst`'s or `.txz`'s `.tar`, so a `.tar.zst` or `.tar.xz` is a stream part holding a tar
-  part. 7-Zip lists it as one item with no name, its size the one the stream declares, a zstd
-  frame header's when it declares one and an xz index's, checked first as a listing is; the bomb
-  rule weighs the bytes against the stream's size.
+- A RAR4 is read through 7zz's rar handler and a RAR5 through its rar5 handler, and each handler
+  refuses the other version. 7zz opens a split set's sibling volumes by name, so the stage reads the
+  part's head first: when `route.RARVolume` reports that the first header marks a volume, the stage
+  ends the part with `ErrNoProcessor`, "a split RAR volume", before 7zz runs. No sibling volume is
+  opened, and the volume is unread. A RAR5 volume whose headers are encrypted hides the mark, so it
+  lists as any RAR5 with encrypted headers does and ends with `ErrEncrypted`.
+- A zstd or xz stream is read through 7-Zip into one part, as a gzip stream is, and found
+  `zstd content <name>` or `xz content <name>`. The part takes the stream's name without its `.zst`
+  or `.xz`, or with `.tar` in place of `.tzst` or `.txz`, so a `.tar.zst` or `.tar.xz` is a stream
+  part holding a tar part. 7-Zip lists the stream as one item with no name, whose size is the one
+  the stream declares: a zstd frame header's when the header declares one, and an xz index's. That
+  listing is checked first, as an archive's is, and the bomb rule weighs the bytes against the
+  stream's size.
 - Every write of found content, an archive's and the document stage's attachments' alike, goes
   through one writer. A bomb, the bytes cap, or the writer's own write failure is decided by its
   record before the content's error is weighed: every fill, 7-Zip's extract among them, wraps a
