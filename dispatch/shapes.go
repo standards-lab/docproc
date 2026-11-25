@@ -135,9 +135,13 @@ const (
 	// MetaFrom is the kind of picture an image was converted from, a route.Kind: the picture
 	// stage's image outputs.
 	MetaFrom = "from"
-	// MetaEncoding is the encoding a text was decoded from and how it was decided, such as
-	// "utf-8" or "windows-1252 (fallback)": the text stage's text output.
+	// MetaEncoding is the charset a text was decoded from, in lowercase, such as "utf-8",
+	// "utf-16le", or "windows-1252": the text stage's text output.
 	MetaEncoding = "encoding"
+	// MetaEncodingBy is how the text stage chose a text's [MetaEncoding] when the text alone
+	// didn't settle it: "bom" for a byte order mark, "fallback" for windows-1252 taken because
+	// the text isn't UTF-8. A text that is valid UTF-8 with no mark carries none.
+	MetaEncodingBy = "encoding_by"
 	// MetaConvertedFrom is the format a legacy office document or an RTF was converted from, such
 	// as "rtf": the office stage's document Markdown.
 	MetaConvertedFrom = "converted_from"

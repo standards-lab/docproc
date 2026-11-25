@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"unicode/utf8"
 
 	"github.com/standards-lab/docproc/dispatch"
@@ -21,11 +20,11 @@ import (
 	"golang.org/x/text/encoding/unicode/utf32"
 )
 
-const textVersion = "2"
+const textVersion = "3"
 
 const (
-	textByBOM    = " (byte order mark)"
-	textFallback = "windows-1252 (fallback)"
+	textByBOM      = "bom"
+	textByFallback = "fallback"
 )
 
 type textEncoding struct {
@@ -44,7 +43,7 @@ var textBOMs = []textEncoding{
 	{"utf-16be", []byte{0xfe, 0xff}, unicode.UTF16(unicode.BigEndian, unicode.IgnoreBOM), []byte{0xff, 0xfd}, 2},
 }
 
-var textWindows1252 = textEncoding{name: textFallback, enc: charmap.Windows1252, unit: 1}
+var textWindows1252 = textEncoding{name: "windows-1252", enc: charmap.Windows1252, unit: 1}
 
 const textChunk = 64 << 10
 
@@ -101,8 +100,7 @@ func decodeText(ctx context.Context, path, dir string) (decoded, error) {
 	head = head[:n]
 	for _, e := range textBOMs {
 		if bytes.HasPrefix(head, e.bom) {
-			e.name += textByBOM
-			return decodeFile(ctx, f, int64(len(e.bom)), e, dir, nil)
+			return decodeFile(ctx, f, int64(len(e.bom)), e, textByBOM, dir, nil)
 		}
 	}
 	valid, err := validUTF8(ctx, f)
@@ -110,13 +108,13 @@ func decodeText(ctx context.Context, path, dir string) (decoded, error) {
 		return decoded{}, err
 	}
 	if valid {
-		return textOutput(path, "utf-8", nil), nil
+		return textOutput(path, "utf-8", "", nil), nil
 	}
-	return decodeFile(ctx, f, 0, textWindows1252, dir,
+	return decodeFile(ctx, f, 0, textWindows1252, textByFallback, dir,
 		[]string{"no byte order mark and not UTF-8: decoded as windows-1252, which may not be the text's encoding"})
 }
 
-func decodeFile(ctx context.Context, f *os.File, offset int64, e textEncoding, dir string, warnings []string) (d decoded, err error) {
+func decodeFile(ctx context.Context, f *os.File, offset int64, e textEncoding, by, dir string, warnings []string) (d decoded, err error) {
 	if _, err := f.Seek(offset, io.SeekStart); err != nil {
 		return decoded{}, err
 	}
@@ -137,17 +135,20 @@ func decodeFile(ctx context.Context, f *os.File, offset int64, e textEncoding, d
 		return decoded{}, err
 	}
 	if put := counted.n - stored.n; put > 0 {
-		name, _, _ := strings.Cut(e.name, " ")
-		warnings = append(warnings, strconv.Itoa(put)+" U+FFFD replacing what "+name+" can't decode")
+		warnings = append(warnings, strconv.Itoa(put)+" U+FFFD replacing what "+e.name+" can't decode")
 	}
-	return textOutput(path, e.name, warnings), nil
+	return textOutput(path, e.name, by, warnings), nil
 }
 
-func textOutput(path, encoding string, warnings []string) decoded {
+func textOutput(path, encoding, by string, warnings []string) decoded {
+	meta := map[string]string{dispatch.MetaEncoding: encoding}
+	if by != "" {
+		meta[dispatch.MetaEncodingBy] = by
+	}
 	return decoded{
 		output: dispatch.Output{
 			Kind: dispatch.TextOutput, Name: "text", MediaType: "text/plain", Path: path,
-			Meta: map[string]string{dispatch.MetaEncoding: encoding},
+			Meta: meta,
 		},
 		warnings: warnings,
 	}

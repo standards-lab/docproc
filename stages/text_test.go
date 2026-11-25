@@ -3,6 +3,7 @@ package stages_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -53,29 +54,35 @@ func prepareText(t *testing.T, ctx context.Context, name string, content []byte)
 
 func TestTextStage(t *testing.T) {
 	const fallback = "no byte order mark and not UTF-8: decoded as windows-1252, which may not be the text's encoding"
+	utf8 := map[string]string{"encoding": "utf-8"}
+	bom := func(charset string) map[string]string {
+		return map[string]string{"encoding": charset, "encoding_by": "bom"}
+	}
+	cp1252 := map[string]string{"encoding": "windows-1252", "encoding_by": "fallback"}
 	cases := []struct {
-		name, content, want, encoding string
-		warnings                      []string
+		name, content, want string
+		meta                map[string]string
+		warnings            []string
 	}{
-		{"ascii", "a,b\r\n1,2\n", "a,b\r\n1,2\n", "utf-8", nil},
-		{"empty", "", "", "utf-8", nil},
-		{"utf-8 storing U+FFFD", "café �\n", "café �\n", "utf-8", nil},
-		{"utf-8 mark", "\xef\xbb\xbfcafé\r\n", "café\r\n", "utf-8 (byte order mark)", nil},
-		{"utf-8 mark, invalid byte", "\xef\xbb\xbfa\xffb�", "a�b�", "utf-8 (byte order mark)",
+		{"ascii", "a,b\r\n1,2\n", "a,b\r\n1,2\n", utf8, nil},
+		{"empty", "", "", utf8, nil},
+		{"utf-8 storing U+FFFD", "café �\n", "café �\n", utf8, nil},
+		{"utf-8 mark", "\xef\xbb\xbfcafé\r\n", "café\r\n", bom("utf-8"), nil},
+		{"utf-8 mark, invalid byte", "\xef\xbb\xbfa\xffb�", "a�b�", bom("utf-8"),
 			[]string{"1 U+FFFD replacing what utf-8 can't decode"}},
-		{"utf-16le mark", "\xff\xfec\x00\xe9\x00\r\x00\n\x00", "cé\r\n", "utf-16le (byte order mark)", nil},
-		{"utf-16be mark", "\xfe\xff\x00c\x00\xe9\x30\x42", "céあ", "utf-16be (byte order mark)", nil},
+		{"utf-16le mark", "\xff\xfec\x00\xe9\x00\r\x00\n\x00", "cé\r\n", bom("utf-16le"), nil},
+		{"utf-16be mark", "\xfe\xff\x00c\x00\xe9\x30\x42", "céあ", bom("utf-16be"), nil},
 		{"utf-16le mark, unpaired surrogate and odd byte", "\xff\xfe\x00\xd8a\x00\xfd\xffb",
-			"�a��", "utf-16le (byte order mark)",
+			"�a��", bom("utf-16le"),
 			[]string{"2 U+FFFD replacing what utf-16le can't decode"}},
-		{"utf-32le mark", "\xff\xfe\x00\x00c\x00\x00\x00\x00\xf6\x01\x00", "c\U0001f600", "utf-32le (byte order mark)", nil},
-		{"utf-32be mark, past U+10FFFF", "\x00\x00\xfe\xff\x00\x00\x00c\x00\x11\x00\x00", "c�", "utf-32be (byte order mark)",
+		{"utf-32le mark", "\xff\xfe\x00\x00c\x00\x00\x00\x00\xf6\x01\x00", "c\U0001f600", bom("utf-32le"), nil},
+		{"utf-32be mark, past U+10FFFF", "\x00\x00\xfe\xff\x00\x00\x00c\x00\x11\x00\x00", "c�", bom("utf-32be"),
 			[]string{"1 U+FFFD replacing what utf-32be can't decode"}},
-		{"windows-1252", "caf\xe9 \x80 \x93q\x94\r\n", "café € “q”\r\n", "windows-1252 (fallback)",
+		{"windows-1252", "caf\xe9 \x80 \x93q\x94\r\n", "café € “q”\r\n", cp1252,
 			[]string{fallback}},
-		{"windows-1252, undefined bytes", "a\x81b\x9d", "a�b�", "windows-1252 (fallback)",
+		{"windows-1252, undefined bytes", "a\x81b\x9d", "a�b�", cp1252,
 			[]string{fallback, "2 U+FFFD replacing what windows-1252 can't decode"}},
-		{"utf-8 then a stray byte", "café\xff", "cafÃ©ÿ", "windows-1252 (fallback)", []string{fallback}},
+		{"utf-8 then a stray byte", "café\xff", "cafÃ©ÿ", cp1252, []string{fallback}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -86,16 +93,22 @@ func TestTextStage(t *testing.T) {
 			if got != c.want {
 				t.Errorf("text %q, want %q", got, c.want)
 			}
-			if o.Meta["encoding"] != c.encoding {
-				t.Errorf("encoding %q, want %q", o.Meta["encoding"], c.encoding)
+			if !maps.Equal(o.Meta, c.meta) {
+				t.Errorf("meta %q, want %q", o.Meta, c.meta)
 			}
 			if !slices.Equal(warnings, c.warnings) {
 				t.Errorf("warnings %q, want %q", warnings, c.warnings)
 			}
-			if pass := c.encoding == "utf-8"; (o.Path == path) != pass {
+			if pass := maps.Equal(c.meta, utf8); (o.Path == path) != pass {
 				t.Errorf("output at %s, the part at %s", o.Path, path)
 			}
 		})
+	}
+}
+
+func TestTextStageVersion(t *testing.T) {
+	if v := stages.NewTextStage().Identity().Version; v != "3" {
+		t.Errorf("version %q, want 3", v)
 	}
 }
 
@@ -105,16 +118,16 @@ func TestTextStageChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Meta["encoding"] != "utf-8" || got != split {
-		t.Errorf("split rune: %q, %d bytes of %d", o.Meta["encoding"], len(got), len(split))
+	if want := map[string]string{"encoding": "utf-8"}; !maps.Equal(o.Meta, want) || got != split {
+		t.Errorf("split rune: %q, %d bytes of %d", o.Meta, len(got), len(split))
 	}
 	late := strings.Repeat("a", 200<<10) + "\xe9"
 	o, got, _, _, err = prepareText(t, t.Context(), "late.txt", []byte(late))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if o.Meta["encoding"] != "windows-1252 (fallback)" || got != late[:len(late)-1]+"é" {
-		t.Errorf("late byte: %q, %d bytes", o.Meta["encoding"], len(got))
+	if want := map[string]string{"encoding": "windows-1252", "encoding_by": "fallback"}; !maps.Equal(o.Meta, want) || got != late[:len(late)-1]+"é" {
+		t.Errorf("late byte: %q, %d bytes", o.Meta, len(got))
 	}
 }
 

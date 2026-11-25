@@ -272,8 +272,8 @@
 //     [MetaPage], [MetaCount], [MetaWindow], [MetaFrame], [MetaSheet], [MetaDPI], and
 //     [MetaFields]; the windows' [MetaStart], [MetaEnd], [MetaCut], [MetaSamples],
 //     [MetaThreshold], [MetaSeamBefore], and [MetaSeamAfter]; the frames' [MetaTime],
-//     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding], and
-//     [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath], [MetaFormat], [MetaFolder],
+//     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding],
+//     [MetaEncodingBy], and [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath], [MetaFormat], [MetaFolder],
 //     [MetaSubject], [MetaMessageID], [MetaTopic], [MetaMissed], [MetaEmbeddedIn], [MetaName],
 //     [MetaSection], and [MetaTitle]; and the record media types [MediaAudioPlan],
 //     [MediaVideoPlan], [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm], and
