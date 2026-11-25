@@ -24,17 +24,18 @@ requires golang.org/x/text alone.
 ### Changed
 
 - **Breaking:** the text output's `encoding` (`dispatch.MetaEncoding`) is the lowercase charset
-  alone, `utf-8`, `utf-16le`, `utf-16be`, `utf-32le`, `utf-32be`, or `windows-1252`, and how it
-  was chosen moves to `encoding_by`:
+  alone, one of `utf-8`, `utf-16le`, `utf-16be`, `utf-32le`, `utf-32be`, or `windows-1252`, and
+  how it was chosen moves to `encoding_by`:
   - `utf-8` → `encoding: utf-8`, no `encoding_by`;
   - `windows-1252 (fallback)` → `encoding: windows-1252, encoding_by: fallback`;
   - `<charset> (byte order mark)` → `encoding: <charset>, encoding_by: bom`.
 
-  dispatch's wire stays `"1"` and the run directory's schema `"2"`, an exception to their growth
-  by addition only that `dispatch.Version` and the [API page](docs/api.md) record: the combined
-  value had to be parsed to recover the charset and was no encoding name a reader could look up,
-  the split comes before more text sources are added, its one known reader, docs-corpus's
-  `tools/coverage`, is fixed with it, and a text output is always UTF-8 either way.
+  dispatch's wire stays `"1"` and the run directory's schema `"2"`. The split is an exception to
+  their growth by addition only, which `dispatch.Version` and the [API page](docs/api.md) record.
+  The combined value had to be parsed to recover the charset, and no reader could look it up as an
+  encoding name. The split comes before more text sources are added. Its one known reader,
+  docs-corpus's `tools/coverage`, decodes text outputs by it and changes in docs-corpus; a text
+  output is always UTF-8, so a reader needs neither key to decode one.
 - The text stage's identity version is 3, from 2, so an index prepares its earlier text entries
   again rather than replaying them.
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.1-libreoffice`, from 9.9.3-libreoffice,

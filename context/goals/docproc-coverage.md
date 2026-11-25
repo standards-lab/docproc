@@ -1,8 +1,8 @@
 # goal · docproc-coverage
 
-- **State:** idle
-- **Task:** none
-- **Branch:** none
+- **State:** building
+- **Task:** text-encoding-keys
+- **Branch:** text-encoding-keys
 
 ## Tasks
 
@@ -81,6 +81,12 @@ value. Everything short of the pushed tags is two-way.
 
 `v0.5.0`, `storage/v0.1.3`, `postgres/v0.1.3`, `cmd/docproc/v0.2.3`
 
+## Progress
+
+slices 3/4 committed (4 at SHIP) · standards f61df1f, 1efe45e · spec no gaps · editor done
+- slice 3: cmd/docproc reaches the unreleased base through a temporary replace (27b1246, 1e0bff1);
+  slice 4 runs at SHIP on `text-encoding-keys-require` once v0.5.0 is tagged, as #27 did.
+
 ## Decisions
 
 - archives-and-mpeg: bzip2 streams through compress/bzip2, beside gzip, not 7zz.
@@ -90,9 +96,8 @@ value. Everything short of the pushed tags is two-way.
   pipeline).
 - xps: XPS converts to PDF through mutool, then the document stage; rejected libgxps (no release
   since 2021) and GhostXPS (Windows binaries only).
-- text-encoding-keys: the split stays under dispatch "1" and run schema "2" as a recorded
-  exception; docs-corpus's tools/coverage, the one reader of the value, decodes outputs by it and
-  is corpus.docs's to fix (outputs are always UTF-8).
+- text-encoding-keys: docs-corpus's tools/coverage, the one reader of the combined value, decodes
+  outputs by it and is corpus.docs's to fix (outputs are always UTF-8).
 - text-encoding-keys: held MimeKit at 4.18.2: 5.0.0 declined, PstBuilder.Eml 1.3.0 is built on
   MimeKit 4.
 - text-encoding-keys: held MsgKit at 3.0.6: 3.1.0 declined, it needs MimeKit.Core 5.

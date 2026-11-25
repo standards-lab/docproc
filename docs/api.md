@@ -888,11 +888,11 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   with), or UTF-16's, which the output drops; else UTF-8, when the whole part is valid UTF-8; else
   windows-1252, a fallback, with a warning that the text may be in another encoding. The output's
   `encoding` (`MetaEncoding`) is the charset, lowercase: `utf-8`, `utf-16le`, `utf-16be`,
-  `utf-32le`, `utf-32be`, or `windows-1252`; its `encoding_by` (`MetaEncodingBy`) is `bom` when a
-  byte order mark chose it and `fallback` for windows-1252, absent for valid UTF-8 with no mark,
-  an empty part included. Bytes the encoding can't decode become U+FFFD, golang.org/x/text
-  decoding windows-1252's five undefined bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d) so, and a warning at
-  `text`, its `Tool` `text`, counts them.
+  `utf-32le`, `utf-32be`, or `windows-1252`. Its `encoding_by` (`MetaEncodingBy`) is `bom` when a
+  byte order mark chose the charset and `fallback` for windows-1252, and is absent for valid UTF-8
+  with no mark, an empty part included. Bytes the encoding can't decode become U+FFFD,
+  golang.org/x/text decoding windows-1252's five undefined bytes (0x81, 0x8d, 0x8f, 0x90, 0x9d) so,
+  and a warning at `text`, its `Tool` `text`, counts them.
   It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
   never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
   other text is decoded, streamed, into a file, so a large part is never held in memory, and the
@@ -1129,12 +1129,13 @@ package's and `job`'s (docinfer's README, "Packages"), both versioned by `docinf
 Cerebro's `messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own
 data types ([`cerebro.md`](../context/cerebro.md), "Events"). `rundir/schema` aliases `dispatch`'s
 and `inspect`'s shapes ("Run directory"). The shapes grow by addition only, as the tools' contracts
-do, with one recorded exception. The text stage's `encoding`, once a combined value such as
-`windows-1252 (fallback)` or `utf-16le (byte order mark)`, became the charset alone, and
-`encoding_by` says how it was chosen, under wire "1" and run schema "2" both. The combined value had
-to be parsed to recover the charset and was no encoding name a reader could look up; the split was
-made before more text sources were added; its one known reader, docs-corpus's `tools/coverage`, is
-fixed with it; and a text output is always UTF-8 either way.
+do, with one recorded exception. Under wire "1" and run schema "2" both, the text stage's
+`encoding`, once a combined value such as `windows-1252 (fallback)` or
+`utf-16le (byte order mark)`, became the charset alone, and `encoding_by` says how it was chosen.
+The combined value had to be parsed to recover the charset, and no reader could look it up as an
+encoding name. The split was made before more text sources were added. Its one known reader,
+docs-corpus's `tools/coverage`, decodes text outputs by it and changes in docs-corpus; a text
+output is always UTF-8, so a reader needs neither key to decode one.
 
 ## Run directory
 
