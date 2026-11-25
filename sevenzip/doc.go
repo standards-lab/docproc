@@ -1,11 +1,14 @@
-// Package sevenzip lists and reads archives through 7-Zip's 7zz: a 7z archive, a zstd stream, a
-// Microsoft cabinet, and a ZIP's entries of methods archive/zip doesn't read, such as Deflate64,
-// implode, LZMA, xz, zstd, and PPMd, each named by the route.Kind route identified it as. It
-// provides pre-inference preparation only: the stages package's archive stage reads these
-// kinds through it. It builds on every 64-bit platform: its types on the standard library and route
-// alone, its Reader on this module's tool package, and the program it runs is a tool.Tool the
-// caller built: 7-Zip's 7zz, SevenZipSpec declaring it, minimum 24.07, the oldest release with no
-// known defect in a decoder the package uses, its zstd decoder fixed of CVE-2024-11477.
+// Package sevenzip lists and reads archives through 7-Zip's 7zz: a 7z archive, a zstd or xz
+// stream, a RAR4 or RAR5 archive, a Microsoft cabinet, and a ZIP's entries of methods archive/zip
+// doesn't read, such as Deflate64, implode, LZMA, xz, zstd, and PPMd, each named by the route.Kind
+// route identified it as. It provides pre-inference preparation only: the stages package's
+// archive stage reads these kinds through it. It builds on every 64-bit platform: its types on
+// the standard library and route alone, its Reader on this module's tool package, and the program
+// it runs is a tool.Tool the caller built: 7-Zip's 7zz, SevenZipSpec declaring it, minimum 26.06,
+// the mise pin. The package raises its minimum to the pinned minor when a decoder's defect is
+// fixed past it: RAR's CVE-2025-53816, fixed in 25.00, and xz's CVE-2026-14266, fixed in 26.02,
+// are past 24.07, the minimum that fixed zstd's CVE-2024-11477, and 26.03 through 26.06 fix
+// vulnerabilities they don't name.
 //
 // A Reader, built over a Config of the Tool, runs 7zz for three things, each run under the
 // caller's context. List reads an archive's headers through 7zz's technical listing, -slt, and
@@ -24,17 +27,19 @@
 // item's stored name, a traversing or absolute one included, is only ever a name. An item is
 // named by its listed name, matched whole: -spd keeps it from being a wildcard, and -i! (or, for
 // the whole run's exclusions, -x!) from being a list file. Every run is told its archive's
-// format, -t, so 7zz never guesses one, and given an empty password, -p, so it never prompts for
-// one: an archive whose headers are encrypted fails to list, and an encrypted item to read, with
-// ErrEncrypted. A file 7zz can't open as the format named fails with ErrNotArchive. A run 7zz
-// ends with a warning, exit code 1, has succeeded. Any other failure names 7zz's own error
-// lines, and wraps the run's *tool.ExitError.
+// format, -t, so 7zz never guesses one, a RAR4 its rar handler and a RAR5 its rar5 handler, each
+// refusing the other's version, and given an empty password, -p, so it never prompts for one. A
+// RAR volume of a split set opens its sibling volumes by name, so a caller reading one file alone
+// refuses a volume, as route.RARVolume reports it, before any run. An archive whose headers are
+// encrypted fails to list, and an encrypted item to read, with ErrEncrypted. A file 7zz can't open
+// as the format named fails with ErrNotArchive. A run 7zz ends with a warning, exit code 1, has
+// succeeded. Any other failure names 7zz's own error lines, and wraps the run's *tool.ExitError.
 //
 // # The listing
 //
 // The reader relies on this form of 7zz's technical listing, l -slt, in UTF-8 (-sccUTF-8), as
-// 24.07 through 26.06 write it: a banner and the archive's name, ignored; a line "--", then the
-// archive's properties; a line of ten "-", then each item's properties, a blank line ending each
+// 26.06 writes it: a banner and the archive's name, ignored; a line "--", then the archive's
+// properties; a line of ten "-", then each item's properties, a blank line ending each
 // item. A property is one line, "Name = value", or "Name =" with an empty value, which is no
 // value. Lines end in "\n" alone, and a value runs to it, so a carriage return in a stored name
 // is part of the name. 7zz lists a line break in a stored name as "_": the listing never breaks
@@ -49,7 +54,7 @@
 // Its exported identifiers:
 //
 //   - [SevenZipSpec] declares 7-Zip's 7zz for either runner's constructor.
-//   - [SevenZipMinimum] is the oldest 7zz the package accepts, 24.07.
+//   - [SevenZipMinimum] is the oldest 7zz the package accepts, 26.06.
 //   - [Config] is the Tool a Reader is built over.
 //   - [Reader] lists and reads through 7zz; [NewReader] builds one.
 //   - [Reader.List] lists an archive, given a [ListRequest], into a [Listing] of [Entry] items.

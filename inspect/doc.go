@@ -47,8 +47,8 @@
 // The archive checks are seven rules, whatever the archive's format: [ArchiveTraversal],
 // [ArchiveAbsolutePath], [ArchiveSymlink], [ArchiveHardlink], [ArchiveDevice], [ArchiveEncrypted],
 // and [ArchiveBomb]. A stage that reads an archive through a program raises them too: it calls
-// [CheckListing] with the program's listing of a 7z, a cabinet, or a zstd stream before it
-// extracts anything, and raises ArchiveBomb on the bytes it writes.
+// [CheckListing] with the program's listing of a 7z, a cabinet, a RAR, or a zstd or xz stream
+// before it extracts anything, and raises ArchiveBomb on the bytes it writes.
 //
 // The Options carry no default bound. The zero Options weigh each flag by its class, apply no
 // bomb rule but the one no ZIP passes, its declared compressed sizes against its own size, and

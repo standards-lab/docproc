@@ -17,6 +17,7 @@ func TestMain(m *testing.M) {
 		"ffprobe":         ffprobeStandin,
 		"magick":          pictureStandin,
 		"soffice":         sofficeStandin,
+		"7zz":             sevenZipStandin,
 		"docproc-onenote": envelopeStandin(onenote.OneNoteMinimum),
 		"docproc-ooxml":   envelopeStandin(office.OfficeMinimum),
 	})

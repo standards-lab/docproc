@@ -71,7 +71,7 @@ func run() error {
 			return err
 		}
 	}
-	return sevenZips(zeros)
+	return sevenZips(zeros, cleanTar)
 }
 
 func zstdOf(content []byte, declare int64) []byte {
@@ -183,7 +183,7 @@ func cabOf(files ...cabFile) []byte {
 	return append(b, data...)
 }
 
-func sevenZips(zeros []byte) error {
+func sevenZips(zeros, cleanTar []byte) error {
 	src, err := os.MkdirTemp("", "sevenzip-fixtures-")
 	if err != nil {
 		return err
@@ -213,6 +213,7 @@ func sevenZips(zeros []byte) error {
 		"secret.txt":     []byte("encrypted with the fixtures' password\n"),
 		"zeros.bin":      zeros,
 		"empty.txt":      nil,
+		"clean.tar":      cleanTar,
 	} {
 		if err := write(name, body); err != nil {
 			return err
@@ -241,6 +242,7 @@ func sevenZips(zeros []byte) error {
 		return err
 	}
 	addReproducibly := []string{"a", "-mtm-", "-mtc-", "-mta-", "-mmt=1", "-bd"}
+	addStream := []string{"a", "-txz", "-mmt=1", "-bd"}
 	sz := func(args ...string) error {
 		cmd := exec.Command("7zz", args...)
 		cmd.Dir = src
@@ -274,6 +276,9 @@ func sevenZips(zeros []byte) error {
 		append(append([]string{}, addReproducibly...), "-m0=BZip2", filepath.Join(outAbs, "mixed.7z"), "bzip2"),
 		append(append([]string{}, addReproducibly...), "-m0=Deflate", filepath.Join(outAbs, "mixed.7z"), "deflate"),
 		append(append([]string{}, addReproducibly...), "-m0=Copy", filepath.Join(outAbs, "mixed.7z"), "copy"),
+		append(append([]string{}, addStream...), archive("notes.txt.xz"), "notes.txt"),
+		append(append([]string{}, addStream...), archive("clean.txz"), "clean.tar"),
+		append(append([]string{}, addStream...), archive("bomb.xz"), "zeros.bin"),
 	}
 	for _, args := range steps {
 		if err := sz(args...); err != nil {

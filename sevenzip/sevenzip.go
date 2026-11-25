@@ -14,10 +14,11 @@ import (
 	"github.com/standards-lab/docproc/tool"
 )
 
-// SevenZipMinimum is the oldest 7-Zip the package accepts: 24.07, the oldest release with no
-// known defect in a decoder the package uses, its zstd decoder fixed of CVE-2024-11477's integer
-// underflow. It is raised to the pinned minor whenever a decoder's defect is fixed past it.
-const SevenZipMinimum = "24.07"
+// SevenZipMinimum is the oldest 7-Zip the package accepts: 26.06, the mise pin. It is raised to
+// the pinned minor whenever a decoder's defect is fixed past it: RAR's CVE-2025-53816, fixed in
+// 25.00, and xz's CVE-2026-14266, fixed in 26.02, are past 24.07, zstd's CVE-2024-11477 fixed in
+// it, and 26.03 through 26.06 fix vulnerabilities they don't name.
+const SevenZipMinimum = "26.06"
 
 // SevenZipSpec declares 7-Zip's 7zz, minimum SevenZipMinimum, for either runner's constructor. 7zz with no
 // arguments prints "7-Zip (z) 26.05 (x64) : Copyright ...", and the pattern takes the dotted
@@ -70,16 +71,24 @@ func NewReader(cfg Config) (*Reader, error) {
 var formats = map[route.Kind]string{
 	route.SevenZip: "7z",
 	route.Zstd:     "zstd",
+	route.XZ:       "xz",
 	route.MSCF:     "cab",
 	route.ZIP:      "zip",
+	route.RAR4:     "rar",
+	route.RAR5:     "rar5",
 }
+
+func stream(kind route.Kind) bool { return kind == route.Zstd || kind == route.XZ }
 
 // ListRequest names the archive to list, the kind to read it as, and the bound on its items.
 type ListRequest struct {
 	// Path is the archive's file; it is only read.
 	Path string
-	// Kind is what route identified the archive as: route.SevenZip, route.Zstd, route.MSCF, or
-	// route.ZIP.
+	// Kind is what route identified the archive as: route.SevenZip, route.Zstd, route.XZ,
+	// route.MSCF, route.ZIP, route.RAR4, or route.RAR5. A RAR is read through 7zz's handler of
+	// its version, rar or rar5, each refusing the other's. A RAR volume of a split set opens its
+	// sibling volumes by name: a caller that would read one file alone refuses a volume first, as
+	// route.RARVolume reports it.
 	Kind route.Kind
 	// Entries is the most items the listing may hold, directories among them, typically the
 	// caller's inspect.Options.Entries; zero bounds none.
@@ -94,7 +103,7 @@ type ExtractRequest struct {
 	// Kind is what route identified the archive as, as ListRequest's Kind.
 	Kind route.Kind
 	// Name is the item's Path in the archive's Listing, matched whole, never as a wildcard; empty
-	// for a zstd stream's one item, and only then.
+	// for a zstd or xz stream's one item, and only then.
 	Name string
 }
 
@@ -147,8 +156,8 @@ func (r *Reader) Extract(ctx context.Context, req ExtractRequest, w io.Writer) e
 	if err != nil {
 		return err
 	}
-	if (req.Name == "") != (req.Kind == route.Zstd) {
-		return fmt.Errorf("sevenzip: %w: a name is required for every kind but a zstd stream, and none for it", ErrRequest)
+	if (req.Name == "") != stream(req.Kind) {
+		return fmt.Errorf("sevenzip: %w: a name is required for every kind but a zstd or xz stream, and none for either", ErrRequest)
 	}
 	args := append([]string{"e", "-so", "-spd", "-bd", "-t" + format}, common...)
 	if req.Name != "" {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/inspect"
@@ -20,7 +21,15 @@ type sevenZipKind struct {
 var sevenZipKinds = map[route.Kind]sevenZipKind{
 	route.SevenZip: {what: "a 7z archive", where: "7z entry "},
 	route.MSCF:     {what: "a cabinet", where: "cabinet entry "},
+	route.RAR4:     {what: "a RAR archive", where: "RAR entry "},
+	route.RAR5:     {what: "a RAR archive", where: "RAR entry "},
 	route.Zstd:     {what: "a zstd stream", where: "zstd content "},
+	route.XZ:       {what: "an xz stream", where: "xz content "},
+}
+
+var streamExtensions = map[route.Kind][2]string{
+	route.Zstd: {".zst", ".tzst"},
+	route.XZ:   {".xz", ".txz"},
 }
 
 func listedType(e sevenzip.Entry) (inspect.EntryType, string) {
@@ -137,14 +146,43 @@ func (s *archiveStage) listedEntry(ctx context.Context, p dispatch.Part, k seven
 	return dispatch.PartItem(dispatch.Found{Path: path, Name: e.Path, Where: where}), nil
 }
 
-func (s *archiveStage) zstd(ctx context.Context, p dispatch.Part, dir string, yield func(dispatch.Item, error) bool) {
-	k := sevenZipKinds[route.Zstd]
+func (s *archiveStage) rar(ctx context.Context, p dispatch.Part, dir string, yield func(dispatch.Item, error) bool) {
+	head, err := readHead(p.Path)
+	if err != nil {
+		yield(dispatch.Item{}, fmt.Errorf("archive stage: %w", err))
+		return
+	}
+	if route.RARVolume(head) {
+		yield(dispatch.Item{}, fmt.Errorf("archive stage: a split RAR volume: %w", dispatch.ErrNoProcessor))
+		return
+	}
+	s.listed(ctx, p, dir, sevenZipKinds[p.ContentType.Kind], yield)
+}
+
+func readHead(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	head := make([]byte, route.HeadLen)
+	n, err := io.ReadFull(f, head)
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	return head[:n], nil
+}
+
+func (s *archiveStage) stream(ctx context.Context, p dispatch.Part, dir string, yield func(dispatch.Item, error) bool) {
+	kind := p.ContentType.Kind
+	k := sevenZipKinds[kind]
 	l, err := s.list(ctx, p, k)
 	if err != nil {
 		yield(dispatch.Item{}, err)
 		return
 	}
-	name := streamStem(p.Name, ".zst", ".tzst")
+	ext := streamExtensions[kind]
+	name := streamStem(p.Name, ext[0], ext[1])
 	var content sevenzip.Entry
 	if len(l.Entries) > 0 {
 		content = l.Entries[0]
@@ -156,7 +194,7 @@ func (s *archiveStage) zstd(ctx context.Context, p dispatch.Part, dir string, yi
 	where := k.where + name
 	compressed := uint64(p.Size)
 	path, written, why, err := s.extract(ctx, func(w io.Writer) error {
-		return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: p.Path, Kind: route.Zstd}, w)
+		return s.sevenZip.Extract(ctx, sevenzip.ExtractRequest{Path: p.Path, Kind: kind}, w)
 	}, dir, compressed, func(w *bombWriter, fillErr error) error {
 		switch {
 		case fillErr != nil:

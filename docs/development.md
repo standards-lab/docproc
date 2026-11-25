@@ -42,7 +42,7 @@ in [the tools' builds](tool-builds.md).
 ## The root mise.toml
 
 [`mise.toml`](../mise.toml) pins the integration tier's 7-Zip, `7zz`, so currency and upgrade keep
-it current: `sevenzip` requires 24.07 or later. `test:integration` runs under it; CI never needs
+it current: `sevenzip` requires 26.06 or later. `test:integration` runs under it; CI never needs
 it, so its workflows set `MISE_DISABLE_TOOLS` to it, and no job installs it. The tier's other
 system tools are the host's. crane lists an image's tags for currency's scan of the compose
 harness's and the Go source's image pins, and reads a tag's index digest for the upgrade; no CI job

@@ -71,8 +71,10 @@ func (s *archiveStage) Prepare(ctx context.Context, p dispatch.Part, dir string)
 			s.tar(ctx, p, dir, yield)
 		case route.Gzip:
 			s.gzip(ctx, p, dir, yield)
-		case route.Zstd:
-			s.zstd(ctx, p, dir, yield)
+		case route.Zstd, route.XZ:
+			s.stream(ctx, p, dir, yield)
+		case route.RAR4, route.RAR5:
+			s.rar(ctx, p, dir, yield)
 		case route.SevenZip, route.MSCF:
 			s.listed(ctx, p, dir, sevenZipKinds[p.ContentType.Kind], yield)
 		default:
