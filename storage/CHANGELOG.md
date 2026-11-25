@@ -10,6 +10,18 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.6] - 2026-11-25
+
+This release requires the docproc base module at v0.8.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.8.0, from v0.7.0, and passes its
+  `dispatchtest.Content` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  This module stores an output's bytes and reads none of their text, so a PDF page's text read by
+  pdftotext in its reading order, without gs's column padding, reaches a caller through the base
+  module, not through this module.
+
 ## [v0.1.5] - 2026-11-25
 
 This release requires the docproc base module at v0.7.0. Its exported API is unchanged.
@@ -89,7 +101,8 @@ The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
   a missing container; the live tier, under `-tags integration`, runs it over go-storage's S3
   provider against the compose harness's SeaweedFS.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.5...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.6...HEAD
+[v0.1.6]: https://github.com/standards-lab/docproc/compare/storage/v0.1.5...storage/v0.1.6
 [v0.1.5]: https://github.com/standards-lab/docproc/compare/storage/v0.1.4...storage/v0.1.5
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/storage/v0.1.3...storage/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/storage/v0.1.2...storage/v0.1.3
