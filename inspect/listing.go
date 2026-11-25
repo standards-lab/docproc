@@ -49,8 +49,8 @@ var listed = map[route.Kind]bool{
 // blocks; and the sum of the declared sizes past it too. The program's reader bounds the
 // listing's length as it parses it. kind is the archive's: [route.SevenZip], [route.MSCF],
 // [route.RAR4], or [route.RAR5], or [route.Zstd] or [route.XZ], whose one entry is its content,
-// checked by its declared size alone. It returns the report the flags come to under opts, its Kind kind, and an error for opts
-// it refuses, matching [ErrOptions], or a kind it doesn't read.
+// checked by its declared size alone. It returns the report the flags come to under opts, its
+// Kind kind, and an error for opts it refuses, matching [ErrOptions], or a kind it doesn't read.
 //
 // Inspect runs no program, so it never lists such an archive itself: the stage that reads the
 // archive through its program calls CheckListing before it extracts anything, and quarantines

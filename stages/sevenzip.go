@@ -16,6 +16,8 @@ import (
 type sevenZipKind struct {
 	what  string
 	where string
+	ext   string
+	short string
 }
 
 var sevenZipKinds = map[route.Kind]sevenZipKind{
@@ -23,13 +25,8 @@ var sevenZipKinds = map[route.Kind]sevenZipKind{
 	route.MSCF:     {what: "a cabinet", where: "cabinet entry "},
 	route.RAR4:     {what: "a RAR archive", where: "RAR entry "},
 	route.RAR5:     {what: "a RAR archive", where: "RAR entry "},
-	route.Zstd:     {what: "a zstd stream", where: "zstd content "},
-	route.XZ:       {what: "an xz stream", where: "xz content "},
-}
-
-var streamExtensions = map[route.Kind][2]string{
-	route.Zstd: {".zst", ".tzst"},
-	route.XZ:   {".xz", ".txz"},
+	route.Zstd:     {what: "a zstd stream", where: "zstd content ", ext: ".zst", short: ".tzst"},
+	route.XZ:       {what: "an xz stream", where: "xz content ", ext: ".xz", short: ".txz"},
 }
 
 func listedType(e sevenzip.Entry) (inspect.EntryType, string) {
@@ -181,8 +178,7 @@ func (s *archiveStage) stream(ctx context.Context, p dispatch.Part, dir string, 
 		yield(dispatch.Item{}, err)
 		return
 	}
-	ext := streamExtensions[kind]
-	name := streamStem(p.Name, ext[0], ext[1])
+	name := streamStem(p.Name, k.ext, k.short)
 	var content sevenzip.Entry
 	if len(l.Entries) > 0 {
 		content = l.Entries[0]
