@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.5.0
+go get github.com/standards-lab/docproc@v0.6.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each

@@ -10,6 +10,21 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.4] - 2026-11-25
+
+This release requires the docproc base module at v0.6.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.6.0, from v0.5.0, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  The archive stage's identity carries 7zz's version line, so once 7zz is upgraded to 26.06 the
+  index holds a caller's earlier archive entries under the old identity and a run over it
+  prepares them again. An Ogg holding video routes to the video stage, whose identity has no
+  entry for it, so it is prepared again as video; a RAR, an xz or bzip2 stream, or an MPEG program
+  stream, which routed to no stage, has no entry and is prepared at the next dispatch. The index
+  itself is unchanged and reads none of a part's kind.
+
 ## [v0.1.3] - 2026-11-25
 
 This release requires the docproc base module at v0.5.0, sqlate at v0.8.0, and sqlate's
@@ -84,7 +99,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...HEAD
+[v0.1.4]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...postgres/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...postgres/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.1...postgres/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.0...postgres/v0.1.1

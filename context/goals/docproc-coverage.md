@@ -8,13 +8,12 @@
 
 1. [x] text-encoding-keys
 2. [x] archives-and-mpeg
-3. [ ] pdf-text-padding
-4. [ ] office-soffice
-5. [ ] ooxml-unread
-6. [ ] ooxml-arm64-floor
-7. [ ] tnef
-8. [ ] xps
-9. [ ] web-content
+3. [ ] text-last-resort
+4. [ ] pdf-text-padding
+5. [ ] office-soffice
+6. [ ] ooxml-unread
+7. [ ] ooxml-arm64-floor
+8. [ ] tnef
 
 ## Decisions
 
@@ -34,11 +33,7 @@
 
 ## Pending edits
 
-- coordinator · context/data-intelligence.md, "Carried notes": HTML and EPUB are planned in
-  docproc-coverage; MHTML and WARC stay unplanned.
 - docs-corpus · once text-encoding-keys ships, tell the corpus.docs session the released tags and
   the run-directory schema the release writes ("2").
 - docs-corpus · tell corpus.docs the new kind values (RAR4, RAR5, xz, bzip2, MPEG program
   stream, Ogg video), that `.ogv` records change kind from `ogg`, and the released tags.
-- coordinator · context/data-intelligence.md, "Carried notes": supersedes the line above; HTML
-  and EPUB are read as raw text under text-as-the-last-resort; MHTML and WARC stay unplanned.
