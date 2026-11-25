@@ -251,6 +251,35 @@ func TestNameAndContent(t *testing.T) {
 	if got := inspect.Name("report.pdf", route.PNG); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
 		t.Errorf("a PNG named .pdf: %v, want signature-mismatch", got)
 	}
+	for _, name := range []string{"notes.txt.bz2", "clean.TBZ2", "clean.tbz"} {
+		if got := inspect.Name(name, route.Bzip2); len(got) != 0 {
+			t.Errorf("a bzip2 stream named %q: %v, want no mismatch", name, got)
+		}
+	}
+	if got := inspect.Name("clean.tar.gz", route.Bzip2); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
+		t.Errorf("a bzip2 stream named .gz: %v, want signature-mismatch", got)
+	}
+	for _, name := range []string{"film.mpg", "film.MPEG", "VTS_01_1.VOB"} {
+		if got := inspect.Name(name, route.MPEGPS); len(got) != 0 {
+			t.Errorf("an MPEG program stream named %q: %v, want no mismatch", name, got)
+		}
+	}
+	if got := inspect.Name("film.mpg", route.MP4); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
+		t.Errorf("an MP4 named .mpg: %v, want signature-mismatch", got)
+	}
+	if got := inspect.Name("film.mp4", route.MPEGPS); len(got) != 1 || got[0].Check != inspect.SignatureMismatch {
+		t.Errorf("an MPEG program stream named .mp4: %v, want signature-mismatch", got)
+	}
+	for kind, want := range map[route.Kind]int{route.OggVideo: 0, route.Ogg: 1, route.MKV: 1} {
+		if got := inspect.Name("film.ogv", kind); len(got) != want || want == 1 && got[0].Check != inspect.SignatureMismatch {
+			t.Errorf("%s named .ogv: %v, want %d signature-mismatch", kind, got, want)
+		}
+	}
+	for _, kind := range []route.Kind{route.Ogg, route.OggVideo} {
+		if got := inspect.Name("song.ogg", kind); len(got) != 0 {
+			t.Errorf("%s named .ogg: %v, want no mismatch", kind, got)
+		}
+	}
 	for _, name := range []string{"encrypted.xlsx", "blob", "old.doc"} {
 		r := mustInspect(t, filepath.Join("testdata", "encrypted.xlsx"), name, inspect.Options{})
 		if !slices.Contains(checks(r), inspect.OOXMLEncrypted) {

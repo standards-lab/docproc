@@ -47,6 +47,31 @@ func pstHeader(client string) string {
 	return "!BDN\x00\x00\x00\x00" + client + "\x17\x00\x13\x00"
 }
 
+func rar4(flags uint16) string {
+	b := []byte("Rar!\x1a\x07\x00\xcf\x90\x73\x00\x00\x0d\x00\x00\x00\x00\x00\x00\x00")
+	binary.LittleEndian.PutUint16(b[10:], flags)
+	return string(b)
+}
+
+func rar5(header ...byte) string {
+	return "Rar!\x1a\x07\x01\x00\x33\x92\xb5\xe5" + string(header)
+}
+
+func oggPage(headerType byte, packet string) string {
+	b := make([]byte, 27)
+	copy(b, "OggS")
+	b[5] = headerType
+	b[26] = 1
+	return string(b) + string([]byte{byte(len(packet))}) + packet
+}
+
+const (
+	oggBOS       = 0x02
+	vorbisPacket = "\x01vorbis\x00\x00\x00\x00\x02\x44\xac\x00\x00"
+	opusPacket   = "OpusHead\x01\x02\x38\x01\x80\xbb\x00\x00"
+	theoraPacket = "\x80theora\x03\x02\x01\x00\x14\x00\x0f"
+)
+
 var (
 	wordPerfect = "\xffWPC\x10\x00\x00\x00\x01\x0a"
 	mboxBytes   = "From ann@example.org Sat Jan  3 01:05:34 1996\nFrom: ann@example.org\n\nbody\n"
@@ -122,6 +147,19 @@ func TestIdentify(t *testing.T) {
 		{"mp3 mpeg-1 frame", "\xff\xfb\x90\x64\x00", route.MP3},
 		{"mp3 mpeg-2 frame", "\xff\xf3\x88\xc0\x00", route.MP3},
 		{"ogg", "OggS\x00\x02\x00\x00", route.Ogg},
+		{"ogg vorbis", oggPage(oggBOS, vorbisPacket) + oggPage(0, "\x03vorbis"), route.Ogg},
+		{"ogg opus", oggPage(oggBOS, opusPacket), route.Ogg},
+		{"ogg theora", oggPage(oggBOS, theoraPacket), route.OggVideo},
+		{"ogg vp8", oggPage(oggBOS, "OVP80\x01\x01\x00"), route.OggVideo},
+		{"ogg dirac", oggPage(oggBOS, "BBCD\x00\x00\x00\x00"), route.OggVideo},
+		{"ogg ogm video", oggPage(oggBOS, "\x01video\x00\x00\x00DIV3"), route.OggVideo},
+		{"ogg theora after a vorbis stream's first page", oggPage(oggBOS, vorbisPacket) + oggPage(oggBOS, theoraPacket), route.OggVideo},
+		{"ogg theora after the first pages", oggPage(oggBOS, vorbisPacket) + oggPage(0, theoraPacket), route.Ogg},
+		{"ogg theora past the head", oggPage(oggBOS, vorbisPacket) + strings.Repeat("\x00", route.HeadLen) + oggPage(oggBOS, theoraPacket), route.Ogg},
+		{"ogg theora cut short", oggPage(oggBOS, theoraPacket)[:30], route.Ogg},
+		{"mpeg-1 program stream", "\x00\x00\x01\xba\x21\x00\x01\x00\x01\x80\x1b\x91", route.MPEGPS},
+		{"mpeg-2 program stream", "\x00\x00\x01\xba\x44\x00\x04\x00\x04\x01\x01\x89\xc3\xf8", route.MPEGPS},
+		{"mpeg video sequence, no pack", "\x00\x00\x01\xb3\x16\x00\xf0\x15", route.Unknown},
 		{"m4a", ftyp("M4A ", "M4A ", "isom"), route.M4A},
 		{"m4b with a nul-padded brand", ftyp("M4A\x00", "3gp5", "isom"), route.M4A},
 		{"mp4", ftyp("isom", "isom", "iso2", "avc1", "mp41"), route.MP4},
@@ -133,6 +171,19 @@ func TestIdentify(t *testing.T) {
 		{"gzip", "\x1f\x8b\x08\x00", route.Gzip},
 		{"zstd", "\x28\xb5\x2f\xfd\x04", route.Zstd},
 		{"7z", "7z\xbc\xaf\x27\x1c\x00\x04", route.SevenZip},
+		{"rar4", rar4(0), route.RAR4},
+		{"rar4 volume", rar4(0x0001), route.RAR4},
+		{"rar5", rar5(0x03, 0x01, 0x00, 0x00), route.RAR5},
+		{"rar5 with encrypted headers", rar5(0x0c, 0x04, 0x00, 0x00, 0x00), route.RAR5},
+		{"rar 1.5 signature cut short", "Rar!\x1a\x07", route.Unknown},
+		{"rar of an unknown version", "Rar!\x1a\x07\x02\x00", route.Unknown},
+		{"xz", "\xfd7zXZ\x00\x00\x04\xe6\xd6\xb4\x46", route.XZ},
+		{"bzip2", "BZh91AY&SY\x8a\x1b", route.Bzip2},
+		{"bzip2 of block size 1", "BZh11AY&SY", route.Bzip2},
+		{"bzip2 empty stream", "BZh9\x17\x72\x45\x38\x50\x90\x00\x00\x00\x00", route.Bzip2},
+		{"bzh prose", "BZh9 is how a bzip2 stream begins", route.Unknown},
+		{"bzh with block size 0", "BZh01AY&SY", route.Unknown},
+		{"bzip2 block magic cut short", "BZh91AY&S", route.Unknown},
 		{"pe", peBytes, route.PE},
 		{"elf", "\x7fELF\x02\x01\x01", route.ELF},
 		{"mach-o 32-bit", "\xfe\xed\xfa\xce\x00", route.MachO},
@@ -206,5 +257,39 @@ func TestPNGSignature(t *testing.T) {
 	}
 	if got := route.Identify([]byte(route.PNGSignature[:7])); got == route.PNG {
 		t.Errorf("Identify of seven bytes = %q, want no PNG", got)
+	}
+}
+
+func TestRARVolume(t *testing.T) {
+	cases := []struct {
+		name string
+		head string
+		want bool
+	}{
+		{"rar4", rar4(0), false},
+		{"rar4 volume", rar4(0x0001), true},
+		{"rar4 volume, first", rar4(0x0101), true},
+		{"rar4 solid", rar4(0x0008), false},
+		{"rar4 of another first header", rar4(0x0001)[:9] + "\x74\x01\x00", false},
+		{"rar4 cut short", rar4(0x0001)[:11], false},
+		{"rar5", rar5(0x03, 0x01, 0x00, 0x00), false},
+		{"rar5 volume", rar5(0x03, 0x01, 0x00, 0x01), true},
+		{"rar5 volume with a volume number", rar5(0x04, 0x01, 0x00, 0x03, 0x02), true},
+		{"rar5 solid", rar5(0x03, 0x01, 0x00, 0x04), false},
+		{"rar5 volume after an extra area's size", rar5(0x05, 0x01, 0x01, 0x02, 0x01), true},
+		{"rar5 volume after an extra area's and a data area's sizes", rar5(0x06, 0x01, 0x03, 0x02, 0x00, 0x01), true},
+		{"rar5 volume after a two-byte header size", rar5(0x80, 0x01, 0x01, 0x00, 0x01), true},
+		{"rar5 with encrypted headers", rar5(0x0c, 0x04, 0x00, 0x00, 0x00), false},
+		{"rar5 cut short", rar5(0x03, 0x01, 0x00), false},
+		{"rar5 of an endless vint", rar5(0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x01), false},
+		{"7z", "7z\xbc\xaf\x27\x1c\x00\x04", false},
+		{"empty", "", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := route.RARVolume([]byte(c.head)); got != c.want {
+				t.Errorf("RARVolume = %v, want %v", got, c.want)
+			}
+		})
 	}
 }

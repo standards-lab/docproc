@@ -13,12 +13,13 @@ import (
 // property's value, and a property the format doesn't carry left zero.
 type Entry struct {
 	// Path is the item's listed name: its stored name, but for a line break, which 7-Zip lists
-	// as "_". It is only ever a name: nothing is written to it. A zstd stream's one item has none.
+	// as "_". It is only ever a name: nothing is written to it. A zstd or xz stream's one item
+	// has none.
 	Path string
 	// Folder is a directory: its Folder property is "+", or its attributes mark a directory.
 	Folder bool
 	// Size is the expanded size the archive declares, when Sized; a zstd stream declares none
-	// unless its frame header carries its content size.
+	// unless its frame header carries its content size, and an xz stream's index declares it.
 	Size  uint64
 	Sized bool
 	// CRC is the CRC-32 the archive declares for the item's content, when HasCRC.

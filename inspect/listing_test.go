@@ -40,7 +40,10 @@ func TestCheckListing(t *testing.T) {
 	}{
 		{route.SevenZip, all},
 		{route.MSCF, all},
+		{route.RAR4, all},
+		{route.RAR5, all},
 		{route.Zstd, []inspect.Check{inspect.ArchiveBomb}},
+		{route.XZ, []inspect.Check{inspect.ArchiveBomb}},
 	} {
 		rep, err := inspect.CheckListing(c.kind, 1024, unsafe, rule)
 		if err != nil {

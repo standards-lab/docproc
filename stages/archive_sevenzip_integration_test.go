@@ -19,10 +19,6 @@ import (
 	"github.com/standards-lab/docproc/stages"
 )
 
-var sevenZipFixtures = filepath.Join("..", "sevenzip", "testdata")
-
-func sevenZipFixture(name string) string { return filepath.Join(sevenZipFixtures, name) }
-
 func sevenZipConfig(t *testing.T, opts inspect.Options) stages.ArchiveConfig {
 	t.Helper()
 	tl := pinned(t, sevenzip.SevenZipSpec())
@@ -210,6 +206,7 @@ func TestSevenZipBombs(t *testing.T) {
 		{"bomb.7z", lowered, inspect.ArchiveBomb},
 		{"bomb.cab", lowered, inspect.ArchiveBomb},
 		{"declared-bomb.zst", inspect.Options{BombRatio: 1000, BombSize: 1 << 30}, inspect.ArchiveBomb},
+		{"bomb.xz", lowered, inspect.ArchiveBomb},
 	} {
 		d, _, work := sevenZipDispatcher(t, c.opts)
 		events := dispatchAll(t, d, sevenZipFixture("generated/"+c.fixture), nil)
@@ -226,6 +223,7 @@ func TestSevenZipBombs(t *testing.T) {
 		{"bomb.7z", "7z entry zeros.bin", inspect.ArchiveBomb},
 		{"bomb.cab", "cabinet entry zeros.bin", inspect.ArchiveBomb},
 		{"bomb.zst", "zstd content bomb", inspect.ArchiveBomb},
+		{"bomb.xz", "xz content bomb", inspect.ArchiveBomb},
 	} {
 		opts := lowered
 		opts.Policy = map[inspect.Check]inspect.Verdict{c.check: inspect.Proceed}
@@ -284,6 +282,135 @@ func TestSevenZipDamaged(t *testing.T) {
 	wantSteps(t, events, []step{{"cut.tar", 1, dispatch.Failed}, {"cut.tar.zst", 0, dispatch.Prepared}})
 	if ev := events[0]; ev.Part.Where != "zstd content cut.tar" || !strings.HasPrefix(ev.Reason, "doesn't decompress") {
 		t.Errorf("cut.tar.zst's content: %q, %q", ev.Part.Where, ev.Reason)
+	}
+	wantEmpty(t, work)
+}
+
+func TestRARStage(t *testing.T) {
+	d, _, work := sevenZipDispatcher(t, inspect.Options{})
+	for _, c := range []struct {
+		fixture string
+		want    []step
+		sizes   map[string]int64
+	}{
+		{"test_read_format_rar.rar", []step{
+			{"test.txt", 1, dispatch.NoProcessor},
+			{"testlink", 1, dispatch.Quarantined},
+			{"testdir/test.txt", 1, dispatch.NoProcessor},
+			{"test_read_format_rar.rar", 0, dispatch.Prepared},
+		}, map[string]int64{"test.txt": 20, "testdir/test.txt": 20}},
+		{"test_read_format_rar5_compressed.rar", []step{
+			{"test.bin", 1, dispatch.NoProcessor},
+			{"test_read_format_rar5_compressed.rar", 0, dispatch.Prepared},
+		}, map[string]int64{"test.bin": 1200}},
+		{"test_read_format_rar5_symlink.rar", []step{
+			{"file.txt", 1, dispatch.NoProcessor},
+			{"symlink.txt", 1, dispatch.Quarantined},
+			{"dirlink", 1, dispatch.Quarantined},
+			{"test_read_format_rar5_symlink.rar", 0, dispatch.Prepared},
+		}, map[string]int64{"file.txt": 5}},
+	} {
+		events := dispatchAll(t, d, sevenZipFixture("libarchive/"+c.fixture), nil)
+		wantSteps(t, events, c.want)
+		for _, ev := range events[:len(events)-1] {
+			if ev.Part.Where != "RAR entry "+ev.Part.Name {
+				t.Errorf("%s: %s at %q", c.fixture, ev.Part.Name, ev.Part.Where)
+			}
+			if size, ok := c.sizes[ev.Part.Name]; ok && ev.Part.Size != size {
+				t.Errorf("%s: %s, %d bytes, want %d", c.fixture, ev.Part.Name, ev.Part.Size, size)
+			}
+			if ev.Outcome == dispatch.Quarantined && !hasFlag(ev.Part.Flags, inspect.ArchiveSymlink) {
+				t.Errorf("%s: %s, flags %v, want a symbolic link's", c.fixture, ev.Part.Name, ev.Part.Flags)
+			}
+		}
+	}
+	wantEmpty(t, work)
+}
+
+func TestRARSplitVolumes(t *testing.T) {
+	d, _, work := sevenZipDispatcher(t, inspect.Options{})
+	for _, fixture := range []string{"test_read_format_rar_multivolume.part0001.rar", "test_read_format_rar5_multiarchive.part01.rar"} {
+		events := dispatchAll(t, d, sevenZipFixture("libarchive/"+fixture), nil)
+		wantSteps(t, events, []step{{fixture, 0, dispatch.NoProcessor}})
+		if events[0].Reason != "archive stage: a split RAR volume: no processor yet" {
+			t.Errorf("%s: reason %q", fixture, events[0].Reason)
+		}
+	}
+	wantEmpty(t, work)
+}
+
+func TestRAREncrypted(t *testing.T) {
+	d, _, work := sevenZipDispatcher(t, inspect.Options{})
+	for _, c := range []struct {
+		fixture string
+		want    []step
+		reason  string
+	}{
+		{"test_read_format_rar_encryption_partially.rar", []step{
+			{"foo.txt", 1, dispatch.Encrypted},
+			{"bar.txt", 1, dispatch.NoProcessor},
+			{"test_read_format_rar_encryption_partially.rar", 0, dispatch.Encrypted},
+		}, "1 of 2 entries"},
+		{"test_read_format_rar5_encrypted.rar", []step{
+			{"a.txt", 1, dispatch.NoProcessor},
+			{"b.txt", 1, dispatch.Encrypted},
+			{"c.txt", 1, dispatch.NoProcessor},
+			{"d.txt", 1, dispatch.Encrypted},
+			{"test_read_format_rar5_encrypted.rar", 0, dispatch.Encrypted},
+		}, "2 of 4 entries"},
+		{"test_read_format_rar_encryption_header.rar", []step{
+			{"test_read_format_rar_encryption_header.rar", 0, dispatch.Encrypted},
+		}, "a RAR archive whose headers are encrypted"},
+		{"test_read_format_rar5_encrypted_filenames.rar", []step{
+			{"test_read_format_rar5_encrypted_filenames.rar", 0, dispatch.Encrypted},
+		}, "a RAR archive whose headers are encrypted"},
+	} {
+		events := dispatchAll(t, d, sevenZipFixture("libarchive/"+c.fixture), nil)
+		wantSteps(t, events, c.want)
+		last := events[len(events)-1]
+		if !strings.Contains(last.Reason, c.reason) {
+			t.Errorf("%s: reason %q, want %q in it", c.fixture, last.Reason, c.reason)
+		}
+		for _, ev := range events[:len(events)-1] {
+			read := ev.Outcome != dispatch.Encrypted
+			if read == (ev.Part.SHA256 == "") || !read && !hasFlag(ev.Part.Flags, inspect.ArchiveEncrypted) {
+				t.Errorf("%s: %s, SHA-256 %q, flags %v", c.fixture, ev.Part.Name, ev.Part.SHA256, ev.Part.Flags)
+			}
+		}
+	}
+	wantEmpty(t, work)
+}
+
+func TestXZStreams(t *testing.T) {
+	d, _, work := sevenZipDispatcher(t, inspect.Options{})
+	events := dispatchAll(t, d, sevenZipFixture("generated/notes.txt.xz"), nil)
+	wantSteps(t, events, []step{{"notes.txt", 1, dispatch.NoProcessor}, {"notes.txt.xz", 0, dispatch.Prepared}})
+	if ev := events[0]; ev.Part.Where != "xz content notes.txt" || ev.Part.SHA256 != sum("an ordinary entry\n") {
+		t.Errorf("notes.txt: %q, SHA-256 %s", ev.Part.Where, ev.Part.SHA256)
+	}
+
+	events = dispatchAll(t, d, sevenZipFixture("generated/clean.txz"), nil)
+	wantSteps(t, events, []step{
+		{"docs/notes.txt", 2, dispatch.NoProcessor},
+		{"docs/pixel.png", 2, dispatch.Prepared},
+		{"clean.tar", 1, dispatch.Prepared},
+		{"clean.txz", 0, dispatch.Prepared},
+	})
+	if got, want := wheres(events), []string{"tar entry docs/notes.txt", "tar entry docs/pixel.png", "xz content clean.tar"}; !slices.Equal(got, want) {
+		t.Errorf("clean.txz: wheres:\n got %q\nwant %q", got, want)
+	}
+	if ev := events[2]; ev.Part.ContentType.Kind != route.Tar || ev.Part.Size != 3584 {
+		t.Errorf("clean.tar: %s, %d bytes", ev.Part.ContentType.Kind, ev.Part.Size)
+	}
+
+	xz, err := os.ReadFile(sevenZipFixture("generated/clean.txz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events = dispatchAll(t, d, input(t, "cut.txz", string(xz[:len(xz)-40])), nil)
+	wantSteps(t, events, []step{{"cut.tar", 1, dispatch.Failed}, {"cut.txz", 0, dispatch.Prepared}})
+	if ev := events[0]; ev.Part.Where != "xz content cut.tar" || !strings.HasPrefix(ev.Reason, "doesn't decompress") {
+		t.Errorf("cut.txz's content: %q, %q", ev.Part.Where, ev.Reason)
 	}
 	wantEmpty(t, work)
 }

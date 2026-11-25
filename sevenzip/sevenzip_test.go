@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -134,18 +135,18 @@ func TestNewReaderNil(t *testing.T) {
 
 func TestNewReaderMinimum(t *testing.T) {
 	t.Parallel()
-	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.06"})})
-	if verr, ok := errors.AsType[*tool.VersionError](err); !ok || !errors.Is(err, tool.ErrTooOld) || verr.Found != "24.6" {
-		t.Errorf("24.06: %v, want a VersionError wrapping ErrTooOld", err)
+	_, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05"})})
+	if verr, ok := errors.AsType[*tool.VersionError](err); !ok || !errors.Is(err, tool.ErrTooOld) || verr.Found != "26.5" {
+		t.Errorf("26.05: %v, want a VersionError wrapping ErrTooOld", err)
 	}
-	if _, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "24.07"})}); err != nil {
-		t.Errorf("24.07: %v", err)
+	if _, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.06"})}); err != nil {
+		t.Errorf("26.06: %v", err)
 	}
 }
 
 func TestExtractWriteFails(t *testing.T) {
 	t.Parallel()
-	tl := standin(t, standinSettings{Version: "26.05", Items: []standinItem{{Name: "big", Content: strings.Repeat("x", 1<<20)}}})
+	tl := standin(t, standinSettings{Version: "26.06", Items: []standinItem{{Name: "big", Content: strings.Repeat("x", 1<<20)}}})
 	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: tl})
 	if err != nil {
 		t.Fatal(err)
@@ -156,6 +157,53 @@ func TestExtractWriteFails(t *testing.T) {
 	}
 	if _, ok := errors.AsType[*tool.ExitError](err); ok {
 		t.Errorf("%v, want the writer's error, not 7zz's exit", err)
+	}
+}
+
+func TestFormats(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		kind route.Kind
+		name string
+		flag string
+	}{
+		{route.RAR4, "notes.txt", "-trar"},
+		{route.RAR5, "notes.txt", "-trar5"},
+		{route.XZ, "", "-txz"},
+		{route.Zstd, "", "-tzstd"},
+	} {
+		tl, link := standinLinked(t, standinSettings{
+			Version: "26.06", Listing: "--\n\n----------\nSize = 8\n\n", Items: []standinItem{{Name: c.name, Content: "content\n"}},
+		})
+		r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: tl})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := r.List(t.Context(), sevenzip.ListRequest{Path: "t", Kind: c.kind}); err != nil {
+			t.Errorf("%s: list: %v", c.kind, err)
+		}
+		var b strings.Builder
+		if err := r.Extract(t.Context(), sevenzip.ExtractRequest{Path: "t", Kind: c.kind, Name: c.name}, &b); err != nil || b.String() != "content\n" {
+			t.Errorf("%s: extract: %q, %v", c.kind, b.String(), err)
+		}
+		other := "named"
+		if c.name != "" {
+			other = ""
+		}
+		if err := r.Extract(t.Context(), sevenzip.ExtractRequest{Path: "t", Kind: c.kind, Name: other}, &b); !errors.Is(err, sevenzip.ErrRequest) {
+			t.Errorf("%s: extract named %q: %v, want ErrRequest", c.kind, other, err)
+		}
+		var flags []string
+		for _, run := range tooltest.Runs(t, link) {
+			for _, a := range run.Args {
+				if strings.HasPrefix(a, "-t") {
+					flags = append(flags, run.Args[0]+" "+a)
+				}
+			}
+		}
+		if want := []string{"l " + c.flag, "e " + c.flag}; !slices.Equal(flags, want) {
+			t.Errorf("%s: runs %q, want %q", c.kind, flags, want)
+		}
 	}
 }
 

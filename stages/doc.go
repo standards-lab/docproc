@@ -22,8 +22,9 @@
 //     attachments and media found where its message says; Item.After on a message's last output.
 //   - onenote, route.OneNote: docproc-onenote's lines under --file-only, a page's Markdown, and
 //     its media found "page <id>, media <n>".
-//   - archive, route.Archive: a ZIP, a tar, a gzip stream, a zstd stream, a 7z, and a cabinet,
-//     each entry found, or an unread child, its 7-Zip listing's flags raised as the part's own.
+//   - archive, route.Archive: a ZIP, a tar, a gzip, bzip2, zstd, or xz stream, a 7z, a RAR4 or
+//     RAR5, and a cabinet, each entry found, or an unread child, its 7-Zip listing's flags raised
+//     as the part's own; a split RAR volume has no processor yet, and 7zz never runs for it.
 //   - audio, route.Audio: windows from one decode, then the plan record.
 //   - video, route.Video: the plan record, then frames and windows from one ffmpeg run.
 //   - text, route.Text: text decoded to UTF-8.

@@ -97,10 +97,11 @@ made fails before the tool starts.
 | `pdfdetach` | poppler-utils | 22.02 | document |
 | `magick` | ImageMagick | 7.1 | office, picture |
 | `soffice` | LibreOffice | 24.2 | office, picture |
-| `7zz` | 7-Zip | 24.07 | archive |
+| `7zz` | 7-Zip | 26.06 | archive |
 | `ffmpeg`, `ffprobe` | FFmpeg | 9.0 | audio, video |
 
-7zz 24.07 is the oldest release whose zstd decoder is fixed of CVE-2024-11477. The vision and
+7zz's minimum is its mise pin, 26.06: 25.00 fixes CVE-2025-53816 in RAR's decoder, 26.02 fixes
+CVE-2026-14266 in xz's, and 26.03 through 26.06 fix vulnerabilities they don't name. The vision and
 text stages run no tool.
 
 The container runner runs a tool inside a digest-pinned image through the docker CLI, 20.10 or

@@ -40,7 +40,7 @@ type readResult struct {
 
 func readAll(t *testing.T, a archive, cut int, partial string, limit int64) ([]readResult, [][]string) {
 	t.Helper()
-	tl, link := standinLinked(t, standinSettings{Version: "26.05", Items: a.items, Cut: cut})
+	tl, link := standinLinked(t, standinSettings{Version: "26.06", Items: a.items, Cut: cut})
 	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: tl})
 	if err != nil {
 		t.Fatal(err)
@@ -202,11 +202,11 @@ func TestReadAlone(t *testing.T) {
 
 func TestReadRefused(t *testing.T) {
 	t.Parallel()
-	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05"})})
+	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.06"})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, req := range []sevenzip.ReadRequest{{Kind: route.SevenZip}, {Path: "t.rar", Kind: "rar"}} {
+	for _, req := range []sevenzip.ReadRequest{{Kind: route.SevenZip}, {Path: "t.arj", Kind: "arj"}} {
 		for _, err := range r.Read(t.Context(), req) {
 			if !errors.Is(err, sevenzip.ErrRequest) {
 				t.Errorf("%+v: %v, want ErrRequest", req, err)

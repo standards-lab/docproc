@@ -51,11 +51,12 @@ const (
 	// whose name has the .onepkg extension, a OneNote package.
 	OneNote Route = "onenote"
 	// Archive is a ZIP that is neither an office document nor an ODF package, a tar, gzip, zstd,
-	// or 7z archive, or a cabinet not named .onepkg.
+	// 7z, RAR4, RAR5, xz, or bzip2 archive, or a cabinet not named .onepkg.
 	Archive Route = "archive"
-	// Audio is WAV, FLAC, MP3, Ogg, or M4A.
+	// Audio is WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A.
 	Audio Route = "audio"
-	// Video is MP4, Matroska, WebM, or AVI.
+	// Video is MP4, Matroska, WebM, AVI, an MPEG program stream, or an Ogg that begins a Theora,
+	// VP8, Dirac, or OGM video stream.
 	Video Route = "video"
 	// Text is content of no routed signature whose name has a text extension, in any case, or
 	// that begins with a UTF-8, UTF-16, or UTF-32 byte order mark; and text whose name has a text
@@ -155,9 +156,15 @@ var kindRoutes = map[Kind]struct {
 	MKV:         {Video, "Matroska signature"},
 	WebM:        {Video, "WebM signature"},
 	AVI:         {Video, "AVI signature"},
+	MPEGPS:      {Video, "MPEG pack start code, a program stream"},
+	OggVideo:    {Video, "Ogg signature with a video stream"},
 	Gzip:        {Archive, "gzip signature"},
 	Zstd:        {Archive, "zstd signature"},
 	SevenZip:    {Archive, "7z signature"},
+	RAR4:        {Archive, "RAR4 signature"},
+	RAR5:        {Archive, "RAR5 signature"},
+	XZ:          {Archive, "xz signature"},
+	Bzip2:       {Archive, "bzip2 signature"},
 	PE:          {Unrouted, "PE signature, an executable"},
 	ELF:         {Unrouted, "ELF signature, an executable"},
 	MachO:       {Unrouted, "Mach-O signature, an executable"},

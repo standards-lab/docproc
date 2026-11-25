@@ -9,6 +9,64 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-11-25
+
+This release reads RAR, xz, and bzip2 archives, which routed to no stage, and routes MPEG program
+streams and Ogg video to the video stage. Two changes break callers: 7-Zip's minimum rises to
+26.06, and an Ogg holding video gets a kind of its own. The module still requires
+golang.org/x/text alone.
+
+### Added
+
+- `route.RAR4` (`rar4`), `route.RAR5` (`rar5`), `route.XZ` (`xz`), and `route.Bzip2` (`bzip2`),
+  each identified by its signature and routed `archive`. A bzip2 stream is checked past `BZh` by
+  its block size digit and by its first block's or end-of-stream magic.
+- `route.MPEGPS` (`mpeg-ps`), an MPEG-1 or MPEG-2 program stream identified by its pack start
+  code, and `route.OggVideo` (`ogg-video`), an Ogg whose beginning-of-stream pages in the head
+  start a Theora, VP8, Dirac, or OGM video stream, each routed `video`.
+- `route.RARVolume` reports whether a RAR's main archive header marks it as one volume of a split
+  set: RAR4's volume flag, or the volume bit of RAR5's archive flags. It reports no volume for a
+  RAR5 whose first header is its encryption header.
+- The archive stage reads a RAR4 through 7zz's rar handler and a RAR5 through its rar5 handler,
+  and each handler refuses the other version. A RAR's entries are checked as a 7z's are, each
+  found `RAR entry <name>`. A RAR whose headers are encrypted ends with `ErrEncrypted`; an
+  encrypted entry under clear headers is an unread child, and its siblings are read. A RAR whose
+  first header marks it as a volume of a split set ends with `ErrNoProcessor`, "a split RAR
+  volume", and 7zz never runs for it, so no sibling volume is opened.
+- The archive stage reads an xz stream through 7zz, as it reads a zstd stream: its content is
+  found `xz content <name>` and held to the size the stream's index declares. It reads a bzip2
+  stream through compress/bzip2, as it reads a gzip stream: concatenated streams are read whole,
+  and the content is found `bzip2 content <name>`. The part takes the stream's name without its
+  `.xz` or `.bz2`. A tar inside either, named `.txz`, `.tbz2`, `.tbz`, `.tar.xz`, or `.tar.bz2`,
+  is a `.tar` part read as a tar.
+- `sevenzip` lists and reads `route.RAR4`, `route.RAR5`, and `route.XZ`. An `Extract` of an xz
+  stream names no item, as an `Extract` of a zstd stream does.
+- The video stage prepares MPEG-1 and MPEG-2 program streams, and Ogg files holding Theora, VP8,
+  Dirac, or OGM video, taking frames and windows from one ffmpeg run.
+- inspect's extension table names `.rar` as RAR4 or RAR5; `.xz` and `.txz` as xz; `.bz2`,
+  `.tbz2`, and `.tbz` as bzip2; `.mpg`, `.mpeg`, and `.vob` as an MPEG program stream; and `.ogv`
+  as Ogg video. Content under one of those names that isn't its kind is flagged
+  `signature-mismatch`. `.ogg` accepts Ogg video as well as Ogg.
+
+### Changed
+
+- **Breaking:** `sevenzip.SevenZipMinimum` is 26.06, from 24.07, matching the root `mise.toml`'s
+  pin. 25.00 fixes CVE-2025-53816 in RAR's decoder, 26.02 fixes CVE-2026-14266 in xz's, and 26.03
+  through 26.06 fix vulnerabilities they don't name. An older 7zz fails `sevenzip.NewReader` with
+  a `*tool.VersionError` wrapping `tool.ErrTooOld`, and `stages.Build` leaves out the archive
+  stage. The archive stage's identity carries 7zz's version line, so an index prepares its archive
+  content again once 7zz is upgraded.
+- **Breaking:** an Ogg whose first pages begin a video stream is `route.OggVideo` (`ogg-video`)
+  and routes to video; before, it was `route.Ogg` (`ogg`) and routed to audio. A record's kind for
+  an `.ogv`, or for an `.ogg` holding video, changes from `ogg`. The part is prepared as video,
+  with frames and windows under the video plan, in place of audio windows. Any other Ogg stays
+  `ogg` and routes to audio.
+- `inspect.CheckListing` accepts `route.RAR4` and `route.RAR5`, naming and checking their entries
+  as a 7z's, and `route.XZ`, checking its one entry by its declared size as a zstd stream's.
+  Before, it refused them as a kind it doesn't read.
+- An index recorded nothing for content that was Unrouted: a RAR, an xz or bzip2 stream, or an
+  MPEG program stream. The next dispatch prepares it.
+
 ## [v0.5.0] - 2026-11-25
 
 This release splits the text stage's encoding into the charset and how it was chosen, a breaking
@@ -319,7 +377,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.6.0...HEAD
+[v0.6.0]: https://github.com/standards-lab/docproc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/standards-lab/docproc/compare/v0.4.2...v0.5.0
 [v0.4.2]: https://github.com/standards-lab/docproc/compare/v0.4.1...v0.4.2
 [v0.4.1]: https://github.com/standards-lab/docproc/compare/v0.4.0...v0.4.1

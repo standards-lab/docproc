@@ -14,7 +14,7 @@ import (
 
 func listed(t *testing.T, kind route.Kind, out string, entries int) (sevenzip.Listing, error) {
 	t.Helper()
-	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.05", Listing: out})})
+	r, err := sevenzip.NewReader(sevenzip.Config{SevenZip: standin(t, standinSettings{Version: "26.06", Listing: out})})
 	if err != nil {
 		t.Fatal(err)
 	}

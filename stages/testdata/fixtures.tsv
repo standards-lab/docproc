@@ -185,10 +185,15 @@ sevenzip/testdata/generate.go	unrouted	no processor yet
 sevenzip/testdata/generated/absolute.7z	archive	prepared
 sevenzip/testdata/generated/absolute.cab	archive	prepared
 sevenzip/testdata/generated/bomb.7z	archive	prepared
+sevenzip/testdata/generated/bomb.bz2	archive	prepared
 sevenzip/testdata/generated/bomb.cab	archive	prepared
+sevenzip/testdata/generated/bomb.xz	archive	prepared
 sevenzip/testdata/generated/bomb.zst	archive	prepared
 sevenzip/testdata/generated/clean.7z	archive	prepared
 sevenzip/testdata/generated/clean.tar.zst	archive	prepared
+sevenzip/testdata/generated/clean.tbz2	archive	prepared
+sevenzip/testdata/generated/clean.txz	archive	prepared
+sevenzip/testdata/generated/concatenated.txt.bz2	archive	prepared
 sevenzip/testdata/generated/declared-bomb.zst	archive	quarantined
 sevenzip/testdata/generated/device.7z	archive	prepared
 sevenzip/testdata/generated/encrypted-headers.7z	archive	encrypted
@@ -197,10 +202,21 @@ sevenzip/testdata/generated/linebreak.cab	archive	prepared
 sevenzip/testdata/generated/mixed.7z	archive	prepared
 sevenzip/testdata/generated/multiblock.7z	archive	prepared
 sevenzip/testdata/generated/notebook.cab	archive	prepared
+sevenzip/testdata/generated/notes.txt.bz2	archive	prepared
+sevenzip/testdata/generated/notes.txt.xz	archive	prepared
 sevenzip/testdata/generated/symlink.7z	archive	prepared
 sevenzip/testdata/generated/traversal.7z	archive	prepared
 sevenzip/testdata/generated/traversal.cab	archive	prepared
 sevenzip/testdata/libarchive/COPYING	unrouted	no processor yet
+sevenzip/testdata/libarchive/test_read_format_rar.rar	archive	prepared
+sevenzip/testdata/libarchive/test_read_format_rar5_compressed.rar	archive	prepared
+sevenzip/testdata/libarchive/test_read_format_rar5_encrypted.rar	archive	encrypted
+sevenzip/testdata/libarchive/test_read_format_rar5_encrypted_filenames.rar	archive	encrypted
+sevenzip/testdata/libarchive/test_read_format_rar5_multiarchive.part01.rar	archive	no processor yet
+sevenzip/testdata/libarchive/test_read_format_rar5_symlink.rar	archive	prepared
+sevenzip/testdata/libarchive/test_read_format_rar_encryption_header.rar	archive	encrypted
+sevenzip/testdata/libarchive/test_read_format_rar_encryption_partially.rar	archive	encrypted
+sevenzip/testdata/libarchive/test_read_format_rar_multivolume.part0001.rar	archive	no processor yet
 sevenzip/testdata/libarchive/test_read_format_zip_lzma.zipx	archive	prepared
 sevenzip/testdata/libarchive/test_read_format_zip_ppmd8.zipx	archive	prepared
 sevenzip/testdata/libarchive/test_read_format_zip_zstd.zipx	archive	prepared

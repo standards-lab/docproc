@@ -1,9 +1,9 @@
 # Limits
 
-ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; RAR,
-ISO, xz, bzip2, and HTML route to no stage. docproc runs no virus scan and flags no macro in an
-OLE2 file. It detects no text's encoding: text is read by its byte order mark, as UTF-8, or else as
-windows-1252. Beyond that, each stage inherits its tool's limits, as the tools' READMEs
+ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; ISO and
+HTML route to no stage. docproc runs no virus scan and flags no macro in an OLE2 file. It detects no
+text's encoding: text is read by its byte order mark, as UTF-8, or else as windows-1252. Beyond
+that, each stage inherits its tool's limits, as the tools' READMEs
 ([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
 [docproc-onenote](../tools/onenote/README.md)) state them in full; these are the ones a host sizes
 or routes by.
@@ -34,11 +34,15 @@ or routes by.
   a notebook whole in memory before its first line, so size a host by the largest notebook or
   section it is given. Its read thread's stack is an address-space reservation of a quarter of
   the memory bound, at least 8 MiB and at most 256 MiB, which counts against the bound.
-- **archive.** A listing past `inspect.Options.Entries` fails its part; an entry flagged by name
-  or type (a traversal, an absolute name, a link, a device), an encrypted one, and a bomb as
-  written are unread children, not read. An archive's entry, or a PDF's attachment, is stopped at
-  the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file removed,
-  and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
+- **archive.** 7zz reads a RAR4 through its rar handler, a RAR5 through its rar5 handler, and an xz
+  file as one stream whose content is one part. Split RAR volumes stay unread: a RAR whose first
+  header marks it as one volume of a split set ends with no processor yet, and 7zz never runs for
+  it, so no sibling volume is opened. A RAR5 volume whose headers are encrypted hides that mark, so
+  it ends Encrypted instead. A listing past `inspect.Options.Entries` fails its part; an entry
+  flagged by name or type (a traversal, an absolute name, a link, a device), an encrypted one, and a
+  bomb as written are unread children, not read. An archive's entry, or a PDF's attachment, is
+  stopped at the write that would take its dispatch past `dispatch.Limits.Bytes`, its partial file
+  removed, and is an unread child, limited, with no size or SHA-256. The media docproc-ooxml,
   docproc-mail, and docproc-onenote write are held to the cap only once written.
 - **document.** A PDF that needs a password is flagged and not read. An AcroForm whose qpdf JSON
   passes 64 MiB fails `QPDF.Form` rather than being held in memory. A page past the request's

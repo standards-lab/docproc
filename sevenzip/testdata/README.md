@@ -1,7 +1,8 @@
 # testdata
 
 The sevenzip package's fixtures, which the dispatch package's archive stage reads too: archives
-7-Zip reads and the standard library doesn't. They are committed and never fetched or generated
+7-Zip reads and the standard library doesn't, and bzip2 streams, which 7-Zip writes and the
+archive stage reads through `compress/bzip2`. They are committed and never fetched or generated
 in the check, which holds each to its SHA-256 below (`TestFixtureSums`).
 
 ## commons-compress
@@ -34,30 +35,64 @@ What each holds:
 
 ## libarchive
 
-Three ZIPs from [libarchive](https://github.com/libarchive/libarchive)'s test suite,
+Three ZIPs and nine RARs from [libarchive](https://github.com/libarchive/libarchive)'s test suite,
 `libarchive/test/`, at its release `v3.8.11` (commit `03036ffa409a2aa1c5bbad35be2202641a040fda`),
 under libarchive's 2-clause BSD license, its `COPYING` beside them. libarchive keeps them
-uuencoded; each `.uu` was fetched at that commit and decoded, with Python's `binascii.a2b_uu`, to
-the file below, which 7zz 26.05 tested whole before it was copied. Each holds `vimrc`, 912 bytes,
-CRC-32 `BA8E3BAA`, under one method.
+uuencoded; each `.uu` was fetched from raw.githubusercontent.com at that commit and decoded with
+Python's `binascii.a2b_uu` to the file below. 7zz tested each file whole before it was copied: the
+ZIPs with 26.05 and the RARs with 26.06. An encrypted RAR was tested with its password from
+libarchive's test, and a split set's first volume with the set's other volumes beside it; those
+other volumes aren't copied.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
 | `libarchive/test_read_format_zip_lzma.zipx` | `test_read_format_zip_lzma.zipx.uu`, SHA-256 `1d2b2126df4a27d777c1128efe9a8fba7c922dc0195f4c934aba65d24916d739`; LZMA (method 14) | BSD-2-Clause | 713 | `a8fd1714eff610dae52e434a759818829bf8040b5016aa771b9a33965d2dbc89` |
 | `libarchive/test_read_format_zip_ppmd8.zipx` | `test_read_format_zip_ppmd8.zipx.uu`, SHA-256 `edd1a418baf069f41f79b93ec1977a447217c684041fc030305d18dfc354bfbc`; PPMd (method 98) | BSD-2-Clause | 616 | `3524501a47b1947a162cb2b33ccabc8d2bd8c2311b86c0a6af6f7ba28eedbf6e` |
 | `libarchive/test_read_format_zip_zstd.zipx` | `test_read_format_zip_zstd.zipx.uu`, SHA-256 `cd0e2b6a53461d137341f8ad306e9a62ac93cdfc45b62e2e1545cf4e9a90ee31`; zstd (method 93) | BSD-2-Clause | 647 | `ca15c7eabde8b918f1c91ff3a173012175b0599664f007fc3cb0bdf00c767377` |
+| `libarchive/test_read_format_rar.rar` | `test_read_format_rar.rar.uu`, SHA-256 `d1e75b4120995bce82fc4e72ebf8b80d18ea69fa34ac62de383b8393f92afa09`; RAR4 | BSD-2-Clause | 336 | `d421b86f6290aefad61b2a36737253b2b30fe27c156bd95abfc230f24fe0307e` |
+| `libarchive/test_read_format_rar_encryption_partially.rar` | `test_read_format_rar_encryption_partially.rar.uu`, SHA-256 `efc09869294e03f6a363fd8e41cc5838e4a2d08e32a18773a95161a90965f3a3`; RAR4 | BSD-2-Clause | 173 | `144ab2270d4f28a61a857d5ae6248e90ab3be5ed46dc2fc59f9c0a98c7f49407` |
+| `libarchive/test_read_format_rar_encryption_header.rar` | `test_read_format_rar_encryption_header.rar.uu`, SHA-256 `2e56bf61f98eb519e41ef19303d563d1331cc5fd126212e4aba0d0a0e8167057`; RAR4 | BSD-2-Clause | 220 | `67fa99d6f1d07d6dce56da85d22cd6271c16fbc7aad5efc6046b30425cc799b0` |
+| `libarchive/test_read_format_rar_multivolume.part0001.rar` | `test_read_format_rar_multivolume.part0001.rar.uu`, SHA-256 `7e9d0e03f1335a812e09a03425dfdf8e4f763a8c536904b88ff9400bd2e44d68`; RAR4 | BSD-2-Clause | 60000 | `6c4d7f55cbf0a44aa0cafb283b0fd954ef625c9afc2fbe1cce4f201fc2508c63` |
+| `libarchive/test_read_format_rar5_compressed.rar` | `test_read_format_rar5_compressed.rar.uu`, SHA-256 `7a87af5035430d2307f9a183b2da8a71c95b3c0a5b8e8d1f172ef3343d4b8620`; RAR5 | BSD-2-Clause | 436 | `68f9d7e2662cd5bc5607ba9c6bf1edbf121cf3b08011a7d8643091791750a7c8` |
+| `libarchive/test_read_format_rar5_encrypted.rar` | `test_read_format_rar5_encrypted.rar.uu`, SHA-256 `5cc262d34226c3c9298df7bda065eee1523f8ff6ebaced486f48117095661a0b`; RAR5 | BSD-2-Clause | 391 | `72b69a1d5f5757511e683a9207166c60e91ce0846ae446b8b332b085f9e0ba48` |
+| `libarchive/test_read_format_rar5_encrypted_filenames.rar` | `test_read_format_rar5_encrypted_filenames.rar.uu`, SHA-256 `f113860fd2f06aa13b2f933150a1f80988038cdeef393fbb6a1a0d302c86148e`; RAR5 | BSD-2-Clause | 718 | `b2b98004c9cbf4f2a4000380ad47a16dea99f2d50835b1602c40d724eb82c300` |
+| `libarchive/test_read_format_rar5_symlink.rar` | `test_read_format_rar5_symlink.rar.uu`, SHA-256 `7c159d88ca351a8324e2d85c9455d26e86e7df4c79f46ee3db9bfb5a89ffdd44`; RAR5 | BSD-2-Clause | 190 | `a7336968564786ea5ff106fff2f6ef8dfd8ad5ecca86fbd1db3d63ba42bcd29a` |
+| `libarchive/test_read_format_rar5_multiarchive.part01.rar` | `test_read_format_rar5_multiarchive.part01.rar.uu`, SHA-256 `93481eb23735afd0b5c527a04585b6d79f0f821ce14d33e0c788c243a54e3e49`; RAR5 | BSD-2-Clause | 15360 | `2f3894dc4b8a1bba90830ef1f89f457b0295b6f9030c70febd57283721bc2ce3` |
 | `libarchive/COPYING` | `COPYING` | BSD-2-Clause | 3089 | `30e556b3959e3985d66efefec5eaac51d4995053caa1d3cffe6eb916f146f229` |
+
+What each holds:
+
+- The three ZIPs: `vimrc`, 912 bytes, CRC-32 `BA8E3BAA`, under one method each.
+- `test_read_format_rar.rar`: a RAR4 of `test.txt` and `testdir/test.txt`, 20 bytes each;
+  `testlink`, a symbolic link of Unix mode `lrwxrwxrwx`; and two directories.
+- `test_read_format_rar_encryption_partially.rar`: a RAR4 of `foo.txt`, encrypted (password
+  `12345678`), and `bar.txt`, unencrypted, under clear headers.
+- `test_read_format_rar_encryption_header.rar`: a RAR4 whose headers are encrypted (password
+  `12345678`), so nothing lists without it.
+- `test_read_format_rar_multivolume.part0001.rar`: the first of a RAR4 split set's four volumes,
+  its main header's volume flag set.
+- `test_read_format_rar5_compressed.rar`: a RAR5 of `test.bin`, 1,200 bytes.
+- `test_read_format_rar5_encrypted.rar`: a RAR5 of `a.txt` and `c.txt`, unencrypted, and `b.txt`
+  and `d.txt`, encrypted (passwords `password` and `password2`), under clear headers.
+- `test_read_format_rar5_encrypted_filenames.rar`: a RAR5 whose headers are encrypted (password
+  `password`). Its encryption header comes first, so its volume flag, which is clear, can't be read
+  either.
+- `test_read_format_rar5_symlink.rar`: a RAR5 of `file.txt`; `symlink.txt` and `dirlink`, symbolic
+  links; and the directory `dir`.
+- `test_read_format_rar5_multiarchive.part01.rar`: the first of a RAR5 split set's eight volumes,
+  its archive flags' volume bit set.
 
 ## generated
 
 This repository's, Apache-2.0, written by `generate.go`: run `mise exec -- go run generate.go` in
-this directory. It writes the zstd streams and cabinets by hand, every byte fixed, and the 7z
-archives through the 7zz mise pins, from files whose content, mode, and order are fixed, with no
-times stored and one thread, so a rerun writes the same bytes, 7zz 26.05 and 26.06 alike, but
-for the two encrypted 7z archives, whose salt and IV 7zz draws at random: a rerun writes them anew, and their sums below
-then change. Their password is `infected`, which no test gives. `~/docs`' archives aren't
-redistributable, so none is copied; the integration tier reads `~/docs` itself when the machine
-has it.
+this directory. It writes the zstd streams and cabinets by hand, every byte fixed. It writes the 7z
+archives and the xz and bzip2 streams through the 7zz mise pins, from files whose content, mode,
+and order are fixed, with no times stored and one thread, so a rerun writes the same bytes: the 7z
+archives with 7zz 26.05 and 26.06 alike, and the xz and bzip2 streams with 26.06. The two
+encrypted 7z archives are the exception: 7zz draws their salt and IV at random, so a rerun writes
+them anew and their sums below change. Their password is `infected`, which no test gives.
+`~/docs`' archives aren't redistributable, so none is copied; the integration tier reads `~/docs`
+itself when the machine has it.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -79,6 +114,13 @@ has it.
 | `generated/absolute.cab` | `generate.go` | Apache-2.0 | 147 | `1b658724750d55e997e5f36cd133338dc1b54cd6388c1f8861db9d22f4814c2f` |
 | `generated/bomb.cab` | `generate.go` | Apache-2.0 | 14662 | `b70d13ed29cb6ba2317828613e5b6566445ded7d27e667fbf705306936a9787b` |
 | `generated/linebreak.cab` | `generate.go` | Apache-2.0 | 232 | `b2bbd0a9af45328e3d44196cbd687c9758ea9365b0e1c71188fb25e1430c11ea` |
+| `generated/notes.txt.xz` | `generate.go`, 7zz | Apache-2.0 | 72 | `7a4308af2664a08b673a34e3469cefde312b6c462dc8e52921c110d730764192` |
+| `generated/clean.txz` | `generate.go`, 7zz | Apache-2.0 | 232 | `84c171f622cb9a10bac27c35ac58644447ae20bdacc07ae8ba361ae216bcafe2` |
+| `generated/bomb.xz` | `generate.go`, 7zz | Apache-2.0 | 1352 | `bd4d2095a33dcdc1b2f18bf5576f15dee5c27050a0afca22ed5af0989abca140` |
+| `generated/notes.txt.bz2` | `generate.go`, 7zz | Apache-2.0 | 54 | `643b9d1ad07bb4ce0fa7906e0859dbfd025c44e8e70ca2e69c41290088958011` |
+| `generated/clean.tbz2` | `generate.go`, 7zz | Apache-2.0 | 228 | `acdef87070f170a45c40d9501fea549959c31ec15ddd797c235930703e706018` |
+| `generated/bomb.bz2` | `generate.go`, 7zz | Apache-2.0 | 50 | `fc37914bf8e2b342bad133ebf198fa5ba21c667ec8900f529d498dc81df6712f` |
+| `generated/concatenated.txt.bz2` | `generate.go`, 7zz | Apache-2.0 | 124 | `6194c14ddc1820801ee2223edc47a4f4c481516ac53ac544c9dff27d5e45f86e` |
 
 What each holds:
 
@@ -127,3 +169,17 @@ What each holds:
   in a carriage return, and `after.txt`, written by hand since 7zz replaces a line break with
   `_` when it adds a file or renames one. 7zz lists the line break as `_`, `line_break.txt`, and
   the carriage return as stored.
+- `notes.txt.xz`: `notes.txt`, 18 bytes, as one xz stream, LZMA2, which declares its size in its
+  index.
+- `clean.txz`: inspect's `clean.tar` as one xz stream, named `.txz`, so its content is named
+  `clean.tar`.
+- `bomb.xz`: 8 MiB of zeros at about 6,200:1, its size declared. Like `bomb.7z`, it is past the
+  default ratio and under the default size.
+- `notes.txt.bz2`: `notes.txt`, 18 bytes, as one bzip2 stream (`-tbzip2`), which declares no
+  size.
+- `clean.tbz2`: inspect's `clean.tar` as one bzip2 stream, named `.tbz2`, so its content is named
+  `clean.tar`.
+- `bomb.bz2`: 8 MiB of zeros at about 168,000:1, past the default ratio and under the default
+  size.
+- `concatenated.txt.bz2`: two bzip2 streams, of `notes.txt` and `evil.txt`, each written by 7zz
+  and joined by `generate.go`. Read whole, as `bzip2 -d` reads them, they hold 59 bytes.

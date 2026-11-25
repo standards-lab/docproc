@@ -2,6 +2,7 @@ package stages
 
 import (
 	"archive/tar"
+	"compress/bzip2"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -105,9 +106,23 @@ func (s *archiveStage) gzip(ctx context.Context, p dispatch.Part, dir string, yi
 	if name == "" {
 		name = streamStem(p.Name, ".gz", ".tgz")
 	}
-	where := "gzip content " + name
+	s.content(ctx, p, dir, "gzip content "+name, name, zr, yield)
+}
+
+func (s *archiveStage) bzip2(ctx context.Context, p dispatch.Part, dir string, yield func(dispatch.Item, error) bool) {
+	f, err := os.Open(p.Path)
+	if err != nil {
+		yield(dispatch.Item{}, fmt.Errorf("archive stage: %w", err))
+		return
+	}
+	defer func() { _ = f.Close() }()
+	name := streamStem(p.Name, ".bz2", ".tbz2", ".tbz")
+	s.content(ctx, p, dir, "bzip2 content "+name, name, bzip2.NewReader(f), yield)
+}
+
+func (s *archiveStage) content(ctx context.Context, p dispatch.Part, dir, where, name string, r io.Reader, yield func(dispatch.Item, error) bool) {
 	compressed := uint64(p.Size)
-	path, written, why, err := s.extract(ctx, copyFrom(zr), dir, compressed, func(_ *bombWriter, copyErr error) error {
+	path, written, why, err := s.extract(ctx, copyFrom(r), dir, compressed, func(_ *bombWriter, copyErr error) error {
 		if copyErr != nil {
 			return fmt.Errorf("doesn't decompress: %w", copyErr)
 		}
