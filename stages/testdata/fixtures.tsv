@@ -9,21 +9,21 @@ audio/testdata/speech.flac	audio	prepared
 audio/testdata/speech.truth.txt	text	prepared
 audio/testdata/windows-v0.9.0.txt	text	prepared
 cmd/docproc/internal/app/testdata/fallback.txt	text	prepared
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/956e499b5e521771b3584eaa57b659d9bae2cebed6c9b9a66b1bde9ef33ab03e.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/index.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/index.html	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/rundir/content/25/2556d072121b94e2a6cc4cf8e43f73b1b5030ec3ab59d0b2235aa2faa16b4abe	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/956e499b5e521771b3584eaa57b659d9bae2cebed6c9b9a66b1bde9ef33ab03e.html	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f04403b02fdd738868d5c683872140987b664d03f8a29aec13ee88f3b271d014.html	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/f90199938cc629a711b4ce5a349f5606d96acde9ef44abfab0d167826f4b60df.html	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a1/index.html	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f.html	text	prepared
+cmd/docproc/internal/report/testdata/golden/019a5f3c-1d2e-7a10-8b00-0000000000a2/index.html	text	prepared
+cmd/docproc/internal/report/testdata/rundir/content/25/2556d072121b94e2a6cc4cf8e43f73b1b5030ec3ab59d0b2235aa2faa16b4abe	text	prepared
 cmd/docproc/internal/report/testdata/rundir/content/43/4371149be76808ede2e39736bd07c9a9209f1d6207cfb3a530c7a2e84ab1a5a2	vision	prepared
-cmd/docproc/internal/report/testdata/rundir/content/49/49f0a3b0c2b2a69f7619a5fdb670aec4c66c547ab78d4c13c41bf822a2f63a9d	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/49/49f0a3b0c2b2a69f7619a5fdb670aec4c66c547ab78d4c13c41bf822a2f63a9d	text	prepared
 cmd/docproc/internal/report/testdata/rundir/content/6a/6aadf10b8e2ff279d1eebcbf84f605f00f4827d82dad47f55b468b8ddf3d44c4	vision	prepared
-cmd/docproc/internal/report/testdata/rundir/content/6d/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/rundir/content/91/91f139ca1c19593f32cba1f5a21ceeb556eeeaf3a208c97c5927e7a098878b19	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/rundir/content/98/98dc2ca63ef11a81aec72f3f4adbfc46f76775d1bffeb97ea5d95efd53afab36	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/rundir/content/a1/a1c904eedaa045e589e7662e41362498fee1eac19cb75247d86187f0e8b829f9	unrouted	no processor yet
-cmd/docproc/internal/report/testdata/rundir/content/e5/e5e635c7a7480ef91dd5f6503c2d4f7ed429a7df4f3c80350de6e1c95d7c8d38	unrouted	no processor yet
+cmd/docproc/internal/report/testdata/rundir/content/6d/6d5f3ae23fe522077bdacf823bea5500103ca204cecb41a12e69382413f0e08f	text	prepared
+cmd/docproc/internal/report/testdata/rundir/content/91/91f139ca1c19593f32cba1f5a21ceeb556eeeaf3a208c97c5927e7a098878b19	text	prepared
+cmd/docproc/internal/report/testdata/rundir/content/98/98dc2ca63ef11a81aec72f3f4adbfc46f76775d1bffeb97ea5d95efd53afab36	text	prepared
+cmd/docproc/internal/report/testdata/rundir/content/a1/a1c904eedaa045e589e7662e41362498fee1eac19cb75247d86187f0e8b829f9	text	prepared
+cmd/docproc/internal/report/testdata/rundir/content/e5/e5e635c7a7480ef91dd5f6503c2d4f7ed429a7df4f3c80350de6e1c95d7c8d38	text	prepared
 cmd/docproc/internal/report/testdata/rundir/content/e7/e700dfd0455f7fc65a5847792900801c945226449672700b65e1fa8da633a0e7	audio	prepared
 cmd/docproc/internal/report/testdata/rundir/quarantine/d9f0fc6ffd4c580cd4bd9f56d16d92f1e74ab539039d33d33ab256c8995b5b9d	unrouted	no processor yet
 cmd/docproc/internal/report/testdata/rundir/rundir.json	text	prepared
@@ -35,9 +35,9 @@ dispatch/testdata/dispatch.jsonl	text	prepared
 dispatch/testdata/log.jsonl	text	prepared
 document/testdata/README.md	text	prepared
 document/testdata/attachments/attachments.pdf	document	prepared
-document/testdata/attachments/generate.go	unrouted	no processor yet
+document/testdata/attachments/generate.go	text	prepared
 document/testdata/clean.pdf	document	prepared
-document/testdata/clean.typ	unrouted	no processor yet
+document/testdata/clean.typ	text	prepared
 document/testdata/clean/page-1.txt	text	prepared
 document/testdata/clean/page-2.txt	text	prepared
 document/testdata/clean/page-3.txt	text	prepared
@@ -56,12 +56,12 @@ document/testdata/degraded/page-8.txt	text	seen
 document/testdata/degraded/page-9.txt	text	seen
 document/testdata/forms/acroform.json	text	prepared
 document/testdata/forms/acroform.pdf	document	prepared
-document/testdata/forms/generate.go	unrouted	no processor yet
+document/testdata/forms/generate.go	text	prepared
 document/testdata/forms/signed.json	text	prepared
 document/testdata/forms/signed.pdf	document	prepared
-document/testdata/generate.sh	unrouted	no processor yet
+document/testdata/generate.sh	text	prepared
 document/testdata/malformed/compacted-syntax.pdf	document	prepared
-document/testdata/portfolio/generate.go	unrouted	no processor yet
+document/testdata/portfolio/generate.go	text	prepared
 document/testdata/portfolio/portfolio.pdf	document	prepared
 document/testdata/scanned.pdf	document	prepared
 document/testdata/scanned/page-1.txt	text	prepared
@@ -85,7 +85,7 @@ inspect/testdata/declared-bomb.zip	archive	quarantined
 inspect/testdata/device.tar	archive	prepared
 inspect/testdata/encrypted.xlsx	office	failed
 inspect/testdata/encrypted.zip	archive	encrypted
-inspect/testdata/generate.go	unrouted	no processor yet
+inspect/testdata/generate.go	text	prepared
 inspect/testdata/hardlink.tar	archive	prepared
 inspect/testdata/hyperlink.docx	office	prepared
 inspect/testdata/invoice.pdf.exe	unrouted	no processor yet
@@ -107,9 +107,9 @@ inspect/testdata/traversal.tar.gz	archive	prepared
 inspect/testdata/traversal.zip	archive	prepared
 inspect/testdata/unnamed.tgz	archive	prepared
 office/testdata/README.md	text	prepared
-office/testdata/golden/pictures.sha256	unrouted	no processor yet
-office/testdata/legacy/generate.sh	unrouted	no processor yet
-office/testdata/legacy/generated/MANIFEST	unrouted	no processor yet
+office/testdata/golden/pictures.sha256	text	prepared
+office/testdata/legacy/generate.sh	text	prepared
+office/testdata/legacy/generated/MANIFEST	text	prepared
 office/testdata/legacy/generated/bullets.libreoffice.ppt	office	prepared
 office/testdata/legacy/generated/cells.libreoffice.xls	office	prepared
 office/testdata/legacy/generated/charts.libreoffice.doc	office	prepared
@@ -130,8 +130,8 @@ office/testdata/legacy/real/basic_test_ppt_file.ppt	office	prepared
 office/testdata/legacy/real/basic_test_ppt_file.truth.json	text	prepared
 office/testdata/legacy/real/simple-table.doc	office	prepared
 office/testdata/legacy/real/simple-table.truth.json	text	prepared
-office/testdata/licenses/poi.LICENSE	unrouted	no processor yet
-office/testdata/licenses/poi.NOTICE	unrouted	no processor yet
+office/testdata/licenses/poi.LICENSE	text	prepared
+office/testdata/licenses/poi.NOTICE	text	prepared
 office/testdata/ooxml/bullets.libreoffice.pptx	office	prepared
 office/testdata/ooxml/cells.libreoffice.xlsx	office	prepared
 office/testdata/ooxml/charts.libreoffice.docx	office	prepared
@@ -148,7 +148,7 @@ office/testdata/ooxml/slides.libreoffice.pptx	office	prepared
 office/testdata/ooxml/tables.libreoffice.docx	office	seen
 office/testdata/ooxml/with-drawing.xlsx	office	prepared
 office/testdata/ooxml/word-with-attachments.docx	office	prepared
-office/testdata/pictures/generate.sh	unrouted	no processor yet
+office/testdata/pictures/generate.sh	text	prepared
 office/testdata/pictures/tiff.docx	office	prepared
 office/testdata/rtf/hidden-entry.rtf	office	prepared
 office/testdata/rtf/memo.rtf	office	prepared
@@ -163,8 +163,8 @@ picture/testdata/scanned-g4.tiff	vision-converted	prepared
 picture/testdata/script-bearing.svg	vision-converted	prepared
 picture/testdata/shapes.svg	vision-converted	prepared
 picture/testdata/two-images.heic	vision-converted	prepared
-rundir/testdata/rundir/content/b6/b688c8947f876ba9580749960b0c70076ea223eec8dcb9d57d4c51c9c9dd2906	unrouted	no processor yet
-rundir/testdata/rundir/content/d3/d31031c3593a9da13ff7013b8cf20bf3120903467fac751975e0260c8560c6c7	unrouted	no processor yet
+rundir/testdata/rundir/content/b6/b688c8947f876ba9580749960b0c70076ea223eec8dcb9d57d4c51c9c9dd2906	text	prepared
+rundir/testdata/rundir/content/d3/d31031c3593a9da13ff7013b8cf20bf3120903467fac751975e0260c8560c6c7	text	prepared
 rundir/testdata/rundir/quarantine/4efe525c159bafa28a6ba4e08aa028a846bdebb78bf4b33c11e959a37b481bca	unrouted	no processor yet
 rundir/testdata/rundir/rundir.json	text	seen
 rundir/testdata/rundir/runs/019a5f3c-1d2e-7a10-8b00-000000000001/manifest.json	text	prepared
@@ -181,7 +181,7 @@ sevenzip/testdata/commons-compress/bzip2-zip.zip	archive	prepared
 sevenzip/testdata/commons-compress/lorem-ipsum-deflate64.zip	archive	prepared
 sevenzip/testdata/commons-compress/lorem-ipsum-implode.zip	archive	prepared
 sevenzip/testdata/commons-compress/test-method-xz.zip	archive	prepared
-sevenzip/testdata/generate.go	unrouted	no processor yet
+sevenzip/testdata/generate.go	text	prepared
 sevenzip/testdata/generated/absolute.7z	archive	prepared
 sevenzip/testdata/generated/absolute.cab	archive	prepared
 sevenzip/testdata/generated/bomb.7z	archive	prepared
@@ -207,7 +207,7 @@ sevenzip/testdata/generated/notes.txt.xz	archive	prepared
 sevenzip/testdata/generated/symlink.7z	archive	prepared
 sevenzip/testdata/generated/traversal.7z	archive	prepared
 sevenzip/testdata/generated/traversal.cab	archive	prepared
-sevenzip/testdata/libarchive/COPYING	unrouted	no processor yet
+sevenzip/testdata/libarchive/COPYING	text	prepared
 sevenzip/testdata/libarchive/test_read_format_rar.rar	archive	prepared
 sevenzip/testdata/libarchive/test_read_format_rar5_compressed.rar	archive	prepared
 sevenzip/testdata/libarchive/test_read_format_rar5_encrypted.rar	archive	encrypted
