@@ -10,6 +10,11 @@ covers docproc-onenote only.
 
 ## [Unreleased]
 
+### Changed
+
+- The crate graph locks crc32fast 1.5.6, a patch release, in place of 1.5.5. The output is
+  unchanged.
+
 ## [v0.1.2] - 2026-11-23
 
 ### Changed

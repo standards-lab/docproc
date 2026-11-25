@@ -9,6 +9,12 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Changed
+
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.1-libreoffice`, from 9.9.3-libreoffice,
+  pinned by its multi-arch index digest. The new image carries the same LibreOffice, 26.8.2.2, and
+  the pictures' golden sums are unchanged.
+
 ## [v0.4.2] - 2026-11-23
 
 This release moves the default container images that soffice and ffmpeg run in, and currency now

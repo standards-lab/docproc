@@ -3,7 +3,7 @@
 [tools]
 dotnet = "11.0.100"
 jq = "1.8.2"
-uv = "0.13.9"
+uv = "0.13.10"
 
 [env]
 DOTNET_CLI_TELEMETRY_OPTOUT = "1"
