@@ -116,7 +116,9 @@ inspection are two-way until the tags are pushed.
 
 ## Progress
 
-slices 0/5 committed · standards — · spec — · editor —
+slices 2/5 committed · standards — · spec — · editor —
+- corpus.docs asked (standards-lab #219) to be told only the final release, at sync: the
+  docs-corpus pending edit now says so.
 
 ## Decisions
 
@@ -143,7 +145,9 @@ slices 0/5 committed · standards — · spec — · editor —
 
 ## Pending edits
 
-- docs-corpus · tell corpus.docs the released tags, that `#!` scripts and other unlisted text now
-  route text, and that exec-4's check:polyglot can reopen.
+- docs-corpus · once docproc-coverage syncs, tell corpus.docs (context/goals/corpus.docs.md, task
+  docproc-final; standards-lab #219) the final release's tags, docproc, storage, postgres, and
+  cmd/docproc, and the run-directory schema it writes; that `#!` scripts and other unlisted text
+  route text; and that exec-4's check:polyglot can reopen. Intermediate releases go untold.
 - coordinator · roadmap/docproc-backlog.toml: a text retry for a part whose stage fails at
   runtime, such as a corrupt PDF.
