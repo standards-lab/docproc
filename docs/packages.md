@@ -6,7 +6,7 @@
 | `inspect` | Inspects a part before its stage and says whether it may go on: an unsafe part, such as a bomb or an unreadable directory, is quarantined; an active one, such as a link, a VBA project, or an external relationship, is flagged. |
 | `tool` | Runs a system tool behind one contract, through the exec runner (Linux) or the container runner (the docker CLI), each reporting a run's exit code, signal, and time bound, and applying a memory bound when one is set. |
 | `office`, `email`, `onenote` | The readers of docproc-ooxml, docproc-mail, and docproc-onenote, each decoding its tool's schema `"2"` JSON Lines; `email` also threads a store's messages. |
-| `document` | A PDF's pages rendered to PNG files through Ghostscript, with their text layer, and its password requirement, form, and embedded files through qpdf and pdfdetach. |
+| `document` | A PDF's pages rendered to PNG files through Ghostscript, with their text layer through pdftotext, and its password requirement, form, and embedded files through qpdf and pdfdetach. |
 | `picture` | A TIFF's pages, and EMF, WMF, SVG, HEIC, WebP, and AVIF pictures, converted to PNG through ImageMagick and LibreOffice. |
 | `audio` | Speech cut into windows that end in a silence, from one ffmpeg decode, and the audio plan record beside them. |
 | `media` | A file's audio windows and its video frames, at its scene changes and at least every so often, from one ffmpeg run, and the video plan record beside them. |

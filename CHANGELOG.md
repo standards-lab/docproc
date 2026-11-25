@@ -9,6 +9,56 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-11-25
+
+This release reads a PDF page's text with poppler's pdftotext in its reading order, where gs's
+txtwrite laid it out: a multi-column page reads column by column, without the runs of spaces gs
+padded its columns with ([`docs/acceptance.md`](docs/acceptance.md), "PDF page text").
+`document.Ghostscript.Text` is removed, a breaking change in a minor release before 1.0, and the
+document stage requires pdftotext beside gs, qpdf, and pdfdetach. The stage adapters' version is
+7, so an index prepares every PDF again. No wire value and no run directory's schema changes.
+The module still requires golang.org/x/text alone.
+
+### Added
+
+- `document.TextReader`, which reads a PDF page's text layer through poppler's pdftotext in its
+  reading-order mode, neither `-layout` nor `-raw`, one run a page. `document.NewTextReader`
+  builds one over `document.Config.PDFToText`, `document.PDFToTextSpec` declares pdftotext, and
+  `document.PDFToTextMinimum` is the oldest it accepts, 22.02. `TextReader.Text` drops the form
+  feed pdftotext ends a page with. It refuses a page below 1 before pdftotext runs, and a page
+  past the last, which pdftotext refuses with exit 99, each with an error wrapping
+  `document.ErrRequest`. It gives any other failure as a `*tool.ExitError` carrying the first
+  4 KiB of pdftotext's stderr.
+- `document.Config.PDFToText`, the pdftotext Tool `NewTextReader` requires, and
+  `document.Config.Text`, the `*document.TextReader` `NewPreparer` requires.
+- pdftotext is a required tool of the document stage, beside gs, qpdf, and pdfdetach:
+  `stages.Build` looks it up and checks its version, and a missing or too old pdftotext leaves the
+  document route Missing with its reason, even under a request that reads no text. Its version
+  line is part of the stage's identity, and `stages.Options.Timeout` bounds its runs.
+
+### Changed
+
+- A PDF page's text, `document.PageImage.Text` and the document stage's `page N` text output,
+  is pdftotext's reading order, where it was gs's txtwrite layout: a multi-column page reads
+  column by column with no run of spaces padding its columns, a word hyphenated at a line's end
+  is joined, and the paragraphs of columns that line up may alternate between the columns.
+- `document.Preparer.Images` reads each page's text through the Preparer's `TextReader`, one
+  pdftotext run a page, before the page renders, under either runner; gs's processes, shared or a
+  page's own, render only, and no text scratch directory is made. A page whose text run fails
+  fails alone, at its `text` step, unrendered, and the stream carries on. Page order, the
+  concurrency bound, and every page's PNG are as before.
+- `document.NewPreparer` requires `Config.Text` beside `Config.Renderer`, and panics naming
+  `Config.Text` when it is nil.
+- The stage adapters' version, part of every adapter's configuration hash, is 7, from 6, since
+  every PDF's page text changes shape: an index prepares every PDF again.
+
+### Removed
+
+- `document.Ghostscript.Text` and gs's shared txtwrite run: gs counts and renders a PDF's pages
+  and reads no text.
+- The text half of `document.ImagesRequest.PagesPerProcess`, which bounds a shared gs process's
+  renders alone.
+
 ## [v0.7.0] - 2026-11-25
 
 This release makes text the last resort: content no processor claims, or that fails a claim's own
@@ -416,7 +466,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.8.0...HEAD
+[v0.8.0]: https://github.com/standards-lab/docproc/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/standards-lab/docproc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/standards-lab/docproc/compare/v0.4.2...v0.5.0

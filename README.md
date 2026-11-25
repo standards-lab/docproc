@@ -95,6 +95,7 @@ made fails before the tool starts.
 | `gs` | Ghostscript | 10.0 | document |
 | `qpdf` | qpdf | 11.0 | document |
 | `pdfdetach` | poppler-utils | 22.02 | document |
+| `pdftotext` | poppler-utils | 22.02 | document |
 | `magick` | ImageMagick | 7.1 | office, picture |
 | `soffice` | LibreOffice | 24.2 | office, picture |
 | `7zz` | 7-Zip | 26.06 | archive |

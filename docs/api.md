@@ -266,28 +266,33 @@ How `document` runs gs, and why (the measurements behind it are on
   A page's own run opens the PDF in PostScript and runs `runpdf`'s other branch, word for word:
   `runpdfbegin process_trailer_attrs runpdfpagerange dopdfpages runpdfend`. A portfolio's page is
   then its cover's own, and any other PDF's page is byte for byte what the file named on the
-  command line gives, its PNG, its text, and gs's messages, as gs 10.08.0 gives them over every
-  fixture. A shared run names the PDF on its command line, so a portfolio never shares one.
+  command line gives, its PNG and gs's messages, as gs 10.08.0 gives them over every fixture. A
+  shared run names the PDF on its command line, so a portfolio never shares one.
 - The path is a PostScript string, its backslashes and parentheses escaped, and `-dSAFER` is
   permitted to read that one file. gs splits a permitted path at a colon, so a path holding one
   can't be read.
-- The renders and the text runs take `-sstdout=%stderr`, since gs otherwise writes its own
-  messages to stdout, even under `-q`, ahead of a page it renders with one, such as `**** Error:
-  Page drawing error occurred.`. The count and the survey print with `=`, which writes to
-  `%stdout` as those messages do, so they don't take it. The survey prints the count, then, only
-  for a count above zero, whether the PDF is a portfolio, then, when asked, each page's size, its
-  page set up by `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the
-  released count run printed.
+- The renders take `-sstdout=%stderr`, since gs otherwise writes its own messages to stdout, even
+  under `-q`, ahead of a page it renders with one, such as `**** Error: Page drawing error
+  occurred.`. The count and the survey print with `=`, which writes to `%stdout` as those
+  messages do, so they don't take it. The survey prints the count, then, only for a count above
+  zero, whether the PDF is a portfolio, then, when asked, each page's size, its page set up by
+  `pdfshowpage_setpage` as rendering sets it, so a PDF gs can't open prints what the released
+  count run printed.
 - A page's PNG reaches its writer only once stdout begins with PNG's signature, so gs's message for
   a page past the last, written in place of a PNG, never reaches a page file. A shared render's
   stdout is split into PNGs by their chunks, through `IEND`, reading no chunk's data and checking
   no CRC, so gs's PNGs pass through byte for byte; output past the pages asked for, or not a PNG
-  where one begins, is the content's failure, as is a text file missing.
+  where one begins, is the content's failure.
 - The alpha bits anti-alias text and graphics, as poppler's pdftoppm and pdftocairo do by default
-  and gs doesn't. gs reads a `%` in `OutputFile` as a format's, so the shared text run's directory
-  has each `%` doubled.
+  and gs doesn't.
 - `Tool.Run` keeps stderr in its `*tool.ExitError` only when the caller passes no writer for it,
-  so `Render` and `Text`, which read stderr, set the message themselves, from its first 4 KiB.
+  so `Render`, which reads stderr, sets the message itself, from its first 4 KiB, as
+  `TextReader.Text` does for pdftotext's.
+- `TextReader.Text` reads a page's text, one pdftotext run a page in its reading-order mode,
+  neither `-layout` nor `-raw`, before the page renders, so no gs process reads text. A page whose
+  text run fails fails alone, at its `text` step, and isn't rendered. A shared process renders
+  only the pages whose text was read, and a page a failed shared process didn't hand over is
+  rendered alone, its text not read again.
 - A shared process's failure is the content's when gs exits nonzero, dies by its own fault, passes
   its bound, or writes output that doesn't hold its pages, and its unhanded pages then run alone;
   any other failure is the run's, which a page's own process wouldn't change.
@@ -763,8 +768,8 @@ func ParseRoutes(names []string) ([]route.Route, error) // an unknown name match
 type Options struct { // the zero value wires every route, with no bound
     Exclude     []route.Route
     Inspect     inspect.Options // validated once; the archive and document stages' bomb rule
-    Timeout     time.Duration   // Spec.Timeout of the unit tools: gs, qpdf, pdfdetach, magick,
-                                // soffice, docproc-ooxml, ffprobe
+    Timeout     time.Duration   // Spec.Timeout of the unit tools: gs, qpdf, pdfdetach,
+                                // pdftotext, magick, soffice, docproc-ooxml, ffprobe
     Idle        time.Duration   // Spec.Idle of the stream tools: ffmpeg, docproc-mail,
                                 // docproc-onenote, 7zz
     Memory      int64           // tool.Spec.MemoryLimit for every Spec Build builds

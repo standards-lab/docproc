@@ -4,9 +4,11 @@ package stages_test
 
 import (
 	"bytes"
+	"cmp"
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -51,35 +53,47 @@ func gsStandin(r tooltest.Run) int {
 		}
 		return 0
 	}
-	out := "-"
-	for _, a := range args {
-		if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
-			out = v
-		}
-	}
-	for i, page := range tooltest.GSPages(args) {
-		var b []byte
-		switch {
-		case slices.Contains(args, "-sDEVICE=txtwrite") && page == settings.Empty:
-			b = []byte("  \n")
-		case slices.Contains(args, "-sDEVICE=txtwrite"):
-			b = fmt.Appendf(nil, "page %d", page)
-		case page == settings.Fail:
+	for _, page := range tooltest.GSPages(args) {
+		if page == settings.Fail {
 			fmt.Fprint(os.Stderr, "told to fail")
 			return 1
-		default:
-			b = tooltest.PNG(fmt.Sprintf("page %d", page))
 		}
-		var err error
-		if out == "-" {
-			_, err = os.Stdout.Write(b)
-		} else {
-			err = os.WriteFile(fmt.Sprintf(out, i+1), b, 0o600)
-		}
-		if err != nil {
+		if _, err := os.Stdout.Write(tooltest.PNG(fmt.Sprintf("page %d", page))); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			return 2
 		}
+	}
+	return 0
+}
+
+type pdftotextSettings struct {
+	Empty   int    `json:"empty,omitzero"`
+	Version string `json:"version,omitzero"`
+}
+
+func pdftotextStandin(r tooltest.Run) int {
+	var settings pdftotextSettings
+	if err := r.Settings(&settings); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	args := r.Args
+	if len(args) == 1 && args[0] == "-v" {
+		fmt.Fprintf(os.Stderr, "pdftotext version %s\n", cmp.Or(settings.Version, "26.10.0"))
+		return 0
+	}
+	page, err := strconv.Atoi(args[slices.Index(args, "-f")+1])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	text := fmt.Sprintf("page %d\f", page)
+	if page == settings.Empty {
+		text = "  \n\f"
+	}
+	if _, err := os.Stdout.WriteString(text); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
 	return 0
 }
@@ -96,7 +110,17 @@ func standinPreparer(t *testing.T, s gsSettings) *document.Preparer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return document.NewPreparer(document.Config{Renderer: g})
+	textSpec := document.PDFToTextSpec()
+	textSpec.Program = tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{Empty: s.Empty})
+	pdftotext, err := tool.NewExec(t.Context(), textSpec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, err := document.NewTextReader(document.Config{PDFToText: pdftotext})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return document.NewPreparer(document.Config{Renderer: g, Text: text})
 }
 
 func testDocumentStage(t *testing.T, prep *document.Preparer) *stages.DocumentStage {

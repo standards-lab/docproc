@@ -9,10 +9,10 @@
 // The stage adapters are this package's, unexported, each a dispatch.Stage over its format
 // package and the tools it requires, with no partial mode: a stage has its tools, or isn't wired.
 //
-//   - document, route.Document: a PDF through gs, qpdf, and pdfdetach: qpdf's finding that it
-//     needs a password raised as the part's flag, then dispatch.ErrEncrypted; its AcroForm's
-//     "forms" record; each embedded file found "attachment <name>", under the bomb rule; each
-//     page's text and PNG.
+//   - document, route.Document: a PDF through gs, qpdf, pdfdetach, and pdftotext: qpdf's finding
+//     that it needs a password raised as the part's flag, then dispatch.ErrEncrypted; its
+//     AcroForm's "forms" record; each embedded file found "attachment <name>", under the bomb
+//     rule; each page's text and PNG.
 //   - office, route.Office: docproc-ooxml's document Markdown, "document", then each sheet's
 //     Markdown and rows, both "sheet/<n>"; each medium found "document, media <n>".
 //   - picture, route.VisionConverted: a TIFF's pages, or an EMF, WMF, SVG, HEIC, WebP, or AVIF,

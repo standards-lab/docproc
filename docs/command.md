@@ -67,7 +67,7 @@ shutdown.
 | Variable | Bound | Starting value |
 | --- | --- | --- |
 | `DOCPROC_TOOL_MEMORY` | Every tool's memory bound, in bytes (`stages.Options.Memory`); set, the exec runner needs `prlimit` on PATH; [Limits](limits.md) gives the tools' needs under it | 2 GiB |
-| `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, magick, soffice, docproc-ooxml, ffprobe; a gs process shared by a PDF's pages takes it as an idle bound between its pages | 10m |
+| `DOCPROC_UNIT_TIMEOUT` | A unit run's bound (`Options.Timeout`): gs, qpdf, pdfdetach, pdftotext, magick, soffice, docproc-ooxml, ffprobe; a gs process shared by a PDF's pages takes it as an idle bound between its pages | 10m |
 | `DOCPROC_STREAM_IDLE` | A stream run's idle bound (`Options.Idle`): ffmpeg, docproc-mail, docproc-onenote, 7zz | 2m |
 | `DOCPROC_MAX_PARTS` | The most parts one dispatch admits, the input among them (`dispatch.Limits.Parts`) | 100000 |
 | `DOCPROC_MAX_BYTES` | The most bytes one dispatch's parts may come to (`Limits.Bytes`); it bounds what the archive and document stages write too, and an entry stopped at it is recorded `limited`, with no size or SHA-256 | 32 GiB |

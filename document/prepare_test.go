@@ -23,6 +23,7 @@ import (
 type fixture struct {
 	prep *document.Preparer
 	gs   *standin
+	text *standin
 	pdf  string
 	req  document.ImagesRequest
 }
@@ -46,9 +47,10 @@ func newTimedFixture(t *testing.T, pages int, timeout time.Duration) *fixture {
 	if err := os.WriteFile(pdf, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	tr, text := standinTextReader(t, "26.10.0")
 	return &fixture{
-		prep: document.NewPreparer(document.Config{Renderer: g}),
-		gs:   st, pdf: pdf,
+		prep: document.NewPreparer(document.Config{Renderer: g, Text: tr}),
+		gs:   st, text: text, pdf: pdf,
 		req: document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1},
 	}
 }
@@ -98,6 +100,24 @@ func (f *fixture) processes(device string) []string {
 	return got
 }
 
+func (f *fixture) textRuns() []int {
+	var pages []int
+	for _, r := range f.text.runs() {
+		page, _ := strconv.Atoi(r.Args[slices.Index(r.Args, "-f")+1])
+		pages = append(pages, page)
+	}
+	slices.Sort(pages)
+	return pages
+}
+
+func pageRange(from, to int) []int {
+	var pages []int
+	for page := from; page <= to; page++ {
+		pages = append(pages, page)
+	}
+	return pages
+}
+
 func files(t *testing.T, dir string) []string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -116,6 +136,11 @@ func zero(p document.PageImage) bool { return p == document.PageImage{} }
 func TestNewPreparerNil(t *testing.T) {
 	t.Parallel()
 	wantPanic(t, "document: Config.Renderer is nil", func() { document.NewPreparer(document.Config{}) })
+	g, err := document.NewGhostscript(document.Config{Ghostscript: newStandin(t, "gs", "10.08.0").mustTool(document.GhostscriptSpec())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPanic(t, "document: Config.Text is nil", func() { document.NewPreparer(document.Config{Renderer: g}) })
 }
 
 func TestImagesLazy(t *testing.T) {
@@ -328,15 +353,25 @@ func TestImagesText(t *testing.T) {
 			return strings.HasPrefix(a, "-sDEVICE=") || a == "-dNODISPLAY"
 		})])
 	}
-	if want := []string{"-dNODISPLAY", "-sDEVICE=txtwrite", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
+	if want := []string{"-dNODISPLAY", "-sDEVICE=png16m"}; !slices.Equal(devices, want) {
 		t.Errorf("gs ran %q, want %q", devices, want)
+	}
+	if got, want := f.textRuns(), []int{1, 2}; !slices.Equal(got, want) {
+		t.Errorf("pdftotext read pages %v, want %v", got, want)
+	}
+	f = newFixture(t, 2)
+	if _, errs := f.images(t.Context()); errs[0] != nil || errs[1] != nil {
+		t.Fatalf("without Text: %v", errs)
+	}
+	if got := f.text.runs(); len(got) != 0 {
+		t.Errorf("without Text, pdftotext ran %+v, want no run", got)
 	}
 }
 
 func TestImagesTextFails(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t, 3)
-	f.gs.set(func(s *settings) { s.FailText = 2 })
+	f.text.set(func(s *settings) { s.FailText = 2 })
 	f.req.Text = true
 	pages, errs := f.images(t.Context())
 	if len(pages) != 3 || errs[0] != nil || errs[2] != nil || pages[0].Text != standinText(1) || pages[2].Text != standinText(3) {
@@ -345,11 +380,25 @@ func TestImagesTextFails(t *testing.T) {
 	if err := errs[1]; err == nil || !strings.Contains(err.Error(), "page 2 of 3: text") || pages[1].Path != "" {
 		t.Errorf("page 2: %+v, %v; want its text failing", pages[1], err)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-sPageList=1-3"}; !slices.Equal(got, want) {
-		t.Errorf("text processes %q, want %q", got, want)
+	if got, want := f.textRuns(), []int{1, 2, 3}; !slices.Equal(got, want) {
+		t.Errorf("pdftotext read pages %v, want %v", got, want)
+	}
+	if got, want := f.processes("png16m"), []string{"-sPageList=1,3"}; !slices.Equal(got, want) {
+		t.Errorf("render processes %q, want %q", got, want)
+	}
+	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-3.png"}) {
+		t.Errorf("the directory holds %q, want pages 1 and 3", got)
+	}
+
+	f = newFixture(t, 3)
+	f.text.set(func(s *settings) { s.FailText = 2 })
+	f.req.Text, f.req.Concurrency = true, 3
+	pages, errs = f.images(t.Context())
+	if len(pages) != 3 || errs[0] != nil || errs[2] != nil || errs[1] == nil || !strings.Contains(errs[1].Error(), "page 2 of 3: text") {
+		t.Errorf("concurrency 3: the stream yielded %+v, %v; want page 2 alone failing at its text", pages, errs)
 	}
 	if got, want := f.processes("png16m"), []string{"-dFirstPage=1", "-dFirstPage=3"}; !slices.Equal(got, want) {
-		t.Errorf("render processes %q, want %q", got, want)
+		t.Errorf("concurrency 3: render processes %q, want %q", got, want)
 	}
 }
 
@@ -440,8 +489,8 @@ func TestImagesShared(t *testing.T) {
 		if got := f.processes("png16m"); !slices.Equal(got, want) {
 			t.Errorf("%s: render processes %q, want %q", name, got, want)
 		}
-		if got := f.processes("txtwrite"); !slices.Equal(got, want) {
-			t.Errorf("%s: text processes %q, want %q", name, got, want)
+		if got := f.textRuns(); !slices.Equal(got, pageRange(1, 7)) {
+			t.Errorf("%s: pdftotext read pages %v, want each page once", name, got)
 		}
 	}
 }
@@ -463,8 +512,9 @@ func TestImagesContainer(t *testing.T) {
 	if err := os.WriteFile(pdf, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	tr, text := standinTextReader(t, "26.10.0")
 	f := &fixture{
-		prep: document.NewPreparer(document.Config{Renderer: g}), gs: st, pdf: pdf,
+		prep: document.NewPreparer(document.Config{Renderer: g, Text: tr}), gs: st, text: text, pdf: pdf,
 		req: document.ImagesRequest{Dir: t.TempDir(), Concurrency: 1, PagesPerProcess: 4, Text: true},
 	}
 	pages, errs := f.images(t.Context())
@@ -479,50 +529,13 @@ func TestImagesContainer(t *testing.T) {
 	if got, want := f.processes("png16m"), []string{"-dFirstPage=5", "-sPageList=1-4"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1", "-dFirstPage=2", "-dFirstPage=3", "-dFirstPage=4", "-dFirstPage=5"}; !slices.Equal(got, want) {
-		t.Errorf("text processes %q, want %q", got, want)
+	if got := f.textRuns(); !slices.Equal(got, pageRange(1, 5)) {
+		t.Errorf("pdftotext read pages %v, want each page once", got)
 	}
 	for _, r := range st.runs() {
 		if r.Dir != filepath.Dir(pdf) {
 			t.Errorf("gs %q worked in %s, want the PDF's directory", r.Args, r.Dir)
 		}
-	}
-}
-
-func TestImagesSharedTextFiles(t *testing.T) {
-	t.Parallel()
-	f := newFixture(t, 8)
-	f.req.Text, f.req.Concurrency, f.req.PagesPerProcess = true, 2, 2
-	for _, err := range f.prep.Images(t.Context(), f.pdf, f.req) {
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	var outs []string
-	for _, r := range f.gs.runs() {
-		if slices.Contains(r.Args, "-sDEVICE=txtwrite") {
-			for _, a := range r.Args {
-				if v, ok := strings.CutPrefix(a, "-sOutputFile="); ok {
-					outs = append(outs, v)
-				}
-			}
-		}
-	}
-	if len(outs) != 4 {
-		t.Fatalf("text processes wrote to %q, want 4", outs)
-	}
-	for _, out := range outs {
-		dir := filepath.Dir(out)
-		if filepath.Base(out) != "page-%d.txt" || dir == filepath.Dir(f.pdf) || dir == f.req.Dir ||
-			strings.HasPrefix(dir, filepath.Dir(f.pdf)+string(filepath.Separator)) || strings.HasPrefix(dir, f.req.Dir+string(filepath.Separator)) {
-			t.Errorf("a text process wrote to %s, want a file a page in a directory of the stream's own", out)
-		}
-		if _, err := os.Stat(filepath.Dir(dir)); !errors.Is(err, os.ErrNotExist) {
-			t.Errorf("the text scratch %s is left: %v", filepath.Dir(dir), err)
-		}
-	}
-	if got := files(t, filepath.Dir(f.pdf)); !slices.Equal(got, []string{"doc.pdf"}) {
-		t.Errorf("the PDF's directory holds %q, want the PDF alone", got)
 	}
 }
 
@@ -550,8 +563,8 @@ func TestImagesSharedFallback(t *testing.T) {
 	if got, want := f.processes("png16m"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1-7"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=4", "-dFirstPage=5", "-dFirstPage=6", "-dFirstPage=7", "-sPageList=1-7"}; !slices.Equal(got, want) {
-		t.Errorf("text processes %q, want %q", got, want)
+	if got := f.textRuns(); !slices.Equal(got, pageRange(1, 7)) {
+		t.Errorf("pdftotext read pages %v, want each page once", got)
 	}
 	if got := files(t, f.req.Dir); !slices.Equal(got, []string{"page-1.png", "page-2.png", "page-3.png", "page-5.png", "page-6.png", "page-7.png"}) {
 		t.Errorf("the directory holds %q, want every page's but page 4's", got)
@@ -672,8 +685,8 @@ func TestImagesOnePage(t *testing.T) {
 	if got, want := f.processes("png16m"), []string{"-dFirstPage=1"}; !slices.Equal(got, want) {
 		t.Errorf("render processes %q, want %q", got, want)
 	}
-	if got, want := f.processes("txtwrite"), []string{"-dFirstPage=1"}; !slices.Equal(got, want) {
-		t.Errorf("text processes %q, want %q", got, want)
+	if got, want := f.textRuns(), []int{1}; !slices.Equal(got, want) {
+		t.Errorf("pdftotext read pages %v, want %v", got, want)
 	}
 }
 
@@ -729,8 +742,8 @@ func TestImagesPortfolio(t *testing.T) {
 		if got := f.processes("png16m"); !slices.Equal(got, want) {
 			t.Errorf("%s: render processes %q, want %q", name, got, want)
 		}
-		if got := f.processes("txtwrite"); !slices.Equal(got, want) {
-			t.Errorf("%s: text processes %q, want %q", name, got, want)
+		if got := f.textRuns(); !slices.Equal(got, pageRange(1, 3)) {
+			t.Errorf("%s: pdftotext read pages %v, want each page once", name, got)
 		}
 	}
 }
