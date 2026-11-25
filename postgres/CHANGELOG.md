@@ -10,6 +10,20 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.6] - 2026-11-25
+
+This release requires the docproc base module at v0.8.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.8.0, from v0.7.0, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  The stage adapters' version is 7, from 6, and is part of the configuration hash of every stage
+  but text and vision, so the index holds a caller's earlier archive, audio, document, email,
+  office, OneNote, picture, and video entries under the old identities and a run over it prepares
+  that content again, not PDFs alone. The document stage's identity also carries pdftotext's
+  version line. The index itself is unchanged and reads none of an output's text.
+
 ## [v0.1.5] - 2026-11-25
 
 This release requires the docproc base module at v0.7.0. Its exported API is unchanged.
@@ -115,7 +129,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.5...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.6...HEAD
+[v0.1.6]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.5...postgres/v0.1.6
 [v0.1.5]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...postgres/v0.1.5
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...postgres/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.2...postgres/v0.1.3

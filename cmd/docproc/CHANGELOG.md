@@ -10,6 +10,31 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.6] - 2026-11-25
+
+This release requires the docproc base module at v0.8.0, whose changes reach `docproc run` as
+Changed says. Its command line, exit codes, and run directory's schema are unchanged; a PDF page's
+text output changes shape, and the document stage requires pdftotext.
+
+### Changed
+
+- The module requires the docproc base module at v0.8.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - A PDF page's `page N` text output is read by poppler's pdftotext in its reading order, where
+    gs's txtwrite laid it out: a multi-column page reads column by column with no run of spaces
+    padding its columns, a word hyphenated at a line's end is joined, and the paragraphs of
+    columns that line up may alternate between the columns. The output's name, media type, and
+    place in `record.jsonl` are unchanged, and the run directory's schema stays `"2"`.
+  - The document stage requires pdftotext, from poppler-utils 22.02 or later, beside gs, qpdf,
+    and pdfdetach. On a host without it, or with an older one, `docproc run` leaves the document
+    stage out, and its stage table says why. pdfdetach already required poppler-utils at 22.02,
+    which ships pdftotext with it, so a host that ran the document stage before runs it still.
+    The stage table's document row carries pdftotext's version line, and
+    `DOCPROC_UNIT_TIMEOUT` bounds its runs.
+  - The stage adapters' version is 7, so a run over an index prepares its archive, audio,
+    document, email, office, OneNote, picture, and video content again rather than replaying it;
+    text content is replayed.
+
 ## [v0.2.5] - 2026-11-25
 
 This release requires the docproc base module at v0.7.0, whose changes reach `docproc run` as
@@ -222,7 +247,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.5...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.6...HEAD
+[v0.2.6]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.5...cmd/docproc/v0.2.6
 [v0.2.5]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...cmd/docproc/v0.2.5
 [v0.2.4]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...cmd/docproc/v0.2.4
 [v0.2.3]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...cmd/docproc/v0.2.3
