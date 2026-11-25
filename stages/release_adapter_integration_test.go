@@ -174,7 +174,7 @@ func spreadMbox(t *testing.T) string {
 		}
 
 		buf.WriteString("From sender@example.com Mon Jan  1 00:00:00 2024\n")
-		fmt.Fprintf(&buf, "From: sender@example.com\nTo: recipient@example.com\nSubject: message %d\n", i+1)
+		fmt.Fprintf(&buf, "From: sender@example.com\nTo: recipient@example.com\nDate: Mon, 01 Jan 2024 00:00:00 +0000\nSubject: message %d\n", i+1)
 		fmt.Fprintf(&buf, "Message-ID: <%d@example.com>\nMIME-Version: 1.0\n", i+1)
 		fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=%q\n\n", mw.Boundary())
 		buf.Write(part.Bytes())
