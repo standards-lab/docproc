@@ -36,6 +36,13 @@
 // and a stored name is only ever a name. Each reads the PDF by its absolute path in the PDF's
 // directory.
 //
+// TextReader, over poppler's pdftotext, minimum 22.02, reads one page's text layer per run in
+// pdftotext's reading-order mode, neither -layout nor -raw, so a multi-column page reads column by
+// column with no run of spaces padding it; the form feed pdftotext ends the page with is dropped,
+// and a scanned page reads as blank text. It refuses a page below 1 before any run, and a page
+// past the last, which pdftotext refuses with exit 99, as an error wrapping ErrRequest. It reads
+// the PDF by its absolute path in the PDF's directory.
+//
 // A Preparer, built at the composition root over a Ghostscript, streams a PDF's prepared pages
 // through Images, which reads the PDF at the caller's path, counts its pages, and renders each
 // page to a PNG file in the directory the ImagesRequest names, page-N.png, yielding a PageImage of
@@ -61,7 +68,7 @@
 //   - [GhostscriptSpec] declares Ghostscript's gs for either runner's constructor.
 //   - [GhostscriptMinimum] is the oldest gs the renderer accepts, 10.0.
 //   - [ErrRequest] is every refusal's cause: a DPI of zero or less, a page below 1, or past the
-//     last for Text and for a caller that holds the count, and an ImagesRequest a Preparer can't
+//     last for either Text and for a caller that holds the count, and an ImagesRequest a Preparer can't
 //     run.
 //   - [Config] is what the constructors are built over: the Tools, and a Preparer's renderer.
 //   - [Preparer] prepares a PDF's pages for a model's vision.
@@ -84,4 +91,8 @@
 //   - [Detacher.List] lists a PDF's embedded files as [Attachment]s.
 //   - [Detacher.Save] writes one embedded file's content to a writer; [ErrNoAttachment] is the
 //     cause of a number the PDF has no file of.
+//   - [TextReader] reads a page's text layer through pdftotext in reading order; [NewTextReader]
+//     builds one, [PDFToTextSpec] declares pdftotext, and [PDFToTextMinimum] is the oldest it
+//     accepts, 22.02.
+//   - [TextReader.Text] reads one page's text layer with pdftotext.
 package document

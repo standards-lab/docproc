@@ -14,6 +14,9 @@ type Config struct {
 	// PDFDetach is poppler's pdfdetach, typically built from PDFDetachSpec; NewDetacher requires
 	// it.
 	PDFDetach *tool.Tool
+	// PDFToText is poppler's pdftotext, typically built from PDFToTextSpec; NewTextReader
+	// requires it.
+	PDFToText *tool.Tool
 	// Renderer renders and reads the pages a Preparer prepares, typically built by
 	// NewGhostscript; NewPreparer requires it.
 	Renderer *Ghostscript

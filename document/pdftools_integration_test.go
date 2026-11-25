@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/document"
@@ -123,5 +125,70 @@ func TestDetacherReal(t *testing.T) {
 	list, err = d.List(t.Context(), filepath.Join("testdata", "clean.pdf"))
 	if err != nil || len(list) != 0 {
 		t.Errorf("clean.pdf: %+v, %v; want none", list, err)
+	}
+}
+
+func hostTextReader(t *testing.T) *document.TextReader {
+	t.Helper()
+	tl, err := tool.NewExec(t.Context(), document.PDFToTextSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := document.NewTextReader(document.Config{PDFToText: tl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestTextReaderReal(t *testing.T) {
+	r := hostTextReader(t)
+	pdf := fixtureCopy(t, "clean.pdf")
+	truth := truthOf(t, "clean")
+	for i := range truth {
+		text, err := r.Text(t.Context(), pdf, i+1)
+		if err != nil {
+			t.Fatalf("Text(clean.pdf page %d): %v", i+1, err)
+		}
+		if !document.HasText(text) {
+			t.Errorf("clean.pdf page %d has no text layer, want one", i+1)
+		}
+		if strings.Contains(text, "  ") {
+			t.Errorf("clean.pdf page %d holds a run of spaces: %q", i+1, text)
+		}
+		if strings.HasSuffix(text, "\f") {
+			t.Errorf("clean.pdf page %d ends in a form feed", i+1)
+		}
+		t.Logf("recorded: pdftotext clean.pdf page %d: %.4f of the truth's words found, %d bytes", i+1, wordsFound(truth[i], text), len(text))
+	}
+	page2, err := r.Text(t.Context(), pdf, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, want := strings.Fields(page2), strings.Fields(truth[1])
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("clean.pdf page 2's words\n got %q\nwant %q", got, want)
+	}
+	scanned := fixtureCopy(t, "scanned.pdf")
+	for page := 1; page <= 7; page++ {
+		text, err := r.Text(t.Context(), scanned, page)
+		if err != nil {
+			t.Fatalf("Text(scanned.pdf page %d): %v", page, err)
+		}
+		if document.HasText(text) {
+			t.Errorf("scanned.pdf page %d has text layer %q, want none", page, text)
+		}
+	}
+	if _, err := r.Text(t.Context(), pdf, len(truth)+1); !errors.Is(err, document.ErrRequest) {
+		t.Errorf("Text(clean.pdf page %d) of %d pages returned %v, want document.ErrRequest", len(truth)+1, len(truth), err)
+	}
+	permissions := encrypted(t)["permissions.pdf"]
+	for i := range truth {
+		text, err := r.Text(t.Context(), permissions, i+1)
+		if err != nil || !document.HasText(text) {
+			t.Errorf("permissions.pdf page %d: %q, %v; want its text", i+1, text, err)
+		}
 	}
 }

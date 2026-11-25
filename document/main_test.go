@@ -45,6 +45,7 @@ func TestMain(m *testing.M) {
 		"gs":        withSettings(gs),
 		"qpdf":      withSettings(qpdf),
 		"pdfdetach": withSettings(pdfdetach),
+		"pdftotext": withSettings(pdftotext),
 		"docker":    withSettings(docker),
 	})
 }
@@ -229,6 +230,14 @@ func pdfdetach(s settings, args []string) int {
 	if len(args) == 1 && args[0] == "-v" {
 		fmt.Fprintf(os.Stderr, "pdfdetach version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", s.Version)
 		return 99
+	}
+	return scripted(s, args)
+}
+
+func pdftotext(s settings, args []string) int {
+	if len(args) == 1 && args[0] == "-v" {
+		fmt.Fprintf(os.Stderr, "pdftotext version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", s.Version)
+		return 0
 	}
 	return scripted(s, args)
 }
