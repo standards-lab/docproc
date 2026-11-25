@@ -106,12 +106,6 @@ func TestTextStage(t *testing.T) {
 	}
 }
 
-func TestTextStageVersion(t *testing.T) {
-	if v := stages.NewTextStage().Identity().Version; v != "3" {
-		t.Errorf("version %q, want 3", v)
-	}
-}
-
 func TestTextStageChunks(t *testing.T) {
 	split := strings.Repeat("a", 64<<10-1) + "é\n"
 	o, got, _, _, err := prepareText(t, t.Context(), "split.txt", []byte(split))

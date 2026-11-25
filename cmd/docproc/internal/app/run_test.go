@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"iter"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -552,20 +553,10 @@ func TestRun_RecordsFallbackEncoding(t *testing.T) {
 
 	runOK(t, apptest.NoTools, filepath.Join("testdata", "fallback.txt"), "--out", out)
 
-	run := onlyRun(t, out)
-	b, err := os.ReadFile(filepath.Join(out, "runs", run.manifest.Run, "record.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var outputs []string
-	for line := range strings.Lines(string(b)) {
-		if strings.Contains(line, `"event":"output"`) {
-			outputs = append(outputs, line)
-		}
-	}
-	if len(outputs) != 1 || !strings.Contains(outputs[0], `"encoding":"windows-1252"`) ||
-		!strings.Contains(outputs[0], `"encoding_by":"fallback"`) {
-		t.Errorf("output lines = %q, want one carrying encoding windows-1252 and encoding_by fallback", outputs)
+	meta := onlyRun(t, out).line(t, schema.OutputEvent, "fallback.txt").Output.Meta
+	want := map[string]string{dispatch.MetaEncoding: "windows-1252", dispatch.MetaEncodingBy: "fallback"}
+	if !maps.Equal(meta, want) {
+		t.Errorf("output meta = %q, want %q", meta, want)
 	}
 }
 
