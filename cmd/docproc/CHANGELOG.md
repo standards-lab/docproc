@@ -10,6 +10,30 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.4] - 2026-11-25
+
+This release requires the docproc base module at v0.6.0, whose changes reach `docproc run` as
+Changed says. Its command line and exit codes are unchanged; its run directory's kinds change for
+an Ogg holding video, and its archive stage needs 7zz 26.06, both breaking changes.
+
+### Changed
+
+- The module requires the docproc base module at v0.6.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - **Breaking:** the archive stage takes 7zz 26.06 or later, from 24.07. On a host with an older
+    7zz, `docproc run` leaves the archive stage out, and its stage table says why.
+  - **Breaking:** an Ogg whose first pages begin a video stream, such as an `.ogv`, has the kind
+    `ogg-video` in `record.jsonl`, from `ogg`, and routes to video, from audio: it is prepared
+    with frames and windows under the video plan in place of audio windows. Any other Ogg stays
+    `ogg` and routes to audio. The run directory's schema stays `"2"`.
+  - `docproc run` prepares RAR4 and RAR5 archives, xz and bzip2 streams, and the tars inside
+    them, recording the kinds `rar4`, `rar5`, `xz`, and `bzip2` under the archive route, and MPEG
+    program streams, `mpeg-ps`, under the video route. Each routed to no stage before. A RAR
+    whose headers are encrypted fails as encrypted, and a volume of a split RAR has no processor;
+    neither has its entries read.
+  - The archive stage's identity carries 7zz's version line, so a run over an index prepares its
+    earlier archive entries again once 7zz is upgraded.
+
 ## [v0.2.3] - 2026-11-25
 
 This release requires the docproc base module at v0.5.0, whose changes reach `docproc run` as
@@ -165,7 +189,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...HEAD
+[v0.2.4]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...cmd/docproc/v0.2.4
 [v0.2.3]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.2...cmd/docproc/v0.2.3
 [v0.2.2]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.1...cmd/docproc/v0.2.2
 [v0.2.1]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.0...cmd/docproc/v0.2.1
