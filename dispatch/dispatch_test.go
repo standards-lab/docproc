@@ -50,7 +50,7 @@ func TestDepthFirst(t *testing.T) {
 	if d.Part.SHA256 != sum("leaf d") || d.Part.Size != int64(len("leaf d")) || d.Part.Where != "line 1" {
 		t.Errorf("d: %+v", d.Part)
 	}
-	if a.Part.ContentType.Route != route.Text || a.Part.ContentType.RouteReason != "text by its .txt extension" || a.Part.ContentType.Kind != route.Unknown {
+	if a.Part.ContentType.Route != route.Text || a.Part.ContentType.RouteReason != "no routed signature, text by its head" || a.Part.ContentType.Kind != route.Unknown {
 		t.Errorf("a's route: %s, %q, kind %q", a.Part.ContentType.Route, a.Part.ContentType.RouteReason, a.Part.ContentType.Kind)
 	}
 	if a.Stage != f.text.Identity() || len(a.Outputs) != 1 || a.Outputs[0].Kind != dispatch.TextOutput {

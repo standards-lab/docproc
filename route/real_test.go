@@ -3,7 +3,6 @@ package route_test
 import (
 	"io/fs"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/standards-lab/docproc/route"
@@ -16,7 +15,7 @@ var testdataRoutes = map[string]route.Route{
 	".wav":  route.Audio,
 	".svg":  route.VisionConverted,
 	".json": route.Text, ".md": route.Text, ".txt": route.Text,
-	".sh": route.Unrouted, ".typ": route.Unrouted,
+	".sh": route.Text, ".typ": route.Text,
 }
 
 func TestFileTestdata(t *testing.T) {
@@ -35,7 +34,7 @@ func TestFileTestdata(t *testing.T) {
 			if err != nil {
 				return err
 			}
-			if got != want || (filepath.Ext(path) == ".sh" && !strings.Contains(why, "executable")) {
+			if got != want || (filepath.Ext(path) == ".sh" && why != `"#!" line, a script`) {
 				t.Errorf("%s: route %q (%s), want %q", path, got, why, want)
 			}
 			return nil

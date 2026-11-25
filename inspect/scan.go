@@ -28,6 +28,9 @@ var containerKinds = map[route.Kind]bool{
 	route.Mbox: true, route.Tar: true, route.MSCF: true, route.OneStore: true,
 	route.SevenZip: true, route.Gzip: true, route.Zstd: true,
 	route.RAR4: true, route.RAR5: true, route.XZ: true, route.Bzip2: true,
+}
+
+var textKinds = map[route.Kind]bool{
 	route.Unknown: true, route.UTF8BOM: true, route.UTF16BOM: true, route.UTF32BOM: true,
 	route.Shebang: true,
 }
@@ -60,7 +63,7 @@ func (in *inspection) stream(ctx context.Context) error {
 			}
 			eocd = append(eocd, off)
 		}})
-		if in.kind != route.PDF {
+		if in.kind != route.PDF && !textKinds[in.kind] {
 			patterns = append(patterns, pattern{pdfHeader, func(off int64) {
 				in.flag(Polyglot, fmt.Sprintf("PDF header at offset %d after a %s signature", off, in.kind))
 			}})
@@ -132,11 +135,18 @@ func (in *inspection) checkEOCD(candidates []int64) error {
 		cdOffset := int64(binary.LittleEndian.Uint32(rec[16:]))
 		comment := int64(binary.LittleEndian.Uint16(rec[20:]))
 		if cdSize > 0 && cdOffset+cdSize <= off && off+eocdLen+comment <= in.size {
-			in.flag(Polyglot, fmt.Sprintf("ZIP end-of-central-directory record at offset %d in a %s", off, in.kind))
+			in.flag(Polyglot, fmt.Sprintf("ZIP end-of-central-directory record at offset %d in %s", off, kindPhrase(in.kind)))
 			return nil
 		}
 	}
 	return nil
+}
+
+func kindPhrase(k route.Kind) string {
+	if k == route.Unknown {
+		return "content of no signature"
+	}
+	return "a " + string(k)
 }
 
 type pdfScanner struct {

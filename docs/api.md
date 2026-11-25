@@ -861,8 +861,8 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   images, embedded files, and ink, is found at `page <id>, media <n>`, named by the name it was
   inserted or attached under, else by its media name; one with no content written, its data missing
   or invalid, is a failed child. A recording, an embedded file of type `audio` or `video`, carries
-  that type as its stored type, so content of no signature route knows is routed by it. A page's
-  ink is an SVG, routed vision-converted, to the picture stage's PNG. A skipped section is an
+  that type as its stored type, so content of no signature route knows, a NUL in its head, is
+  routed by it. A page's ink is an SVG, routed vision-converted, to the picture stage's PNG. A skipped section is an
   unread child at `skipped section <name>`: encrypted for a password-protected one, else failed.
 - **audio.** No model runs: the stage prepares the windows a layer above transcribes and joins, and
   the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan

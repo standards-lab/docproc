@@ -20,15 +20,21 @@
 // [File] routes the file at a path, and [At] the same content already open, by its kind, never by
 // its stored MIME type, and by its name's extension, as [Ext] reads it, only where the content
 // can't tell formats apart: within an OLE2 container, for a ZIP holding no [Content_Types].xml,
-// for a cabinet, for an mbox's "From " line, which prose named with a text extension begins too,
-// for a short signature, two or three bytes, that text named with a text extension begins, and
-// for content of no signature, which is a message by the .eml rule or text by its extension. A
-// ZIP is read by its central directory, decompressing nothing, for a FixedDocumentSequence.fdseq
-// entry, whole or as its first piece, which makes it an XPS package whatever its name, and for a
-// [Content_Types].xml entry, which makes any other ZIP an OOXML package whatever its name; an
-// OLE2 file named with an OOXML extension is read whole for an EncryptedPackage stream's
-// directory entry, by [EncryptedPackage], which inspect calls too; and content of no signature is
-// read for a message's header, a header after a UTF-8 byte order mark among them. The routes:
+// for a cabinet, and for content of no signature, which is a message by the .eml rule. A name's
+// extension never makes content text, nor does a stored audio or video type make text media.
+// Content no route claims, or that fails a claim's own check, falls back on its head: text when
+// its first [HeadLen] bytes hold no NUL byte, and unrouted when they do, its reason the claim it
+// failed, or "no routed signature", then ", text by its head" or ", not text"; content named .eml
+// or stored as a message whose header isn't a message's shape is the exception, its reason "a
+// message by its <name or type>, but not header-shaped", then "; text by its head" when it is
+// text and nothing more when it isn't. A ZIP is read by its central directory, decompressing
+// nothing, for a FixedDocumentSequence.fdseq entry, whole or as its first piece, which makes it
+// an XPS package whatever its name, and for a [Content_Types].xml entry, which makes any other
+// ZIP an OOXML package whatever its name; an OLE2 file named with an OOXML extension is read
+// whole for an EncryptedPackage stream's directory entry, by [EncryptedPackage], which inspect
+// calls too; an mbox is read past its "From " line for a message's header; and content of no
+// signature is read for a message's header, a header after a UTF-8 byte order mark among them.
+// The routes:
 //
 //   - [Document]: a PDF, for the document package's stage.
 //   - [Office]: an office document: a ZIP holding [Content_Types].xml, or named with an OOXML
@@ -43,23 +49,30 @@
 //     WMF, SVG, HEIC, WebP, or AVIF.
 //   - [Nested]: a message or a mail store, for the email package's Reader: an OLE2 compound file
 //     named .msg; content of no signature named .eml or stored as message/rfc822 or
-//     message/global whose header has a message's shape; content of no signature and no text
-//     extension whose header holds From and either Date or Received; a .pst; or an mbox not named
-//     with a text extension.
+//     message/global whose header has a message's shape; content of no signature, or of a UTF-8
+//     byte order mark, whose header holds From and either Date or Received, whatever its name; a
+//     .pst; or an mbox, a "From " line followed by a header block whose first line is a field and
+//     which holds From and either Date or Received.
 //   - [OneNote]: a OneNote section or table of contents, by its OneStore signature, or a cabinet
 //     named .onepkg, a OneNote package.
 //   - [Archive]: a ZIP that is neither office's nor ODF, a tar, gzip, zstd, 7z, RAR4, RAR5, xz,
 //     or bzip2 archive, or a cabinet not named .onepkg.
-//   - [Audio]: WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A.
-//   - [Video]: MP4, Matroska, WebM, AVI, an MPEG program stream, or an Ogg video.
-//   - [Text]: content of no signature named with a text extension, such as .txt, .csv, or
-//     .json, or marked by a byte order mark; and text named so whose head a short signature
-//     begins, such as a note that begins "#!/bin/sh".
-//   - [Unrouted]: anything else, an executable among it, whose reason names it an executable; an
-//     .ost, whose reason names it, since mail refuses one; an XPS package, a ZIP holding
-//     FixedDocumentSequence.fdseq, whole or as its first piece, whatever its name, ahead of the
-//     OOXML rules, since one is an OPC package too and may be named .docx; and HTML, which is web
-//     content, not text, unless its root element is an SVG's.
+//   - [Audio]: WAV, FLAC, MP3, an Ogg that begins no video stream, or M4A; or content of no
+//     signature stored as an audio type whose head holds a NUL byte.
+//   - [Video]: MP4, Matroska, WebM, AVI, an MPEG program stream, or an Ogg video; or content of
+//     no signature stored as a video type whose head holds a NUL byte.
+//   - [Text]: content marked by a byte order mark; a script, by its "#!" line; and the
+//     fallback's content whose head holds no NUL byte, whatever its name or stored audio or video
+//     type: HTML, CSS, JavaScript, an EPUB's entries, a .txt, .csv, or .json, a LICENSE, prose
+//     that begins "From " without a message header, or content named .eml or stored as a message
+//     whose header isn't a message's shape, but for an SVG, which routes by its root element.
+//   - [Unrouted]: a deliberate refusal: a PE, ELF, or Mach-O executable, whose reason names it an
+//     executable; an .ost, whose reason names it, since mail refuses one; an XPS package, a ZIP
+//     holding FixedDocumentSequence.fdseq, whole or as its first piece, whatever its name, ahead
+//     of the OOXML rules, since one is an OPC package too and may be named .docx; and the
+//     fallback's content whose head holds a NUL byte, an OLE2 compound file without a legacy or
+//     .msg extension, an mbox's "From " line without a message header, and content named .eml or
+//     stored as a message whose header isn't a message's shape among it.
 //
 // Its exported identifiers:
 //

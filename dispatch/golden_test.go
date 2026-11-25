@@ -16,7 +16,7 @@ import (
 func TestGoldens(t *testing.T) {
 	world := map[string]string{
 		"scan.png":      "%PDF-1.7\n%%EOF\n",
-		"notes.txt.exe": "x",
+		"notes.txt.exe": "\x00",
 		"b.txt":         "record {\"a\":1}\nfile c.txt",
 		"c.txt":         "text",
 	}

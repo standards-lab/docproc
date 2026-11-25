@@ -8,7 +8,7 @@
 
 1. [x] text-encoding-keys
 2. [x] archives-and-mpeg
-3. [ ] text-last-resort
+3. [x] text-last-resort
 4. [ ] pdf-text-padding
 5. [ ] office-soffice
 6. [ ] ooxml-unread
@@ -17,14 +17,6 @@
 
 ## Decisions
 
-- goal: XPS (mutool) and web-content (pandoc) moved to docproc-backlog; the
-  text-as-the-last-resort task replaces web-content, right after archives-and-mpeg. Under it,
-  content with no signature, message shape, text extension, or byte order mark whose head passes
-  route's UTF-8 text check routes Text, the HTML-is-not-text rule goes, and a `#!` script routes
-  Text. Whether the text-extension list can go entirely (a Windows-1252 sniff; precedence over
-  mbox and header-sniffed messages) is that task's first planning question.
-- text-encoding-keys: docs-corpus's tools/coverage, the one reader of the combined value, decodes
-  outputs by it and is corpus.docs's to fix (outputs are always UTF-8).
 - text-encoding-keys: held MimeKit at 4.18.2: 5.0.0 declined, PstBuilder.Eml 1.3.0 is built on
   MimeKit 4.
 - text-encoding-keys: held MsgKit at 3.0.6: 3.1.0 declined, it needs MimeKit.Core 5.
@@ -33,7 +25,9 @@
 
 ## Pending edits
 
-- docs-corpus · once text-encoding-keys ships, tell the corpus.docs session the released tags and
-  the run-directory schema the release writes ("2").
-- docs-corpus · tell corpus.docs the new kind values (RAR4, RAR5, xz, bzip2, MPEG program
-  stream, Ogg video), that `.ogv` records change kind from `ogg`, and the released tags.
+- docs-corpus · once docproc-coverage syncs, tell corpus.docs (context/goals/corpus.docs.md, task
+  docproc-final; standards-lab #219) the final release's tags, docproc, storage, postgres, and
+  cmd/docproc, and the run-directory schema it writes; that `#!` scripts and other unlisted text
+  route text; and that exec-4's check:polyglot can reopen. Intermediate releases go untold.
+- coordinator · roadmap/docproc-backlog.toml: a text retry for a part whose stage fails at
+  runtime, such as a corrupt PDF.

@@ -13,6 +13,10 @@ import (
 )
 
 func TestFileRoutes(t *testing.T) {
+	const (
+		byHead  = "no routed signature, text by its head"
+		notText = "no routed signature, not text"
+	)
 	cases := []struct {
 		name, content, filename, mime string
 		want                          route.Route
@@ -40,7 +44,8 @@ func TestFileRoutes(t *testing.T) {
 		{"zip", zipBytes, "a.zip", "application/zip", route.Archive, "ZIP signature without an OOXML extension, [Content_Types].xml, or ODF mimetype"},
 		{"zip named .xlsb, which office doesn't read yet", zipBytes, "a.xlsb", "", route.Office, "ZIP signature, .xlsb extension, an Excel binary workbook"},
 		{"zip named .XLSB", zipBytes, "A.XLSB", "", route.Office, "ZIP signature, .xlsb extension, an Excel binary workbook"},
-		{"ole2 named .xlsb", ole2Bytes, "a.xlsb", "", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
+		{"ole2 named .xlsb", ole2Bytes, "a.xlsb", "", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"ole2 named .bin", ole2Bytes, "a.bin", "", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
 		{"wordperfect", wordPerfect, "a.wpd", "application/vnd.wordperfect", route.Office, "WordPerfect signature, a WordPerfect document"},
 		{"wordperfect without a name", wordPerfect, "", "", route.Office, "WordPerfect signature, a WordPerfect document"},
 		{"tar", tarHeader("a.txt", "ustar\x0000"), "a.tar", "application/x-tar", route.Archive, "tar signature"},
@@ -57,8 +62,8 @@ func TestFileRoutes(t *testing.T) {
 		{"xz", "\xfd7zXZ\x00\x00\x04\xe6\xd6\xb4\x46", "a.tar.xz", "application/x-xz", route.Archive, "xz signature"},
 		{"bzip2", "BZh91AY&SY\x8a\x1b", "a.tar.bz2", "application/x-bzip2", route.Archive, "bzip2 signature"},
 		{"bzip2 empty stream", "BZh9\x17\x72\x45\x38\x50\x90\x00\x00\x00\x00", "a.bz2", "", route.Archive, "bzip2 signature"},
-		{"bzh prose named .txt", "BZh9 is how a bzip2 stream begins", "a.txt", "", route.Text, "text by its .txt extension"},
-		{"bzh prose without a text extension", "BZh9 is how a bzip2 stream begins", "a.bz", "", route.Unrouted, "no routed signature"},
+		{"bzh prose named .txt", "BZh9 is how a bzip2 stream begins", "a.txt", "", route.Text, "no routed signature, text by its head"},
+		{"bzh prose named .bz", "BZh9 is how a bzip2 stream begins", "a.bz", "", route.Text, "no routed signature, text by its head"},
 
 		{"wav", riffForm("WAVE"), "a.wav", "audio/wav", route.Audio, "WAV signature"},
 		{"flac", "fLaC\x00\x00\x00\x22", "a.flac", "", route.Audio, "FLAC signature"},
@@ -82,28 +87,46 @@ func TestFileRoutes(t *testing.T) {
 		{"ogg dirac", oggPage(oggBOS, "BBCD\x00\x00\x00\x00"), "a.ogv", "", route.Video, "Ogg signature with a video stream"},
 		{"ogg ogm video", oggPage(oggBOS, "\x01video\x00\x00\x00DIV3"), "a.ogm", "", route.Video, "Ogg signature with a video stream"},
 
-		{"csv", "a,b\n1,2\n", "отчёт.csv", "text/csv", route.Text, "text by its .csv extension"},
-		{"json in upper case", `{"a":1}`, "A.JSON", "", route.Text, "text by its .json extension"},
-		{"ndjson", "{}\n{}\n", "a.ndjson", "", route.Text, "text by its .ndjson extension"},
-		{"markdown", "# Title\n", "a.md", "", route.Text, "text by its .md extension"},
-		{"subtitles", "1\n00:00:01,000 --> 00:00:02,000\nhi\n", "a.srt", "", route.Text, "text by its .srt extension"},
-		{"xml", "<?xml version=\"1.0\"?><root/>", "a.xml", "", route.Text, "text by its .xml extension"},
-		{"csv with a byte order mark", "\xef\xbb\xbfa,b\n", "a.csv", "", route.Text, "text by its .csv extension"},
+		{"csv", "a,b\n1,2\n", "отчёт.csv", "text/csv", route.Text, byHead},
+		{"json in upper case", `{"a":1}`, "A.JSON", "", route.Text, byHead},
+		{"ndjson", "{}\n{}\n", "a.ndjson", "", route.Text, byHead},
+		{"markdown", "# Title\n", "a.md", "", route.Text, byHead},
+		{"subtitles", "1\n00:00:01,000 --> 00:00:02,000\nhi\n", "a.srt", "", route.Text, byHead},
+		{"xml", "<?xml version=\"1.0\"?><root/>", "a.xml", "", route.Text, byHead},
+		{"txt", "plain text\n", "a.txt", "text/plain", route.Text, byHead},
+		{"extensionless license", "Permission is hereby granted, free of charge\n", "LICENSE", "", route.Text, byHead},
+		{"notice", "This product includes software\n", "NOTICE", "", route.Text, byHead},
+		{"transcript of an unlisted extension", "[00:01] Ann: hello\n", "call.transcript", "", route.Text, byHead},
+		{"windows-1252 text", "caf\xe9 \x93quoted\x94 \x80 5\n", "menu.txt", "", route.Text, byHead},
+		{"escape and bell", "\x1b[31mred\x1b[0m\a\n", "build.log", "", route.Text, byHead},
+		{"nul in the head", "plain\x00text", "a.txt", "text/plain", route.Unrouted, notText},
+		{"nul as the head's last byte", strings.Repeat("a", route.HeadLen-1) + "\x00", "a.txt", "", route.Unrouted, notText},
+		{"nul past the head", strings.Repeat("a", route.HeadLen) + "\x00", "a.txt", "", route.Text, byHead},
+		{"empty", "", "a.txt", "", route.Text, byHead},
+		{"csv with a byte order mark", "\xef\xbb\xbfa,b\n", "a.csv", "", route.Text, "text by its UTF-8 byte order mark"},
 		{"utf-8 bom without a name", "\xef\xbb\xbfplain text", "", "", route.Text, "text by its UTF-8 byte order mark"},
 		{"utf-16 bom named .bin", "\xff\xfea\x00", "a.bin", "", route.Text, "text by its UTF-16 byte order mark"},
 		{"utf-32 bom", "\x00\x00\xfe\xff\x00\x00\x00a", "a", "", route.Text, "text by its UTF-32 byte order mark"},
-		{"html", "<!DOCTYPE html><html><body>hi</body></html>", "a.html", "text/html", route.Unrouted, "no routed signature"},
-		{"htm in upper case", "<html><body>hi</body></html>", "A.HTM", "", route.Unrouted, "no routed signature"},
-		{"xhtml", "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"/>", "a.xhtml", "application/xhtml+xml", route.Unrouted, "no routed signature"},
-		{"html with an inline svg", "<html><body><svg></svg></body></html>", "a.html", "text/html", route.Unrouted, "no routed signature"},
+		{"html", "<!DOCTYPE html><html><body>hi</body></html>", "a.html", "text/html", route.Text, byHead},
+		{"htm in upper case", "<html><body>hi</body></html>", "A.HTM", "", route.Text, byHead},
+		{"xhtml", "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"/>", "a.xhtml", "application/xhtml+xml", route.Text, byHead},
+		{"html with an inline svg", "<html><body><svg></svg></body></html>", "a.html", "text/html", route.Text, byHead},
+		{"css", "body { color: red; }\n", "a.css", "text/css", route.Text, byHead},
+		{"javascript", "export const a = 1;\n", "a.js", "text/javascript", route.Text, byHead},
+		{"epub chapter", "<?xml version=\"1.0\"?><html xmlns=\"http://www.w3.org/1999/xhtml\"><body>ch</body></html>", "OEBPS/ch1.xhtml", "", route.Text, byHead},
+		{"epub package document", "<?xml version=\"1.0\"?><package xmlns=\"http://www.idpf.org/2007/opf\"/>", "OEBPS/content.opf", "", route.Text, byHead},
+		{"epub navigation", "<?xml version=\"1.0\"?><ncx xmlns=\"http://www.daisy.org/z3986/2005/ncx/\"/>", "OEBPS/toc.ncx", "", route.Text, byHead},
+		{"epub mimetype", "application/epub+zip", "mimetype", "", route.Text, byHead},
 		{"svg named .html", svgProlog, "a.html", "text/html", route.VisionConverted, "SVG root element"},
-		{"text of no text extension", "plain text", "a.typ", "text/plain", route.Unrouted, "no routed signature"},
-		{"text stored as text/plain without a name", "plain text", "", "text/plain", route.Unrouted, "no routed signature"},
+		{"svg named .txt", svgPlain, "a.txt", "", route.VisionConverted, "SVG root element"},
+		{"text of an unlisted extension", "plain text", "a.typ", "text/plain", route.Text, byHead},
+		{"text stored as text/plain without a name", "plain text", "", "text/plain", route.Text, byHead},
+		{"binary of no signature", "\x00\x01opaque", "a.bin", "", route.Unrouted, notText},
 		{"pdf named .txt", pdfBytes, "a.txt", "text/plain", route.Document, "PDF signature"},
 
 		{"eml with a byte order mark", "\xef\xbb\xbf" + headerShaped, "fwd.eml", "", route.Nested, "a message by its .eml extension, header-shaped"},
 		{"rfc822 named .txt", headerShaped, "fwd.txt", "message/rfc822", route.Nested, "a message by its message/rfc822 type, header-shaped"},
-		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Unrouted, "a message by its message/rfc822 type, but not header-shaped"},
+		{"rfc822 named .txt, not header-shaped", "plain text", "fwd.txt", "message/rfc822", route.Text, "a message by its message/rfc822 type, but not header-shaped; text by its head"},
 
 		{"pst", pstHeader("SM"), "archive.pst", "application/vnd.ms-outlook", route.Nested, "PST signature, a .pst"},
 		{"pst without a name", pstHeader("SM"), "", "", route.Nested, "PST signature, a .pst"},
@@ -112,14 +135,15 @@ func TestFileRoutes(t *testing.T) {
 		{"mbox", mboxBytes, "Inbox", "", route.Nested, `mbox "From " line`},
 		{"mbox named .mbox", mboxBytes, "a.mbox", "application/mbox", route.Nested, `mbox "From " line`},
 		{"mbox named .eml", mboxBytes, "a.eml", "message/rfc822", route.Nested, `mbox "From " line`},
-		{"mbox line named .txt, prose", "From the desk of Ann\n", "letter.txt", "text/plain", route.Text, "text by its .txt extension"},
+		{"mbox line named .txt", "From the desk of Ann\n", "letter.txt", "text/plain", route.Text, `mbox "From " line without a message header, text by its head`},
 
 		{"pe", peBytes, "setup.exe", "application/x-msdownload", route.Unrouted, "PE signature, an executable"},
 		{"pe named .pdf", peBytes, "invoice.pdf", "application/pdf", route.Unrouted, "PE signature, an executable"},
 		{"elf", "\x7fELF\x02\x01\x01", "a", "", route.Unrouted, "ELF signature, an executable"},
 		{"mach-o", "\xcf\xfa\xed\xfe\x00", "a.dylib", "", route.Unrouted, "Mach-O signature, an executable"},
-		{"shebang", "#!/bin/sh\necho hi\n", "run", "", route.Unrouted, `"#!" line, an executable script`},
-		{"shebang named .sh", "#! /bin/sh\necho hi\n", "run.sh", "text/x-shellscript", route.Unrouted, `"#!" line, an executable script`},
+		{"shebang", "#!/bin/sh\necho hi\n", "run", "", route.Text, `"#!" line, a script`},
+		{"shebang named .sh", "#! /bin/sh\necho hi\n", "run.sh", "text/x-shellscript", route.Text, `"#!" line, a script`},
+		{"shebang named .txt", "#!/bin/sh\n", "a.txt", "", route.Text, `"#!" line, a script`},
 	}
 	dir := t.TempDir()
 	for _, c := range cases {
@@ -182,13 +206,13 @@ func TestFileEncryptedPackage(t *testing.T) {
 		{"4096-byte sectors", ole2With(8192, "EncryptedPackage", 4096+384), "deck.pptm", route.Office, fmt.Sprintf(encryptedWhy, ".pptm")},
 		{"binary workbook", ole2With(1024, "EncryptedPackage", 768), "book.xlsb", route.Office, fmt.Sprintf(encryptedWhy, ".xlsb")},
 		{"legacy name", ole2With(1024, "EncryptedPackage", 512), "old.xls", route.Office, "OLE2 signature, .xls extension"},
-		{"no ooxml name", ole2With(1024, "EncryptedPackage", 512), "secret.bin", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"unaligned", ole2With(1024, "EncryptedPackage", 514), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"within the header", ole2With(1024, "EncryptedPackage", 128), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"a longer name", ole2With(1024, "EncryptedPackageX", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"another stream", ole2With(1024, "EncryptionInfo", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"header alone", ole2Bytes, "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
-		{"entry cut short", ole2With(512+40, "EncryptedPackage", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension"},
+		{"no ooxml name", ole2With(1024, "EncryptedPackage", 512), "secret.bin", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"unaligned", ole2With(1024, "EncryptedPackage", 514), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"within the header", ole2With(1024, "EncryptedPackage", 128), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"a longer name", ole2With(1024, "EncryptedPackageX", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"another stream", ole2With(1024, "EncryptionInfo", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"header alone", ole2Bytes, "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
+		{"entry cut short", ole2With(512+40, "EncryptedPackage", 512), "secret.xlsx", route.Unrouted, "OLE2 signature without a legacy or .msg extension, not text"},
 	}
 	dir := t.TempDir()
 	for _, c := range cases {
