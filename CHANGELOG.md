@@ -9,6 +9,13 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-11-25
+
+This release makes text the last resort: content no processor claims, or that fails a claim's own
+check, is read as raw text unless its head holds a NUL byte, so HTML, EPUB entries, `#!` scripts,
+and unlisted text are prepared where they were unrouted. Routes and reasons change for callers;
+no wire value is new. The module still requires golang.org/x/text alone.
+
 ### Changed
 
 - Content no processor claims, or that fails a claim's own check, falls back on its head: it
@@ -409,7 +416,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.7.0...HEAD
+[v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/standards-lab/docproc/compare/v0.5.0...v0.6.0
 [v0.5.0]: https://github.com/standards-lab/docproc/compare/v0.4.2...v0.5.0
 [v0.4.2]: https://github.com/standards-lab/docproc/compare/v0.4.1...v0.4.2
