@@ -19,10 +19,7 @@ import "github.com/standards-lab/docproc/route"
 //
 // One change was made under "1" that wasn't an addition: the text stage's [MetaEncoding], once a
 // combined value such as "windows-1252 (fallback)" or "utf-16le (byte order mark)", became the
-// charset alone, with how it was chosen moved to [MetaEncodingBy]. The combined value had to be
-// parsed to recover the charset and was no encoding name a reader could look up; the split was
-// made before more text sources were added; its one known reader, docs-corpus's tools/coverage,
-// is fixed with it; and a text output is always UTF-8 either way.
+// charset alone, with how it was chosen moved to [MetaEncodingBy].
 const Version = "1"
 
 // ContentType is what routing read of a part: the kind its signature names, its route and why, and
