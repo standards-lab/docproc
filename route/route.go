@@ -211,20 +211,19 @@ func File(path, name, mimeType string) (Route, string, error) {
 // Only then is r read beyond head: a ZIP's central directory, a name at a time, for a
 // FixedDocumentSequence.fdseq entry, whole or as its first piece,
 // FixedDocumentSequence.fdseq/[0].piece, which makes it an XPS package, [Unrouted], whatever its
-// name, and otherwise for a [Content_Types].xml entry,
-// which makes it an OOXML package whatever its name; an OLE2 file, 128 bytes at a time, for an
-// EncryptedPackage stream's directory entry, by [EncryptedPackage], when it is named as an OOXML
-// package; an mbox, a line at a time, each at most 64 KiB, past its "From " line for a message's
-// header; and content of no signature, the same way, for a message's header. A message's header
-// is From and either Date or Received in a header block whose first line is a field: an mbox is
-// [Nested] only with one, and content of no signature, or of a UTF-8 byte order mark, with one is
-// a message whatever its name. Content of no signature Identify knows whose mimeType's top-level
-// type is audio or video, such as a OneNote recording's stored "audio", routes Audio or Video
-// only when head holds a NUL byte. Content no route claims, an OLE2 compound file without a
-// legacy or .msg extension, nor an encrypted OOXML package's stream and name, an mbox without a
-// message's header, and content named .eml or stored as a message whose header isn't a
-// message's shape fall back on head: [Text] when it holds no NUL byte, [Unrouted] when it does.
-// It returns an error only for r's own.
+// name, and otherwise for a [Content_Types].xml entry, which makes it an OOXML package whatever its
+// name; an OLE2 file, 128 bytes at a time, for an EncryptedPackage stream's directory entry, by
+// [EncryptedPackage], when it is named as an OOXML package; an mbox, a line at a time, each at most
+// 64 KiB, past its "From " line for a message's header; and content of no signature, the same way,
+// for a message's header. A message's header is From and either Date or Received in a header block
+// whose first line is a field: an mbox is [Nested] only with one, and content of no signature, or
+// of a UTF-8 byte order mark, with one is a message whatever its name. Content of no signature
+// Identify knows whose mimeType's top-level type is audio or video, such as a OneNote recording's
+// stored "audio", routes Audio or Video only when head holds a NUL byte. Content no route claims,
+// an OLE2 compound file without a legacy or .msg extension, nor an encrypted OOXML package's stream
+// and name, an mbox without a message's header, and content named .eml or stored as a message whose
+// header isn't a message's shape fall back on head: [Text] when it holds no NUL byte, [Unrouted]
+// when it does. It returns an error only for r's own.
 func At(r io.ReaderAt, size int64, head []byte, name, mimeType string) (Route, string, error) {
 	head = head[:min(len(head), HeadLen)]
 	ext := Ext(name)

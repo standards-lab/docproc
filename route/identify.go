@@ -91,7 +91,7 @@ const (
 	Shebang Kind = "shebang"
 
 	// The byte order marks: text, but no signature of a format, so [File] reads a message's
-	// name and a text extension before them.
+	// name and type before them, and a message's header after a UTF-8 one.
 	UTF8BOM  Kind = "utf-8 bom"
 	UTF16BOM Kind = "utf-16 bom"
 	UTF32BOM Kind = "utf-32 bom"
