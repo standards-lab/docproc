@@ -47,7 +47,10 @@ const (
 	// PNG named .pdf. It is a name check, [Name]'s.
 	SignatureMismatch Check = "signature-mismatch"
 	// Polyglot is content of one format carrying another's: a ZIP end-of-central-directory
-	// record inside content that isn't a container, or a PDF header after another signature.
+	// record inside content that isn't a container, a "#!" script, content of no signature, and
+	// text after a byte order mark included; or a PDF header after another signature, a
+	// container's, a "#!" line's, or a byte order mark's excepted, so text quoting one is no
+	// polyglot.
 	Polyglot Check = "polyglot"
 	// Executable is executable content, by route's PE, ELF, Mach-O, or "#!" kinds.
 	Executable Check = "executable"

@@ -17,23 +17,24 @@
 // Its two classes:
 //
 //   - [Active]: flagged, the part proceeding by default. Content that could act, since no stage
-//     executes it: a polyglot, a ZIP's end-of-central-directory record inside content that isn't
-//     a container, or a PDF header after another signature; executable content, by route's PE,
-//     ELF, Mach-O, and "#!" kinds; an OOXML package's VBA project, macro sheet, ActiveX
-//     controls, OLE objects, and external relationships other than hyperlinks, such as a remote
-//     template or a linked picture; the PDF names pdfid counts, /JavaScript, /JS, /OpenAction,
-//     /AA, /Launch, /EmbeddedFile, /RichMedia, /XFA, and /Encrypt, and /EmbeddedFiles and /EF,
-//     which mark an embedded file whose stream names no type, hex-escaped forms such as
-//     /J#61vaScript included, outside the PDF's stream data; and an SVG's script elements,
-//     event handler attributes, hrefs that leave the document, and foreignObjects. A name's
-//     findings: a signature that disagrees with its extension, an executable extension (.exe,
-//     .dll, .js, .vbs, .scr, .bat, .cmd, .ps1, .lnk, .hta, .jar, .msi), and one after another,
-//     as in "invoice.pdf.exe". Content a stage leaves unread: an archive entry whose name has a
-//     ".." element, is absolute, or begins with a drive letter, a link, symbolic or hard, and a
-//     device, a FIFO, or a socket, each entry an unread child, the others read; an encrypted
-//     archive entry, an /Encrypt PDF, and an encrypted OOXML package, an OLE2 compound file
-//     holding an EncryptedPackage stream whatever its name; and an SVG or an OOXML
-//     relationships part whose scan ended early, what follows unseen.
+//     executes it: a polyglot, a ZIP's end-of-central-directory record inside content that isn't a
+//     container, a "#!" script, content of no signature, and text after a byte order mark included,
+//     or a PDF header after a signature other than a container's, a "#!" line's, or a byte order
+//     mark's; executable content, by route's PE, ELF, Mach-O, and "#!" kinds; an OOXML package's
+//     VBA project, macro sheet, ActiveX controls, OLE objects, and external relationships other
+//     than hyperlinks, such as a remote template or a linked picture; the PDF names pdfid counts,
+//     /JavaScript, /JS, /OpenAction, /AA, /Launch, /EmbeddedFile, /RichMedia, /XFA, and /Encrypt,
+//     and /EmbeddedFiles and /EF, which mark an embedded file whose stream names no type,
+//     hex-escaped forms such as /J#61vaScript included, outside the PDF's stream data; and an SVG's
+//     script elements, event handler attributes, hrefs that leave the document, and foreignObjects.
+//     A name's findings: a signature that disagrees with its extension, an executable extension
+//     (.exe, .dll, .js, .vbs, .scr, .bat, .cmd, .ps1, .lnk, .hta, .jar, .msi), and one after
+//     another, as in "invoice.pdf.exe". Content a stage leaves unread: an archive entry whose name
+//     has a ".." element, is absolute, or begins with a drive letter, a link, symbolic or hard, and
+//     a device, a FIFO, or a socket, each entry an unread child, the others read; an encrypted
+//     archive entry, an /Encrypt PDF, and an encrypted OOXML package, an OLE2 compound file holding
+//     an EncryptedPackage stream whatever its name; and an SVG or an OOXML relationships part whose
+//     scan ended early, what follows unseen.
 //   - [Unsafe]: flagged, the part quarantined by default: no stage runs on it, its content is
 //     kept, and it is reported with its evidence. A bomb: an archive entry past the bomb rule by
 //     the sizes it declares, its ratio against its compressed size, or against the whole
