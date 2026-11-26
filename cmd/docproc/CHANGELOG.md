@@ -10,6 +10,39 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.7] - 2026-11-25
+
+This release requires the docproc base module at v0.9.0, whose changes reach `docproc run` as
+Changed says. Its command line, exit codes, and run directory's schema are unchanged; the office
+stage prepares formats that had no processor yet, and over docproc-ooxml 0.2.0 and docproc-mail
+0.2.0 the office and email stages prepare more of a document and a message.
+
+### Changed
+
+- The module requires the docproc base module at v0.9.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - The office stage converts, through LibreOffice's soffice, ODF text, spreadsheet, and
+    presentation packages and their templates (`.odt`, `.ott`, `.ods`, `.ots`, `.odp`, `.otp`), an
+    ODF drawing or drawing template (`.odg`, `.otg`), a WordPerfect document, and an Excel binary
+    workbook (`.xlsb`, by its name), then reads the result through docproc-ooxml, as it does a
+    legacy document. Each is prepared under the `office` route in `record.jsonl`, where it had no
+    processor yet, and the document Markdown's `converted_from` names its source format: the ODF
+    type's extension, `wpd`, or `xlsb`.
+  - An unencrypted ODF package of any other type, a formula, chart, database, or image among
+    them, still has no processor yet, its reason now the office stage's, naming the package's
+    type. An ODF package of any type whose manifest holds encryption data is encrypted, and one
+    whose ZIP or manifest can't be read is refused, before soffice runs.
+  - With docproc-ooxml 0.2.0 on the host, the office stage's output holds a document's text
+    boxes, a pptx's comments, and an xlsx's notes and threaded comments, and its warnings no
+    longer list them as not read. With docproc-mail 0.2.0, the email stage's output holds a TNEF
+    part's attachments, as the message's own, and its bodies, where it listed one `winmail.dat`
+    attachment with a warning. An older release of either tool still runs, reading as it did, and
+    the stage table names the version line the host's tool prints.
+  - The office stage's identity hashes the stage's own version, so a run over an index prepares
+    its office content again rather than replaying it, and replays every other stage's; a host
+    that moves to docproc-ooxml 0.2.0 or docproc-mail 0.2.0 prepares its office or email content
+    again, since each stage's identity holds its tool's version line.
+
 ## [v0.2.6] - 2026-11-25
 
 This release requires the docproc base module at v0.8.0, whose changes reach `docproc run` as
@@ -247,7 +280,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.6...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.7...HEAD
+[v0.2.7]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.6...cmd/docproc/v0.2.7
 [v0.2.6]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.5...cmd/docproc/v0.2.6
 [v0.2.5]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...cmd/docproc/v0.2.5
 [v0.2.4]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.3...cmd/docproc/v0.2.4

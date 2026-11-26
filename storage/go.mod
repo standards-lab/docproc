@@ -3,7 +3,7 @@ module github.com/standards-lab/docproc/storage
 go 1.27.4
 
 require (
-	github.com/standards-lab/docproc v0.8.0
+	github.com/standards-lab/docproc v0.9.0
 	github.com/standards-lab/go-storage v0.8.0
 	github.com/standards-lab/go-storage/s3 v0.3.0
 )
