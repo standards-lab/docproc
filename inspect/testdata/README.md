@@ -2,7 +2,8 @@
 
 The inspect package's synthesized hazard fixtures, each the smallest file that raises the checks
 it is for, and the clean tars and gzip streams the dispatcher's archive stage reads beside them.
-`~/docs`' archive hazards aren't redistributable, so none is copied; these stand in for them.
+The archive hazards of the retired `~/docs` pool weren't redistributable, so none was copied;
+these stand in for them.
 `generate.go` wrote them, every byte fixed, so a rerun writes the same files: run
 `go run generate.go` in this directory. It writes `encrypted.zip`'s and `declared-bomb.zip`'s
 marked entries raw, since archive/zip's writer sets an entry's flags and sizes itself. The check
