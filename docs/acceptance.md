@@ -22,9 +22,11 @@ when:
   storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
   beside its own.
 
-**A later measurement.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
+**Later measurements.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
 pdftotext, the change v0.8.0 makes to a PDF page's text. The docproc-coverage goal's
-pdf-text-padding task measured it on 2026-11-25.
+pdf-text-padding task measured it on 2026-11-25. ["docproc-ooxml's memory
+floor"](#docproc-ooxmls-memory-floor) measures the tool's address-space floor on x64 and arm64 on
+GitHub's runners; the docproc-coverage goal's office-and-mail task measured it on 2026-11-25.
 
 **The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
 v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
@@ -786,9 +788,44 @@ is on address space, which resident memory understates; acceptance's two runs' z
 failures are the evidence for that side, and the `final` task's ~/docs run had none either
 (["Failures by class"](#failures-by-class)).
 
-One gap: docproc-ooxml's arm64 floor is unmeasured, because this host is x86_64. On x64, about 1
-run in 20 of the .NET tool aborted at a 256 MiB address-space bound, and all 20 passed
-at 512 MiB.
+docproc-ooxml's address-space floor, on x64 and arm64, is measured apart, in
+["docproc-ooxml's memory floor"](#docproc-ooxmls-memory-floor).
+
+## docproc-ooxml's memory floor
+
+The docproc-coverage goal's office-and-mail task measured it on 2026-11-25, on GitHub's runners,
+from 6799188, whose docproc-ooxml is dcbead1's: the build that reads text boxes, a pptx's
+comments, and an xlsx's notes. It replaces acceptance's x64 figure, taken on the laptop (about 1
+run in 20 aborted at 256 MiB, all 20 passed at 512 MiB), whose input isn't recorded; arm64 had not
+been measured.
+
+**The recipe.** CI's `memory-floor` job, which runs on a dispatch alone:
+`gh workflow run ci.yml --ref <branch>` ([CI](ci.md#the-memory-floor)). On `ubuntu-24.04` (x64)
+and `ubuntu-24.04-arm` (arm64), each builds the release binary with tools/ooxml's `publish` task,
+and `scripts/memory-floor.sh` runs it 20 times on
+`tools/ooxml/fixtures/realworld/docx/form-footnotes.docx`, docproc-ooxml's peak-memory input in
+["Peak memory"](#peak-memory), at each RLIMIT_AS bound under `prlimit --as=<bytes> --`: 128, 192,
+256, 320, 384, 448, 512, 640, 768, 1024, 1536, and 2048 MiB. A run passes when it exits 0. The
+floor is the lowest bound from which every bound up passed 20 of 20.
+
+**The results.** Two dispatches,
+[45724088427](https://github.com/standards-lab/docproc/actions/runs/45724088427) and
+[45724812537](https://github.com/standards-lab/docproc/actions/runs/45724812537), each run's
+passes of 20:
+
+| RLIMIT_AS | x64, first | x64, second | arm64, first | arm64, second |
+| --- | --- | --- | --- | --- |
+| 128 MiB | 0 | 0 | 0 | 0 |
+| 192 MiB | 1 | 0 | 17 | 17 |
+| 256 MiB | 11 | 0 | 15 | 18 |
+| 320 MiB | 12 | 19 | 19 | 17 |
+| 384 MiB to 2 GiB | 20 at each | 20 at each | 20 at each | 20 at each |
+
+**The floor is 384 MiB on both architectures**, in both dispatches. Below it a run fails in one of
+two ways: SIGABRT, exit 134, its last stderr line "Unhandled exception. Out of memory." or, at
+128 MiB on arm64, "No usable version of libssl was found"; or exit 255 with nothing on stderr. The
+failures below the floor vary from run to run, 0 to 20 at 256 MiB on x64, so a bound under 384 MiB
+is not one a host can size by. cmd/docproc's default bound, 2 GiB, is over five times the floor.
 
 ## Bombs
 

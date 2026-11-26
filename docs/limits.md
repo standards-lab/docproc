@@ -18,9 +18,11 @@ or routes by.
   evaluated, a cell's value being the one the file caches; tracked changes are read accepted
   only. An EMF or WMF is rendered on an A4 page and trimmed to what differs from the page's
   white, so a picture framed in white loses its frame, and an all-white picture is one pixel.
-  docproc-ooxml links glibc, 2.34 or newer. Under a memory bound on x64 it aborts by SIGABRT in
-  about 1 run in 20 at 256 MiB, its last stderr line naming libssl, not memory, and converts in
-  20 of 20 at 512 MiB and above; arm64 is unmeasured.
+  docproc-ooxml links glibc, 2.34 or newer. Its floor under a memory bound is 384 MiB on x64 and
+  on arm64 alike: it converts in 20 of 20 runs at 384 MiB and above, and below that some runs
+  fail, by SIGABRT, its last stderr line "Out of memory" or naming libssl, or by exit 255 with no
+  message ([Acceptance](acceptance.md#docproc-ooxmls-memory-floor), measured 2026-11-25 on
+  GitHub's runners from 6799188, whose docproc-ooxml is dcbead1's).
 - **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is refused;
   TNEF and opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg`
   content, each with a warning; a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or
