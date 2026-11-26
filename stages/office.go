@@ -11,14 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/picture"
-	"github.com/standards-lab/docproc/route"
 )
+
+const officeVersion = "2"
 
 type officeConfig struct {
 	Converter     *office.Converter
@@ -40,28 +40,16 @@ func newOfficeStage(cfg officeConfig) *officeStage {
 	}
 	scale := cmp.Or(cfg.MetafileScale, picture.DefaultMetafileScale)
 	return &officeStage{converter: cfg.Converter, scale: scale, memory: cfg.Memory, id: identity("office", cfg.Version, struct {
+		Stage   string         `json:"stage"`
 		Schema  string         `json:"schema"`
 		Request office.Request `json:"request"`
-	}{cli.Schema, office.Request{MetafileScale: scale}})}
+	}{officeVersion, cli.Schema, office.Request{MetafileScale: scale}})}
 }
 
 func (s *officeStage) Identity() dispatch.Identity { return s.id }
 
-var officeUnread = map[route.Kind]string{
-	route.ODF:         "an ODF package",
-	route.WordPerfect: "a WordPerfect document",
-}
-
 func (s *officeStage) Prepare(ctx context.Context, p dispatch.Part, dir string) iter.Seq2[dispatch.Item, error] {
 	return func(yield func(dispatch.Item, error) bool) {
-		what, ok := officeUnread[p.ContentType.Kind]
-		if !ok && p.ContentType.Kind == route.ZIP && strings.EqualFold(filepath.Ext(p.Name), ".xlsb") {
-			what, ok = "an Excel binary workbook", true
-		}
-		if ok {
-			yield(dispatch.Item{}, fmt.Errorf("office stage: %w for %s", dispatch.ErrNoProcessor, what))
-			return
-		}
 		w := officeWalk{dir: dir, yield: yield}
 		defer w.close()
 		var doc *office.Document

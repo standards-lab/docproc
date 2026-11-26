@@ -72,8 +72,8 @@
 //     SVGs' density, and its pictures.
 //   - [Picture] is one picture of a Batch: its path, the kind it is read as, and its PNG's path.
 //   - [Converter.RunLibreOffice] runs soffice once, as a LibreOfficeRun says.
-//   - [LibreOfficeRun] is one soffice run: its working directory, its --convert-to, its inputs,
-//     and its profile's registry.
+//   - [LibreOfficeRun] is one soffice run: its working directory, its --convert-to, its
+//     --infilter, its inputs, and its profile's registry.
 //   - [LibreOfficeInput] is one input of a run: its path and the name soffice reads it under.
 //   - [LibreOfficeOutput] is what a run wrote: its output directory and soffice's message.
 //   - [LibreOfficeOutput.Remove] removes the run's directory.

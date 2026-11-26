@@ -147,6 +147,57 @@ repository's, Apache-2.0.
 | `memo.rtf` | written by hand | Apache-2.0 | 561 | `e5a71af577f53dc33d399a62804f830c750585e00da144081a95ed89c245727c` |
 | `hidden-entry.rtf` | written by hand | Apache-2.0 | 545 | `4ff68ba8548ad1de7a95a928bb20c5f38779466507efa0bb073434e893cfcd5e` |
 
+## ODF, generated
+
+`odf/generated/` holds nine ODF packages `odf/generate.sh` wrote. Eight are LibreOffice's saves,
+run as the office package runs soffice: in the picture package's default image at the time,
+`picture.LibreOfficeImage`
+(`gotenberg/gotenberg:9.10.1-libreoffice@sha256:79aec465636fef089f6ed3da69b75c7d3c7155fcecd20b3d80563868c54b5a90`),
+LibreOffice 26.8.2.2, under the container runner's lockdown, each with a user profile of its own:
+`tables.libreoffice.docx` as `tables.libreoffice.odt` and `.ott` (filters `writer8` and
+`writer8_template`), `cells.libreoffice.xlsx` as `cells.libreoffice.ods` and `.ots` (`calc8`,
+`calc8_template`), and `slides.libreoffice.pptx` as `slides.libreoffice.odp` and `.otp`
+(`impress8`, `impress8_template`), from `ooxml/`; and `odf/drawing.fodg` as `drawing.odg` and
+`drawing.otg` (`draw8`, `draw8_template`). `drawing.fodg` is a flat ODF drawing written by hand
+for this repository: two pages, the first a rectangle and an ellipse holding text, a line, and a
+text frame, the second a text frame. The ninth, `encrypted.odt`, is `tables.libreoffice.docx` saved
+by the host's LibreOffice 26.8.1.1 as an ODF text document encrypted with the password `docproc`,
+through `odf/encrypt.py`, which drives soffice over its Python UNO bridge, since soffice's
+`--convert-to` sets no password; its manifest holds the `manifest:encryption-data` the office
+package detects. The script writes `odf/generated/MANIFEST`, the image, each soffice's `--version`
+line, and each file's SHA-256; ODF packages carry the time they were saved, so a regeneration's
+sums differ from the committed files', and the manifest is the committed files' record. It needs
+docker, soffice, and python3 with the `uno` module, and the check never runs it. They are office's
+fixtures re-saved, and the repository's own drawing, Apache-2.0.
+
+## WordPerfect
+
+`wordperfect/testWordPerfect_6_61.wpd` is a WordPerfect 6.1 document, copied byte for byte from
+the [Open Preservation Foundation's format corpus](https://github.com/openpreserve/format-corpus)
+at commit `366f068cec399d0cdfd61fa473de3ab6dc858098`, path
+`office/wordprocessing/WordPerfect6/testWordPerfect_6_61.wpd`, checked against the blob at that
+commit, its name kept. It is CC0-1.0. It holds a title and paragraphs of one Dutch sentence.
+
+| File | License | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| `testWordPerfect_6_61.wpd` | CC0-1.0 | 4048 | `6426ad50113880de454ecfaaf6b8070a0b82b5eda4475a71796e22d325d6fd3a` |
+
+## Excel binary workbooks
+
+`xlsb/` holds two Excel binary workbooks copied byte for byte from Apache POI's test data at commit
+`6327f056ba3cfdae326a0261a236460592b80f5c`, each checked against the blob at that commit, with its
+name kept: `test-data/spreadsheet/testVarious.xlsb`, a sheet of strings, numbers, dates, a comment,
+a hyperlink, and formulas, with a VBA project part, `xl/vbaProject.bin`; and
+`test-data/spreadsheet/protected_passtika.xlsb`, an Excel binary workbook encrypted with the
+password `tika`, an OLE2 compound file holding EncryptedPackage and EncryptionInfo streams. They are
+Apache-2.0, © The Apache Software Foundation; POI's license and NOTICE are in `licenses/poi.LICENSE`
+and `licenses/poi.NOTICE`. LibreOffice exports no `.xlsb`, so none is generated.
+
+| File | License | Bytes | SHA-256 |
+| --- | --- | --- | --- |
+| `testVarious.xlsb` | Apache-2.0, Apache POI's | 22715 | `8c600e97d719b0266dcfb49c1872feb8d10c6ed12bc768ff16ace7dae555ebfc` |
+| `protected_passtika.xlsb` | Apache-2.0, Apache POI's | 14336 | `316aafa78433238ea38ecd39be718f3b64a81f54f95fa942a1038104ead99c5e` |
+
 ## Golden sums
 
 `golden/pictures.sha256` holds the SHA-256 of every picture `TestGoldenPictures`, in the integration

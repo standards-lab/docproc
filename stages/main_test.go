@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/standards-lab/docproc/email"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/onenote"
@@ -25,6 +26,7 @@ func TestMain(m *testing.M) {
 		"7zz":             sevenZipStandin,
 		"docproc-onenote": envelopeStandin(onenote.OneNoteMinimum),
 		"docproc-ooxml":   envelopeStandin(office.OfficeMinimum),
+		"docproc-mail":    envelopeStandin(email.MailMinimum),
 	})
 }
 

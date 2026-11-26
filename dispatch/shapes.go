@@ -146,8 +146,8 @@ const (
 	// didn't settle it: "bom" for a byte order mark, "fallback" for windows-1252 taken because
 	// the text isn't UTF-8. A text that is valid UTF-8 with no mark carries none.
 	MetaEncodingBy = "encoding_by"
-	// MetaConvertedFrom is the format a legacy office document or an RTF was converted from, such
-	// as "rtf": the office stage's document Markdown.
+	// MetaConvertedFrom is the format an office document was converted from to OOXML, such as
+	// "doc", "odt", or "rtf": the office stage's document Markdown.
 	MetaConvertedFrom = "converted_from"
 
 	// MetaID is a record's id in its store, as its tool's line gives it: the email stage's

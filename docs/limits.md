@@ -1,14 +1,15 @@
 # Limits
 
-ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; ISO
-routes to no stage. docproc runs no virus scan and flags no macro in an OLE2 file. Content no
-processor claims is read as text, whatever its name, when its first 4096 bytes hold no NUL byte,
-and is unrouted when they do. So HTML and an EPUB's entries are read as raw text, with no
-structure, and UTF-16 without a byte order mark, which holds NULs, is refused. docproc detects no
-text's encoding: it reads text by its byte order mark, as UTF-8, or else as windows-1252, so a
-legacy multibyte encoding such as Shift-JIS, EUC-JP, or ISO-2022-JP reads as mojibake. Beyond
-that, each stage inherits its tool's limits, as the tools' READMEs
-([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
+An ODF formula, chart, database, or image package (`.odf`, `.odc`, `.odb`, `.odi`), and any ODF
+package other than a text, spreadsheet, presentation, or drawing document or template, routes to
+office, whose stage ends it with no processor yet; ISO routes to no stage. docproc runs no virus
+scan and flags no macro in an OLE2 file. Content no processor claims is read as text, whatever its
+name, when its first 4096 bytes hold no NUL byte, and is unrouted when they do. So HTML and an
+EPUB's entries are read as raw text, with no structure, and UTF-16 without a byte order mark, which
+holds NULs, is refused. docproc detects no text's encoding: it reads text by its byte order mark, as
+UTF-8, or else as windows-1252, so a legacy multibyte encoding such as Shift-JIS, EUC-JP, or
+ISO-2022-JP reads as mojibake. Beyond that, each stage inherits its tool's limits, as the tools'
+READMEs ([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
 [docproc-onenote](../tools/onenote/README.md)) state them in full; these are the ones a host sizes
 or routes by.
 
@@ -18,6 +19,9 @@ or routes by.
   evaluated, a cell's value being the one the file caches; tracked changes are read accepted
   only. An EMF or WMF is rendered on an A4 page and trimmed to what differs from the page's
   white, so a picture framed in white loses its frame, and an all-white picture is one pixel.
+  ODF, WordPerfect, and `.xlsb` are read as LibreOffice converts them to docx, xlsx, or pptx, an
+  ODF drawing's pages as slides; an `.xlsb` is known by its name alone, and a flat ODF document
+  (`.fodt`, `.fods`, `.fodp`, `.fodg`), plain XML, is read as text.
   docproc-ooxml links glibc, 2.34 or newer. Its floor under a memory bound is 384 MiB on x64 and
   on arm64 alike: it converts in 20 of 20 runs at 384 MiB and above, and below that some runs
   fail, by SIGABRT, its last stderr line "Out of memory" or naming libssl, or by exit 255 with no

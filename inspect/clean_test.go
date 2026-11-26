@@ -18,6 +18,8 @@ var cleanSkipped = map[string]bool{"../picture/testdata/script-bearing.svg": tru
 var cleanFlags = map[string][]inspect.Check{
 	"../office/testdata/ooxml/media.libreoffice.docx":     {inspect.ExternalRelationship},
 	"../office/testdata/ooxml/word-with-attachments.docx": {inspect.OLEObject},
+	"../office/testdata/xlsb/protected_passtika.xlsb":     {inspect.OOXMLEncrypted},
+	"../office/testdata/xlsb/testVarious.xlsb":            {inspect.VBAProject},
 	"../document/testdata/attachments/attachments.pdf":    {inspect.PDFEmbeddedFile},
 	"../document/testdata/portfolio/portfolio.pdf":        {inspect.PDFEmbeddedFile},
 	"../document/testdata/malformed/compacted-syntax.pdf": {inspect.PDFAA, inspect.PDFJavaScript, inspect.PDFJS},

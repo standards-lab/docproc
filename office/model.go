@@ -33,9 +33,11 @@ type Document struct {
 	// Media are the pictures, embedded packages, and OLE objects the document names, in document
 	// order; one file may be named more than once.
 	Media []Medium `json:"media,omitempty"`
-	// ConvertedFrom is the format a legacy document or an RTF was converted from to OOXML before
-	// docproc-ooxml ran: the legacy extension without its dot, such as "doc", or "rtf"; "" when
-	// the document went to docproc-ooxml as it was. It is the Converter's, never the line's.
+	// ConvertedFrom is the format a document was converted from to OOXML before docproc-ooxml ran:
+	// a legacy document's extension without its dot, such as "doc"; an ODF package's extension
+	// for its mimetype's type, such as "odt" or "otg"; "rtf", "wpd" for a WordPerfect document, or
+	// "xlsb"; "" when the document went to docproc-ooxml as it was. It is the Converter's, never
+	// the line's.
 	ConvertedFrom string `json:"-"`
 }
 

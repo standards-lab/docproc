@@ -14,7 +14,11 @@
 //     AcroForm's "forms" record; each embedded file found "attachment <name>", under the bomb
 //     rule; each page's text and PNG.
 //   - office, route.Office: docproc-ooxml's document Markdown, "document", then each sheet's
-//     Markdown and rows, both "sheet/<n>"; each medium found "document, media <n>".
+//     Markdown and rows, both "sheet/<n>"; each medium found "document, media <n>". A legacy
+//     document, an RTF, a WordPerfect document, an .xlsb, and an ODF text, spreadsheet,
+//     presentation, or drawing package is converted through LibreOffice first, its Markdown's
+//     converted_from naming the format; any other ODF package has no processor yet, and an
+//     encrypted one is encrypted, as office's errors say.
 //   - picture, route.VisionConverted: a TIFF's pages, or an EMF, WMF, SVG, HEIC, WebP, or AVIF,
 //     to PNGs.
 //   - vision, route.Vision: a PNG, JPEG, GIF, or BMP passed through.
@@ -61,8 +65,10 @@
 //
 //   - classify reads a unit's or a part's failure by the table above.
 //   - Each stage's identity hashes its format package's request resolved, every default filled
-//     and each field that changes no output tagged out of its JSON, with the adapters' version;
-//     its Version is its tools' whole version lines.
+//     and each field that changes no output tagged out of its JSON, with the adapters' version,
+//     and the office stage's own version too, raised when it reads content it ended unread, so
+//     an index prepares that stage's parts again and no other's; its Version is its tools' whole
+//     version lines.
 //   - One rule, a stash's item, turns a tool's line's media and attachments into found parts, each
 //     claiming the SHA-256 internal/cli's media name rule resolved, or unread children.
 //

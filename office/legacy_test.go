@@ -105,6 +105,7 @@ func TestConvertNotLegacy(t *testing.T) {
 	c, ins := standinConverter(t)
 	for _, tc := range []struct{ desc, doc, name string }{
 		{"encrypted docx", ole2 + "an encrypted package", "secret.docx"},
+		{"encrypted xlsb", ole2 + "an encrypted package", "secret.xlsb"},
 		{"no name", ole2 + "a doc", ""},
 		{"no extension", ole2 + "a doc", "report"},
 		{"no signature", "PK\x03\x04 a docx", "renamed.doc"},

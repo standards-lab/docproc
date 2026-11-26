@@ -28,8 +28,7 @@ const (
 	// extensions or .xlsb, which office refuses as encrypted; an ODF package; an RTF; a
 	// WordPerfect document; or a ZIP whose name has the .xlsb extension, an Excel binary workbook.
 	// Extensions are matched in any case, and the caller gives office's Convert the same name so
-	// it reads the same extension. The last four go through LibreOffice; office's stage has no
-	// processor for the last two yet, which a dispatcher reports.
+	// it reads the same extension. The last four go through LibreOffice.
 	Office Route = "office"
 	// Vision is a picture a vision model decodes as stored: PNG, JPEG, GIF, or BMP.
 	Vision Route = "vision"

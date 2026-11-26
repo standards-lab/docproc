@@ -301,3 +301,26 @@ func TestArchiveIdentity(t *testing.T) {
 		t.Error("the entry bound left the archive identity's config unchanged")
 	}
 }
+
+func zipOf(t *testing.T, entries ...string) string {
+	t.Helper()
+	var b bytes.Buffer
+	zw := zip.NewWriter(&b)
+	for i := 0; i < len(entries); i += 2 {
+		content := entries[i+1]
+		w, err := zw.CreateRaw(&zip.FileHeader{
+			Name: entries[i], Method: zip.Store, CRC32: crc32.ChecksumIEEE([]byte(content)),
+			CompressedSize64: uint64(len(content)), UncompressedSize64: uint64(len(content)),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return b.String()
+}

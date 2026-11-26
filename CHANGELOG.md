@@ -9,6 +9,30 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Added
+
+- The office stage converts, through LibreOffice, ODF text, spreadsheet, and presentation
+  packages and their templates (`.odt`, `.ott`, `.ods`, `.ots`, `.odp`, `.otp`) to docx, xlsx,
+  and pptx, an ODF drawing or drawing template (`.odg`, `.otg`) to pptx through Impress's import
+  filter, a WordPerfect document to docx through LibreOffice's WordPerfect import filter, and an
+  Excel binary workbook (`.xlsb`, by its name) to xlsx, then reads the result through
+  docproc-ooxml, as it does a legacy document.
+  `office.Document.ConvertedFrom`, and the document Markdown's `converted_from`, name the source
+  format: the ODF type's extension, `wpd`, or `xlsb`.
+- `picture.LibreOfficeRun.InFilter`, soffice's `--infilter`, the import filter a run reads every
+  input through.
+
+### Changed
+
+- An ODF package of any other type, a formula, chart, database, or image among them, still ends
+  with no processor yet, the error now office's, matching `dispatch.ErrNoProcessor` and naming
+  the package's type. An ODF package whose manifest holds encryption data ends with an error
+  matching `dispatch.ErrEncrypted`, and one whose ZIP or manifest can't be read with one matching
+  `dispatch.ErrRefused`, before LibreOffice runs.
+- The office stage's identity hashes its own version, 2, so an index that holds ODF, WordPerfect,
+  or `.xlsb` parts as no processor yet prepares the office route's parts again, and no other
+  stage's; the stage adapters' version stays 7.
+
 ## [v0.8.0] - 2026-11-25
 
 This release reads a PDF page's text with poppler's pdftotext in its reading order, where gs's
