@@ -175,20 +175,30 @@ public sealed class LineWriterTests
 
         var definitions = lines.SkipWhile(line => JsonNode.Parse(line)!["rows"] is not null || (string?)JsonNode.Parse(line)!["line"] != "rows").ToList();
         Assert.True(definitions.Count > 3, $"{definitions.Count} definition lines");
-        foreach (var line in definitions)
+        for (var i = 0; i < definitions.Count; i++)
         {
+            var line = definitions[i];
             var node = JsonNode.Parse(line)!;
             Assert.Equal("rows", (string?)node["line"]);
             Assert.Null(node["rows"]);
             var markdown = (string)node["markdown"]!;
             Assert.StartsWith("\n[^c", markdown, StringComparison.Ordinal);
+            var size = Encoding.UTF8.GetByteCount(line) + 1;
             if (!markdown.Contains(new string('w', 100), StringComparison.Ordinal))
             {
-                Assert.True(Encoding.UTF8.GetByteCount(line) + 1 <= LineWriter.RowsLineBound, $"{Encoding.UTF8.GetByteCount(line)} bytes");
+                Assert.True(size <= LineWriter.RowsLineBound, $"{size} bytes");
             }
             else
             {
                 Assert.Equal(1, markdown.Split("\n[^c").Length - 1);
+            }
+            if (i + 1 < definitions.Count)
+            {
+                var next = (string)JsonNode.Parse(definitions[i + 1])!["markdown"]!;
+                var end = next.IndexOf("\n[^c", 1, StringComparison.Ordinal);
+                var first = end < 0 ? next : next[..end];
+                var added = JsonEncodedText.Encode(first, JavaScriptEncoder.UnsafeRelaxedJsonEscaping).EncodedUtf8Bytes.Length;
+                Assert.True(size + added > LineWriter.RowsLineBound, $"line {i} could have held the next definition");
             }
         }
         Assert.Equal(MarkdownRenderer.Render(document), string.Concat(lines.Select(line => (string?)JsonNode.Parse(line)!["markdown"])));
