@@ -1,0 +1,1 @@
+docproc-mail: warning: message, attachment 1: skipped: the TNEF part can't be read (property 0x8000's value is 4 bytes, past the 0 that remain)

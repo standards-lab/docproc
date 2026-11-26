@@ -1,0 +1,42 @@
+[
+  {
+    "file": "poi/bug52400-winmail-simple.dat",
+    "repository": "https://github.com/apache/poi",
+    "commit": "81ab52621cb3ecaf9cb96a5a92edcb2e5fd60408",
+    "path": "test-data/hmef/bug52400-winmail-simple.dat",
+    "license": "Apache-2.0; poi/LICENSE and poi/NOTICE",
+    "sha256": "76535c57553e1de5e1818a873d55b16923909ff2d0970cbeff3d2c9d156788b0"
+  },
+  {
+    "file": "poi/bug52400-winmail-with-attachments.dat",
+    "repository": "https://github.com/apache/poi",
+    "commit": "81ab52621cb3ecaf9cb96a5a92edcb2e5fd60408",
+    "path": "test-data/hmef/bug52400-winmail-with-attachments.dat",
+    "license": "Apache-2.0; poi/LICENSE and poi/NOTICE",
+    "sha256": "9e883063273f21855f1812fbd90f28e6719abe03ad3b8e11ea4d361b1ac6d9eb"
+  },
+  {
+    "file": "poi/oom.tnef",
+    "repository": "https://github.com/apache/poi",
+    "commit": "81ab52621cb3ecaf9cb96a5a92edcb2e5fd60408",
+    "path": "test-data/hmef/oom.tnef",
+    "license": "Apache-2.0; poi/LICENSE and poi/NOTICE",
+    "sha256": "2e0c13e3bac2c7923dfe7f8a9e87761917a7a3dec9308591296da08ebfec9736"
+  },
+  {
+    "file": "poi/quick-winmail.dat",
+    "repository": "https://github.com/apache/poi",
+    "commit": "81ab52621cb3ecaf9cb96a5a92edcb2e5fd60408",
+    "path": "test-data/hmef/quick-winmail.dat",
+    "license": "Apache-2.0; poi/LICENSE and poi/NOTICE",
+    "sha256": "628a17f328eeda3712175f0e6199aca69658889cd5a9f7723c078e7920799c9f"
+  },
+  {
+    "file": "poi/winmail-sample1.dat",
+    "repository": "https://github.com/apache/poi",
+    "commit": "81ab52621cb3ecaf9cb96a5a92edcb2e5fd60408",
+    "path": "test-data/hmef/winmail-sample1.dat",
+    "license": "Apache-2.0; poi/LICENSE and poi/NOTICE",
+    "sha256": "058fea7a0e60c0c163cbab6e32322ad2d20b04aaefb63e2e2ee363f9690fcd20"
+  }
+]

@@ -15,3 +15,12 @@ set -eu
 export PATH="$DOTNET_ROOT:$PATH"
 dotnet run -c Release -- fixtures ../tests/fixtures/generated
 '''
+
+[tasks.tnef]
+description = "Rewrite the TNEF group's .eml, each wrapping one of its TNEF streams, and its truth.json, what MimeKit's TnefPart reads of each, from its layout.json; the check never runs it"
+dir = "{{config_root}}/generator"
+run = '''
+set -eu
+export PATH="$DOTNET_ROOT:$PATH"
+dotnet run -c Release -- tnef ../tests/fixtures/tnef
+'''

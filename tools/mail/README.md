@@ -124,6 +124,16 @@ warning. Markdown made from HTML is the HTML's alone: nothing of the text body o
 text is appended, as the parts of a `multipart/alternative` are each an alternative version of the
 same information (RFC 2046 §5.1.4).
 
+In an `.eml` or an mbox, a TNEF part (`winmail.dat`, Outlook's own form of a message's
+properties and attachments), one of type `application/ms-tnef` or `application/vnd.ms-tnef` or
+named `winmail.dat`, is read through docproc-mail's own MS-OXTNEF reader. Its attachments are the
+message's, in its place, each read as a `.msg` attachment is, an embedded message nested under its
+`message`, and its bodies come ahead of the message's own: its HTML, stored or recovered from its
+RTF, else the message's HTML, its text body, else the message's, and its RTF body's own text only
+where there is neither, so a `text/plain` part beside it wins over an RTF that encapsulates no HTML.
+A TNEF part that can't be read, its framing broken or cut short, is a `skipped` attachment with a
+warning, and the rest of the message is read.
+
 A field with no value is left out, never `null`, and so is an empty list. The same input gives
 byte-identical stdout and media. The contract, field by field, is docproc's:
 [`docs/tool-contract.md`](../../docs/tool-contract.md), its "docproc-mail" section. From schema
@@ -157,9 +167,9 @@ hierarchy table names twice, `skipped: already read`. A warning also comes for a
 lossily, a header value that doesn't map, an HTML body nested past 512 open elements (its
 Markdown made from the text body, else the HTML's text), a compressed RTF body whose stated size
 is more than nine times what its data can yield (not decompressed), an image source that names
-nothing, a TNEF or opaque S/MIME part, a `.msg` or `.pst` message of an S/MIME class other than
-the clear-signed one, a rights-managed message, and a `.pst` embedded message listed without its
-content.
+nothing, a TNEF attribute whose checksum doesn't match its data, an opaque S/MIME part, a `.msg` or
+`.pst` message of an S/MIME class other than the clear-signed one, a rights-managed message, and a
+`.pst` embedded message listed without its content.
 
 A refusal comes before anything is written to stdout or the media directory. docproc-mail refuses
 an input that is missing, a directory, or without read permission, `no such file: <path>`, `is a
@@ -183,8 +193,8 @@ crate, [`tools/envelope`](../envelope).
   mbox it is read in full.
 - No class-specific field is written: a contact, an appointment, or a task is a `message` line
   with the message fields alone.
-- TNEF (`winmail.dat`) and opaque S/MIME (`application/pkcs7-mime`) parts are not read; each
-  gives its message a warning. So does a `.msg` or `.pst` message whose class is
+- Opaque S/MIME (`application/pkcs7-mime`) parts are not read; each gives its message a warning.
+  So does a `.msg` or `.pst` message whose class is
   `IPM.Note.SMIME`, or ends in `.SMIME`, compared without regard to case, whatever its
   attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message gets none.
 - A rights-managed message's content is not read: it is encrypted in its `message.rpmsg`
@@ -261,6 +271,10 @@ tool's check. The reasoning behind its configuration is on
   their manifest from their `.eml` and item sources, on .NET 11, MimeKit held at 4.18.2. Each
   third-party fixture is listed with its source, license, and SHA-256 in its group's
   `sources.json`.
+- `tnef`, with `MISE_ENV=fixtures`: rewrites the TNEF group's `.eml` (`tests/fixtures/tnef/`),
+  each wrapping one of Apache POI's TNEF streams as its `winmail.dat` part, as its `layout.json`
+  lists them, and its `truth.json`, what MimeKit's `TnefPart` reads of each stream, which the tests
+  compare the tool's reading with.
   The hand-written `.eml` files of the MIME group and of the Markdown group
   (`tests/fixtures/markdown/`, whose message pins each Markdown difference v0.1.2 lists) are
   listed with their SHA-256 in their group's `sha256.json`.

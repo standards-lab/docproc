@@ -1,0 +1,37 @@
+{
+  "messages": [
+    {
+      "eml": "01-quick-winmail.eml",
+      "source": "poi/quick-winmail.dat",
+      "subject": "Five files, a plain RTF body and a text/plain part",
+      "content_type": "application/ms-tnef",
+      "text": "These are five files, in a text/plain part beside the TNEF part.\n"
+    },
+    {
+      "eml": "02-winmail-sample1.eml",
+      "source": "poi/winmail-sample1.dat",
+      "subject": "Two files and a plain RTF body alone",
+      "content_type": "application/vnd.ms-tnef"
+    },
+    {
+      "eml": "03-bug52400-winmail-simple.eml",
+      "source": "poi/bug52400-winmail-simple.dat",
+      "subject": "An HTML body in attMsgProps alone, the part named winmail.dat",
+      "content_type": "application/octet-stream"
+    },
+    {
+      "eml": "04-bug52400-winmail-with-attachments.eml",
+      "source": "poi/bug52400-winmail-with-attachments.dat",
+      "subject": "Two files with media types and an HTML body beside a text/plain part",
+      "content_type": "application/ms-tnef",
+      "text": "This is the body, in a text/plain part beside the TNEF part.\n"
+    },
+    {
+      "eml": "05-oom.eml",
+      "source": "poi/oom.tnef",
+      "subject": "A malformed TNEF part beside a text/plain part",
+      "content_type": "application/ms-tnef",
+      "text": "The TNEF part beside this one is malformed.\n"
+    }
+  ]
+}

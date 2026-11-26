@@ -1,0 +1,21 @@
+From: Fixture Sender <sender@example.org>
+Date: Thu, 01 Jan 2026 00:00:00 +0000
+Subject: A malformed TNEF part beside a text/plain part
+Message-Id: <05-oom@example.org>
+To: Fixture Recipient <recipient@example.org>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="=_05-oom"
+
+--=_05-oom
+Content-Type: text/plain; charset=utf-8
+
+The TNEF part beside this one is malformed.
+
+--=_05-oom
+Content-Type: application/ms-tnef; name=winmail.dat
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename=winmail.dat
+
+eJ8+IgEAAQOQBgAkAAAAAQAAAAMQAIAIIAYAAAAAAMAAAAAAAABGAAAAAESFAAADAA00AAA=
+
+--=_05-oom--

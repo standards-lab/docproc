@@ -357,6 +357,14 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   breaks, a nested table's `\nonesttables` fallback skipped, symbol words (`\rquote`, `\emdash`, …)
   as their characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates HTML
   (`\fromhtml`) has that HTML's text.
+- In an `.eml` or an mbox, a TNEF part, of type `application/ms-tnef` or `application/vnd.ms-tnef`
+  or named `winmail.dat`, is read by the tool's own MS-OXTNEF reader. Its attachments are the
+  message's, in its place, each mapped as a `.msg` attachment is, an embedded message nested under
+  its `message`. Its bodies come ahead of the MIME message's own: its HTML, stored or recovered
+  from its RTF, else the MIME HTML; its text body, else the MIME text body; and its RTF's text only
+  where there is neither, so a MIME text/plain part beside it wins over an RTF that encapsulates no
+  HTML. A TNEF part that can't be read is a `skipped` attachment, with a warning, and the rest of
+  the message is read; an attribute whose checksum doesn't match its data is read, with a warning.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
   its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6
