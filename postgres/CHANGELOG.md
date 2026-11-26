@@ -10,6 +10,24 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.7] - 2026-11-25
+
+This release requires the docproc base module at v0.9.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.9.0, from v0.8.0, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  The office stage's identity hashes the stage's own version, 2, so the index holds a caller's
+  earlier office entries under the old identity, and a run over it prepares the office route's
+  parts again, ODF, WordPerfect, and `.xlsb` parts it recorded as no processor yet among them, and
+  no other stage's; the stage adapters' version stays 7. An unencrypted ODF formula, chart,
+  database, or image package, or one of another type, is recorded as no processor yet still, and
+  an ODF package of any type that is encrypted as encrypted. Each stage's identity holds its
+  tool's version line, so a host that moves to docproc-ooxml 0.2.0 or docproc-mail 0.2.0 prepares
+  the office or email route's parts again. The index itself is unchanged and reads none of an
+  output's text.
+
 ## [v0.1.6] - 2026-11-25
 
 This release requires the docproc base module at v0.8.0. Its exported API is unchanged.
@@ -129,7 +147,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.6...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.7...HEAD
+[v0.1.7]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.6...postgres/v0.1.7
 [v0.1.6]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.5...postgres/v0.1.6
 [v0.1.5]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...postgres/v0.1.5
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.3...postgres/v0.1.4
