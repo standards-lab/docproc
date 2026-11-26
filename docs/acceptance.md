@@ -1088,7 +1088,8 @@ Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-
 backlog goal.
 
 The docproc-coverage goal's office-and-mail task ran it on 2026-11-25, from 19:47:17 to 19:49:46
-local time (00:47:17 to 00:49:46 UTC on 2026-11-26), on the laptop of "The ~/docs run", to check
+local time (00:47:17 to 00:49:46 UTC on 2026-11-26), on the laptop the `final` task's ~/docs run
+used, an Intel Core Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy, to check
 that ODF, WordPerfect, and `.xlsb` inputs are prepared and that no docproc-ooxml warning names a
 kind docproc-ooxml 0.2.0 reads. It measured docproc at `f610dec6bf66cf6589905a729a468a3a6d25bd08`,
 the HEAD of `office-and-mail`, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and
@@ -1118,8 +1119,10 @@ exited 0 with nothing on stderr.
 from the host's PATH. The stage table read LibreOffice 26.8.2.2 680(Build:2), from
 `gotenberg/gotenberg:9.10.1-libreoffice@sha256:79aec465636fef089f6ed3da69b75c7d3c7155fcecd20b3d80563868c54b5a90`,
 in its container. The host's own soffice, LibreOffice 26.8.1.1, which can't import
-`word-perfect-6.wpd`, took no part. Every other tool was the one "The ~/docs run" lists, with
-pdftotext 26.10.0 from /usr/bin, which the document stage has required since v0.8.0.
+`word-perfect-6.wpd`, took no part. Every other tool was the one the `final` task's ~/docs run
+used: gs 10.08.0, qpdf 12.4.2, pdfdetach 26.10.0, and magick 7.1.2-34 Q16-HDRI from /usr/bin; 7zz
+26.06 from mise's `github:ip7z/7zip`; and ffmpeg and ffprobe n9.0.2 from /usr/bin; with pdftotext
+26.10.0 from /usr/bin, which the document stage has required since v0.8.0.
 
 The corpus's listing, every path's size and modification time, was taken before and after the
 run and compared with `cmp`: identical. The run took **149.4 s**, against the `final` task's
