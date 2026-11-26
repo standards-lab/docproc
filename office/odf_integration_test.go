@@ -12,7 +12,12 @@ import (
 	"github.com/standards-lab/docproc/office"
 )
 
-var drawingText = []string{"A drawing for docproc", "An ellipse", "Boxes, an ellipse, and a line", "# Slide 2", "The second page of the drawing"}
+var (
+	tablesText  = []string{"Region", "North", "(provisional)", "Q4"}
+	cellsText   = []string{"plain text", "Quoted letters", "far corner"}
+	slidesText  = []string{"Quarterly Review", "Contact the operations team.", "Questions"}
+	drawingText = []string{"A drawing for docproc", "An ellipse", "Boxes, an ellipse, and a line", "# Slide 2", "The second page of the drawing"}
+)
 
 func TestConvertedRoundTrip(t *testing.T) {
 	c := containerConverter(t)
@@ -21,12 +26,12 @@ func TestConvertedRoundTrip(t *testing.T) {
 		path, from, to, original string
 		text                     []string
 	}{
-		{filepath.Join(odf, "tables.libreoffice.odt"), "odt", "docx", "tables.libreoffice.docx", nil},
-		{filepath.Join(odf, "tables.libreoffice.ott"), "ott", "docx", "tables.libreoffice.docx", nil},
-		{filepath.Join(odf, "cells.libreoffice.ods"), "ods", "xlsx", "cells.libreoffice.xlsx", nil},
-		{filepath.Join(odf, "cells.libreoffice.ots"), "ots", "xlsx", "cells.libreoffice.xlsx", nil},
-		{filepath.Join(odf, "slides.libreoffice.odp"), "odp", "pptx", "slides.libreoffice.pptx", nil},
-		{filepath.Join(odf, "slides.libreoffice.otp"), "otp", "pptx", "slides.libreoffice.pptx", nil},
+		{filepath.Join(odf, "tables.libreoffice.odt"), "odt", "docx", "tables.libreoffice.docx", tablesText},
+		{filepath.Join(odf, "tables.libreoffice.ott"), "ott", "docx", "tables.libreoffice.docx", tablesText},
+		{filepath.Join(odf, "cells.libreoffice.ods"), "ods", "xlsx", "cells.libreoffice.xlsx", cellsText},
+		{filepath.Join(odf, "cells.libreoffice.ots"), "ots", "xlsx", "cells.libreoffice.xlsx", cellsText},
+		{filepath.Join(odf, "slides.libreoffice.odp"), "odp", "pptx", "slides.libreoffice.pptx", slidesText},
+		{filepath.Join(odf, "slides.libreoffice.otp"), "otp", "pptx", "slides.libreoffice.pptx", slidesText},
 		{filepath.Join(odf, "drawing.odg"), "odg", "pptx", "", drawingText},
 		{filepath.Join(odf, "drawing.otg"), "otg", "pptx", "", drawingText},
 		{filepath.Join("testdata", "wordperfect", "testWordPerfect_6_61.wpd"), "wpd", "docx", "", []string{"Sluwe Sjaantje sloeg de slome slager"}},
