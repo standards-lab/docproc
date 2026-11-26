@@ -10,7 +10,7 @@
 2. [x] archives-and-mpeg
 3. [x] text-last-resort
 4. [x] pdf-text-padding
-5. [ ] office-and-mail
+5. [x] office-and-mail
 
 ## Task brief · office-and-mail
 
@@ -113,15 +113,30 @@ One-way for the tags, which reach corpus.docs and outside callers; two-way for t
   and reverses right-to-left lines.
 - pdf-text-padding: rejected xpdf 4.06 (0 words on Type 3 fonts; only the vendor's binary
   provides it), and PdfPig and pdfminer.six (Arabic lost).
+- office-and-mail: kept `picture.LibreOfficeMinimum` at 24.2, though ODF, WordPerfect, and .xlsb
+  conversion is proved only on LibreOffice 26.8 (the pinned image's 26.8.2.2; the host's 26.8.1.1
+  can't import the .wpd): raising it would refuse hosts whose legacy conversion already works.
+- office-and-mail: the storage, postgres, and cmd/docproc CHANGELOG sections are written and dated
+  in the `-require` PR after the v0.9.0 tag, not on the task branch.
 
 ## Pending edits
 
 - docs-corpus · once docproc-coverage syncs, tell corpus.docs (context/goals/corpus.docs.md, task
-  docproc-final; standards-lab #219) the final release's tags, docproc, storage, postgres, and
-  cmd/docproc, and the run-directory schema it writes; that `#!` scripts and other unlisted text
-  route text; that a PDF page's text is pdftotext's reading order, with no column padding; and
-  that exec-4's check:polyglot can reopen. Intermediate releases go untold.
+  docproc-final; standards-lab #219) the final release's tags, v0.9.0, storage/v0.1.7,
+  postgres/v0.1.7, cmd/docproc/v0.2.7, tools/ooxml/v0.2.0, and tools/mail/v0.2.0, and the
+  run-directory schema it writes; that `#!` scripts and other unlisted text route text; that a PDF
+  page's text is pdftotext's reading order, with no column padding; that ODF, WordPerfect, and
+  .xlsb are prepared through LibreOffice, an encrypted .xlsb ending Encrypted; that a TNEF part's
+  bodies and attachments are read; that docproc-ooxml's Markdown holds text boxes, a pptx's
+  comments, and an xlsx's notes and threaded comments; and that exec-4's check:polyglot can
+  reopen. Intermediate releases go untold.
+- docinfer · once docproc-coverage syncs, tell v1.ai.inference (docinfer's goal record) docproc's
+  final state: the tags v0.9.0, storage/v0.1.7, postgres/v0.1.7, cmd/docproc/v0.2.7,
+  tools/ooxml/v0.2.0, and tools/mail/v0.2.0, the run-directory schema they write, and the coverage
+  the docs-corpus edit names.
 - coordinator · roadmap/docproc-backlog.toml: a text retry for a part whose stage fails at
   runtime, such as a corrupt PDF.
 - coordinator · roadmap/docproc-backlog.toml: control over line-end hyphens in PDF page text
   (pdftotext `-remove-hyphens`, poppler 26.05), once Debian and Ubuntu stable carry 26.05.
+- coordinator · roadmap/docproc-backlog.toml: docproc-ooxml exits 255 with nothing on stderr when
+  it runs out of memory below its 384 MiB floor, so an operator sees no cause; report one.
