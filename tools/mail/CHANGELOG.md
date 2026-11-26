@@ -9,6 +9,8 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-25
+
 ### Added
 
 - A TNEF part of an `.eml` or an mbox message, of type `application/ms-tnef` or
@@ -233,7 +235,8 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.4...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.4...tools/mail/v0.2.0
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.3...tools/mail/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...tools/mail/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2

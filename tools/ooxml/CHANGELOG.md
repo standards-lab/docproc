@@ -9,6 +9,8 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-25
+
 ### Added
 
 - Text boxes are read, and no longer warned of as `text boxes not read`. A docx text box's
@@ -124,7 +126,8 @@ says how it differs from the spike.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.2...tools/ooxml/v0.2.0
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...tools/ooxml/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...tools/ooxml/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

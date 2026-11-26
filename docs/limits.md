@@ -14,11 +14,11 @@ READMEs ([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail
 or routes by.
 
 - **office.** Pictures are listed with no layout, so a picture another covers, that sits off the
-  slide or page, or that is cropped away is still listed and handed onward. Text boxes,
-  equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read; no formula is
-  evaluated, a cell's value being the one the file caches; tracked changes are read accepted
-  only. An EMF or WMF is rendered on an A4 page and trimmed to what differs from the page's
-  white, so a picture framed in white loses its frame, and an all-white picture is one pixel.
+  slide or page, or that is cropped away is still listed and handed onward. Equations and
+  SmartArt are not read; no formula is evaluated, a cell's value being the one the file caches;
+  tracked changes are read accepted only. An EMF or WMF is rendered on an A4 page and trimmed to
+  what differs from the page's white, so a picture framed in white loses its frame, and an
+  all-white picture is one pixel.
   ODF, WordPerfect, and `.xlsb` are read as LibreOffice converts them to docx, xlsx, or pptx, an
   ODF drawing's pages as slides; an `.xlsb` is known by its name alone, and a flat ODF document
   (`.fodt`, `.fods`, `.fodp`, `.fodg`), plain XML, is read as text.
@@ -28,9 +28,9 @@ or routes by.
   message ([Acceptance](acceptance.md#docproc-ooxmls-memory-floor), measured 2026-11-25 on
   GitHub's runners from 6799188, whose docproc-ooxml is dcbead1's).
 - **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is refused;
-  TNEF and opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg`
-  content, each with a warning; a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or
-  ends in `.SMIME`, compared without regard to case, has the opaque S/MIME warning whatever its
+  opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg` content, each
+  with a warning; a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or ends in
+  `.SMIME`, compared without regard to case, has the opaque S/MIME warning whatever its
   attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message with no body of its own has
   its Markdown made from its `multipart/signed` attachment's bodies, and that content's own
   attachments are not listed; an attachment by reference has no file; every mbox is read as an
