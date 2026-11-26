@@ -4,9 +4,9 @@ The measurement is taken over docs-corpus v0.2.0. It finds, for each structured 
 already carried, in the Markdown or in a kept field, which is cut, and the content the Markdown
 lacks, which its tool renders into the Markdown ([`structured-text.md`](structured-text.md));
 labels kept as plain-text fields are not counted. The bytes size both. It was first taken over the
-retired ~/docs pool on 2026-11-12, and its figures are kept in ["Over ~/docs,
-2026-11-12"](#over-docs-2026-11-12); the corpus.docs goal's baseline task reran it over docs-corpus
-v0.2.0 on 2026-11-26, keeping its raw output at
+retired ~/docs pool on 2026-11-12, whose figures ["Over ~/docs,
+2026-11-12"](#over-docs-2026-11-12) keeps. The corpus.docs goal's baseline task reran it over
+docs-corpus v0.2.0 on 2026-11-26 and kept its raw output at
 `~/runs/docs-corpus/baseline/v0.2.0/payload-measurement/`.
 
 The three spikes were built from their release tags (office `v0.1.0`, mail `v0.3.1`, onenote

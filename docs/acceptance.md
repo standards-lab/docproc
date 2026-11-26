@@ -34,10 +34,11 @@ over ~/docs, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and tools/mai
 
 **The kept run.** The corpus.docs goal's baseline task ran docproc v0.9.0 over docs-corpus
 v0.2.0, run `01a218c9-8847-7ec5-b98e-cf5803c6a989`, kept at
-`~/runs/docs-corpus/baseline/v0.2.0/docproc`; ["The docs-corpus v0.2.0
+`~/runs/docs-corpus/baseline/v0.2.0/docproc`. ["The docs-corpus v0.2.0
 run"](#the-docs-corpus-v020-run) and ["Failures by class"](#failures-by-class) report it, and
-docs-corpus's [baseline page](https://github.com/standards-lab/docs-corpus/blob/main/docs/baseline.md)
-records it whole.
+docs-corpus's
+[baseline page](https://github.com/standards-lab/docs-corpus/blob/main/docs/baseline.md) records
+it whole.
 
 **What `final` didn't rerun.** Word error rate, the bombs, peak memory, and the office and
 OneNote benches were outside the `final` task's scope, which reran the measurements the hardened
@@ -1009,8 +1010,8 @@ The whole-file run, one process for the 915 pages, is for context.
 
 `python3 -I pagetext.py <docs-corpus checkout>`, with gs, pdftotext, and pdfinfo on `PATH`,
 prints each olmocr-bench page's row, `|`-separated in the table's order, then cfr's two rows and
-its words kept. Run it three times; the figures other than time match each run. The whole-file times are of
-`gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=txtwrite -sOutputFile=- <pdf>` and
+its words kept. Run it three times; the figures other than time match each run. The whole-file
+times are of `gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=txtwrite -sOutputFile=- <pdf>` and
 `pdftotext -enc UTF-8 <pdf> -`, stdout discarded.
 
 ```python

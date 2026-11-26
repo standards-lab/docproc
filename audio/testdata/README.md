@@ -7,8 +7,9 @@ which decodes a WAV to its own samples, and through both runners in the integrat
 file is committed and never generated in the check. The fixtures were built in
 spike-ai-pipeline-processing by `mise run fixtures:audio` (`scripts/fixtures-audio.sh`), from the
 test corpus that was then at `~/docs`, checking each source against the SHA-256 the corpus's
-`MANIFEST.json` pinned, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
-`speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to its SHA-256 below.
+`MANIFEST.json` pinned, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from
+`speech.flac` and `speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to
+its SHA-256 below.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |

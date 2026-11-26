@@ -137,10 +137,10 @@ with LF line endings, no generator. `memo.rtf` holds a heading in a `heading 1` 
 level 0, a paragraph with a bold run and a windows-1252 `é` (`\'e9`), a table of three rows and two
 columns, and a last paragraph. `hidden-entry.rtf` holds a centered title that is only a `\tc`
 table-of-contents entry, hidden text RTF doesn't display, then one sentence eleven times, the
-shape of the RTF the retired `~/docs` pool held at `office/rtf/test-rtf.rtf`, which no test read. Their text is
-the truth the integration tier's `TestRTFRoundTrip` asserts the Markdown against, line by line,
-and the hidden title is in none of it; no golden Markdown is recorded. They are this
-repository's, Apache-2.0.
+shape of the RTF the retired `~/docs` pool held at `office/rtf/test-rtf.rtf`, which no test
+read. Their text is the truth the integration tier's `TestRTFRoundTrip` asserts the Markdown
+against, line by line, and the hidden title is in none of it; no golden Markdown is recorded. They
+are this repository's, Apache-2.0.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |

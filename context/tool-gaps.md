@@ -6,7 +6,7 @@ is now.
 - **docproc-ooxml's unread kinds.** Equations and SmartArt are backlog; until each is read, each
   kind a document holds is one warning ([tools/ooxml/README.md](../tools/ooxml/README.md),
   "Limits").
-- **docproc-mail's DOS code pages.** A DOS code page the review of ~/docs finds, which the
+- **docproc-mail's DOS code pages.** A DOS code page found in a corpus input, which the
   `codepage` crate doesn't know, becomes a table in the tool, as US-ASCII (20127) is in
   [tools/mail/src/codepage.rs](../tools/mail/src/codepage.rs).
 - **route's mbox after a byte order mark.** The `route` package claims an mbox only by a "From "

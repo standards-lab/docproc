@@ -30,7 +30,8 @@ The boundaries' pages:
 
 - [The tool contract](tool-contract.md): the common envelope, each tool's schema "2", and
   versioning.
-- [Payload measurement](payload-measurement.md): what each structured field costs over docs-corpus v0.2.0.
+- [Payload measurement](payload-measurement.md): what each structured field costs over
+  docs-corpus v0.2.0.
 - [Consumers of structured text](structured-text.md): the rule that every piece of text exists
   once.
 - [docproc's API](api.md): inspection and routing, running the tools, dispatch, content, the
