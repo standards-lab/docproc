@@ -57,9 +57,6 @@ internal sealed record XlsxSheet(string Name, bool Hidden, XlsxReader.SheetCells
 
 internal static partial class XlsxReader
 {
-    /// <summary>A worksheet's cells as the validate pass found them. Notes holds the ids of the
-    /// threads anchored on each cell, by its position, a cell a merge covers giving its threads to
-    /// the merge's anchor.</summary>
     internal sealed record SheetCells(
         WorksheetPart Part,
         IReadOnlyList<string> Columns,
@@ -218,9 +215,6 @@ internal static partial class XlsxReader
         throw new InvalidOperationException("the validate pass found a failing cell no merge covers that a second reading did not");
     }
 
-    /// <summary>The sheet's table rows, read forward from its part: each row's cells with a value
-    /// or a formula, and the cells a thread anchors, whether the part holds them or not, each in
-    /// its place by row and column.</summary>
     internal static IEnumerable<TableRow> Rows(XlsxContext context, SheetCells sheet)
     {
         var merges = new MergeIndex(sheet.Merges);
@@ -288,8 +282,6 @@ internal static partial class XlsxReader
         }
     }
 
-    /// <summary>Takes from notes the anchored cells of a row before a column, which the part holds
-    /// no cell for, as cells of their threads alone.</summary>
     private static List<TableCell> NotedCells(SheetCells sheet, MergeIndex merges, SortedDictionary<(int Row, int Column), List<int>> notes, int row, int before)
     {
         var cells = new List<TableCell>();

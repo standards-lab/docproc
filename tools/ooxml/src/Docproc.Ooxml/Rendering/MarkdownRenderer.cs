@@ -284,15 +284,11 @@ internal sealed class MarkdownRenderer
         return text.ToString();
     }
 
-    /// <summary>A renderer for an xlsx's fragments, which numbers the comment labels its row
-    /// fragments reach across every sheet, so its comment fragments label them alike.</summary>
     internal static MarkdownRenderer ForFragments() => new();
 
     internal string RowFragment(TableRow row, IReadOnlyList<string> columns) =>
         Row(SheetRowCells(row, columns), columns.Count + 1) + "\n";
 
-    /// <summary>The comments' footnote definitions, each its own fragment, in the order of their
-    /// labels: those the row fragments reached first, then the rest.</summary>
     internal List<string> CommentFragments(IReadOnlyList<Comment> comments) =>
         [.. CommentDefinitions(comments).Select(definition => "\n" + definition + "\n")];
 

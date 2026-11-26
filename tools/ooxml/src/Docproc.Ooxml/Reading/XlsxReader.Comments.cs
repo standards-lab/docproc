@@ -7,7 +7,7 @@ namespace Docproc.Ooxml.Reading;
 
 internal static partial class XlsxReader
 {
-    internal sealed class SheetComments(WorkbookPart workbook)
+    private sealed class SheetComments(WorkbookPart workbook)
     {
         private readonly Dictionary<string, string?> persons = Persons(workbook);
         private int lastId;
