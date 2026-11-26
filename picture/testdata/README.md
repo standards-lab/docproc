@@ -1,14 +1,14 @@
 # testdata
 
 The picture package's fixtures, for the integration tier's conversions on the host's magick: its
-SVGs, and its TIFF, HEIC, WebP, and AVIF pictures. The tier reads these alone, never `~/docs`. They are committed and never generated in the
-check.
+SVGs, and its TIFF, HEIC, WebP, and AVIF pictures. The tier reads these alone. They are committed
+and never generated in the check.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
 | `shapes.svg` | written for this package | Apache-2.0, this repository's | 681 | `e85f8bee8ba14bdd82b211d973e75d9d47a7a2b4f20dc825d0d787aa0e454d7e` |
 | `ink.svg` | written for this package | Apache-2.0, this repository's | 1073 | `293e12c802db06a0ae032a401f335e394a4ff62f69fa90ab7242acd77b58b826` |
-| `script-bearing.svg` | `~/docs`' `image/vector/script-bearing.svg` | ~/docs' "Generated for this pool", redistributable | 648 | `a44d794e6708452ed62b56b8066b5c886d859feb395e7b97d300724eb7607950` |
+| `script-bearing.svg` | the retired `~/docs` pool's `image/vector/script-bearing.svg` | that pool's "Generated for this pool", redistributable | 648 | `a44d794e6708452ed62b56b8066b5c886d859feb395e7b97d300724eb7607950` |
 | `pages.tiff` | generated for this package | Apache-2.0, this repository's | 840 | `5828cfd89abfcce70cc77a385da33b2ecbcae257e4cf0c9fc3b0da182e49eb3e` |
 | `scanned-g4.tiff` | generated for this package | Apache-2.0, this repository's | 600 | `7b9d0f6ae864973668b5decb5fa8b969530980e896a573c4670b76ecb3089b7c` |
 | `lzw-gray.tiff` | generated for this package | Apache-2.0, this repository's | 532 | `651a53fdff1472c9a25119d8f06319c75aff7deac7d43c2589d8b3bc2846dc10` |
@@ -22,8 +22,8 @@ check.
 - `ink.svg`: an ink-like drawing in the form spike-ai-pipeline-onenote writes a page's ink: a
   viewBox in ink units of 0.01 mm, a size in millimetres, no background, and each stroke an open
   path with round caps and joins. Four strokes write "hi", 40x20 mm, so 236x118 at 150 dpi.
-- `script-bearing.svg`: the security fixture of the test corpus at `~/docs`, copied byte for
-  byte; its manifest marks it generated for the pool, its license status verified, and
+- `script-bearing.svg`: the security fixture of the test corpus that was then at `~/docs`, copied
+  byte for byte; its manifest marked it generated for the pool, its license status verified, and
   redistributable. It carries an `onload` handler, an inline `<script>`, and an `<image>` whose
   href is `http://example.invalid/tracker.png`, and its one line of text,
   `Visible text: SAFE-SVG-MARKER`, is all a safe conversion draws.
@@ -31,7 +31,7 @@ check.
   tells its place.
 - `scanned-g4.tiff`: three bilevel pages compressed with CCITT Group 4, as a fax or a scanner
   writes them: 64x48 with a black block at its left, 72x48 with one at its right, and 80x48
-  black. It stands in for `~/docs`' scans, which the tier never reads.
+  black. It stood in for the retired `~/docs` pool's scans, which the tier never read.
 - `lzw-gray.tiff`: two 8-bit grayscale pages compressed with LZW, 30x20 of gray 64 and a 40x20
   gradient.
 - `two-images.heic`: two top-level images, each with a thumbnail. The primary, item 1, is stored

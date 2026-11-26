@@ -1,19 +1,22 @@
 # Payload measurement
 
-The measurement is taken over `~/docs` as it stood on 2026-11-12. It finds, for each structured
-field, the text already carried, in the Markdown or in a kept field, which is cut, and the content
-the Markdown lacks, which its tool renders into the Markdown
-([`structured-text.md`](structured-text.md)); labels kept as plain-text fields are not counted. The
-bytes size both. It is rerun once the planned goal reviewing `~/docs` settles what the corpus holds.
+The measurement is taken over docs-corpus v0.2.0. It finds, for each structured field, the text
+already carried, in the Markdown or in a kept field, which is cut, and the content the Markdown
+lacks, which its tool renders into the Markdown ([`structured-text.md`](structured-text.md));
+labels kept as plain-text fields are not counted. The bytes size both. It was first taken over the
+retired ~/docs pool on 2026-11-12, and its figures are kept in ["Over ~/docs,
+2026-11-12"](#over-docs-2026-11-12); the corpus.docs goal's baseline task reran it over docs-corpus
+v0.2.0 on 2026-11-26, keeping its raw output at
+`~/runs/docs-corpus/baseline/v0.2.0/payload-measurement/`.
 
 The three spikes were built from their release tags (office `v0.1.0`, mail `v0.3.1`, onenote
-`v0.1.0`; the commits past them touch only a README) and run over every file in `~/docs`, at any
-depth, whose extension names their formats; no golden fallback was needed. Parts nested in
-archives or attachments, and legacy formats LibreOffice converts first, are outside it. Only
-inputs that exit 0 are measured.
+`v0.1.0`; the commits past them touch only a README) and run over every file in a docs-corpus
+checkout's format directories, at any depth, whose extension names their formats; no golden
+fallback was needed. Parts nested in archives or attachments, and legacy formats LibreOffice
+converts first, are outside it. Only inputs that exit 0 are measured.
 
 ```sh
-S=<scratch dir>
+S=<scratch dir>; cd <docs-corpus checkout>
 for t in office:v0.1.0 mail:v0.3.1 onenote:v0.1.0; do mkdir -p $S/src/${t%:*}
   git -C ~/experiments/spike-ai-pipeline-${t%:*} archive ${t#*:} | tar -x -C $S/src/${t%:*}; done
 (cd $S/src/mail && CARGO_TARGET_DIR=$S/target-mail cargo build --release --locked)
@@ -22,7 +25,8 @@ for t in office:v0.1.0 mail:v0.3.1 onenote:v0.1.0; do mkdir -p $S/src/${t%:*}
    -c Release -r linux-x64 -p:NuGetAudit=false -o $S/office-bin)
 run() { # run <tool> <find -iname patterns…>; one numbered directory per input under $S/out/<tool>
   t=$1; shift; i=0; p=(); for e; do p+=(-o -iname "*.$e"); done
-  find ~/docs -type f \( "${p[@]:1}" \) -print0 | sort -z | while IFS= read -r -d '' f; do
+  find archive audio email exec image office onenote pdf text video -type f \( "${p[@]:1}" \) -print0 |
+  sort -z | while IFS= read -r -d '' f; do
     i=$((i+1)); o=$S/out/$t/$i; mkdir -p $o; case $t in
     office)  $S/office-bin/spike-ai-pipeline-office "$f" --format markdown > $o/text.md
              $S/office-bin/spike-ai-pipeline-office "$f" --media $o/media > $o/model.json ;;
@@ -57,7 +61,42 @@ with the Markdown. The fields counted:
   the times.
 
 Output is the bytes on stdout; office's is `model.json` plus `,"markdown":` and `text.md` as one
-JSON string, as one run will write them. The run reproduced byte for byte.
+JSON string, as one run will write them.
+
+## Over docs-corpus v0.2.0
+
+| Tool | Read | Output | Markdown | Structured text | Duplicated | Share |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| office | 22 of 23 (8 docx, 8 xlsx, 6 pptx families) | 521,774 B | 33,770 B | 22,061 B | 21,775 B | 4.2% |
+| mail | 19 of 19 (4 eml, 1 mbox, 10 msg, 4 pst); 295 messages, 185 of them top-level | 1,745,590 B | 553,960 B | 927,892 B | 746,014 B | 42.7% |
+| onenote | 5 of 6 sections; 7 pages | 27,671 B | 3,226 B | 3,420 B | 2,476 B | 8.9% |
+
+Refused: `archive/tika/testWORD_truncated.docx`, a truncated package with no end of central
+directory, and `Encryption.one`, password-protected, which the spike stops at as an unexpected
+end of file.
+
+- **office.** 98.7% of the model's text is in the Markdown: inline text 15,783 B (all duplicated),
+  text cell values 4,469 B (4,427), comment anchors and authors 876 B (all), picture alt text 391 B
+  (all), numeric cell values 119 B (all), sheet names 118 B (all), chart series names and titles 61
+  B (all); formulas 241 B (none). The text cell value not counted duplicated, 42 B, is in the
+  Markdown with its line break as `<br>`, markup the measure doesn't remove. Picture titles, 3 B,
+  are the one text the Markdown lacks. The model's shape is the larger waste: indentation is 354,519
+  B, 68% of the output. By family: docx 4.0%, xlsx 8.0%, pptx 2.3% duplicated.
+- **mail.** Body forms are the duplication: `text` 493,827 B, `rtf` 103,232 B, `html` 91,434 B,
+  `derived.html` 54,308 B. A `.msg` is 79% duplicated, a `.pst` 46%, the mbox 37%, an `.eml` 2%.
+  `transport_headers` is 173,972 B, 10% of the output, none of it in the Markdown; of the
+  subjects' 8,988 B, 2,901 B are.
+- **onenote.** Run text 2,487 B (2,294 duplicated), image `ocr_text` 472 B (none), authors 134 B
+  (none), filenames 106 B (42), ink alternatives 79 B (8), titles 44 B (all), alt text 38 B
+  (all), run links 38 B (all), tag labels 19 B (9), and LaTeX 3 B (all). The run text missing,
+  193 B, is every title's date and time paragraphs; the `ocr_text` is in two images that carry
+  no alt text. Media written over mail and onenote: 8.7 MB.
+
+## Over ~/docs, 2026-11-12
+
+The first measurement ran the same spikes over every file in the retired ~/docs pool as it stood
+on 2026-11-12, with `find ~/docs` in place of the format directories. The run reproduced byte for
+byte.
 
 | Tool | Read | Output | Markdown | Structured text | Duplicated | Share |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |

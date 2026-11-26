@@ -15,8 +15,9 @@ when:
 - **final, 2026-11-23**, reran four measurements against the releases the hardening and
   mail-hardening tasks cut: ["Identity"](#identity), on a3d861a; the mail bench
   (["docproc-mail: the findings"](#docproc-mail-the-findings)), against tools/mail/v0.1.4's
-  release archive; and ["The ~/docs run"](#the-docs-run) and
-  ["Failures by class"](#failures-by-class), on `b48ee124f6c8`. The two commits hold the same
+  release archive; and a ~/docs run and its failures by class, on `b48ee124f6c8`, which
+  ["The docs-corpus v0.2.0 run"](#the-docs-corpus-v020-run) and
+  ["Failures by class"](#failures-by-class) have since replaced. The two commits hold the same
   code and differ only in docs and context. That code is the release candidate, tagged v0.4.2,
   `storage/v0.1.1`, `postgres/v0.1.1`, and `tools/onenote/v0.1.2`, then cmd/docproc/v0.2.2. The
   storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
@@ -24,14 +25,19 @@ when:
 
 **Later measurements.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
 pdftotext, the change v0.8.0 makes to a PDF page's text. The docproc-coverage goal's
-pdf-text-padding task measured it on 2026-11-25. ["docproc-ooxml's memory
+pdf-text-padding task measured it on 2026-11-25 over ~/docs, and the corpus.docs goal's baseline
+task reran it over docs-corpus v0.2.0 on 2026-11-26. ["docproc-ooxml's memory
 floor"](#docproc-ooxmls-memory-floor) measures the tool's address-space floor on x64 and arm64 on
 GitHub's runners; the docproc-coverage goal's office-and-mail task measured it on 2026-11-25.
 ["The office-and-mail ~/docs run"](#the-office-and-mail-docs-run) runs the same task's build
 over ~/docs, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and tools/mail/v0.2.0.
 
-**The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
-v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
+**The kept run.** The corpus.docs goal's baseline task ran docproc v0.9.0 over docs-corpus
+v0.2.0, run `01a218c9-8847-7ec5-b98e-cf5803c6a989`, kept at
+`~/runs/docs-corpus/baseline/v0.2.0/docproc`; ["The docs-corpus v0.2.0
+run"](#the-docs-corpus-v020-run) and ["Failures by class"](#failures-by-class) report it, and
+docs-corpus's [baseline page](https://github.com/standards-lab/docs-corpus/blob/main/docs/baseline.md)
+records it whole.
 
 **What `final` didn't rerun.** Word error rate, the bombs, peak memory, and the office and
 OneNote benches were outside the `final` task's scope, which reran the measurements the hardened
@@ -64,6 +70,9 @@ the code between those builds and the releases `final` measured show what has ch
   weren't measured again.
 
 ## PDF pages in shared gs processes
+
+Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-measurement-reruns
+backlog goal.
 
 `document.Preparer.Images` runs a PDF's pages through shared gs processes: at concurrency C, lane
 k takes pages k, k+C, k+2C, and so on, up to `ImagesRequest.PagesPerProcess` pages a process, with
@@ -160,6 +169,9 @@ The rows' full paths are `~/docs/pdf/edge/encrypted/simple-open-password.pdf`,
 `tables-033c1efd2c0e15b829f9e9164f0e7bc1fecf_pg5_pg1.pdf`.
 
 ### Identity
+
+Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-measurement-reruns
+backlog goal.
 
 v1.ai.processing's final task measured it again on 2026-11-23, on a3d861a, the release candidate
 that is tagged v0.4.2 and then cmd/docproc/v0.2.2. The harness is the one [the Recipe](#recipe)
@@ -590,171 +602,93 @@ multiple: 52.6 MiB at most on the scale store in both releases, whose largest is
 Not run: the three glibc rows of the mail bench, since no glibc build is released, and the
 onenote content table, all of whose fields are cut.
 
-## The ~/docs run
+## The docs-corpus v0.2.0 run
 
-Acceptance ran it on 2026-11-19, from 19:11:55 to 19:14:27 UTC, on docproc at
-`96a9cdbe35d179e636e27ff7f85844489f48f8cf`, the HEAD of `acceptance`, whose manifest read the
-command as `v0.1.1-0.20261119190539-96a9cdbe35d1+dirty`; that run directory no longer exists. The
-`final` task ran it again on 2026-11-23, from 14:53:33 to 14:56:04 UTC, on the same laptop: Intel
-Core Ultra 9 185H, 22 logical CPUs, 32 GB, Linux 7.2.15-1-omarchy, the run's output on btrfs. It
-measured docproc at `b48ee124f6c8176a0d37833b45d5852479a6e2dc`, the release candidate that is
-tagged v0.4.2 and then cmd/docproc/v0.2.2; the manifest reads the command as
-`v0.2.2-0.20261123145216-b48ee124f6c8` and the library as `(devel)`, cmd/docproc reaching the
-base module through its temporary replace.
+The corpus.docs goal's baseline task ran docproc v0.9.0, through cmd/docproc v0.2.7, over
+docs-corpus v0.2.0's 299 files on 2026-11-26, from 16:56:30 to 16:58:34 UTC, on the laptop the
+page's opening names. Its run id is `01a218c9-8847-7ec5-b98e-cf5803c6a989`. docs-corpus's
+[baseline page](https://github.com/standards-lab/docs-corpus/blob/main/docs/baseline.md), "v0.2.0",
+records the run: its machine, configuration, invocation, tools, and outcomes by format area. This
+section gives what docproc's acceptance reads from it.
 
-**The run is kept** at `~/runs/docproc/final`, outside any repository, for v1.ai.inference's
-acceptance to read. Its run id is `01a208e5-e581-7b95-b43a-0f91f8d3b40e`: the manifest and record
-are at `~/runs/docproc/final/runs/01a208e5-e581-7b95-b43a-0f91f8d3b40e/`, and the report at
-`report/index.html` beside them.
+**The run is kept** at `~/runs/docs-corpus/baseline/v0.2.0/docproc`, outside any repository, with
+the binaries that ran in `~/runs/docs-corpus/baseline/v0.2.0/bin`: cmd/docproc v0.2.7 from the
+module proxy and the `tools/ooxml/v0.2.0`, `tools/mail/v0.2.0`, and `tools/onenote/v0.1.2`
+releases' linux-x64 archives. The manifest and record are at
+`~/runs/docs-corpus/baseline/v0.2.0/docproc/runs/01a218c9-8847-7ec5-b98e-cf5803c6a989/`; the
+manifest reads the command as `v0.2.7` and the library as `v0.9.0`. Every bound was its starting
+value, and the workers were the default, 22.
 
-cmd/docproc was built with `GOWORK=off go build` in `cmd/docproc`, without `-race`, as
-acceptance's was. Acceptance built the three tools from its checkout with `mise -C tools/<tool>
-run publish`; this run took the two released tools from their releases and built
-docproc-onenote by its release recipe:
+The run exited 0 with nothing on stderr, in **123.5 s** at 22 workers. The stage table wired all
+ten routes. The corpus is not ~/docs's 592 files, so its counts aren't set beside the earlier
+runs'. By route: document 62 prepared, 3 encrypted, 1 failed; office 34 prepared, 1 seen, 1
+encrypted, 1 failed, 1 quarantined; vision-converted 7 prepared, 2 failed; vision 2; nested 19;
+onenote 6 prepared, 1 encrypted; archive 6 prepared, 1 encrypted, 2 quarantined; audio 34; video
+9; text 95 and 6 seen; unrouted 5 no processor yet; 299 in all. The record holds 805 part events,
+6,068 output lines, and 85 warnings. Its "failed parts 5" are the failures in ["Failures by
+class"](#failures-by-class).
 
-- **docproc-ooxml and docproc-mail**: each release's linux-x64 archive, downloaded with
-  `gh release download tools/<tool>/v<version> -R standards-lab/docproc`, matched the release's
-  `SHA256SUMS`.
-- **docproc-onenote**: `tools/pack.sh onenote 0.1.2` in the tool's mise environment, the step the
-  release workflow runs on each runner, which builds with the tool's `publish` task and refuses a
-  binary whose `--version` isn't 0.1.2.
+**The slowest inputs** were the CFR volume, 118.9 s; the Stella Maberly scan, 62.8 s; a 1080p
+video, `video/dvids-ghosts-in-the-machine/ghosts-in-the-machine-1920x1080.mp4`, 26.0 s; the
+audiobook, 25.1 s; and `pdf/born-digital/dodm-5200-01.pdf`, 24.0 s.
 
-| Tool | Archive SHA-256 | Binary SHA-256 | `--version` |
-| --- | --- | --- | --- |
-| docproc-ooxml | `c318000d8bacaf6a32786d439c67f9ccf56befed8afbf58fd7f91b729160be0d` | `f5853e86f0da277fc1ca6947a3ef19fed8e4bd011f6b3bb0858ab4d08c2abed2` | 0.1.2, schema 2 |
-| docproc-mail | `f89828a1b10923ffec5d5437dac0b82776928006ae020b2cc50ab7f9db94804d` | `ba7d06e5ee463d30682679a6f9fcb5ee3a95ba67f920b4230bdaf0001fcfea47` | 0.1.4, schema 2 |
-| docproc-onenote | `e9ff3d85823e5abd416c0fdcee2625c5ae63f6d6b99054ceee620ce5bd4fdb9d`, built | `bb044b1f2d1608eb157fa952f07373bc04282cd6f266006130a7ee813eccf9f8` | 0.1.2, schema 2 |
+**The CFR volume**, `pdf/large/cfr-2024-title32-vol1.pdf`, 915 pages: prepared with 1,824 outputs,
+as in the ~/docs runs.
 
-The three binaries and cmd/docproc were put first on PATH, as acceptance put its builds. Every
-`DOCPROC_` variable was unset, mise's DSN and S3 ones among them, so every bound was its starting
-value, and the workers were the default, 22. The command was `docproc run ~/docs --out
-~/runs/docproc/final`, then `docproc report ~/runs/docproc/final`.
-
-The corpus is `~/docs`: 592 files of 1,740,329,401 bytes, MANIFEST.json dated 2026-11-06. Its
-listing, every file's and directory's path, size, and modification time, was taken before and
-after the run and compared with `cmp`: identical, so nothing was added, removed, or modified. No
-directory's own modification time changed either, where acceptance's run changed five, those
-where a PDF's page processes worked: since v0.4.1 every exec-runner run works in a `TMPDIR` of its
-own under the host's (["gs's temporary files"](#gss-temporary-files)).
-
-| Tool | Acceptance (2026-11-19) | This run | From |
-| --- | --- | --- | --- |
-| gs | 10.08.0 | 10.08.0 | /usr/bin/gs |
-| qpdf | 12.4.2 | 12.4.2 | /usr/bin/qpdf |
-| pdfdetach | 26.10.0 | 26.10.0 | /usr/bin/pdfdetach |
-| magick | 7.1.2-34 Q16-HDRI | 7.1.2-34 Q16-HDRI | /usr/bin/magick |
-| soffice | LibreOffice 26.8.2.2, in `gotenberg/gotenberg:9.1.0-libreoffice@sha256:4ff340bb7b0753e7d037ceb75a08b09c3a9aebd0e6484df9516ec29ec31074ff` | LibreOffice 26.8.2.2 | `gotenberg/gotenberg:9.9.3-libreoffice@sha256:d7c238a1b1f5726c0e82e5838b2b5acbbead95a4f4a367c6ffa05c2dc20485f6`, in its container |
-| docproc-ooxml | 0.1.1, tools/ooxml/.state/publish | 0.1.2 | the tools/ooxml/v0.1.2 release |
-| docproc-mail | 0.1.2, tools/mail/.state/publish | 0.1.4 | the tools/mail/v0.1.4 release |
-| docproc-onenote | 0.1.0, tools/onenote/.state/publish | 0.1.2 | `tools/pack.sh onenote 0.1.2` |
-| 7zz | 26.06 | 26.06 | mise, `github:ip7z/7zip` |
-| ffmpeg, ffprobe | n9.0.2 | n9.0.2 | /usr/bin |
-
-The stage table runs soffice alone in a container; ffmpeg and ffprobe run on the host, so the new
-default `audio.FFmpegImage`, `linuxserver/ffmpeg:9.0.2-cli-ls90`, ran in neither run.
-
-The run exited 0 with nothing on stderr, in **150.9 s** at 22 workers, against acceptance's
-152.7 s. The stage table wired all ten routes. The counts:
-
-| Outcome | Acceptance (2026-11-19) | This run |
-| --- | --- | --- |
-| prepared | 508 | 507 |
-| seen | 17 | 18 |
-| no processor yet | 51 | 51 |
-| encrypted | 6 | 6 |
-| failed | 1 | 1 |
-| read elsewhere | 9 | 9 |
-| total | 592 | 592 |
-| Wall time | 152.7 s | 150.9 s |
-
-By route: document 61 prepared, 2 seen, 3 encrypted, 1 failed; office 104 prepared, 2 seen, 10 no
-processor yet, 1 encrypted; vision-converted 20; vision 9 and 1 seen; nested 71 and 1 seen;
-onenote 16 prepared, 9 read elsewhere, 1 encrypted; archive 7 prepared, 1 seen, 1 encrypted,
-where acceptance's was 8 and 1 encrypted; audio 41; video 9; text 169 and 11 seen; unrouted 41 no
-processor yet. The record holds 971 part events, 379 of them below an input, 11,188 output lines,
-and 29 warnings, as acceptance's did. Its "failed parts 3" is the 3 failures in "Failures by
-class", where acceptance's 138 counted LargeData.one's docx and its 134 seen replays.
-
-One input moved:
-
-- **mixed-bundle.zip** (`archive/`) is seen, where acceptance's run prepared it. Its bytes are
-  also zip-in-zip.zip's entry `inner.zip`, and the first of the two to reach the index is
-  prepared, the other seen; at 22 workers which comes first varies. In this run zip-in-zip.zip
-  prepared `inner.zip` with its 6 children, and mixed-bundle.zip replayed them. Run alone at one
-  worker, mixed-bundle.zip then zip-in-zip.zip prepared both inputs; the reverse order left
-  mixed-bundle.zip seen. No release changed it: dispatch's indexing is unchanged since acceptance.
-
-The releases since acceptance moved no other input:
-
-- **LargeData.one's docx** (`onenote/large/`), "testing - large.docx", an XPS package, is unrouted
-  with "no processor yet" at all 135 of its occurrences, where docproc-ooxml refused it, exit 3,
-  in acceptance's run, and its 134 other occurrences replayed the failure. Since v0.4.1 route
-  sends an XPS package to `Unrouted` whatever its name (eec6cb5). The section itself is prepared
-  in both runs.
-- **digitally-signed-3d-portfolio.pdf** (`pdf/edge/signed/`) is prepared in both runs; since
-  v0.4.1 its page is the portfolio's own cover, not its first embedded document's
-  (["Identity"](#identity)).
-- **compacted-syntax.pdf** (`pdf/edge/malformed/`) is prepared, with one image and one text, as in
-  acceptance's run, which first carried 831f865.
-- **docproc-mail v0.1.3 and v0.1.4** move no outcome: the nested route's counts and its 2 skipped
-  items are acceptance's.
-- **The soffice image** moves no outcome: LibreOffice is 26.8.2.2 in both images.
-
-**The slowest inputs** were the large OneNote sections, 143.6 s and 142.8 s, against acceptance's
-145.5 s and 145.3 s; the CFR volume, 136.6 s against 137.0 s; and the Stella Maberly scan, 113.9 s
-against 116.2 s.
-
-**The CFR volume**, `pdf/large/cfr-2024-title32-vol1.pdf`, 915 pages: prepared in 136.6 s with
-1,824 outputs, 915 page images, 908 texts, and 1 forms record, as in acceptance's run, in 137.0 s.
-
-**The audiobook**, `audio/long/librivox-stella-maberly.m4b`, 126,864,276 bytes: prepared in
-31.7 s with 607 outputs, 606 audio windows cut at silence and 1 record, as in acceptance's run, in
-37.7 s.
-
-`docproc report` exited 0 and wrote the report to
-`~/runs/docproc/final/runs/01a208e5-e581-7b95-b43a-0f91f8d3b40e/report/index.html`, with one page
-for each entry beside it, named by a 64-hex-digit hash. Acceptance's run id was
-`01a1f538-fc4f-7ecd-8573-17a54f77dada`.
+**The audiobook**, `audio/long/librivox-stella-maberly.m4b`: prepared with 607 outputs, as in the
+~/docs runs.
 
 ## Failures by class
 
-This table classes each failure in the `final` task's run's record by what stopped it, counting
-each part that failed once, beside acceptance's run:
+This table classes each failure in the docs-corpus v0.2.0 run's record by what stopped it,
+counting each part that failed once:
 
-| Class | Acceptance (2026-11-19) | This run |
-| --- | --- | --- |
-| The tool's own exit | 1, with 134 seen replays | 0 |
-| The tool's own signal | 0 | 0 |
-| The tool's time bound | 0 | 0 |
-| Output that doesn't parse | 1 | 1 |
-| The tool's in-band refusal of one item, a `skipped` line | 2 | 2 |
-| The 2 GiB memory bound | 0 | 0 |
-| The run's own classes, retried and unrecorded | 0 ("error inputs 0") | 0 ("error inputs 0") |
+| Class | Parts |
+| --- | --- |
+| The tool's own exit | 2 |
+| The tool's own signal | 0 |
+| The tool's time bound | 0 |
+| Output missing, or output that doesn't parse | 2 |
+| The tool's in-band refusal of one item, a `skipped` line | 1 |
+| The 2 GiB memory bound | 0 |
+| The run's own classes, retried and unrecorded | 0 ("error inputs 0") |
 
-"memory bound" appears in neither run's record, so no part failed by the 2 GiB memory bound.
+"memory bound" appears nowhere in the record, so no part failed by the 2 GiB memory bound.
 
 | Input | Part | Tool | Reason | Verdict |
 | --- | --- | --- | --- | --- |
+| `image/vector/truncated.svg` | `/` | magick | exit 1: unable to read image data | no fix: a correct failure |
+| `office/poi/clusterfuzz-testcase-minimized-POIXSSFFuzzer-5265527465181184.xlsx` | `/` | docproc-ooxml | refused: a malformed package, an entry's CRC32 doesn't match | no fix: a correct failure |
 | `pdf/edge/malformed/no-document-catalog.pdf` | `/` | gs, its page sizes | gs printed "Couldn't initialise file" and a count of 0 | no fix: a correct failure |
-| `email/pst/java-libpst/passworded.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
-| `email/pst/java-libpst/dist-list.pst` | `/message 2097188`, in Contacts | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
+| `image/formats/tiff/stella-maberly-3page.tif` | `/` | magick | exit 0, no PNG written | backlog: docproc's defect |
+| `email/pst/java-libpst/dist-list.pst` | `/message 2097188` | docproc-mail | skipped: Missing Sub-Node Tree on message | backlog |
 
+- **truncated.svg: no fix, a correct failure.** The file is the first 600 bytes of an SVG, which
+  the corpus's manifest generated to cover `check:svg-unreadable`; rsvg can't read it.
+- **The clusterfuzz .xlsx: no fix, a correct failure.** A fuzzer's minimized test case from
+  Apache POI; docproc-ooxml refuses the package because an entry's data doesn't match its CRC32.
 - **no-document-catalog.pdf: no fix, a correct failure.** The file has no document catalog, and
   gs can't open it. qpdf's form read (exit 2, no trailer dictionary) and pdfdetach's attachment
   list (exit 1, no catalog) are warnings on the same part.
-- **passworded.pst and dist-list.pst: backlog.** tools/mail/README.md's Limits documents it: an
-  item outlook-pst 1.2.0 can't open, such as a contact stored without a sub-node tree, is skipped.
-- **LargeData.one's docx left the table.** Acceptance's run counted it under the tool's own exit:
-  docproc-ooxml refused the XPS package named `.docx`. Since v0.4.1 it is unrouted, "no processor
-  yet", and XPS has no processor.
+- **stella-maberly-3page.tif: backlog, docproc's defect.** The TIFF's three pages carry the page
+  numbers 10, 11, and 12, which the corpus's manifest kept from the scan's pages. The picture
+  stage runs magick with `+adjoin` and `<stem>-%d.png`, and magick numbers the files by those
+  page numbers, `-10.png` to `-12.png`, so the stage finds none of the names it expects. The same
+  binary over the file alone fails the same way.
+- **dist-list.pst: backlog.** tools/mail/README.md's Limits documents it: an item outlook-pst
+  1.2.0 can't open, such as a contact stored without a sub-node tree, is skipped.
 
-No failure is new. The other 25 warnings are informational: 11 from the text stage, text decoded
-as windows-1252 and its replacement characters; 11 from docproc-mail, 1 attachment decoded
-lossily, 7 image sources that name no attachment, and 3 embedded messages outlook-pst doesn't
-open; and docproc-ooxml's 3 "text boxes not read". Acceptance's record held 29 warnings too, 24 of
-them informational by its count; that record is gone, so the difference of one isn't traced.
+The other 82 warnings are informational: 38 from the text stage, 26 texts decoded as
+windows-1252 and 12 holding its replacement characters; 42 from docproc-mail, 17 S/MIME parts
+not read, 8 image sources that name no attachment, 6 Date and 2 Received headers with no
+readable date, 3 text bodies and 2 attachments decoded lossily, 3 embedded messages outlook-pst
+doesn't open, and 1 rights-managed message; docproc-ooxml's 1 "SmartArt not read"; and
+docproc-onenote's 1 missing text-run style.
 
 ## Peak memory
+
+Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-measurement-reruns
+backlog goal.
 
 Acceptance measured it on 2026-11-19, on 96a9cdb, with its ~/docs run's tools: docproc-ooxml
 0.1.1, docproc-mail 0.1.2, and docproc-onenote 0.1.0, built from its checkout, and soffice in
@@ -890,6 +824,9 @@ free on the run's filesystem. No tool runs for either, since ZIP is read in Go, 
 
 ## Word error rate
 
+Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-measurement-reruns
+backlog goal.
+
 Acceptance measured it on 2026-11-19; the `final` task didn't measure it again. It ran on the
 Framework row, `http://framework:8001/v1` direct, model `audio`:
 google/gemma-4-E4B-it in BF16 on vLLM v0.34.0 ROCm, `max_model_len` 8192. Each window went
@@ -1000,14 +937,17 @@ This section compares the two ways docproc has read a PDF page's text. Before is
 txtwrite device as v0.7.0's `Ghostscript.Text` ran it, one gs process a page. After is poppler's
 pdftotext 26.10.0 as v0.8.0's `document.TextReader` runs it,
 `pdftotext -enc UTF-8 -f N -l N <pdf> -`, one run a page, with the form feed ending the page
-dropped. The pdf-text-padding task ran both on 2026-11-25, on the same laptop, over the copies in
-`~/docs` directly, outside docproc.
+dropped. The pdf-text-padding task ran both on 2026-11-25 over ~/docs. The corpus.docs goal's
+baseline task reran them on 2026-11-26, from 17:03:20 to 17:05:45 UTC, on the same laptop, over
+docs-corpus v0.2.0's copies directly, outside docproc, with the same gs and pdftotext; every
+figure but the times matched the first measurement's. The figures below are the rerun's, and its
+raw output is kept at `~/runs/docs-corpus/baseline/v0.2.0/pdf-page-text/`.
 
 ### Pages and measures
 
-The pages are `~/docs/pdf/scanned/olmocr-bench`'s six multi-column pages,
+The pages are docs-corpus v0.2.0's `pdf/scanned/olmocr-bench` six multi-column pages,
 `multi_column-*_pg1.pdf`, each a one-page PDF with a text layer, and the 915 pages of
-`~/docs/pdf/large/cfr-2024-title32-vol1.pdf`, the Code of Federal Regulations set in two columns.
+`pdf/large/cfr-2024-title32-vol1.pdf`, the Code of Federal Regulations set in two columns.
 
 - **Spaces** is the share of the text's characters that are spaces, and **longest run** the most
   spaces in a row.
@@ -1046,8 +986,8 @@ pdftotext, so gs's `3.161.3` and `mmol` are pdftotext's `3.1⫾1.3` and `␮mol`
 
 | cfr-2024-title32-vol1, 915 pages | Spaces | Longest run | Pages over 50% spaces | One run a page | One run, whole file |
 | --- | --- | --- | --- | --- | --- |
-| gs txtwrite | 50.4% | 245 | 310 | 34.1 s (32.7–34.1) | 8.2 s |
-| pdftotext | 12.8% | 1 | 0 | 12.1 s (11.7–12.7) | 1.1 s |
+| gs txtwrite | 50.4% | 245 | 310 | 33.6 s (32.3–33.7) | 8.2 s |
+| pdftotext | 12.8% | 1 | 0 | 12.2 s (11.7–12.7) | 1.1 s |
 
 pdftotext kept 508,719 of gs's 557,714 words, 91.2%, and missed none: every word not kept is in
 pdftotext's letters and digits, and the most frequent are hyphenated words' halves, `re`,
@@ -1062,21 +1002,21 @@ The whole-file run, one process for the 915 pages, is for context.
   from each in turn.
 - A word hyphenated at a line's end is joined, its hyphen dropped: `informa-` and `tion` read as
   `information`.
-- A right-to-left word the PDF's glyph runs split stays split: pdftotext reads
-  `~/docs/pdf/multilang/multilang-rtl.pdf`'s `العربية` as `العربي` and `ة`.
+- A right-to-left word the PDF's glyph runs split stays split: pdftotext read the retired ~/docs
+  pool's `pdf/multilang/multilang-rtl.pdf`'s `العربية` as `العربي` and `ة`.
 
 ### Recipe
 
-`python3 -I pagetext.py`, with gs, pdftotext, and pdfinfo on `PATH`, prints each olmocr-bench
-page's row, `|`-separated in the table's order, then cfr's two rows and its words kept. Run it
-three times; the figures other than time match each run. The whole-file times are of
+`python3 -I pagetext.py <docs-corpus checkout>`, with gs, pdftotext, and pdfinfo on `PATH`,
+prints each olmocr-bench page's row, `|`-separated in the table's order, then cfr's two rows and
+its words kept. Run it three times; the figures other than time match each run. The whole-file times are of
 `gs -q -dNOPAUSE -dBATCH -dSAFER -sDEVICE=txtwrite -sOutputFile=- <pdf>` and
 `pdftotext -enc UTF-8 <pdf> -`, stdout discarded.
 
 ```python
-import collections, glob, json, os, re, subprocess, time
+import collections, glob, json, os, re, subprocess, sys, time
 
-docs = os.path.expanduser("~/docs/pdf")
+docs = os.path.join(sys.argv[1], "pdf")
 
 
 def gs(pdf, n):
@@ -1143,6 +1083,9 @@ print(f"cfr words | {k}/{n}, {k / n:.1%} | {missing}")
 ```
 
 ## The office-and-mail ~/docs run
+
+Measured over the retired ~/docs pool; its rerun over docs-corpus is the corpus-measurement-reruns
+backlog goal.
 
 The docproc-coverage goal's office-and-mail task ran it on 2026-11-25, from 19:47:17 to 19:49:46
 local time (00:47:17 to 00:49:46 UTC on 2026-11-26), on the laptop of "The ~/docs run", to check

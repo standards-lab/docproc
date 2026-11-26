@@ -91,8 +91,8 @@ and order are fixed, with no times stored and one thread, so a rerun writes the 
 archives with 7zz 26.05 and 26.06 alike, and the xz and bzip2 streams with 26.06. The two
 encrypted 7z archives are the exception: 7zz draws their salt and IV at random, so a rerun writes
 them anew and their sums below change. Their password is `infected`, which no test gives.
-`~/docs`' archives aren't redistributable, so none is copied; the integration tier reads `~/docs`
-itself when the machine has it.
+The retired `~/docs` pool's archives weren't redistributable, so none was copied; no tier reads a
+corpus outside this directory.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |

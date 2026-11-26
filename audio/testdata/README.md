@@ -6,14 +6,14 @@ tests and dispatch's audio stage tests cut the fixtures, through the stand-in in
 which decodes a WAV to its own samples, and through both runners in the integration tier. Every
 file is committed and never generated in the check. The fixtures were built in
 spike-ai-pipeline-processing by `mise run fixtures:audio` (`scripts/fixtures-audio.sh`), from the
-test corpus at `~/docs`, checking each source against the SHA-256 the corpus's `MANIFEST.json`
-pins, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
+test corpus that was then at `~/docs`, checking each source against the SHA-256 the corpus's
+`MANIFEST.json` pinned, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
 `speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to its SHA-256 below.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
-| `speech.flac` | LibriSpeech dev-clean 2277-149896-0000 to 0003, through `~/docs` | CC BY 4.0 | 765404 | `d5b77b3875e42a1907834fb241a24bf85cf7c922bfd4ab59b86de6f05c4d084a` |
-| `speech.truth.txt` | the same utterances' LibriSpeech transcripts, through `~/docs` | CC BY 4.0 | 730 | `2902ea6452b2f29c53bbc2b5541fb036e449c5bdb17b5dc52b6d479c3e7457ea` |
+| `speech.flac` | LibriSpeech dev-clean 2277-149896-0000 to 0003, through the retired `~/docs` pool | CC BY 4.0 | 765404 | `d5b77b3875e42a1907834fb241a24bf85cf7c922bfd4ab59b86de6f05c4d084a` |
+| `speech.truth.txt` | the same utterances' LibriSpeech transcripts, through the retired `~/docs` pool | CC BY 4.0 | 730 | `2902ea6452b2f29c53bbc2b5541fb036e449c5bdb17b5dc52b6d479c3e7457ea` |
 | `speech-scenes.mkv` | `speech.flac`'s stream, beside a generated video | CC BY 4.0; the video generated | 848871 | `a6b6610b82b8a152b34caa19da34c32cb15e4ec631332ab08b10a5592ddb1164` |
 | `speech-scenes.truth.json` | `speech-scenes.mkv`'s settings, with `speech.truth.txt` | CC BY 4.0 | 2824 | `d67aaf05e509776fc19415ac259c6a410b5c03ede554481826d5836ea9ef0cf4` |
 | `speech-gain.wav` | `speech.flac`'s utterances, with generated pink noise | CC BY 4.0 | 2407404 | `d98a6e3264f104a5ca09f3e160b6f0770fd40ee93f11acc2bdb63129fc6840e6` |

@@ -52,7 +52,8 @@ the tools part to the system tools under `tools/`.
 - `architecture/standards/go-elemental/principles/tests-and-docs.md`: the unit tier over
   `internal/tooltest`'s stand-in and the tools' committed goldens read in place, the real tools
   behind `-tags integration`, `dispatch/dispatchtest`'s conformance suites run by every store,
-  ~/docs read by the acceptance task alone, and the doc.go inventory of every package.
+  a docs-corpus checkout read by the acceptance runs alone, and the doc.go inventory of every
+  package.
 - `architecture/standards/go-elemental/principles/release-and-ci.md`: the check, currency, the
   root `go.work`, a changelog per module, and `tools/go.mod`, which keeps the tools out of the
   library's module zip.

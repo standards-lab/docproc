@@ -1,8 +1,8 @@
 // Package tooltest holds the unit tier's stand-in tool, which every test package that runs a
 // tool runs in place of the real program, and the one helper that reads the system tools' data
-// under tools/ in place. No unit test runs a real program or reads ~/docs: a package's tests
-// build their Tools over stand-in links, and the integration tier, under the integration build
-// tag, runs the real tools.
+// under tools/ in place. No unit test runs a real program or reads a docs-corpus checkout: a
+// package's tests build their Tools over stand-in links, and the integration tier, under the
+// integration build tag, runs the real tools.
 //
 // A stand-in is the test binary itself, linked under a program's name. Link makes the link and
 // writes the stand-in's settings into a file the link names, beside it, so a run of the link finds
