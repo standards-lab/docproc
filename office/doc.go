@@ -42,12 +42,12 @@
 // entry names its type, and a text, spreadsheet, or presentation package or template converts to
 // docx, xlsx, or pptx, a drawing or drawing template to pptx through Impress's import filter,
 // impress8, each page a slide, ConvertedFrom naming the type's extension, "odt", "ott", "ods",
-// "ots", "odp", "otp", "odg", or "otg". Any other type, a formula, chart, database, or image among
-// them, is an error matching dispatch.ErrNoProcessor naming the type. A package whose
-// META-INF/manifest.xml holds an encryption-data element is an error matching
-// dispatch.ErrEncrypted, and one whose ZIP or manifest can't be read an error matching
-// dispatch.ErrRefused; soffice runs for neither. A flat ODF document, plain XML, routes as text and
-// never reaches office.
+// "ots", "odp", "otp", "odg", or "otg". A package of any type whose META-INF/manifest.xml holds an
+// encryption-data element is an error matching dispatch.ErrEncrypted, and one whose ZIP or
+// manifest can't be read an error matching dispatch.ErrRefused; soffice runs for neither. An
+// unencrypted package of any other type, a formula, chart, database, or image among them, is an
+// error matching dispatch.ErrNoProcessor naming the type. A flat ODF document, plain XML, routes as
+// text and never reaches office.
 //
 // The picture package's LibreOfficeSpec declares
 // soffice, minimum 24.2, and its LibreOfficeImage is the default image the container runner runs

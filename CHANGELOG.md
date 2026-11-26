@@ -36,11 +36,11 @@ don't hash it. The module still requires golang.org/x/text alone.
 
 ### Changed
 
-- An ODF package of any other type, a formula, chart, database, or image among them, still ends
-  with no processor yet, the error now office's, matching `dispatch.ErrNoProcessor` and naming
-  the package's type. An ODF package whose manifest holds encryption data ends with an error
-  matching `dispatch.ErrEncrypted`, and one whose ZIP or manifest can't be read with one matching
-  `dispatch.ErrRefused`, before LibreOffice runs.
+- An unencrypted ODF package of any other type, a formula, chart, database, or image among them,
+  still ends with no processor yet, the error now office's, matching `dispatch.ErrNoProcessor` and
+  naming the package's type. An ODF package of any type whose manifest holds encryption data ends
+  with an error matching `dispatch.ErrEncrypted`, and one whose ZIP or manifest can't be read with
+  one matching `dispatch.ErrRefused`, before LibreOffice runs.
 - The office stage's identity hashes its own version, 2, so an index that holds ODF, WordPerfect,
   or `.xlsb` parts as no processor yet prepares the office route's parts again, and no other
   stage's; the stage adapters' version stays 7.

@@ -1,8 +1,9 @@
 # Limits
 
-An ODF formula, chart, database, or image package (`.odf`, `.odc`, `.odb`, `.odi`), and any ODF
-package other than a text, spreadsheet, presentation, or drawing document or template, routes to
-office, whose stage ends it with no processor yet; ISO routes to no stage. docproc runs no virus
+An unencrypted ODF formula, chart, database, or image package (`.odf`, `.odc`, `.odb`, `.odi`),
+and any unencrypted ODF package other than a text, spreadsheet, presentation, or drawing document
+or template, routes to office, whose stage ends it with no processor yet, and an encrypted one
+ends Encrypted; ISO routes to no stage. docproc runs no virus
 scan and flags no macro in an OLE2 file. Content no processor claims is read as text, whatever its
 name, when its first 4096 bytes hold no NUL byte, and is unrouted when they do. So HTML and an
 EPUB's entries are read as raw text, with no structure, and UTF-16 without a byte order mark, which

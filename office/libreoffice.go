@@ -75,16 +75,16 @@ func odfFormat(path string) (conversion, error) {
 	if err != nil {
 		return conversion{}, odfUnreadable(err)
 	}
-	conv, ok := odfFormats[mediaType]
-	if !ok {
-		return conversion{}, fmt.Errorf("office: %w for an ODF package of type %s", dispatch.ErrNoProcessor, mediaType)
-	}
 	encrypted, err := odfEncrypted(z)
 	if err != nil {
 		return conversion{}, odfUnreadable(err)
 	}
 	if encrypted {
 		return conversion{}, fmt.Errorf("office: an ODF package whose manifest holds encryption data: %w", dispatch.ErrEncrypted)
+	}
+	conv, ok := odfFormats[mediaType]
+	if !ok {
+		return conversion{}, fmt.Errorf("office: %w for an ODF package of type %s", dispatch.ErrNoProcessor, mediaType)
 	}
 	return conv, nil
 }
