@@ -665,6 +665,7 @@ fn lossy(raw: &[u8], what: &str, notes: &mut Vec<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tnef::tests::{attribute, embedding, list, stream, variable_property};
 
     fn notes(raw: &str) -> Vec<(String, String)> {
         let parsed = parser().parse(raw.as_bytes()).unwrap();
@@ -715,21 +716,6 @@ mod tests {
         }
     }
 
-    fn tnef_stream(attributes: &[(u8, u32, &[u8])]) -> Vec<u8> {
-        let mut bytes = vec![0x78, 0x9F, 0x3E, 0x22, 0, 0];
-        for (level, id, data) in attributes {
-            bytes.push(*level);
-            bytes.extend_from_slice(&id.to_le_bytes());
-            bytes.extend_from_slice(&u32::try_from(data.len()).unwrap().to_le_bytes());
-            bytes.extend_from_slice(data);
-            let sum = data
-                .iter()
-                .fold(0u16, |sum, b| sum.wrapping_add(u16::from(*b)));
-            bytes.extend_from_slice(&sum.to_le_bytes());
-        }
-        bytes
-    }
-
     fn base64(bytes: &[u8]) -> String {
         const DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
         let mut out = String::new();
@@ -766,17 +752,12 @@ mod tests {
             compressed.extend_from_slice(&word.to_le_bytes());
         }
         compressed.extend_from_slice(rtf);
-        let mut props = 1u32.to_le_bytes().to_vec();
-        props.extend_from_slice(&0x1009_0102u32.to_le_bytes());
-        props.extend_from_slice(&1u32.to_le_bytes());
-        props.extend_from_slice(&u32::try_from(compressed.len()).unwrap().to_le_bytes());
-        compressed.resize(compressed.len().next_multiple_of(4), 0);
-        props.extend_from_slice(&compressed);
-        let stream = tnef_stream(&[
-            (1, 0x0006_9003, &props),
-            (2, 0x0006_9002, &[0; 14]),
-            (2, 0x0001_8010, b"notes.txt\0"),
-            (2, 0x0006_800F, b"Notes."),
+        let props = list(&[variable_property(0x1009_0102, &compressed)]);
+        let stream = stream(&[
+            attribute(1, 0x0006_9003, &props),
+            attribute(2, 0x0006_9002, &[0; 14]),
+            attribute(2, 0x0001_8010, b"notes.txt\0"),
+            attribute(2, 0x0006_800F, b"Notes."),
         ]);
         let raw = with_part(&tnef_part(&stream));
         let parsed = parser().parse(raw.as_bytes()).unwrap();
@@ -800,36 +781,14 @@ mod tests {
         assert_eq!(read.message.attachments.len(), 1);
     }
 
-    fn string8(property: u32, text: &[u8]) -> Vec<u8> {
-        let mut bytes = property.to_le_bytes().to_vec();
-        bytes.extend_from_slice(&1u32.to_le_bytes());
-        bytes.extend_from_slice(&u32::try_from(text.len()).unwrap().to_le_bytes());
-        bytes.extend_from_slice(text);
-        bytes.resize(bytes.len().next_multiple_of(4), 0);
-        bytes
-    }
-
     #[test]
     fn a_tnef_attachments_embedded_message_is_nested_under_it() {
-        let inner_props = [
-            2u32.to_le_bytes().to_vec(),
-            string8(0x0037_001E, b"Inner\0"),
-            string8(0x1000_001E, b"Inner text.\0"),
-        ]
-        .concat();
-        let inner = tnef_stream(&[(1, 0x0006_9003, &inner_props)]);
-        let iid = [
-            0x07, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x46,
-        ];
-        let props = [
-            2u32.to_le_bytes().to_vec(),
-            0x3705_0003u32.to_le_bytes().to_vec(),
-            5u32.to_le_bytes().to_vec(),
-            string8(0x3701_000D, &[&iid[..], &inner].concat()),
-        ]
-        .concat();
-        let stream = tnef_stream(&[(2, 0x0006_9002, &[0; 14]), (2, 0x0006_9005, &props)]);
+        let inner_props = list(&[
+            variable_property(0x0037_001E, b"Inner\0"),
+            variable_property(0x1000_001E, b"Inner text.\0"),
+        ]);
+        let inner = stream(&[attribute(1, 0x0006_9003, &inner_props)]);
+        let stream = embedding(&inner);
         let raw = with_part(&tnef_part(&stream));
         let parsed = parser().parse(raw.as_bytes()).unwrap();
         let read = message(&parsed.root(), &mut Media::new(None)).unwrap();

@@ -369,10 +369,10 @@ impl<'a> Input<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
 
-    fn attribute(level: u8, id: u32, data: &[u8]) -> Vec<u8> {
+    pub fn attribute(level: u8, id: u32, data: &[u8]) -> Vec<u8> {
         let sum = data
             .iter()
             .fold(0u16, |sum, byte| sum.wrapping_add(u16::from(*byte)));
@@ -388,7 +388,7 @@ mod tests {
         bytes
     }
 
-    fn stream(attributes: &[Vec<u8>]) -> Vec<u8> {
+    pub fn stream(attributes: &[Vec<u8>]) -> Vec<u8> {
         let mut bytes = SIGNATURE.to_le_bytes().to_vec();
         bytes.extend_from_slice(&[1, 0]);
         for attribute in attributes {
@@ -403,7 +403,7 @@ mod tests {
         bytes
     }
 
-    fn variable_property(property: u32, value: &[u8]) -> Vec<u8> {
+    pub fn variable_property(property: u32, value: &[u8]) -> Vec<u8> {
         let mut bytes = property.to_le_bytes().to_vec();
         bytes.extend_from_slice(&1u32.to_le_bytes());
         bytes.extend_from_slice(&u32::try_from(value.len()).unwrap().to_le_bytes());
@@ -411,7 +411,7 @@ mod tests {
         bytes
     }
 
-    fn list(properties: &[Vec<u8>]) -> Vec<u8> {
+    pub fn list(properties: &[Vec<u8>]) -> Vec<u8> {
         let mut bytes = u32::try_from(properties.len())
             .unwrap()
             .to_le_bytes()
@@ -539,7 +539,7 @@ mod tests {
         variable_property(0x3701_000D, &[&IID_IMESSAGE[..], tnef].concat())
     }
 
-    fn embedding(inner: &[u8]) -> Vec<u8> {
+    pub fn embedding(inner: &[u8]) -> Vec<u8> {
         let method = [0x3705_0003u32.to_le_bytes(), 5u32.to_le_bytes()].concat();
         stream(&[
             attribute(2, ATT_ATTACH_REND_DATA, &[0; 14]),
