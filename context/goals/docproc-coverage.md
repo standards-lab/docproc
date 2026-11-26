@@ -1,6 +1,6 @@
 # goal · docproc-coverage
 
-- **State:** idle
+- **State:** handoff
 - **Task:** none
 - **Branch:** none
 
@@ -92,6 +92,18 @@ One-way for the tags, which reach corpus.docs and outside callers; two-way for t
 `tools/ooxml/v0.2.0`, `tools/mail/v0.2.0`, then `v0.9.0`, then the `-require` PR's
 `storage/v0.1.7`, `postgres/v0.1.7`, `cmd/docproc/v0.2.7`.
 
+## Handoff
+
+Next move: sync standards-lab, then delete the record. Every Release tag is released (2026-11-25):
+tools/ooxml/v0.2.0, tools/mail/v0.2.0, v0.9.0, storage/v0.1.7, postgres/v0.1.7, and
+cmd/docproc/v0.2.7. standards-lab was held by v1.ai.inference's `sync-v1.ai.inference` branch, so
+the coordinator edits wait: on `sync-docproc-coverage`, the three docproc-backlog entries,
+docproc-coverage out of `active`, its goal file deleted, and the docs-corpus edit landed as a note
+on corpus.docs' docproc-final task in roadmap/corpus.docs.toml (docs-corpus is corpus.docs' root).
+The corpus.docs session (docproc-final-corpus-plan) and the docinfer session (docinfer-67) were told
+the final state by message, as the architect asked at accept. capstone.data-intelligence is not
+staged: the architect holds it until every active goal completes.
+
 ## Decisions
 
 - text-encoding-keys: held MimeKit at 4.18.2: 5.0.0 declined, PstBuilder.Eml 1.3.0 is built on
@@ -130,10 +142,6 @@ One-way for the tags, which reach corpus.docs and outside callers; two-way for t
   bodies and attachments are read; that docproc-ooxml's Markdown holds text boxes, a pptx's
   comments, and an xlsx's notes and threaded comments; and that exec-4's check:polyglot can
   reopen. Intermediate releases go untold.
-- docinfer · once docproc-coverage syncs, tell v1.ai.inference (docinfer's goal record) docproc's
-  final state: the tags v0.9.0, storage/v0.1.7, postgres/v0.1.7, cmd/docproc/v0.2.7,
-  tools/ooxml/v0.2.0, and tools/mail/v0.2.0, the run-directory schema they write, and the coverage
-  the docs-corpus edit names.
 - coordinator · roadmap/docproc-backlog.toml: a text retry for a part whose stage fails at
   runtime, such as a corrupt PDF.
 - coordinator · roadmap/docproc-backlog.toml: control over line-end hyphens in PDF page text
