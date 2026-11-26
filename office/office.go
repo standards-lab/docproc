@@ -40,7 +40,8 @@ type Config struct {
 	Office *tool.Tool
 	// Pictures is the picture package's Converter, over LibreOffice's soffice and ImageMagick's
 	// magick. Its LibreOffice runner converts legacy documents, RTFs, WordPerfect documents, Excel
-	// binary workbooks, and ODF packages to OOXML, and its ConvertBatch converts a document's TIFF, EMF, and WMF pictures to PNG. It is required.
+	// binary workbooks, and ODF packages to OOXML, and its ConvertBatch converts a document's TIFF,
+	// EMF, and WMF pictures to PNG. It is required.
 	Pictures *picture.Converter
 }
 
@@ -81,8 +82,8 @@ type Request struct {
 	// required.
 	Path string `json:"-"`
 	// Dir is the working directory, which the caller owns: the media directory is made in it and
-	// left, and a LibreOffice conversion is made and removed in it. It is
-	// required; an empty Dir is refused rather than taken as the system's temporary directory.
+	// left, and a LibreOffice conversion is made and removed in it. It is required; an empty Dir
+	// is refused rather than taken as the system's temporary directory.
 	Dir string `json:"-"`
 	// Name is the document's file name, or a path ending in it; only its extension is read, never
 	// Path's. A document with the OLE2 compound-file signature whose Name has a legacy extension,

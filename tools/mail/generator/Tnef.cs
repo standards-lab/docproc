@@ -15,9 +15,9 @@ namespace Docproc.Mail.Generator;
 /// Message-Id and its boundary are fixed, its line breaks CRLF, and the stream base64-encoded as
 /// an attachment named winmail.dat, under the content type layout.json gives, beside a text/plain
 /// part when it gives one. The truth holds ConvertToMessage's HTML, text and RTF bodies, the RTF
-/// decompressed, and its attachments, less those bodies, each with its filename, media type, Content-Id, size and
-/// SHA-256, and what TnefReader finds wrong with the stream; a stream TnefPart can't read holds
-/// its exception's message.
+/// decompressed, and its attachments, less those bodies, each with its filename, media type,
+/// Content-Id, size and SHA-256, and what TnefReader finds wrong with the stream; a stream
+/// TnefPart can't read holds its exception's message.
 /// </summary>
 public static class Tnef
 {
