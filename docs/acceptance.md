@@ -1094,8 +1094,8 @@ kind docproc-ooxml 0.2.0 reads. It measured docproc at `f610dec6bf66cf6589905a72
 the HEAD of `office-and-mail`, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and
 tools/mail/v0.2.0. The manifest reads the command as
 `v0.2.7-0.20261126004628-f610dec6bf66+dirty`, the tree dirty by the goal record alone, and the
-library as `(devel)`. The run is kept at `~/runs/docproc/office-and-mail`, run id
-`01a21552-2e8b-751f-9535-bc1dfe73fbd6`.
+library as `(devel)`. Its run id was `01a21552-2e8b-751f-9535-bc1dfe73fbd6`; the run is not
+kept, removed with the ~/docs pool.
 
 cmd/docproc was built with `go build` in `cmd/docproc` under the root `go.work`, so it ran this
 checkout's base module rather than the v0.8.0 its `go.mod` requires; `GOWORK=off` would have
@@ -1111,8 +1111,8 @@ tools/<tool> run publish`, as acceptance built its own:
 The three binaries and cmd/docproc were put first on PATH. Every `DOCPROC_` variable, mise's DSN
 and S3 ones among them, was removed from the command's environment with `env -u`, so every bound
 was its starting value, and the workers were the default, 22. The command was `docproc run ~/docs
---out ~/runs/docproc/office-and-mail`, then `docproc report ~/runs/docproc/office-and-mail`, both
-exiting 0 with nothing on stderr.
+--out ~/runs/docproc/office-and-mail`, then `docproc report ~/runs/docproc/office-and-mail`; both
+exited 0 with nothing on stderr.
 
 **LibreOffice.** The stages run soffice only in `picture.LibreOfficeImage`, through docker, never
 from the host's PATH. The stage table read LibreOffice 26.8.2.2 680(Build:2), from
