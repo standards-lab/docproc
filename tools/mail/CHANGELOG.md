@@ -9,6 +9,20 @@ output contract: a change to them is a change here. This changelog covers docpro
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-25
+
+### Added
+
+- A TNEF part of an `.eml` or an mbox message, of type `application/ms-tnef` or
+  `application/vnd.ms-tnef` or named `winmail.dat`, is read through docproc-mail's own MS-OXTNEF
+  reader, where it had given its message a warning and been listed as one `winmail.dat`
+  attachment. Its attachments are the message's, in its place, an embedded message nested under its
+  `message`, and its bodies come ahead of the message's own: its HTML, stored or recovered from its
+  RTF, else the message's HTML, its text body, else the message's, and its RTF body's own text only
+  where there is neither. A TNEF part that can't be read is a `skipped` attachment with the warning
+  `skipped: the TNEF part can't be read (<reason>)`, and the rest of the message is read; an
+  attribute whose checksum doesn't match its data is read, with a warning.
+
 ### Changed
 
 - The crate graph locks htmd 0.6.1, a patch release, in place of 0.6.0. The output is unchanged.
@@ -221,7 +235,8 @@ the spike.
   finding (spike-ai-pipeline-mail v0.3.1, `docs/findings/mail-cli.md`).
 - Linux alone, x64 and arm64.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.4...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.4...tools/mail/v0.2.0
 [v0.1.4]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.3...tools/mail/v0.1.4
 [v0.1.3]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.2...tools/mail/v0.1.3
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/mail/v0.1.1...tools/mail/v0.1.2

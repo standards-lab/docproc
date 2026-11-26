@@ -40,7 +40,7 @@ fn inputs() -> Vec<String> {
 #[test]
 fn every_input_matches_its_goldens_and_no_golden_is_left_over() {
     let inputs = inputs();
-    assert_eq!(inputs.len(), 35, "{inputs:#?}");
+    assert_eq!(inputs.len(), 40, "{inputs:#?}");
     for input in &inputs {
         common::golden(input);
     }

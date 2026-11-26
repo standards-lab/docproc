@@ -1,9 +1,11 @@
 // Package office is docproc-ooxml's reader: it prepares office documents, docx, xlsx, and pptx,
-// the legacy doc, xls, and ppt, and RTF, for a model through docproc-ooxml, a document's path in,
-// its records out, streamed, with the media the document embeds. It provides pre-inference
-// preparation only; a layer above sends what it yields to a model. The package builds on every
-// 64-bit platform, on the standard library and this module's tool, route, picture, and internal/cli
-// packages; every program it runs is a tool.Tool the caller built.
+// the legacy doc, xls, and ppt, RTF, WordPerfect, the Excel binary workbook, and ODF text,
+// spreadsheet, presentation, and drawing packages, for a model through docproc-ooxml, a
+// document's path in, its records out, streamed, with the media the document embeds. It provides
+// pre-inference preparation only; a layer above sends what it yields to a model. The package
+// builds on every 64-bit platform, on the standard library and this module's tool, route,
+// picture, dispatch, and internal/cli packages; every program it runs is a tool.Tool the caller
+// built.
 //
 // A Converter is built at the composition root over a docproc-ooxml Tool the exec runner built,
 // OfficeSpec declaring it; a container runner's is refused, since docproc-ooxml reads the part's
@@ -31,11 +33,28 @@
 // runs on that, and the Document's ConvertedFrom names the legacy format. Any other OLE2 file,
 // such as an encrypted OOXML package, goes to docproc-ooxml, which refuses it. An RTF, found by
 // its signature whatever its name, is converted the same way to docx, through Writer's docx export
-// filter, as a .doc is, and ConvertedFrom is "rtf". The picture package's LibreOfficeSpec declares
+// filter, as a .doc is, and ConvertedFrom is "rtf". A WordPerfect document, by its signature, is
+// converted to docx through LibreOffice's WordPerfect import filter, ConvertedFrom "wpd", and a ZIP
+// whose Request.Name has the .xlsb extension, an Excel binary workbook, to xlsx, ConvertedFrom
+// "xlsb"; an encrypted .xlsb, an OLE2 file, goes to docproc-ooxml, which refuses it as encrypted.
+//
+// An ODF package, by its signature, is read through archive/zip before anything runs: its mimetype
+// entry names its type, and a text, spreadsheet, or presentation package or template converts to
+// docx, xlsx, or pptx, a drawing or drawing template to pptx through Impress's import filter,
+// impress8, each page a slide, ConvertedFrom naming the type's extension, "odt", "ott", "ods",
+// "ots", "odp", "otp", "odg", or "otg". A package of any type whose META-INF/manifest.xml holds an
+// encryption-data element is an error matching dispatch.ErrEncrypted, and one whose ZIP or
+// manifest can't be read an error matching dispatch.ErrRefused; soffice runs for neither. An
+// unencrypted package of any other type, a formula, chart, database, or image among them, is an
+// error matching dispatch.ErrNoProcessor naming the type. A flat ODF document, plain XML, routes as
+// text and never reaches office.
+//
+// The picture package's LibreOfficeSpec declares
 // soffice, minimum 24.2, and its LibreOfficeImage is the default image the container runner runs
 // it in, under its full lockdown: no network, the caller's uid:gid, every capability dropped. The
 // runner's directory holds soffice's user profile, its HOME under the exec runner, and the copied
-// and converted documents, and is removed when the run ends.
+// and converted documents, and is removed when the run ends. ODF, WordPerfect, and .xlsb
+// conversion is proved on LibreOffice 26.8, the picture package's image's.
 //
 // The Document's Media are every picture, embedded package, and OLE object docproc-ooxml wrote,
 // each resolved in the media directory by the envelope's media name rule, internal/cli's: its

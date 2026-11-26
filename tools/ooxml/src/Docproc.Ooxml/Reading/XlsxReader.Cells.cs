@@ -12,15 +12,19 @@ internal sealed class XlsxWorkbook
 {
     private readonly XlsxReader.XlsxContext context;
 
-    internal XlsxWorkbook(XlsxReader.XlsxContext context, IReadOnlyList<XlsxSheet> sheets, IReadOnlyList<Warning> warnings)
+    internal XlsxWorkbook(XlsxReader.XlsxContext context, IReadOnlyList<XlsxSheet> sheets, IReadOnlyList<Comment> comments, IReadOnlyList<Warning> warnings)
     {
         this.context = context;
         Sheets = sheets;
+        Comments = comments;
         Warnings = warnings;
     }
 
     /// <summary>The sheets that are read, in workbook order, each the ordinal of its sheet line.</summary>
     public IReadOnlyList<XlsxSheet> Sheets { get; }
+
+    /// <summary>The sheets' notes and threaded comments, sheet by sheet, each with its replies.</summary>
+    public IReadOnlyList<Comment> Comments { get; }
 
     /// <summary>The media the sheets' drawings hold, by file name.</summary>
     public IReadOnlyDictionary<string, byte[]> Media => context.Media.Files;
@@ -45,6 +49,7 @@ internal sealed class XlsxWorkbook
             Properties,
             Lines.MediaOf(new Document(SourceFormat.Xlsx, [.. Sheets.Select(sheet => new Model.Sheet(sheet.Name, sheet.Hidden, sheet.Drawings))])),
             Sheets.Select(sheet => new SheetSource(sheet.Name, sheet.Hidden, sheet.Cells?.Columns ?? [], Rows(sheet), sheet.Drawings)),
+            Comments,
             output);
 }
 
@@ -52,9 +57,15 @@ internal sealed record XlsxSheet(string Name, bool Hidden, XlsxReader.SheetCells
 
 internal static partial class XlsxReader
 {
-    internal sealed record SheetCells(WorksheetPart Part, IReadOnlyList<string> Columns, IReadOnlyList<Merge> Merges, IReadOnlyDictionary<uint, string> Anchors, IReadOnlyList<(Merge Range, string Target)> Links);
+    internal sealed record SheetCells(
+        WorksheetPart Part,
+        IReadOnlyList<string> Columns,
+        IReadOnlyList<Merge> Merges,
+        IReadOnlyDictionary<uint, string> Anchors,
+        IReadOnlyList<(Merge Range, string Target)> Links,
+        SortedDictionary<(int Row, int Column), List<int>> Notes);
 
-    private static (SheetCells Cells, List<OpenXmlElement> Objects) ValidateCells(XlsxContext context, WorksheetPart part)
+    private static (SheetCells Cells, List<OpenXmlElement> Objects) ValidateCells(XlsxContext context, WorksheetPart part, List<(string Reference, int Id)> comments)
     {
         var merges = new List<Merge>();
         var links = new List<(Merge, string)>();
@@ -146,7 +157,25 @@ internal static partial class XlsxReader
             FirstKeptFailure(context, part, index).Throw();
         }
         stopped?.Throw();
-        return (new SheetCells(part, candidates.Columns(index, anchors), merges, anchors, links), objects);
+        var notes = new SortedDictionary<(int Row, int Column), List<int>>();
+        foreach (var (reference, id) in comments)
+        {
+            if (Position(reference) is not var (row, column))
+            {
+                continue;
+            }
+            if (index.Find(row, column) is { } merge)
+            {
+                (row, column) = (merge.Top, merge.Left);
+            }
+            candidates.Add(column, row);
+            if (!notes.TryGetValue((row, column), out var ids))
+            {
+                notes[(row, column)] = ids = [];
+            }
+            ids.Add(id);
+        }
+        return (new SheetCells(part, candidates.Columns(index, anchors), merges, anchors, links, notes), objects);
     }
 
     private static (bool Held, uint? Shared) ReadCell(XlsxContext context, S.Cell cell)
@@ -189,11 +218,17 @@ internal static partial class XlsxReader
     internal static IEnumerable<TableRow> Rows(XlsxContext context, SheetCells sheet)
     {
         var merges = new MergeIndex(sheet.Merges);
+        var notes = new SortedDictionary<(int Row, int Column), List<int>>(sheet.Notes);
         var rowNumber = 0;
         foreach (var element in Elements(sheet.Part, rowsOnly: true))
         {
             var row = (S.Row)element;
             rowNumber = RowNumber(row, rowNumber);
+            while (notes.Count > 0 && notes.First().Key.Row < rowNumber)
+            {
+                var earlier = notes.First().Key.Row;
+                yield return new TableRow(NotedCells(sheet, merges, notes, earlier, int.MaxValue)) { Row = earlier };
+            }
             var column = 0;
             var cells = new List<TableCell>();
             foreach (var cell in row.Elements<S.Cell>())
@@ -205,6 +240,10 @@ internal static partial class XlsxReader
                 {
                     continue;
                 }
+                if (cellRow == rowNumber)
+                {
+                    cells.AddRange(NotedCells(sheet, merges, notes, rowNumber, cellColumn));
+                }
                 var formula = cell.CellFormula;
                 var text = OwnFormula(formula);
                 string? sharedFrom = null;
@@ -213,7 +252,8 @@ internal static partial class XlsxReader
                     sharedFrom = sheet.Anchors.GetValueOrDefault(si);
                 }
                 var value = Value(context, cell);
-                if (value is null && text is null && sharedFrom is null)
+                List<int>? ids = notes.Remove((cellRow, cellColumn), out var held) ? held : null;
+                if (value is null && text is null && sharedFrom is null && ids is null)
                 {
                     continue;
                 }
@@ -226,13 +266,39 @@ internal static partial class XlsxReader
                     SharedFrom = sharedFrom,
                     ColSpan = anchored is { Columns: > 1 } ? anchored.Columns : null,
                     RowSpan = anchored is { Rows: > 1 } ? anchored.Rows : null,
+                    Comments = ids,
                 });
             }
+            cells.AddRange(NotedCells(sheet, merges, notes, rowNumber, int.MaxValue));
             if (cells.Count > 0)
             {
                 yield return new TableRow(cells) { Row = rowNumber };
             }
         }
+        while (notes.Count > 0)
+        {
+            var later = notes.First().Key.Row;
+            yield return new TableRow(NotedCells(sheet, merges, notes, later, int.MaxValue)) { Row = later };
+        }
+    }
+
+    private static List<TableCell> NotedCells(SheetCells sheet, MergeIndex merges, SortedDictionary<(int Row, int Column), List<int>> notes, int row, int before)
+    {
+        var cells = new List<TableCell>();
+        while (notes.Count > 0 && notes.First() is var ((noteRow, column), ids) && noteRow == row && column < before)
+        {
+            notes.Remove((noteRow, column));
+            var merge = merges.Find(row, column);
+            cells.Add(new TableCell(null)
+            {
+                Ref = Reference(row, column),
+                Target = LinkOf(sheet.Links, row, column),
+                ColSpan = merge is { Columns: > 1 } ? merge.Columns : null,
+                RowSpan = merge is { Rows: > 1 } ? merge.Rows : null,
+                Comments = ids,
+            });
+        }
+        return cells;
     }
 
     private static string? LinkOf(IReadOnlyList<(Merge Range, string Target)> links, int row, int column)

@@ -1,0 +1,71 @@
+{
+  "fixture": "sheet-text-boxes",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Boxes",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "A picture and two text boxes follow."
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "media",
+          "name": "edc6bb881b4cd84d45f875a792389174cc19d9b53ff8b8238a32d0a9f3cb673b.png",
+          "contentType": "image/png",
+          "alt": "A green square",
+          "sheet": 0
+        },
+        {
+          "kind": "paragraph",
+          "text": "A text box on the sheet."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Its second paragraph."
+        },
+        {
+          "kind": "paragraph",
+          "text": "Another text box."
+        }
+      ]
+    },
+    {
+      "kind": "sheet",
+      "name": "After",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "No drawing here."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [],
+  "once": []
+}

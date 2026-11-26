@@ -25,10 +25,19 @@
 //! `inline`, which says whether the Markdown links it. A message/rfc822 or
 //! message/global part is an embedded message, nested under its record to [`DEPTH_MAX`] messages.
 //!
-//! Two kinds of part hold content no reader here opens: a TNEF part (`winmail.dat`, Outlook's own
-//! serialization of a message's rich text and attachments) and an opaque S/MIME part (an
-//! encrypted or opaquely signed `application/pkcs7-mime`). Each gives its message a note, so the
-//! message's Markdown, empty or partial, is never read as all there is. A rights-managed message,
+//! A TNEF part, one of type `application/ms-tnef` or `application/vnd.ms-tnef`, or named
+//! `winmail.dat` compared without regard to case, is Outlook's own serialization of a message's
+//! properties and attachments, read by [`tnef`]. Its attachments take its place among the
+//! message's, numbered on from it, each mapped as a .msg attachment is, an embedded message
+//! included; its stored bodies come ahead of the MIME message's: its HTML, else the MIME HTML, its
+//! text body, else the MIME text body, and its RTF body's own text only where there is neither, so
+//! a MIME text/plain part beside a TNEF part wins over the TNEF part's plain RTF. Where a message
+//! has more than one, the first that reads gives the bodies. One that can't be read is a skipped
+//! attachment, and the rest of the message is read.
+//!
+//! An opaque S/MIME part (an encrypted or opaquely signed `application/pkcs7-mime`) holds content
+//! no reader here opens. It gives its message a note, so the message's Markdown, empty or
+//! partial, is never read as all there is. A rights-managed message,
 //! one whose Content-Class is `rpmsg.message` or that has an attachment named `message.rpmsg`,
 //! each compared without regard to case, gets a note once, its content being that attachment's,
 //! encrypted (MS-OXORMMS 2.2.2.1 and 2.2.3.1); it is still read, its placeholder body and the
@@ -70,6 +79,8 @@ use crate::mapping;
 use crate::markdown::{self, Bodies};
 use crate::model::{Address, Attachment, Message};
 use crate::msg::{DEPTH_MAX, too_deep};
+use crate::props::{Value, tag};
+use crate::tnef::{self, Embedded};
 
 const SMTP: &str = "SMTP";
 
@@ -155,11 +166,43 @@ fn read(
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     let mut skipped = Vec::new();
     let mut locations = Vec::new();
+    let mut stored = None;
+    let mut number = 0u32;
     let parts = parsed
         .parts()
         .filter(|part| part.is_attachment() || matches!(part.role(), PartRole::MediaBody));
-    for (number, part) in (1u32..).zip(parts) {
+    for part in parts {
+        number += 1;
         let here = format!("{at}, attachment {number}");
+        if tnef(&part) {
+            let (content, problems) = part.decoded_checked();
+            let mut own = Vec::new();
+            lossy_note(problems, "TNEF part's content", &mut own);
+            notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
+            let read = guarded(|| tnef::read(&content, depth)).and_then(|read| {
+                guarded(|| Ok::<_, Infallible>(tnef_bodies(&read, None, at, notes)))
+                    .map(|bodies| (read, bodies))
+            });
+            match read {
+                Ok((read, bodies)) => {
+                    number -= 1;
+                    stored.get_or_insert(bodies);
+                    let code_page = read.code_page(None);
+                    let attached = Records {
+                        message: &mut message,
+                        locations: &mut locations,
+                        number: &mut number,
+                    };
+                    tnef_attachments(&read, code_page, depth, at, attached, files, notes)?;
+                }
+                Err(failure) => {
+                    let reason = format!("the TNEF part can't be read ({})", failure.reason);
+                    notes.push((here, format!("skipped: {reason}")));
+                    skipped.push((number, reason));
+                }
+            }
+            continue;
+        }
         let Part {
             mut record,
             location,
@@ -193,24 +236,110 @@ fn read(
         locations.push(location);
     }
     let mut own = Vec::new();
+    let bodies = match stored {
+        Some(stored) => stored.over(bodies, &mut own),
+        None => bodies,
+    };
     markdown::make(&mut message, &bodies, &locations, files, &mut own)?;
     notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
     Ok((message, skipped))
 }
 
-fn unread(part: &MessagePart<'_>) -> Option<String> {
-    let tnef = part.is_content_type("application", "ms-tnef")
+fn tnef(part: &MessagePart<'_>) -> bool {
+    part.is_content_type("application", "ms-tnef")
         || part.is_content_type("application", "vnd.ms-tnef")
         || part
             .attachment_name()
-            .is_some_and(|name| name.eq_ignore_ascii_case("winmail.dat"));
-    if tnef {
-        return Some(
-            "it holds a TNEF part (winmail.dat), Outlook's own form of a message's text and \
-             attachments, whose content is not read"
-                .to_owned(),
-        );
+            .is_some_and(|name| name.eq_ignore_ascii_case("winmail.dat"))
+}
+
+fn tnef_bodies(
+    read: &tnef::Tnef,
+    parent: Option<u16>,
+    at: &str,
+    notes: &mut Vec<(String, String)>,
+) -> mapping::Stored {
+    let (stored, own) = mapping::stored(&read.props, read.code_page(parent));
+    let own = read.notes.iter().cloned().chain(own);
+    notes.extend(own.map(|note| (at.to_owned(), note)));
+    stored
+}
+
+struct Records<'a> {
+    message: &'a mut Message,
+    locations: &'a mut Vec<Option<String>>,
+    number: &'a mut u32,
+}
+
+fn tnef_attachments(
+    read: &tnef::Tnef,
+    code_page: u16,
+    depth: usize,
+    at: &str,
+    to: Records<'_>,
+    files: &mut Media,
+    notes: &mut Vec<(String, String)>,
+) -> Result<(), Fault> {
+    for attached in &read.attachments {
+        *to.number += 1;
+        let here = format!("{at}, attachment {}", to.number);
+        let content = match attached.props.get(&tag::ATTACH_DATA) {
+            Some(Value::Binary(content)) => Some(content.as_slice()),
+            _ => None,
+        };
+        let mapping::Mapped {
+            mut record,
+            extension,
+            location,
+            notes: own,
+        } = mapping::attachment(&attached.props, content, code_page);
+        notes.extend(own.into_iter().map(|note| (here.clone(), note)));
+        if let Some(content) = content {
+            record.file = Some(files.store_bytes(content, extension.as_deref())?);
+        }
+        match &attached.embedded {
+            Embedded::None => {}
+            Embedded::Unread(note) => notes.push((here, note.clone())),
+            Embedded::Read(inner) => {
+                let place = format!("{here}, message");
+                let message = tnef_message(inner, code_page, depth + 1, &place, files, notes)?;
+                record.message = Some(Box::new(message));
+            }
+        }
+        to.message.attachments.push(record);
+        to.locations.push(location);
     }
+    Ok(())
+}
+
+fn tnef_message(
+    read: &tnef::Tnef,
+    parent: u16,
+    depth: usize,
+    at: &str,
+    files: &mut Media,
+    notes: &mut Vec<(String, String)>,
+) -> Result<Message, Fault> {
+    let code_page = read.code_page(Some(parent));
+    let (mut message, bodies, own) = mapping::message(&read.props, &read.recipients, code_page);
+    let own = read.notes.iter().cloned().chain(own);
+    notes.extend(own.map(|note| (at.to_owned(), note)));
+    let mut locations = Vec::new();
+    let mut number = 0;
+    let attached = Records {
+        message: &mut message,
+        locations: &mut locations,
+        number: &mut number,
+    };
+    tnef_attachments(read, code_page, depth, at, attached, files, notes)?;
+    let mut own = mapping::rights_managed(&message);
+    markdown::make(&mut message, &bodies, &locations, files, &mut own)?;
+    notes.extend(own.into_iter().map(|note| (at.to_owned(), note)));
+    message.line = "";
+    Ok(message)
+}
+
+fn unread(part: &MessagePart<'_>) -> Option<String> {
     let smime = part.is_content_type("application", "pkcs7-mime")
         || part.is_content_type("application", "x-pkcs7-mime");
     smime.then(|| OPAQUE_SMIME.to_owned())
@@ -536,6 +665,7 @@ fn lossy(raw: &[u8], what: &str, notes: &mut Vec<String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tnef::tests::{attribute, embedding, list, stream, variable_property};
 
     fn notes(raw: &str) -> Vec<(String, String)> {
         let parsed = parser().parse(raw.as_bytes()).unwrap();
@@ -556,25 +686,138 @@ mod tests {
         )
     }
 
-    const TNEF: &str = "it holds a TNEF part (winmail.dat), Outlook's own form of a message's \
-                        text and attachments, whose content is not read";
+    const UNREAD: &str = "skipped: the TNEF part can't be read (the signature is 4 bytes, past \
+                          the 1 that remain)";
     const SMIME: &str = "it holds an S/MIME part (application/pkcs7-mime), encrypted or \
                          opaquely signed, whose content is not read";
 
     #[test]
-    fn a_tnef_part_gives_its_message_a_note() {
+    fn a_tnef_part_that_cant_be_read_is_a_skipped_attachment() {
         for part in [
             "Content-Type: application/ms-tnef\r\n\r\nx",
             "Content-Type: Application/VND.MS-TNEF; name=x.dat\r\n\r\nx",
             "Content-Type: application/octet-stream\r\n\
              Content-Disposition: attachment; filename=\"WINMAIL.DAT\"\r\n\r\nx",
         ] {
+            let raw = with_part(part);
+            let parsed = parser().parse(raw.as_bytes()).unwrap();
+            let read = message(&parsed.root(), &mut Media::new(None)).unwrap();
             assert_eq!(
-                notes(&with_part(part)),
-                [(String::new(), TNEF.to_owned())],
+                read.notes,
+                [(", attachment 1".to_owned(), UNREAD.to_owned())],
                 "{part}"
             );
+            assert_eq!(read.skipped.len(), 1, "{part}");
+            assert!(read.message.attachments.is_empty(), "{part}");
+            assert_eq!(
+                read.message.markdown.as_deref(),
+                Some("See the attachment.")
+            );
         }
+    }
+
+    fn base64(bytes: &[u8]) -> String {
+        const DIGITS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut out = String::new();
+        for chunk in bytes.chunks(3) {
+            let word = chunk
+                .iter()
+                .enumerate()
+                .fold(0u32, |word, (i, b)| word | u32::from(*b) << (16 - 8 * i));
+            for i in 0..4 {
+                out.push(if i <= chunk.len() {
+                    char::from(DIGITS[(word >> (18 - 6 * i) & 63) as usize])
+                } else {
+                    '='
+                });
+            }
+        }
+        out
+    }
+
+    fn tnef_part(stream: &[u8]) -> String {
+        format!(
+            "Content-Type: application/ms-tnef; name=winmail.dat\r\n\
+             Content-Transfer-Encoding: base64\r\n\r\n{}",
+            base64(stream)
+        )
+    }
+
+    #[test]
+    fn a_tnef_parts_attachments_are_the_messages_and_its_text_body_wins_over_plain_rtf() {
+        let rtf = b"{\\rtf1\\ansi From RTF}";
+        let mut compressed = Vec::new();
+        let size = u32::try_from(rtf.len()).unwrap();
+        for word in [size + 12, size, 0x414C_454D, 0] {
+            compressed.extend_from_slice(&word.to_le_bytes());
+        }
+        compressed.extend_from_slice(rtf);
+        let props = list(&[variable_property(0x1009_0102, &compressed)]);
+        let stream = stream(&[
+            attribute(1, 0x0006_9003, &props),
+            attribute(2, 0x0006_9002, &[0; 14]),
+            attribute(2, 0x0001_8010, b"notes.txt\0"),
+            attribute(2, 0x0006_800F, b"Notes."),
+        ]);
+        let raw = with_part(&tnef_part(&stream));
+        let parsed = parser().parse(raw.as_bytes()).unwrap();
+        let read = message(&parsed.root(), &mut Media::new(None)).unwrap();
+        assert_eq!(read.notes, []);
+        assert_eq!(
+            read.message.markdown.as_deref(),
+            Some("See the attachment.")
+        );
+        let [attachment] = &read.message.attachments[..] else {
+            panic!("one attachment");
+        };
+        assert_eq!(attachment.filename.as_deref(), Some("notes.txt"));
+        assert_eq!(attachment.size, Some(6));
+
+        let bare = format!("From: ann@example.com\r\n{}", tnef_part(&stream));
+        let parsed = parser().parse(bare.as_bytes()).unwrap();
+        let read = message(&parsed.root(), &mut Media::new(None)).unwrap();
+        assert_eq!(read.notes, []);
+        assert_eq!(read.message.markdown.as_deref(), Some("From RTF"));
+        assert_eq!(read.message.attachments.len(), 1);
+    }
+
+    #[test]
+    fn a_tnef_attachments_embedded_message_is_nested_under_it() {
+        let inner_props = list(&[
+            variable_property(0x0037_001E, b"Inner\0"),
+            variable_property(0x1000_001E, b"Inner text.\0"),
+        ]);
+        let inner = stream(&[attribute(1, 0x0006_9003, &inner_props)]);
+        let stream = embedding(&inner);
+        let raw = with_part(&tnef_part(&stream));
+        let parsed = parser().parse(raw.as_bytes()).unwrap();
+        let read = message(&parsed.root(), &mut Media::new(None)).unwrap();
+        assert_eq!(read.notes, []);
+        let [attachment] = &read.message.attachments[..] else {
+            panic!("one attachment");
+        };
+        assert_eq!(attachment.method, Some("embedded_message"));
+        assert_eq!(attachment.file, None);
+        let nested = attachment.message.as_deref().unwrap();
+        assert_eq!(nested.line, "");
+        assert_eq!(nested.subject.as_deref(), Some("Inner"));
+        assert_eq!(nested.markdown.as_deref(), Some("Inner text."));
+    }
+
+    #[test]
+    fn a_nested_messages_tnef_part_is_its_own() {
+        let nested = with_part("Content-Type: application/ms-tnef\r\n\r\nx");
+        let outer = with_part_in(
+            "outer",
+            &format!("Content-Type: message/rfc822\r\n\r\n{nested}"),
+        );
+        assert_eq!(
+            notes(&outer),
+            [(
+                ", attachment 1, message, attachment 1".to_owned(),
+                UNREAD.to_owned()
+            )]
+        );
     }
 
     #[test]
@@ -591,18 +834,5 @@ mod tests {
                       --s\r\nContent-Type: application/pkcs7-signature; name=smime.p7s\r\n\r\n\
                       x\r\n--s--\r\n";
         assert_eq!(notes(signed), []);
-    }
-
-    #[test]
-    fn a_nested_messages_tnef_part_is_its_note() {
-        let nested = with_part("Content-Type: application/ms-tnef\r\n\r\nx");
-        let outer = with_part_in(
-            "outer",
-            &format!("Content-Type: message/rfc822\r\n\r\n{nested}"),
-        );
-        assert_eq!(
-            notes(&outer),
-            [(", attachment 1, message".to_owned(), TNEF.to_owned())]
-        );
     }
 }

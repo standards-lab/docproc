@@ -9,6 +9,49 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.9.0] - 2026-11-25
+
+This release converts ODF text, spreadsheet, presentation, and drawing packages, WordPerfect
+documents, and Excel binary workbooks through LibreOffice and reads them as the office stage reads a
+legacy document, where they had no processor yet. Run over docproc-ooxml 0.2.0 and docproc-mail
+0.2.0, the office and email stages also prepare what those releases read anew: text boxes, a pptx's
+comments, an xlsx's notes and threaded comments, and an `.eml`'s or an mbox message's TNEF parts.
+The office stage's identity now hashes the stage's own version, so an index prepares the office
+route's parts again and no other stage's. v0.8.0's notes were wrong to say an index prepares every
+PDF again: the stage adapters' version 7 re-prepared the parts of every stage but text and vision,
+whose identities don't hash it. The module still requires golang.org/x/text alone.
+
+### Added
+
+- The office stage converts, through LibreOffice, ODF text, spreadsheet, and presentation
+  packages and their templates (`.odt`, `.ott`, `.ods`, `.ots`, `.odp`, `.otp`) to docx, xlsx,
+  and pptx, an ODF drawing or drawing template (`.odg`, `.otg`) to pptx through Impress's import
+  filter, a WordPerfect document to docx through LibreOffice's WordPerfect import filter, and an
+  Excel binary workbook (`.xlsb`, by its name) to xlsx, then reads the result through
+  docproc-ooxml, as it does a legacy document.
+  `office.Document.ConvertedFrom`, and the document Markdown's `converted_from`, name the source
+  format: the ODF type's extension, `wpd`, or `xlsb`.
+- `picture.LibreOfficeRun.InFilter`, soffice's `--infilter`, the import filter a run reads every
+  input through.
+
+### Changed
+
+- An unencrypted ODF package of any other type, a formula, chart, database, or image among them,
+  still ends with no processor yet, the error now office's, matching `dispatch.ErrNoProcessor` and
+  naming the package's type. An ODF package of any type whose manifest holds encryption data ends
+  with an error matching `dispatch.ErrEncrypted`, and one whose ZIP or manifest can't be read with
+  one matching `dispatch.ErrRefused`, before LibreOffice runs.
+- The office stage's identity hashes its own version, 2, so an index that holds ODF, WordPerfect,
+  or `.xlsb` parts as no processor yet prepares the office route's parts again, and no other
+  stage's; the stage adapters' version stays 7.
+- With docproc-ooxml 0.2.0 on the host, the office stage's output holds a document's text boxes,
+  a pptx's comments, and an xlsx's notes and threaded comments, and its warnings no longer list
+  them as not read; with docproc-mail 0.2.0, the email stage's output holds a TNEF part's
+  attachments, as the message's own, and its bodies, where it listed one `winmail.dat` attachment
+  with a warning. Each stage's identity holds its tool's version line, so an index prepares that
+  route's parts again under the new release. `office.OfficeMinimum` and `email.MailMinimum` stay
+  0.1.0, and an older release still runs, reading as it did.
+
 ## [v0.8.0] - 2026-11-25
 
 This release reads a PDF page's text with poppler's pdftotext in its reading order, where gs's
@@ -466,7 +509,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.9.0...HEAD
+[v0.9.0]: https://github.com/standards-lab/docproc/compare/v0.8.0...v0.9.0
 [v0.8.0]: https://github.com/standards-lab/docproc/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0
 [v0.6.0]: https://github.com/standards-lab/docproc/compare/v0.5.0...v0.6.0

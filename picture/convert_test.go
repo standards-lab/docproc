@@ -529,14 +529,15 @@ func TestLimitsNegative(t *testing.T) {
 
 func TestRunLibreOffice(t *testing.T) {
 	t.Parallel()
-	for _, registry := range []string{"", "<oor:items/>\n"} {
-		t.Run(fmt.Sprintf("registry %q", registry), func(t *testing.T) {
+	for _, tc := range []struct{ registry, infilter string }{{"", ""}, {"<oor:items/>\n", "impress8"}} {
+		registry := tc.registry
+		t.Run(fmt.Sprintf("registry %q, infilter %q", registry, tc.infilter), func(t *testing.T) {
 			t.Parallel()
 			c, st := standinConverter(t, picture.Limits{})
 			first, second := writePicture(t, "a document", "report.bin"), writePicture(t, "a memo", "memo")
 			dir := t.TempDir()
 			out, err := c.RunLibreOffice(t.Context(), picture.LibreOfficeRun{
-				Dir: dir, ConvertTo: "png:writer_png_Export", Registry: registry,
+				Dir: dir, ConvertTo: "png:writer_png_Export", InFilter: tc.infilter, Registry: registry,
 				Inputs: []picture.LibreOfficeInput{{Path: first, Name: "report.doc"}, {Path: second, Name: "memo.rtf"}},
 			})
 			if err != nil {
@@ -552,8 +553,11 @@ func TestRunLibreOffice(t *testing.T) {
 			if len(all) != 1 || all[0].Program != "soffice" {
 				t.Fatalf("runs: got %q, want soffice once", programs(all))
 			}
-			want := []string{`-env:UserInstallation=file://` + lo(dir) + `/profile`, `--headless`, `--norestore`,
-				`--convert-to`, `png:writer_png_Export`, `--outdir`, lo(dir) + `/out`, lo(dir) + `/in/report\.doc`, lo(dir) + `/in/memo\.rtf`}
+			want := []string{`-env:UserInstallation=file://` + lo(dir) + `/profile`, `--headless`, `--norestore`}
+			if tc.infilter != "" {
+				want = append(want, `--infilter=`+tc.infilter)
+			}
+			want = append(want, `--convert-to`, `png:writer_png_Export`, `--outdir`, lo(dir)+`/out`, lo(dir)+`/in/report\.doc`, lo(dir)+`/in/memo\.rtf`)
 			if !matchArgs(all[0].Args, want) {
 				t.Errorf("soffice's arguments: got %q, want %q", all[0].Args, want)
 			}

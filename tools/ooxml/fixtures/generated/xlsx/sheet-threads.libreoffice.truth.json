@@ -1,0 +1,124 @@
+{
+  "fixture": "sheet-threads",
+  "format": "xlsx",
+  "elements": [
+    {
+      "kind": "sheet",
+      "name": "Plan",
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "table",
+          "rows": [
+            {
+              "row": 1,
+              "cells": [
+                {
+                  "ref": "A1",
+                  "type": "text",
+                  "value": "Launch"
+                },
+                {
+                  "ref": "B1",
+                  "type": "text",
+                  "value": "March",
+                  "comments": [
+                    3
+                  ]
+                }
+              ]
+            },
+            {
+              "row": 2,
+              "cells": [
+                {
+                  "ref": "A2",
+                  "type": "text",
+                  "value": "Supplier",
+                  "comments": [
+                    2
+                  ]
+                }
+              ]
+            },
+            {
+              "row": 3,
+              "cells": [
+                {
+                  "ref": "A3",
+                  "type": "text",
+                  "value": "Budget",
+                  "comments": [
+                    1
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "absent": [
+    "[Threaded comment]",
+    "Your version of Excel"
+  ],
+  "once": [],
+  "comments": [
+    {
+      "author": "Ben Author",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Checked against the plan."
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Cleo Editor",
+      "anchor": "",
+      "resolved": true,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Add the supplier risk.\nIt was raised last week."
+        }
+      ],
+      "replies": []
+    },
+    {
+      "author": "Ana Reviewer",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Is the launch date fixed?"
+        }
+      ],
+      "replies": [
+        {
+          "author": "Ben Author",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "It moved to March."
+            }
+          ]
+        },
+        {
+          "author": "Ana Reviewer",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Thanks, noted."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

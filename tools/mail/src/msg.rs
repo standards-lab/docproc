@@ -63,14 +63,14 @@ pub fn too_deep() -> String {
     format!("an embedded message nested deeper than {DEPTH_MAX} messages; listed without it")
 }
 
-const PT_SHORT: u16 = 0x0002;
-const PT_LONG: u16 = 0x0003;
-const PT_BOOLEAN: u16 = 0x000B;
-const PT_I8: u16 = 0x0014;
-const PT_STRING8: u16 = 0x001E;
-const PT_UNICODE: u16 = 0x001F;
-const PT_SYSTIME: u16 = 0x0040;
-const PT_BINARY: u16 = 0x0102;
+pub const PT_SHORT: u16 = 0x0002;
+pub const PT_LONG: u16 = 0x0003;
+pub const PT_BOOLEAN: u16 = 0x000B;
+pub const PT_I8: u16 = 0x0014;
+pub const PT_STRING8: u16 = 0x001E;
+pub const PT_UNICODE: u16 = 0x001F;
+pub const PT_SYSTIME: u16 = 0x0040;
+pub const PT_BINARY: u16 = 0x0102;
 
 /// The header before a property stream's entries (MS-OXMSG 2.4.1).
 #[derive(Clone, Copy, Debug)]
@@ -456,7 +456,9 @@ fn value(
     }
 }
 
-fn fixed(kind: u16, bytes: &[u8]) -> Option<Value> {
+/// A fixed-size value of property type `kind` from its stored bytes, or None for a type that isn't
+/// one of the fixed-size types read or for bytes too short for it.
+pub fn fixed(kind: u16, bytes: &[u8]) -> Option<Value> {
     let le = |n: usize| bytes.get(..n);
     Some(match kind {
         PT_SHORT => Value::Integer(i16::from_le_bytes(le(2)?.try_into().ok()?).into()),
@@ -468,7 +470,9 @@ fn fixed(kind: u16, bytes: &[u8]) -> Option<Value> {
     })
 }
 
-fn variable(kind: u16, mut bytes: Vec<u8>) -> Value {
+/// A variable-size value of property type `kind` from its stored bytes: a string ends at its first
+/// null, and any type but PT_STRING8 and PT_UNICODE is kept as PT_BINARY.
+pub fn variable(kind: u16, mut bytes: Vec<u8>) -> Value {
     match kind {
         PT_STRING8 => {
             if let Some(end) = bytes.iter().position(|byte| *byte == 0) {

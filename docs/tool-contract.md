@@ -74,7 +74,7 @@ sheet     line, name, hidden?, markdown?   an xlsx sheet's header: its heading a
                                           header row
 rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formula?,
           shared_from?, col_span?, row_span?   the sheet's next rows, in order, and their
-          Markdown table rows
+          Markdown table rows; after the last sheet's, the comments' definitions
 ```
 
 - `markdown` is the document's Markdown rendering: headings, lists, GFM tables, charts as tables of
@@ -82,14 +82,17 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   Markdown is split along its lines, and each sheet's text exists once: the `document` line holds
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
-  header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables and its
-  pictures' links, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
-  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The lines'
-  Markdown fragments concatenate in order with nothing between them into the document's whole
-  rendering: each ends in its own newline and opens with the blank line that separates it from the
-  chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`, so a
-  title-only picture is `![title](file)`. A `title` that differs from the image text becomes its
-  image's Markdown title, `![alt](file "title")`.
+  header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables, its
+  pictures' links, and its shapes' paragraphs, ride on a closing `rows` line of that sheet with
+  `markdown` and no `rows`, bounded as any `rows` line is; a chart sheet is a `sheet` line and that
+  closing line. The notes' and comments' footnote definitions follow the last sheet's lines on
+  `rows` lines of their own, with `markdown` and no `rows`, each holding as many of the next
+  definitions as keep it within 256 KiB, and at least one. The lines' Markdown fragments concatenate
+  in order with nothing between them into the document's whole rendering: each ends in its own
+  newline and opens with the blank line that separates it from the chunk before it. A picture's
+  image text is its `alt`, or its `title` when it has no `alt`, so a title-only picture is
+  `![title](file)`. A `title` that differs from the image text becomes its image's Markdown title,
+  `![alt](file "title")`.
 - `media` holds every picture the document shows, plus embedded packages (`embedded`, the part as
   stored) and OLE objects (`ole`, the part as stored, its compound file unwrapped by docproc,
   `prog_id` from the element naming its relationship). Each is found through its story part's,
@@ -135,8 +138,8 @@ The model the lines are written from is one tree for the three formats, its bloc
 order, every block but a media block the document's text, complete without inference. Each
 format is read as below; a warning's `<where>` is a docx `section n` or `comments`, an xlsx
 `sheet n` (its `sheet` line's ordinal, or for a sheet with no line its ordinal in the workbook),
-or a pptx `slide n`, and the unread kinds (text boxes, equations, SmartArt, a pptx's comments,
-an xlsx's notes) are warned of once each, where the document first holds one
+or a pptx `slide n`, and the unread kinds (equations and SmartArt) are warned of once each,
+where the document first holds one
 ([`design-review.md`](design-review.md), OX-11).
 
 - **docx: the text.** Tracked changes are read accepted: insertions and a move's destination are
@@ -150,8 +153,8 @@ an xlsx's notes) are warned of once each, where the document first holds one
   instructions, not text; a field's result is ordinary runs. A ruby's base text is read and its
   annotation left out. An external hyperlink's text links to its target; an internal one's, to a
   bookmark, stays text. Empty paragraphs and headings are spacing and left out; an empty list
-  item is kept. A paragraph's pictures and charts follow it as blocks in the order they occur,
-  inside a list item after its paragraph.
+  item is kept. A paragraph's pictures, charts, and text boxes follow it as blocks in the order
+  they occur, inside a list item after its paragraph.
 - **docx: headings and lists.** A heading's level is the paragraph's own outline level or else its
   style chain's (each style's `basedOn`, nearest first, a cycle ending it; a paragraph with no
   style has the default paragraph style): an outline level, or a style named `heading N`; outline
@@ -177,9 +180,13 @@ an xlsx's notes) are warned of once each, where the document first holds one
   order with the drawing's description and title, a picture's blip embedding a part or linking a
   target. A VML picture's title is its alternative text, VML having no other. A VML object's payload
   is its `o:OLEObject`'s, or a Word 2010 `w:objectEmbed`'s, relationship. A chartEx chart, in an
-  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never both;
-  any other alternate content is not read. A text box's text, a SmartArt diagram, and an equation
-  are not read, wherever they are.
+  `mc:AlternateContent`, is its cached data, or with none cached its fallback's picture, never both.
+  A text box, DrawingML's `wps:txbx` or VML's `v:textbox`, is its `w:txbxContent`'s blocks, read
+  as the body's are; one inside another is the outer one's content, and a drawing's pictures and
+  objects are looked for outside its text boxes, so nothing in a text box is read twice. Any other
+  alternate content is read for its text boxes alone, from the first choice that holds one or else
+  the fallback, so a text box Word writes as DrawingML with its VML copy as the fallback is read
+  once. A SmartArt diagram and an equation are not read, wherever they are.
 - **docx: sections, notes, and comments.** A section is a paragraph's `w:sectPr`, the body's own
   the last. Each section's headers and footers are those its pages show: its own, or the previous
   section's where it has none of a kind; a first-page one counts only with a title page and an
@@ -204,15 +211,16 @@ an xlsx's notes) are warned of once each, where the document first holds one
   children count: a row inside alternate content is passed over. A sheet is refused with the
   failure a reading of the whole part meets first: its XML, then a shared formula's attributes,
   then the first failing row number or cell, in order, that no merge covers.
-- **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's
-  reference is optional, and one without follows the cell before it. A table holds the cells
-  with a value or a formula. A merged range's anchor, its top-left cell, carries its spans, and
-  the cells it covers are left out; a range whose anchor holds nothing leaves nothing. Excel
-  refuses overlapping ranges; where a file holds them, a cell is looked for only in the covering
-  range that starts nearest its left. A shared formula's text is on its anchor, the first cell
-  whose formula holds it, and a cell holding only a shared index is kept when the index has an
-  anchor. A cell's external hyperlink is the first of the sheet's whose range holds it; one to a
-  place in the workbook stays text.
+- **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's reference
+  is optional, and one without follows the cell before it. A table holds the cells with a value or a
+  formula, and the cells a note or comment anchors, whether the part holds them or not, a cell
+  holding nothing else being its `ref` alone. A merged range's anchor, its top-left cell, carries
+  its spans, and the cells it covers are left out; a range whose anchor holds nothing leaves
+  nothing. Excel refuses overlapping ranges; where a file holds them, a cell is looked for only in
+  the covering range that starts nearest its left. A shared formula's text is on its anchor, the
+  first cell whose formula holds it, and a cell holding only a shared index is kept when the index
+  has an anchor. A cell's external hyperlink is the first of the sheet's whose range holds it; one
+  to a place in the workbook stays text.
 - **xlsx: values.** A cell's value is a shared or inline string, a formula's string, a boolean, an
   error, an ISO date, or a number, a date when its style's number format shows a date or a time.
   An empty value is none, as openpyxl writes a formula it has not computed, but a formula's
@@ -228,12 +236,27 @@ an xlsx's notes) are warned of once each, where the document first holds one
   pass a day, so its value stays a number. In the 1900 date system serial 1 is 1 January 1900
   and serial 60 is 29 February 1900, a day that never was, kept from Lotus 1-2-3; in the 1904
   system serial 0 is 1 January 1904. Times are rounded to the millisecond.
-- **xlsx: drawings and objects.** A drawing's pictures and charts are read in the order it anchors
-  them, through groups, each picture with its own drawing properties' alternative text and
-  title; a chartEx chart is read as in a docx, and any other alternate content is read through.
-  A shape's text, a text box's, and a SmartArt diagram are not read. A worksheet's OLE object is
+- **xlsx: drawings and objects.** A drawing's pictures, charts, and shapes' text are read in the
+  order it anchors them, through groups, each picture with its own drawing properties'
+  alternative text and title; a chartEx chart is read as in a docx, and any other alternate
+  content is read as its first branch, the choices in order and then the fallback, that holds
+  anything read, so a shape written twice is read once. A shape's text, a text box's among them,
+  is its paragraphs and lists, read as a pptx text box's with its own list style alone. A SmartArt
+  diagram is not read. A worksheet's OLE object is
   its preview picture (its `objectPr`'s), then its payload: Excel writes the object twice in
   alternate content, the preview only in the choice's copy, both naming one relationship.
+- **xlsx: notes and comments.** A worksheet's threads are its legacy comments part's notes, first,
+  in stored order, then each threaded comments part's threads. A note (`comment`, its author
+  named by its part's `authors`) is its rich text flattened as a cell's, one paragraph, a thread
+  of its own, open, notes having no state. Excel writes a note on each threaded comment's cell as
+  that comment's copy for readers without threaded comments, its text beginning
+  `[Threaded comment]`, so a note on a cell a threaded comment anchors is skipped, whatever its
+  text. A threaded comment (`threadedComment`, its author the workbook persons part's person its
+  `personId` names) is its text, one paragraph; it is a reply in the thread of the comment its
+  `parentId` names, earlier in the sheet, and a thread of its own otherwise, resolved when its
+  `done` is set. A thread anchors its cell, or for a cell a merged range covers the range's
+  anchor; one whose reference is no cell anchors nothing. Ids number roots and replies from 1 in
+  reading order across the workbook.
 - **pptx.** Slides are read in presentation order, hidden ones included and marked, each slide's
   shapes in its shape tree's order, back to front, never re-sorted by position, a group in place. A
   title placeholder's text is the slide's heading, its paragraphs its lines; other shapes'
@@ -253,7 +276,16 @@ an xlsx's notes) are warned of once each, where the document first holds one
   object's frame is its preview picture, then its payload, PowerPoint writing the object twice with
   the preview only in the fallback's copy. A notes page's text is its body placeholders' paragraphs,
   never the slide image, number, header, footer, or date, their bullets from their own list style
-  and the notes master's. A slide's comments, legacy or modern, are not read.
+  and the notes master's.
+- **pptx: comments.** A slide's comments are its legacy comments part's, first, in stored order,
+  then each modern comments part's. A legacy comment (`p:cm`, its author named by
+  `commentAuthors.xml`) is its `p:text`, one paragraph; it is a reply in the thread of the comment
+  its PowerPoint 2013 threading extension (`p15:parentCm`) names by author and index, earlier on
+  the slide, and a thread of its own otherwise, open, legacy comments having no state. A modern
+  comment (`p188:cm`, its author named by `authors.xml`) is a thread, its text body read as a text
+  box's paragraphs and lists with its own list style alone, its reply list's replies in stored
+  order, and resolved when its status is `resolved`. A thread anchors no text: its place is its
+  slide.
 - **Charts.** A chart is its part's cached data, never its rendering or its embedded workbook. A
   DrawingML chart, Transitional or ISO 29500 Strict (its namespaces renamed to Transitional's),
   takes its type from its first plot's kind; a chartEx chart, which Word and PowerPoint refer to
@@ -270,13 +302,17 @@ an xlsx's notes) are warned of once each, where the document first holds one
   reaches their references (`[^1]`, `[^2]`), so their ids never collide; comments have their own
   (`[^c1]`). A note no reference reached is labeled after the rest. A definition's first
   paragraph is on its label's line, the rest indented four spaces after a blank line. Each
-  comment is its author, its thread's state, its anchor, its text, and its replies. A list that
-  follows another of its kind switches markers (`-` to `*`, `.` to `)`), since Markdown would
-  join them; an item's other blocks are indented to its marker's width, a nested list tight. A
-  line break in a paragraph is a hard break, a backslash at the line's end; each line is trimmed,
-  since leading spaces make an indented code block, each text run escaped on its own, and a line
-  left empty dropped. A hyperlink's text keeps to one line, and one with no text is nothing. A
-  docx table is a GFM table, its first row the header, a merged cell's text in its top-left
+  comment is its author, its thread's state, its anchor, its text, and its replies; a pptx's
+  comments, which anchor no text, are marked after their slide's heading, `# Slide 2[^c1]`, so
+  their labels count in slide order, and an xlsx's after their cell's text in its table cell,
+  `| 2 | Rent[^c1] |`, so they count in sheet, row, and column order, a thread that anchors no
+  cell labeled after the rest. A list that follows another of its kind switches markers
+  (`-` to `*`, `.` to `)`), since Markdown would join them; an item's other blocks are indented
+  to its marker's width, a nested list tight. A line break in a paragraph is a hard break, a
+  backslash at the line's end; each line is trimmed, since leading spaces make an indented code
+  block, each text run escaped on its own, and a line left empty dropped. A hyperlink's text
+  keeps to one line, and one with no text is nothing. A docx table is a GFM table, its first
+  row the header, a merged cell's text in its top-left
   position and the positions it covers or a late row skips empty, a cell's lines and blocks
   joined by `<br>`; a chart in a cell renders after the table, its title left in the cell. A
   sheet is a heading of its name, marked when hidden, then a table headed by the column letters
@@ -321,6 +357,14 @@ media[]   file, mime_type?   a payload the Markdown links that no attachment nam
   breaks, a nested table's `\nonesttables` fallback skipped, symbol words (`\rquote`, `\emdash`, …)
   as their characters, and `\'hh` decoded in the `\ansicpg` code page. An RTF that encapsulates HTML
   (`\fromhtml`) has that HTML's text.
+- In an `.eml` or an mbox, a TNEF part, of type `application/ms-tnef` or `application/vnd.ms-tnef`
+  or named `winmail.dat`, is read by the tool's own MS-OXTNEF reader. Its attachments are the
+  message's, in its place, each mapped as a `.msg` attachment is, an embedded message nested under
+  its `message`. Its bodies come ahead of the MIME message's own: its HTML, stored or recovered
+  from its RTF, else the MIME HTML; its text body, else the MIME text body; and its RTF's text only
+  where there is neither, so a MIME text/plain part beside it wins over an RTF that encapsulates no
+  HTML. A TNEF part that can't be read is a `skipped` attachment, with a warning, and the rest of
+  the message is read; an attribute whose checksum doesn't match its data is read, with a warning.
 - In Markdown made from HTML, the text's `&`s, and each link's and image's destination, title,
   and alt text, read back as the HTML holds them. The tool converts the HTML with htmd 0.6 over
   its default DOM, ego-tree. A pass over htmd's output, `bare`, removes each escape htmd 0.5.6

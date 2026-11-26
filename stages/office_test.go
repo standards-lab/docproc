@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -137,5 +138,48 @@ func TestOfficeStageIdentity(t *testing.T) {
 	}
 	if !strings.HasPrefix(base.Identity().Version, office.OfficeMinimum) {
 		t.Errorf("version %q, want docproc-ooxml's version line", base.Identity().Version)
+	}
+}
+
+func TestOfficeStageUnread(t *testing.T) {
+	t.Parallel()
+	encrypted, err := os.ReadFile(filepath.Join("..", "office", "testdata", "odf", "generated", "encrypted.odt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, content string
+		outcome       dispatch.Outcome
+		reason        string
+	}{
+		{"formula.odf", zipOf(t, "mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"), dispatch.NoProcessor,
+			"office stage: office: no processor yet for an ODF package of type application/vnd.oasis.opendocument.formula"},
+		{"database.odb", zipOf(t, "mimetype", "application/vnd.oasis.opendocument.base"), dispatch.NoProcessor, "application/vnd.oasis.opendocument.base"},
+		{"encrypted.odt", string(encrypted), dispatch.Encrypted, "office stage: office: an ODF package whose manifest holds encryption data: encrypted"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			link := tooltest.Link(t, t.TempDir(), "docproc-ooxml", onenoteSettings{})
+			spec := office.OfficeSpec()
+			spec.Program = link
+			of, err := tool.NewExec(t.Context(), spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			conv, err := office.NewConverter(t.Context(), office.Config{Office: of, Pictures: stages.PictureConverter(standinPictureStage(t, pictureListing, 1))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stage := stages.NewOfficeStage(stages.OfficeConfig{Converter: conv, Version: stages.Versions(of)})
+			d := newDispatcher(t, dispatch.Stages{route.Office: stage}, dispatch.NewMemoryIndex(0))
+			events := dispatchAll(t, d, input(t, c.name, c.content), nil)
+			wantSteps(t, events, []step{{c.name, 0, c.outcome}})
+			if ev := events[0]; ev.Part.ContentType.Route != route.Office || !strings.Contains(ev.Reason, c.reason) {
+				t.Errorf("route %s, reason %q; want office, %q", ev.Part.ContentType.Route, ev.Reason, c.reason)
+			}
+			if runs := tooltest.Runs(t, link); len(runs) != 1 {
+				t.Errorf("docproc-ooxml ran %d times, want its version command alone", len(runs))
+			}
+		})
 	}
 }

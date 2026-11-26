@@ -1,0 +1,78 @@
+{
+  "fixture": "text-boxes",
+  "format": "docx",
+  "elements": [
+    {
+      "kind": "heading",
+      "level": 1,
+      "text": "Text boxes"
+    },
+    {
+      "kind": "paragraph",
+      "text": "A text box written both ways follows."
+    },
+    {
+      "kind": "paragraph",
+      "text": "The box's first paragraph."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Its second paragraph."
+    },
+    {
+      "kind": "paragraph",
+      "text": "A VML text box follows."
+    },
+    {
+      "kind": "paragraph",
+      "text": "Text in a VML box."
+    },
+    {
+      "kind": "paragraph",
+      "text": "A box anchored on an empty line."
+    },
+    {
+      "kind": "table",
+      "rows": [
+        [
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "A box in a cell"
+              },
+              {
+                "kind": "paragraph",
+                "text": "Text in the cell's box."
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          },
+          {
+            "elements": [
+              {
+                "kind": "paragraph",
+                "text": "Plain cell"
+              }
+            ],
+            "colSpan": 1,
+            "rowSpan": 1
+          }
+        ]
+      ]
+    },
+    {
+      "kind": "paragraph",
+      "text": "The end."
+    }
+  ],
+  "absent": [],
+  "once": [
+    "The box's first paragraph.",
+    "Its second paragraph.",
+    "Text in a VML box.",
+    "A box anchored on an empty line.",
+    "Text in the cell's box."
+  ]
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/picture"
+	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -38,8 +39,9 @@ type Config struct {
 	// a container runner's is refused.
 	Office *tool.Tool
 	// Pictures is the picture package's Converter, over LibreOffice's soffice and ImageMagick's
-	// magick. Its LibreOffice runner converts legacy documents to OOXML, and RTFs to docx, and its
-	// ConvertBatch converts a document's TIFF, EMF, and WMF pictures to PNG. It is required.
+	// magick. Its LibreOffice runner converts legacy documents, RTFs, WordPerfect documents, Excel
+	// binary workbooks, and ODF packages to OOXML, and its ConvertBatch converts a document's TIFF,
+	// EMF, and WMF pictures to PNG. It is required.
 	Pictures *picture.Converter
 }
 
@@ -76,18 +78,20 @@ func NewConverter(_ context.Context, cfg Config) (*Converter, error) {
 // Request is one document's conversion.
 type Request struct {
 	// Path is the document's file, which the caller owns: docproc-ooxml reads it in place, and only
-	// a legacy document or an RTF is copied, into the LibreOffice runner's directory. It is
+	// a document LibreOffice converts is copied, into the LibreOffice runner's directory. It is
 	// required.
 	Path string `json:"-"`
 	// Dir is the working directory, which the caller owns: the media directory is made in it and
-	// left, and a legacy document's or an RTF's conversion is made and removed in it. It is
-	// required; an empty Dir is refused rather than taken as the system's temporary directory.
+	// left, and a LibreOffice conversion is made and removed in it. It is required; an empty Dir
+	// is refused rather than taken as the system's temporary directory.
 	Dir string `json:"-"`
 	// Name is the document's file name, or a path ending in it; only its extension is read, never
 	// Path's. A document with the OLE2 compound-file signature whose Name has a legacy extension,
 	// as route.LegacyTarget gives them, in any case, is a legacy document, converted to docx,
-	// xlsx, or pptx before docproc-ooxml runs. An RTF, found by its signature, is converted to
-	// docx whatever Name says. "" names no extension.
+	// xlsx, or pptx before docproc-ooxml runs, as is a ZIP whose Name has the .xlsb extension, an
+	// Excel binary workbook, converted to xlsx. An RTF, a WordPerfect document, and an ODF
+	// package, found by their signatures, are converted whatever Name says. "" names no
+	// extension.
 	Name string `json:"-"`
 	// MetafileScale is the scale the document's EMF and WMF pictures are rendered at, a multiple
 	// of their size at 96 dpi: zero is picture.DefaultMetafileScale, 3, and it may be at most
@@ -128,10 +132,21 @@ var ErrSchema = cli.ErrSchema
 // LibreOffice runner in req.Dir, which copies it in with its legacy extension, to the OOXML format
 // its extension names; docproc-ooxml runs on the converted document, which is removed with the
 // run's directory when the run ends, and the Document's ConvertedFrom names the legacy format.
-// Any other OLE2 file, such as an encrypted OOXML package, goes to
-// docproc-ooxml as it is, which refuses it. An RTF, by its signature, whatever Request.Name's
-// extension, is converted as a .doc is, to docx, through Writer's docx export filter;
-// ConvertedFrom is "rtf".
+// Any other OLE2 file, such as an encrypted OOXML package or .xlsb, goes to docproc-ooxml as it
+// is, which refuses it. An RTF, by its signature, whatever Request.Name's extension, is converted
+// as a .doc is, to docx, through Writer's docx export filter; ConvertedFrom is "rtf". A
+// WordPerfect document, by its signature, is converted to docx through LibreOffice's WordPerfect
+// import filter, ConvertedFrom "wpd", and a ZIP named .xlsb to xlsx, ConvertedFrom "xlsb".
+//
+// An ODF package, by its signature, is read for its mimetype entry's type and its
+// META-INF/manifest.xml before anything runs. A text, spreadsheet, or presentation package or
+// template is converted to docx, xlsx, or pptx, and a drawing or drawing template to pptx through
+// Impress's import filter, impress8, a page a slide; ConvertedFrom is the type's extension, such
+// as "odt" or "otg". Any other type, a formula, chart, database, or image among them, is an error
+// matching dispatch.ErrNoProcessor naming the type. A package of a type it converts whose manifest
+// holds an encryption-data element is an error matching dispatch.ErrEncrypted, and one whose ZIP
+// or manifest can't be read is an error matching dispatch.ErrRefused; LibreOffice runs for
+// neither.
 //
 // The Document's Media are resolved in the media directory by the envelope's media name rule, each
 // Path the file handed onward. Before the Document is yielded, its pictures follow the picture
@@ -189,9 +204,12 @@ func (c *Converter) convert(ctx context.Context, req Request, yield func(Record,
 	if err != nil {
 		return err
 	}
-	from, to := legacyFormat(head, req.Name)
-	if from != "" {
-		converted, remove, err := c.toOOXML(ctx, dir, path, from, to)
+	conv, err := sourceFormat(path, head, req.Name)
+	if err != nil {
+		return err
+	}
+	if conv.from != "" {
+		converted, remove, err := c.toOOXML(ctx, dir, path, conv)
 		if err != nil {
 			return err
 		}
@@ -211,7 +229,7 @@ func (c *Converter) convert(ctx context.Context, req Request, yield func(Record,
 			err = errors.Join(err, os.RemoveAll(media))
 		}
 	}()
-	return c.read(ctx, dir, path, media, from, scale, yield)
+	return c.read(ctx, dir, path, media, conv.from, scale, yield)
 }
 
 func readHead(path string) ([]byte, error) {
@@ -220,7 +238,7 @@ func readHead(path string) ([]byte, error) {
 		return nil, fmt.Errorf("office: %w", err)
 	}
 	defer func() { _ = f.Close() }()
-	head := make([]byte, legacyHeadLen)
+	head := make([]byte, route.HeadLen)
 	n, err := io.ReadFull(f, head)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
 		return nil, fmt.Errorf("office: %w", err)

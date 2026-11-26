@@ -23,6 +23,8 @@ same ref cancels the one it supersedes.
   and lint-context and lint-references, on every run, since a lint reads the whole tree.
 - **integration**: the provider modules' live tiers against the compose harness, on a push to main
   when what they build or run against changed and on demand, never on a pull request.
+- **memory-floor** measures docproc-ooxml's memory floor on both runners, on demand alone
+  ([below](#the-memory-floor)).
 - **ci** always runs last and is the one check docproc's `main` ruleset requires: it fails when
   any job it needs failed or was cancelled, and passes when they succeeded or were skipped, by
   their paths or, the integration job, by a pull request, so a skipped job never blocks a merge.
@@ -73,6 +75,22 @@ that defines the integration tasks and the harness's environment.
   filter has no push to compare; it is skipped on a pull request, below the per-PR rate by design.
   Each task starts its service, prints its log on a failure, and stops it. The tasks need only the
   root's Go toolchain; docker is the runner's.
+
+### The memory floor
+
+docproc-ooxml's NativeAOT runtime reserves its address space at startup, so its floor under an
+RLIMIT_AS bound is a property of each architecture's build, and only the runners give docproc an
+arm64 host. The memory-floor job runs on a dispatch alone (`gh workflow run ci.yml --ref <branch>`),
+never on a push or a pull request: it measures, and gates nothing, so the ci job doesn't need it.
+
+On each runner it builds the release binary with the tool's own `publish` task, as a release
+would, and `scripts/memory-floor.sh` runs it 20 times on one input at each bound, 128 MiB to
+2 GiB, through util-linux's `prlimit --as=<bytes> --`, the way docproc's exec runner bounds it. The
+input is `tools/ooxml/fixtures/realworld/docx/form-footnotes.docx`, docproc-ooxml's peak-memory
+input in acceptance's ~/docs run. A run passes when it exits 0. The job writes each bound's passes,
+each failure counted by its exit status and last stderr line, and the floor to its summary: the
+lowest bound from which every bound up passed 20 of 20. It fails when no bound does.
+[Limits](limits.md) states the floors and [Acceptance](acceptance.md) the runs that measured them.
 
 ## Releases
 

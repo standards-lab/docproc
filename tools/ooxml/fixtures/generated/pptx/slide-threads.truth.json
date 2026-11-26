@@ -1,0 +1,92 @@
+{
+  "fixture": "slide-threads",
+  "format": "pptx",
+  "elements": [
+    {
+      "kind": "slide",
+      "number": 1,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Roadmap"
+        }
+      ],
+      "comments": [
+        1
+      ]
+    },
+    {
+      "kind": "slide",
+      "number": 2,
+      "hidden": false,
+      "elements": [
+        {
+          "kind": "heading",
+          "level": 1,
+          "text": "Risks"
+        }
+      ],
+      "comments": [
+        2
+      ]
+    }
+  ],
+  "absent": [
+    "Click to edit Master title style",
+    "Click to edit Master text styles",
+    "Click to edit Master subtitle style",
+    "<number>"
+  ],
+  "once": [],
+  "comments": [
+    {
+      "author": "Ana Reviewer",
+      "anchor": "",
+      "resolved": false,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Is the launch date fixed?"
+        }
+      ],
+      "replies": [
+        {
+          "author": "Ben Author",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "It moved to March."
+            }
+          ]
+        },
+        {
+          "author": "Ana Reviewer",
+          "elements": [
+            {
+              "kind": "paragraph",
+              "text": "Thanks, noted."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "author": "Cleo Editor",
+      "anchor": "",
+      "resolved": true,
+      "elements": [
+        {
+          "kind": "paragraph",
+          "text": "Add the supplier risk."
+        },
+        {
+          "kind": "paragraph",
+          "text": "It was raised last week."
+        }
+      ],
+      "replies": []
+    }
+  ]
+}

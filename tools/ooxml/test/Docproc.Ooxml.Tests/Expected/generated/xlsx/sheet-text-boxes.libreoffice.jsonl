@@ -1,0 +1,6 @@
+{"line":"document","schema":"2","format":"xlsx","properties":{"core":{"created":"2026-11-25T23:16:17Z","creator":"openpyxl","language":"en-US","modified":"2026-11-25T23:16:17Z","revision":"0"},"app":{"TotalTime":0,"Application":"LibreOffice/26.8.1.1$Linux_X86_64 LibreOffice_project/680$Build-1","AppVersion":"15.0000"}},"media":[{"kind":"picture","file":"edc6bb881b4cd84d45f875a792389174cc19d9b53ff8b8238a32d0a9f3cb673b.png","content_type":"image/png","part":"/xl/media/image1.png","sheet":1}]}
+{"line":"sheet","name":"Boxes","markdown":"# Boxes\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | A picture and two text boxes follow. |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"A picture and two text boxes follow."}]}]}
+{"line":"rows","markdown":"\n![A green square](edc6bb881b4cd84d45f875a792389174cc19d9b53ff8b8238a32d0a9f3cb673b.png)\n\nA text box on the sheet.\n\nIts second paragraph.\n\nAnother text box.\n"}
+{"line":"sheet","name":"After","markdown":"\n# After\n\n|  | A |\n| --- | --- |\n"}
+{"line":"rows","markdown":"| 1 | No drawing here. |\n","rows":[{"row":1,"cells":[{"ref":"A1","value_type":"text","value":"No drawing here."}]}]}

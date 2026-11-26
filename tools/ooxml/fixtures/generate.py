@@ -93,6 +93,9 @@ CUSTOM_PROPERTIES = "http://schemas.openxmlformats.org/officeDocument/2006/custo
 VARIANT_TYPES = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
 MATH = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 DIAGRAM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+WPS = "http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+VML = "urn:schemas-microsoft-com:vml"
 RT_COMMENTS_EXTENDED = "http://schemas.microsoft.com/office/2011/relationships/commentsExtended"
 DRAWING_SIDE_EMU = 457200
 
@@ -120,10 +123,14 @@ class Fixture:
     - "link": (text, URL), the text in an external hyperlink; "anchor": (text, bookmark), the
       text in an internal one, to a bookmark; both are text of the paragraph;
     - "bookmark": a bookmark's name, the start and end of an empty bookmark;
-    - "raw": a run's XML as it is, which adds no text, such as a text box or an equation.
+    - "textBox": (form, paragraphs), a text box of those paragraphs' text, written as Word
+      writes it, a DrawingML text box in alternate content with its VML copy as the fallback
+      ("alternate"), or as VML alone ("vml");
+    - "raw": a run's XML as it is, which adds no text, such as an equation.
 
-    References, pictures, and charts add no text; a reference marks its offset in the text, and
-    a picture or chart is a block of its own after its paragraph. A paragraph's ground truth is
+    References, pictures, charts, and text boxes add no text; a reference marks its offset in
+    the text, and a picture or chart is a block of its own after its paragraph, a text box its
+    paragraphs. A paragraph's ground truth is
     the paragraph unless it holds no text and no reference (then it is spacing), then the blocks
     after it.
     """
@@ -323,6 +330,10 @@ class Fixture:
             elif kind == "bookmark":
                 bookmark = self.next_id()
                 xml.append(f'<w:bookmarkStart w:id="{bookmark}" w:name="{value}"/><w:bookmarkEnd w:id="{bookmark}"/>')
+            elif kind == "textBox":
+                form, paragraphs = value
+                xml.append(self._text_box(form, paragraphs))
+                after += [{"kind": "paragraph", "text": text} for text in paragraphs]
             elif kind == "raw":
                 xml.append(value)
             else:
@@ -464,6 +475,34 @@ class Fixture:
             f'<w:drawing>{self._inline_open(shape_id, "", "")}'
             f'<a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart">'
             f'<c:chart r:id="{rid}"/></a:graphicData></a:graphic></wp:inline></w:drawing>'
+        )
+
+    def _text_box(self, form: str, paragraphs: list[str]) -> str:
+        shape_id = self.next_id()
+        content = "<w:txbxContent>" + "".join(f"<w:p>{self._run(text)}</w:p>" for text in paragraphs) + "</w:txbxContent>"
+        vml = (
+            f'<w:pict><v:shape xmlns:v="{VML}" id="Text Box {shape_id}" type="#_x0000_t202" style="width:180pt;height:60pt">'
+            f"<v:textbox>{content}</v:textbox></v:shape></w:pict>"
+        )
+        if form == "vml":
+            return f"<w:r>{vml}</w:r>"
+        side = 2286000
+        drawing = (
+            f'<w:drawing><wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="251659264"'
+            f' behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/>'
+            f'<wp:positionH relativeFrom="column"><wp:posOffset>0</wp:posOffset></wp:positionH>'
+            f'<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>'
+            f'<wp:extent cx="{side}" cy="{side // 3}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:wrapNone/>'
+            f'<wp:docPr id="{shape_id}" name="Text Box {shape_id}"/><wp:cNvGraphicFramePr/>'
+            f'<a:graphic><a:graphicData uri="{WPS}"><wps:wsp><wps:cNvSpPr txBox="1"/>'
+            f'<wps:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="{side}" cy="{side // 3}"/></a:xfrm>'
+            f'<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></wps:spPr>'
+            f'<wps:txbx>{content}</wps:txbx><wps:bodyPr anchor="t"><a:noAutofit/></wps:bodyPr></wps:wsp>'
+            f"</a:graphicData></a:graphic></wp:anchor></w:drawing>"
+        )
+        return (
+            f'<w:r><mc:AlternateContent xmlns:mc="{MC}" xmlns:wps="{WPS}"><mc:Choice Requires="wps">{drawing}</mc:Choice>'
+            f"<mc:Fallback>{vml}</mc:Fallback></mc:AlternateContent></w:r>"
         )
 
     @staticmethod
@@ -1181,11 +1220,21 @@ def links() -> Fixture:
     return f
 
 
-TEXT_BOX_RUN = (
-    f'<w:r><w:pict><v:shape xmlns:v="urn:schemas-microsoft-com:vml" style="width:120pt;height:40pt">'
-    f"<v:textbox><w:txbxContent><w:p><w:r><w:t>Text in a box</w:t></w:r></w:p></w:txbxContent></v:textbox>"
-    f"</v:shape></w:pict></w:r>"
-)
+def text_boxes() -> Fixture:
+    """Text boxes, each read once where its paragraph anchors it: one of two paragraphs Word's
+    way, a DrawingML text box in alternate content with its VML copy as the fallback; a VML text
+    box alone; a text box anchored in a paragraph of no text of its own; one in a table cell."""
+    f = Fixture("text-boxes")
+    f.heading("Text boxes", 1)
+    f.tracked([("text", "A text box written both ways follows."), ("textBox", ("alternate", ["The box's first paragraph.", "Its second paragraph."]))])
+    f.tracked([("text", "A VML text box follows."), ("textBox", ("vml", ["Text in a VML box."]))])
+    f.tracked([("textBox", ("alternate", ["A box anchored on an empty line."]))])
+    f.tracked_table([[("text", "A box in a cell"), ("textBox", ("alternate", ["Text in the cell's box."]))], [("text", "Plain cell")]])
+    f.paragraph("The end.")
+    f.once = ["The box's first paragraph.", "Its second paragraph.", "Text in a VML box.", "A box anchored on an empty line.", "Text in the cell's box."]
+    return f
+
+
 EQUATION = f'<m:oMath xmlns:m="{MATH}"><m:r><m:t>x=2y</m:t></m:r></m:oMath>'
 DIAGRAM_PARTS = [
     ("data", "diagramData", "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml",
@@ -1202,14 +1251,13 @@ DIAGRAM_PARTS = [
 
 
 def unread() -> Fixture:
-    """The kinds docproc-ooxml doesn't read, each warned of once: two text boxes (VML), an
-    equation (Office Math), and a SmartArt diagram, whose parts are as small as the package
-    allows, among paragraphs that are read."""
+    """The kinds docproc-ooxml doesn't read, each warned of once: two equations (Office Math)
+    and a SmartArt diagram, whose parts are as small as the package allows, among paragraphs
+    that are read."""
     f = Fixture("unread")
     f.heading("Unread", 1)
-    f.tracked([("text", "A text box follows."), ("raw", TEXT_BOX_RUN)])
-    f.tracked([("text", "A second text box follows."), ("raw", TEXT_BOX_RUN.replace("Text in a box", "More text in a box"))])
     f.tracked([("text", "An equation follows: "), ("raw", EQUATION)])
+    f.tracked([("text", "A second equation follows: "), ("raw", EQUATION.replace("x=2y", "z=3w"))])
     ids = {
         kind: f.raw_part(f"/word/diagrams/{kind}1.xml", content_type, f"http://schemas.openxmlformats.org/officeDocument/2006/relationships/{reltype}", xml)
         for kind, reltype, content_type, xml in DIAGRAM_PARTS
@@ -1223,11 +1271,11 @@ def unread() -> Fixture:
     )
     f.tracked([("text", "A diagram follows."), ("raw", smartart)])
     f.paragraph("The end.")
-    f.absent = ["Text in a box", "More text in a box", "A diagram node"]
+    f.absent = ["A diagram node"]
     return f
 
 
-FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, unread]
+FIXTURES = [headings, lists, tables, tracked_changes, sections, headers_even_off, notes, comments, comments_plain, media, charts, links, text_boxes, unread]
 
 
 CT_PNG = "image/png"
@@ -1260,7 +1308,8 @@ class Workbook:
     parts holds the parts openpyxl can't write, added to the package as they are: (name, bytes,
     content type), and relationships the relationships to them, by the part that holds them:
     (id, type, target). ole_sheets holds the sheets holding objects, and the namespaces their
-    objects' XML needs.
+    objects' XML needs. persons holds the threaded comments' authors, in the order they first
+    comment, and threaded counts the threaded comments made so far, which number their ids.
     """
 
     writer, extension, filter = "openpyxl", "xlsx", "xlsx:Calc MS Excel 2007 XML"
@@ -1277,6 +1326,8 @@ class Workbook:
         self.parts: list[tuple[str, bytes, str]] = []
         self.relationships: dict[str, list[tuple[str, str, str]]] = {}
         self.ole_sheets: list[tuple["Sheet", str]] = []
+        self.persons: list[str] = []
+        self.threaded = 0
 
     def sheet(self, title: str, state: str = "visible") -> "Sheet":
         ws = self.book.create_sheet(title)
@@ -1299,19 +1350,62 @@ class Workbook:
                 self.patches.append(
                     (f"xl/drawings/drawing{drawing}.xml", f'name="Image {i}" descr="Picture"', f'name="Image {i}" descr="{escape(alt)}"')
                 )
+            if sheet.text_boxes:
+                anchors = "".join(text_box_anchor(n, paragraphs) for n, paragraphs in enumerate(sheet.text_boxes))
+                self.patches.append((f"xl/drawings/drawing{drawing}.xml", "</wsDr>", anchors + "</wsDr>"))
         for sheet, ns in self.ole_sheets:
             self.patches.append((sheet.part, "</worksheet>", f'<oleObjects {ns}>{"".join(sheet.ole_xml)}</oleObjects></worksheet>'))
+        self._threaded_parts()
         self.book.save(path)
         add_to_package(path, self.name, self.patches, self.parts, self.relationships)
 
+    def _threaded_parts(self) -> None:
+        """Writes each sheet's threaded comments to a threaded comments part, a reply naming its
+        thread's comment as its parent, and their authors to the workbook's persons part."""
+        parts = 0
+        for sheet in self.sheets:
+            comments = []
+            for thread in sheet.threads:
+                parent = None
+                for own, (author, text) in zip(thread["ids"], [(thread["author"], thread["text"]), *thread["replies"]]):
+                    if author not in self.persons:
+                        self.persons.append(author)
+                    linked = f' parentId="{parent}"' if parent else ""
+                    done = ' done="1"' if parent is None and thread["resolved"] else ""
+                    comments.append(
+                        f'<threadedComment ref="{thread["ref"]}" dT="2026-01-15T10:00:00.00" personId="{guid(4, self.persons.index(author))}"'
+                        f' id="{own}"{linked}{done}><text>{escape(text)}</text></threadedComment>'
+                    )
+                    parent = parent or own
+            if comments:
+                parts += 1
+                name = f"xl/threadedComments/threadedComment{parts}.xml"
+                xml = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<ThreadedComments xmlns="{THREADED}" xmlns:x="{SPREADSHEET}">{"".join(comments)}</ThreadedComments>'
+                self.parts.append((name, xml.encode(), CT_THREADED_COMMENTS))
+                self.relationships.setdefault(sheet.part, []).append((f"rIdThreaded{parts}", RT_THREADED_COMMENT, f"../threadedComments/{name.rsplit('/', 1)[1]}"))
+        if self.persons:
+            people = "".join(
+                f'<person displayName="{escape(name)}" id="{guid(4, n)}" userId="{escape(name)}" providerId="None"/>' for n, name in enumerate(self.persons)
+            )
+            xml = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<personList xmlns="{THREADED}" xmlns:x="{SPREADSHEET}">{people}</personList>'
+            self.parts.append(("xl/persons/person.xml", xml.encode(), CT_PERSONS))
+            self.relationships.setdefault("xl/workbook.xml", []).append(("rIdPersons", RT_PERSON, "persons/person.xml"))
+
     def _truth(self, variant: str) -> dict:
-        return {
-            "fixture": self.name,
-            "format": "xlsx",
-            "elements": [sheet.truth(variant) for sheet in self.sheets],
-            "absent": self.absent,
-            "once": [],
-        }
+        """The workbook's truth. A sheet's comments are its notes in cell order, then its threads
+        in the order they were made, each its place, from 1, in the workbook's comments, which
+        follow the sheets' order, on the cell it anchors."""
+        elements, comments = [], []
+        for sheet in self.sheets:
+            places: dict[str, list[int]] = {}
+            for thread in sheet.comment_threads(variant):
+                comments.append(thread_truth(thread))
+                places.setdefault(thread["ref"], []).append(len(comments))
+            elements.append(sheet.truth(variant, places))
+        truth = {"fixture": self.name, "format": "xlsx", "elements": elements, "absent": self.absent, "once": []}
+        if comments:
+            truth["comments"] = comments
+        return truth
 
     def truth(self) -> dict:
         return self._truth("openpyxl")
@@ -1365,6 +1459,16 @@ RELATIONSHIPS = "http://schemas.openxmlformats.org/package/2006/relationships"
 RT_OLE_OBJECT = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject"
 RT_PACKAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/package"
 RT_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+THREADED = "http://schemas.microsoft.com/office/spreadsheetml/2018/threadedcomments"
+SPREADSHEET = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+RT_THREADED_COMMENT = "http://schemas.microsoft.com/office/2017/10/relationships/threadedComment"
+RT_PERSON = "http://schemas.microsoft.com/office/2017/10/relationships/person"
+CT_THREADED_COMMENTS = "application/vnd.ms-excel.threadedcomments+xml"
+CT_PERSONS = "application/vnd.ms-excel.person+xml"
+EXCEL_COPY = (
+    "[Threaded comment]\n\nYour version of Excel allows you to read this threaded comment; however, any edits to it will get "
+    "removed if the file is opened in a newer version of Excel. Learn more: https://go.microsoft.com/fwlink/?linkid=870924"
+)
 CT_OLE_OBJECT = "application/vnd.openxmlformats-officedocument.oleObject"
 CT_DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -1391,7 +1495,8 @@ def payload_truth(kind: str, data: bytes, ext: str, content_type: str, prog_id: 
 class Sheet:
     """A worksheet and its truth: its cells by reference, each writer's truth of each (None where
     the writer leaves the cell out), then its charts, its pictures, and its objects, each
-    object's truth its preview's then its payload's, by writer."""
+    object's truth its preview's then its payload's, by writer; and its notes and threaded
+    comments, each a thread as thread_truth takes it with the reference of its cell."""
 
     def __init__(self, book: Workbook, ws, index: int):
         self.book = book
@@ -1400,7 +1505,10 @@ class Sheet:
         self.cells: dict[str, dict[str, dict | None]] = {}
         self.charts: list[dict[str, dict]] = []
         self.pictures: list[tuple[dict, str]] = []
+        self.text_boxes: list[list[str]] = []
         self.objects: list[dict[str, list[dict]]] = []
+        self.notes: list[dict] = []
+        self.threads: list[dict] = []
 
     @property
     def part(self) -> str:
@@ -1505,6 +1613,11 @@ class Sheet:
         }
         self.pictures.append((truth, alt))
 
+    def text_box(self, paragraphs: list[str]) -> None:
+        """A text box shape of those paragraphs, patched into the sheet's drawing part after its
+        charts and pictures, so the sheet needs one of them for openpyxl to write the part."""
+        self.text_boxes.append(paragraphs)
+
     def link(self, ref: str, value: str, target: str) -> None:
         """A text cell with an external hyperlink, which its truth carries as its target."""
         self.ws[ref] = value
@@ -1519,12 +1632,45 @@ class Sheet:
         truth = {"ref": ref, "type": "text", "value": value}
         self._cell(ref, truth, dict(truth))
 
-    def note(self, ref: str, value: str, text: str) -> None:
-        """A text cell with a note (a legacy comment), which is not read."""
-        self.ws[ref] = value
-        self.ws[ref].comment = Comment(text, AUTHOR)
-        truth = {"ref": ref, "type": "text", "value": value}
+    def note(self, ref: str, value, text: str, author: str = AUTHOR, kind: str = "text") -> None:
+        """A cell with a note, a legacy comment, by its author; with no value an empty cell, which
+        the note alone puts in the table."""
+        self._commented(ref, value, kind)
+        self.ws[ref].comment = Comment(text, author)
+        self.notes.append({"ref": ref, "author": author, "text": text, "resolved": False, "replies": [], "modern": False})
+
+    def thread(self, ref: str, value, author: str, text: str, replies: list[tuple[str, str]] = (), resolved: bool = False) -> None:
+        """A text cell with a threaded comment and its replies, and the note Excel writes on the
+        same cell as its copy for older readers: its text the copy's notice, then the thread's
+        comments, by an author naming the thread's id."""
+        self._commented(ref, value, "text")
+        copy = EXCEL_COPY + "\n\nComment:\n    " + text.replace("\n", "\n    ")
+        copy += "".join(f"\nReply:\n    {reply}" for _, reply in replies)
+        ids = [guid(3, self.book.threaded + n) for n in range(1, len(replies) + 2)]
+        self.book.threaded += len(ids)
+        self.ws[ref].comment = Comment(copy, f"tc={ids[0]}")
+        self.threads.append({"ref": ref, "ids": ids, "author": author, "text": text, "resolved": resolved, "replies": list(replies), "modern": False})
+
+    def _commented(self, ref: str, value, kind: str) -> None:
+        if value is not None:
+            self.ws[ref] = value
+            truth = {"ref": ref, "type": kind, "value": value}
+        else:
+            truth = {"ref": ref}
         self._cell(ref, truth, dict(truth))
+
+    def comment_threads(self, variant: str) -> list[dict]:
+        """The sheet's threads in the order docproc-ooxml reads them, its notes and then its
+        threaded comments, each in the order the writer stores them: openpyxl's notes by row and
+        then column, its threaded comments as made, and LibreOffice's both by column and then
+        row."""
+
+        def stored(thread: dict) -> tuple[int, int]:
+            row, column = coordinate_to_tuple(thread["ref"])
+            return (row, column) if variant == "openpyxl" else (column, row)
+
+        threads = self.threads if variant == "openpyxl" else sorted(self.threads, key=stored)
+        return sorted(self.notes, key=stored) + threads
 
     def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
         """An object openpyxl can't write, added as raw XML and parts: an embedded package
@@ -1572,7 +1718,10 @@ class Sheet:
             self.book.ole_sheets.append((self, ns))
         return self._ole_xml
 
-    def truth(self, variant: str) -> dict:
+    def truth(self, variant: str, comments: dict[str, list[int]]) -> dict:
+        """The sheet's truth, each cell's comments its threads' places in comments, by its
+        reference."""
+
         def position(ref: str) -> tuple[int, int]:
             return coordinate_to_tuple(ref)
 
@@ -1580,12 +1729,13 @@ class Sheet:
         for ref in sorted(self.cells, key=position):
             cell = self.cells[ref][variant]
             if cell is not None:
-                rows.setdefault(position(ref)[0], []).append(cell)
+                rows.setdefault(position(ref)[0], []).append({**cell, "comments": comments[ref]} if ref in comments else cell)
         elements = []
         if rows:
             elements.append({"kind": "table", "rows": [{"row": r, "cells": cells} for r, cells in rows.items()]})
         elements += [chart[variant] for chart in self.charts]
         elements += [picture for picture, _ in self.pictures]
+        elements += [{"kind": "paragraph", "text": text} for paragraphs in self.text_boxes for text in paragraphs]
         elements += [element for obj in self.objects for element in obj[variant]]
         return {
             "kind": "sheet",
@@ -1593,6 +1743,20 @@ class Sheet:
             "hidden": self.ws.sheet_state != "visible",
             "elements": elements,
         }
+
+
+def text_box_anchor(n: int, paragraphs: list[str]) -> str:
+    """A two-cell anchor of a text box shape, the n-th on its sheet, in openpyxl's unprefixed
+    drawing namespace."""
+    body = "".join(f'<a:p><a:r><a:rPr lang="en-US"/><a:t>{escape(text)}</a:t></a:r></a:p>' for text in paragraphs)
+    return (
+        f"<twoCellAnchor><from><col>{4 + 4 * n}</col><colOff>0</colOff><row>1</row><rowOff>0</rowOff></from>"
+        f"<to><col>{7 + 4 * n}</col><colOff>0</colOff><row>5</row><rowOff>0</rowOff></to>"
+        f'<sp macro="" textlink="" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'<nvSpPr><cNvPr id="{100 + n}" name="TextBox {100 + n}"/><cNvSpPr txBox="1"/></nvSpPr>'
+        f'<spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1828800" cy="731520"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></spPr>'
+        f'<txBody><a:bodyPr wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>{body}</txBody></sp><clientData/></twoCellAnchor>'
+    )
 
 
 def cells() -> Workbook:
@@ -1745,7 +1909,7 @@ def dates_1904() -> Workbook:
 
 def sheet_links() -> Workbook:
     """Cells with external hyperlinks, a text and a number cell's, a cell with a hyperlink to a
-    place in the workbook, a cell with a note, and a text box, which are not read."""
+    place in the workbook, which stays text, and a cell with a note."""
     f = Workbook("sheet-links")
     s = f.sheet("Links")
     s.link("A1", "The docproc guide", "https://example.invalid/docproc?page=1&lang=en")
@@ -1754,7 +1918,37 @@ def sheet_links() -> Workbook:
     s.cells["A2"]["openpyxl"]["target"] = s.cells["A2"]["libreoffice"]["target"] = "https://example.invalid/answer"
     s.internal_link("A3", "Back to the top", "'Links'!A1")
     s.note("B1", "Noted", "A note on this cell.")
-    f.absent = ["A note on this cell."]
+    return f
+
+
+def sheet_notes() -> Workbook:
+    """Notes by two authors on two sheets: on the first a number cell's, a text cell's holding
+    Markdown's characters, and one of two lines on an empty cell in a column no other cell uses;
+    on the second a text cell's."""
+    f = Workbook("sheet-notes")
+    s = f.sheet("Budget")
+    s.value("A1", "Item", "text")
+    s.value("B1", "Cost", "text")
+    s.value("A2", "Rent", "text")
+    s.note("B2", 1200, "Is this monthly?", "Ana Reviewer", kind="number")
+    s.note("A3", "Travel", "Two trips, one *cancelled*.", "Ben Author")
+    s.value("B3", 300, "number")
+    s.note("D3", None, "Add the insurance here.\nIt was missed.", "Ana Reviewer")
+    f.sheet("Staff").note("A1", "Hires", "Two are still open.", "Ben Author")
+    return f
+
+
+def sheet_threads() -> Workbook:
+    """Threaded comments, Excel 365's: an open thread of a comment and two replies by two authors,
+    a resolved comment of two lines by a third, each with the note Excel writes as its copy, which
+    is never read; and on a third cell a note of its own."""
+    f = Workbook("sheet-threads")
+    s = f.sheet("Plan")
+    s.value("A1", "Launch", "text")
+    s.thread("B1", "March", "Ana Reviewer", "Is the launch date fixed?", [("Ben Author", "It moved to March."), ("Ana Reviewer", "Thanks, noted.")])
+    s.thread("A2", "Supplier", "Cleo Editor", "Add the supplier risk.\nIt was raised last week.", resolved=True)
+    s.note("A3", "Budget", "Checked against the plan.", "Ben Author")
+    f.absent = ["[Threaded comment]", "Your version of Excel"]
     return f
 
 
@@ -1771,11 +1965,32 @@ def sheet_embeddings() -> Workbook:
     return f
 
 
-XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings]
+def sheet_text_boxes() -> Workbook:
+    """A sheet's text boxes, after its picture in its drawing part: one of two paragraphs and one
+    of one; a second sheet, with no drawing, between them and the end."""
+    f = Workbook("sheet-text-boxes")
+    s = f.sheet("Boxes")
+    s.value("A1", "A picture and two text boxes follow.", "text")
+    s.picture("B3", png((40, 160, 80)), "A green square")
+    s.text_box(["A text box on the sheet.", "Its second paragraph."])
+    s.text_box(["Another text box."])
+    f.sheet("After").value("A1", "No drawing here.", "text")
+    return f
+
+
+XLSX_FIXTURES = [cells, formulas, sheets, merges, drawings, dates_1904, sheet_links, sheet_embeddings, sheet_text_boxes, sheet_notes, sheet_threads]
 
 
 TITLE_SLIDE, TITLE_AND_CONTENT, TITLE_ONLY, BLANK = 0, 1, 5, 6
 A = nsdecls("a")
+P15 = "http://schemas.microsoft.com/office/powerpoint/2012/main"
+P188 = "http://schemas.microsoft.com/office/powerpoint/2018/8/main"
+PC = "http://schemas.microsoft.com/office/powerpoint/2013/main/command"
+THREADING_EXTENSION = "{C676402C-5697-4E1C-873F-D02D1690AC5C}"
+CT_MODERN_COMMENTS = "application/vnd.ms-powerpoint.comments+xml"
+CT_MODERN_AUTHORS = "application/vnd.ms-powerpoint.authors+xml"
+RT_MODERN_COMMENTS = "http://schemas.microsoft.com/office/2018/10/relationships/comments"
+RT_MODERN_AUTHORS = "http://schemas.microsoft.com/office/2018/10/relationships/authors"
 ABSENT_ON_SLIDES = ["Click to edit Master title style", "Click to edit Master text styles", "Click to edit Master subtitle style", "<number>"]
 
 
@@ -1820,13 +2035,45 @@ def layout_none(level: int) -> bool | None:
     return None
 
 
+def guid(kind: int, n: int) -> str:
+    """A fixed GUID, as PowerPoint's modern comments name their authors (kind 1) and comments
+    (kind 2), so a rerun writes the same."""
+    return f"{{{kind:08X}-0000-4000-8000-{n:012X}}}"
+
+
+def initials(name: str) -> str:
+    return "".join(word[0] for word in name.split())
+
+
+def modern_text(text: str) -> str:
+    """A modern comment's or reply's text body, a paragraph per line."""
+    paragraphs = "".join(f'<a:p><a:r><a:rPr lang="en-US"/><a:t>{escape(line)}</a:t></a:r></a:p>' for line in text.split("\n"))
+    return f"<p188:txBody><a:bodyPr/><a:lstStyle/>{paragraphs}</p188:txBody>"
+
+
+def thread_truth(thread: dict) -> dict:
+    """A comment thread's truth, in the docx comments' shape; a slide's or a sheet's comment
+    anchors no text, and only a modern slide comment has a paragraph per line."""
+
+    def paragraphs(text: str) -> list[dict]:
+        return [{"kind": "paragraph", "text": line} for line in (text.split("\n") if thread["modern"] else [text])]
+
+    return {
+        "author": thread["author"],
+        "anchor": "",
+        "resolved": thread["resolved"],
+        "elements": paragraphs(thread["text"]),
+        "replies": [{"author": author, "elements": paragraphs(text)} for author, text in thread["replies"]],
+    }
+
+
 class Deck:
     """A python-pptx presentation and its ground truth, built side by side. absent starts with
     the prompt texts of python-pptx's default layouts and master, which no slide holds, and the
     slide-number field LibreOffice writes in each notes page's slide-number placeholder.
-    libreoffice is how the LibreOffice re-save's ground truth differs, when it does.
-    comment_authors is the comment authors' part, made with the first comment; comments and
-    payloads count the comments and payloads made so far, which number their parts."""
+    libreoffice is how the LibreOffice re-save's ground truth differs, when it does. payloads
+    counts the payloads made so far, which number their parts. The comment parts and their
+    authors' parts are written on saving, from each slide's threads."""
 
     writer, extension, filter = "python-pptx", "pptx", "pptx:Impress MS PowerPoint 2007 XML"
 
@@ -1838,8 +2085,6 @@ class Deck:
         self.absent: list[str] = list(ABSENT_ON_SLIDES)
         self.once: list[str] = []
         self.libreoffice = None
-        self.comment_authors = None
-        self.comments = 0
         self.payloads = 0
 
     def slide(self, layout: int, hidden: bool = False) -> "DeckSlide":
@@ -1861,19 +2106,105 @@ class Deck:
         self.order = order
 
     def save(self, path: pathlib.Path) -> None:
+        self._comment_parts()
         self.prs.save(path)
+
+    def _comment_parts(self) -> None:
+        """Writes each slide's legacy threads to a legacy comments part, a reply naming its
+        thread's first comment in PowerPoint 2013's threading extension, and its modern threads to
+        a modern comments part, then each form's authors' part."""
+        package = self.prs.part.package
+        legacy_authors: list[str] = []
+        modern_authors: list[str] = []
+        last_index: dict[int, int] = {}
+        legacy_parts = 0
+        modern_comments = 0
+        for s in self.slides:
+            comments = []
+            for thread in s.legacy_threads():
+                parent = None
+                for author, text in [(thread["author"], thread["text"]), *thread["replies"]]:
+                    if author not in legacy_authors:
+                        legacy_authors.append(author)
+                    author_id = legacy_authors.index(author)
+                    index = last_index[author_id] = last_index.get(author_id, 0) + 1
+                    threading = (
+                        ""
+                        if parent is None
+                        else f'<p:extLst><p:ext uri="{THREADING_EXTENSION}"><p15:threadingInfo xmlns:p15="{P15}" timeZoneBias="0">'
+                        f'<p15:parentCm authorId="{parent[0]}" idx="{parent[1]}"/></p15:threadingInfo></p:ext></p:extLst>'
+                    )
+                    comments.append(
+                        f'<p:cm authorId="{author_id}" dt="2026-01-15T10:00:00.000" idx="{index}">'
+                        f'<p:pos x="10" y="{10 + 100 * len(comments)}"/><p:text>{escape(text)}</p:text>{threading}</p:cm>'
+                    )
+                    parent = parent or (author_id, index)
+            if comments:
+                legacy_parts += 1
+                xml = f'<p:cmLst {pptx_nsdecls("p")}>{"".join(comments)}</p:cmLst>'
+                part = PptxPart.load(PptxPackURI(f"/ppt/comments/comment{legacy_parts}.xml"), PCT.PML_COMMENTS, package, xml.encode())
+                s.slide.part.relate_to(part, PRT.COMMENTS)
+            comments = []
+            for thread in s.modern_threads():
+                if thread["author"] not in modern_authors:
+                    modern_authors.append(thread["author"])
+                replies = []
+                for author, text in thread["replies"]:
+                    if author not in modern_authors:
+                        modern_authors.append(author)
+                    modern_comments += 1
+                    replies.append(
+                        f'<p188:reply id="{guid(2, modern_comments)}" authorId="{guid(1, modern_authors.index(author))}" created="{DATE}">'
+                        f"{modern_text(text)}</p188:reply>"
+                    )
+                modern_comments += 1
+                status = ' status="resolved"' if thread["resolved"] else ""
+                reply_list = f"<p188:replyLst>{''.join(replies)}</p188:replyLst>" if replies else ""
+                comments.append(
+                    f'<p188:cm id="{guid(2, modern_comments)}" authorId="{guid(1, modern_authors.index(thread["author"]))}" created="{DATE}"{status}>'
+                    f'<pc:sldMkLst xmlns:pc="{PC}"><pc:docMk/><pc:sldMk cId="0" sldId="{s.slide.slide_id}"/></pc:sldMkLst>'
+                    f'{reply_list}{modern_text(thread["text"])}</p188:cm>'
+                )
+            if comments:
+                xml = f'<p188:cmLst {pptx_nsdecls("a", "r")} xmlns:p188="{P188}">{"".join(comments)}</p188:cmLst>'
+                name = f"/ppt/comments/modernComment_{s.slide.slide_id:X}_0.xml"
+                part = PptxPart.load(PptxPackURI(name), CT_MODERN_COMMENTS, package, xml.encode())
+                s.slide.part.relate_to(part, RT_MODERN_COMMENTS)
+        if legacy_authors:
+            authors = "".join(
+                f'<p:cmAuthor id="{n}" name="{escape(name)}" initials="{initials(name)}" lastIdx="{last_index[n]}" clrIdx="{n}"/>'
+                for n, name in enumerate(legacy_authors)
+            )
+            xml = f'<p:cmAuthorLst {pptx_nsdecls("p")}>{authors}</p:cmAuthorLst>'
+            part = PptxPart.load(PptxPackURI("/ppt/commentAuthors.xml"), PCT.PML_COMMENT_AUTHORS, package, xml.encode())
+            self.prs.part.relate_to(part, PRT.COMMENT_AUTHORS)
+        if modern_authors:
+            authors = "".join(
+                f'<p188:author id="{guid(1, n)}" name="{escape(name)}" initials="{initials(name)}" userId="{escape(name)}" providerId="None"/>'
+                for n, name in enumerate(modern_authors)
+            )
+            xml = f'<p188:authorLst xmlns:p188="{P188}">{authors}</p188:authorLst>'
+            part = PptxPart.load(PptxPackURI("/ppt/authors.xml"), CT_MODERN_AUTHORS, package, xml.encode())
+            self.prs.part.relate_to(part, RT_MODERN_AUTHORS)
 
     def presented(self) -> list["DeckSlide"]:
         return [self.slides[i] for i in self.order] if self.order is not None else self.slides
 
     def truth(self) -> dict:
-        return {
-            "fixture": self.name,
-            "format": "pptx",
-            "elements": [s.truth(n) for n, s in enumerate(self.presented())],
-            "absent": self.absent,
-            "once": self.once,
-        }
+        """The deck's truth. A slide's comments are its legacy threads, then its modern ones, each
+        its place, from 1, in the deck's comments, which follow the slides' order."""
+        elements, comments = [], []
+        for n, s in enumerate(self.presented()):
+            element = s.truth(n)
+            threads = s.legacy_threads() + s.modern_threads()
+            if threads:
+                element["comments"] = list(range(len(comments) + 1, len(comments) + 1 + len(threads)))
+                comments += [thread_truth(t) for t in threads]
+            elements.append(element)
+        truth = {"fixture": self.name, "format": "pptx", "elements": elements, "absent": self.absent, "once": self.once}
+        if comments:
+            truth["comments"] = comments
+        return truth
 
     def libreoffice_truth(self) -> dict | None:
         if self.libreoffice is None:
@@ -1893,6 +2224,7 @@ class DeckSlide:
         self.hidden = hidden
         self.elements: list = []
         self.notes: list[dict] = []
+        self.threads: list[dict] = []
 
     def title(self, text: str) -> None:
         self.slide.shapes.title.text = text
@@ -2005,23 +2337,18 @@ class DeckSlide:
                 )
         self.elements.append({"kind": "paragraph", "text": "".join(text for text, _, _ in runs)})
 
-    def comment(self, text: str) -> None:
-        """A comment on the slide, in a legacy comments part, which is not read."""
-        package = self.deck.prs.part.package
-        if self.deck.comment_authors is None:
-            authors = (
-                f'<p:cmAuthorLst {pptx_nsdecls("p")}><p:cmAuthor id="0" name="{AUTHOR}" initials="FA" lastIdx="1" clrIdx="0"/></p:cmAuthorLst>'
-            )
-            self.deck.comment_authors = PptxPart.load(PptxPackURI("/ppt/commentAuthors.xml"), PCT.PML_COMMENT_AUTHORS, package, authors.encode())
-            self.deck.prs.part.relate_to(self.deck.comment_authors, PRT.COMMENT_AUTHORS)
-        self.deck.comments += 1
-        xml = (
-            f'<p:cmLst {pptx_nsdecls("p")}><p:cm authorId="0" dt="2026-01-15T10:00:00.000" idx="1">'
-            f'<p:pos x="10" y="10"/><p:text>{escape(text)}</p:text></p:cm></p:cmLst>'
-        )
-        part = PptxPart.load(PptxPackURI(f"/ppt/comments/comment{self.deck.comments}.xml"), PCT.PML_COMMENTS, package, xml.encode())
-        self.slide.part.relate_to(part, PRT.COMMENTS)
-        self.deck.absent.append(text)
+    def comment(self, author: str, text: str, replies: list[tuple[str, str]] = (), modern: bool = False, resolved: bool = False) -> None:
+        """A comment thread on the slide: its author, its text (a newline between a modern
+        comment's paragraphs), and its replies of (author, text), legacy as PowerPoint 2019 and
+        earlier write it, or modern, PowerPoint 365's threaded comments, resolved or not. A
+        legacy comment has no state, so its thread is open."""
+        self.threads.append({"author": author, "text": text, "replies": list(replies), "modern": modern, "resolved": resolved})
+
+    def legacy_threads(self) -> list[dict]:
+        return [t for t in self.threads if not t["modern"]]
+
+    def modern_threads(self) -> list[dict]:
+        return [t for t in self.threads if t["modern"]]
 
     def ole_object(self, kind: str, data: bytes, ext: str, content_type: str, prog_id: str, preview: bytes, alternate: bool) -> None:
         """An embedded package (kind "embedded") or OLE object ("ole") in a graphic frame, its
@@ -2184,9 +2511,10 @@ def groups() -> Deck:
 
 
 def slide_objects() -> Deck:
-    """A table with merged cells across columns and rows, a cell of two paragraphs, and a pipe;
-    a titled clustered column chart of two series with a missing value; the same picture on two
-    slides (one file) beside another, with titles and alternative text; notes beside a chart."""
+    """Four slides: a table with a cell merged across columns and one across rows, a cell of two
+    paragraphs, and a pipe; a titled clustered column chart of two series with a missing value,
+    with notes; a red picture with alternative text and a title, and a blue one with alternative
+    text alone placed over it; the red picture again on the last slide, its bytes one file."""
     f = Deck("slide-objects")
     red, blue = png((220, 40, 40)), png((40, 60, 200))
     t = f.slide(TITLE_ONLY)
@@ -2214,7 +2542,7 @@ def slide_objects() -> Deck:
 
 def slide_links() -> Deck:
     """A paragraph with an external hyperlink and a hyperlink to another slide, which stays
-    text; a comment on the first slide, which is not read."""
+    text."""
     f = Deck("slide-links")
     first = f.slide(TITLE_ONLY)
     second = f.slide(TITLE_ONLY)
@@ -2228,7 +2556,6 @@ def slide_links() -> Deck:
             (".", None, None),
         ]
     )
-    first.comment("A comment on the first slide.")
     second.title("The next slide")
     return f
 
@@ -2256,7 +2583,63 @@ def slide_embeddings() -> Deck:
     return f
 
 
-PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings]
+def slide_comments() -> Deck:
+    """Legacy comments by two authors on two of three slides: two threads on the first, one
+    holding Markdown's characters, and on the third a thread with a reply that names it in
+    PowerPoint 2013's threading extension; the second slide has none."""
+    f = Deck("slide-comments")
+    first = f.slide(TITLE_ONLY)
+    first.title("Budget")
+    first.comment("Ana Reviewer", "Is the *total* right?")
+    first.comment("Ben Author", "The figures are from the ledger.")
+    second = f.slide(TITLE_ONLY)
+    second.title("Timeline")
+    third = f.slide(TITLE_ONLY)
+    third.title("Staffing")
+    third.comment("Ben Author", "Two hires are still open.", [("Ana Reviewer", "One closes next week.")])
+
+    def libreoffice(truth: dict) -> None:
+        """LibreOffice drops the threading extension, so the reply is a thread of its own."""
+        comments = []
+        for slide in truth["elements"]:
+            if "comments" not in slide:
+                continue
+            flat = []
+            for n in slide["comments"]:
+                thread = truth["comments"][n - 1]
+                flat.append({**thread, "replies": []})
+                flat += [{"author": r["author"], "anchor": "", "resolved": False, "elements": r["elements"], "replies": []} for r in thread["replies"]]
+            slide["comments"] = list(range(len(comments) + 1, len(comments) + 1 + len(flat)))
+            comments += flat
+        truth["comments"] = comments
+
+    f.libreoffice = libreoffice
+    return f
+
+
+def slide_threads() -> Deck:
+    """Modern comments, PowerPoint 365's threaded ones: on the first slide an open thread of a
+    comment and two replies by two authors, on the second a resolved comment of two paragraphs
+    by a third."""
+    f = Deck("slide-threads")
+    first = f.slide(TITLE_ONLY)
+    first.title("Roadmap")
+    first.comment("Ana Reviewer", "Is the launch date fixed?", [("Ben Author", "It moved to March."), ("Ana Reviewer", "Thanks, noted.")], modern=True)
+    second = f.slide(TITLE_ONLY)
+    second.title("Risks")
+    second.comment("Cleo Editor", "Add the supplier risk.\nIt was raised last week.", modern=True, resolved=True)
+
+    def libreoffice(truth: dict) -> None:
+        """LibreOffice reads no modern comments, so its re-save has none."""
+        del truth["comments"]
+        for slide in truth["elements"]:
+            slide.pop("comments", None)
+
+    f.libreoffice = libreoffice
+    return f
+
+
+PPTX_FIXTURES = [slides, bullets, groups, slide_objects, slide_links, slide_embeddings, slide_comments, slide_threads]
 
 
 REFUSED = GENERATED / "refused"

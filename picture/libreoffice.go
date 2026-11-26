@@ -23,6 +23,9 @@ type LibreOfficeRun struct {
 	// ConvertTo is soffice's --convert-to: the target extension and, after a colon, the export
 	// filter and its options. It is required.
 	ConvertTo string
+	// InFilter is soffice's --infilter, the import filter every input is read through, such as
+	// impress8 to read an ODF drawing into Impress; "" lets LibreOffice detect each input's.
+	InFilter string
 	// Inputs are the files the run converts, in order; at least one is required.
 	Inputs []LibreOfficeInput
 	// Registry, when set, is the registrymodifications.xcu the run's user profile starts with,
@@ -132,9 +135,14 @@ func (c *Converter) sofficeRun(ctx context.Context, run LibreOfficeRun, o *Libre
 	args := []string{
 		"-env:UserInstallation=" + (&url.URL{Scheme: "file", Path: profile}).String(),
 		"--headless", "--norestore",
+	}
+	if run.InFilter != "" {
+		args = append(args, "--infilter="+run.InFilter)
+	}
+	args = append(args,
 		"--convert-to", run.ConvertTo,
 		"--outdir", o.Dir,
-	}
+	)
 	err := c.libreoffice.Run(ctx, tool.Invocation{
 		Args:   append(args, inputs...),
 		Dir:    o.work,

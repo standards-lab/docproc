@@ -1,0 +1,13 @@
+image: gotenberg/gotenberg:9.10.1-libreoffice@sha256:79aec465636fef089f6ed3da69b75c7d3c7155fcecd20b3d80563868c54b5a90
+soffice: LibreOffice 26.8.2.2 680(Build:2)
+host soffice, encrypted.odt: LibreOffice 26.8.1.1 680(Build:1)
+
+a03da7990f04b01ee582ba31333f6f47a828d296c2d943ea0970a9bfc68081a6  cells.libreoffice.ods
+3980e98b8676b127df3da66b195c9bcfee6673473239c920733ff86cd59f2824  drawing.odg
+85833df66fefa623f7ff8d821e7f86646ad440e92defc9864c04f45017406fc0  encrypted.odt
+3362d02f6a88d9f185349aa531ba7b61b92bba3d7e0bbec60bd9fc927998a2d1  slides.libreoffice.odp
+6dcd39f5f97ec00d0b7a1cbe526f7f55eabf9a6aeb550859c380a634fabba2d5  tables.libreoffice.odt
+f52718e995449c234704d1a3eb5a7d1c92d727c98b4659509938682c93bb3cf9  cells.libreoffice.ots
+f266d0ed83886620d865f9d57536a84efc4c3576a0a6ac98e1cbe4e5a5bcb60c  drawing.otg
+e7950324965bb65e23ae2dbb66104787c06897b5ede38295232e98a5afc670a4  slides.libreoffice.otp
+d7480099a744fa63a43a9a32ab31922f54a407043c9ac75c1506e1c0c835f605  tables.libreoffice.ott

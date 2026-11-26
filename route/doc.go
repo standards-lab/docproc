@@ -42,8 +42,7 @@
 //     one, an encrypted OOXML package (an OLE2 compound file holding an EncryptedPackage stream,
 //     named with an OOXML extension or .xlsb), which office refuses as encrypted, an ODF package,
 //     an RTF, a WordPerfect document, or a ZIP named .xlsb, an Excel binary workbook. The last
-//     four go through LibreOffice, and office's stage has no processor yet for the last two, which
-//     a dispatcher reports.
+//     four go through LibreOffice.
 //   - [Vision]: a picture a vision model decodes as stored: PNG, JPEG, GIF, or BMP.
 //   - [VisionConverted]: a picture a vision model decodes only once converted to PNG: TIFF, EMF,
 //     WMF, SVG, HEIC, WebP, or AVIF.

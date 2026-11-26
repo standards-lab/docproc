@@ -461,10 +461,12 @@ internal static partial class DocxReader
                         break;
                     case W.Drawing drawing:
                         ReadDrawing(drawing, inlines);
+                        ReadTextBoxes(drawing, inlines);
                         break;
                     case W.Picture or W.EmbeddedObject:
                         ReadVmlPicture(child, inlines);
                         ReadPayloads(child, inlines);
+                        ReadTextBoxes(child, inlines);
                         break;
                     case W.Ruby { RubyBase: { } rubyBase }:
                         ReadInlines(rubyBase, inlines);
@@ -478,6 +480,9 @@ internal static partial class DocxReader
                         {
                             ReadRun(fallback, inlines);
                         }
+                        break;
+                    case AlternateContent content:
+                        ReadTextBoxes(TextBoxBranch(content), inlines);
                         break;
                     default:
                         break;
@@ -499,7 +504,7 @@ internal static partial class DocxReader
             var properties = drawing.Descendants<DW.DocProperties>().FirstOrDefault();
             var alt = NonEmpty(properties?.Description?.Value);
             var title = NonEmpty(properties?.Title?.Value);
-            foreach (var element in drawing.Descendants())
+            foreach (var element in OutsideTextBoxes(drawing))
             {
                 switch (element)
                 {
@@ -523,7 +528,7 @@ internal static partial class DocxReader
 
         private void ReadVmlPicture(OpenXmlElement picture, InlineBuilder inlines)
         {
-            foreach (var image in picture.Descendants<V.ImageData>())
+            foreach (var image in OutsideTextBoxes(picture).OfType<V.ImageData>())
             {
                 if (image.RelationshipId?.Value is { } id && ReadPicture(id, NonEmpty(image.Title?.Value), null) is { } media)
                 {
@@ -537,7 +542,7 @@ internal static partial class DocxReader
 
         private void ReadPayloads(OpenXmlElement container, InlineBuilder inlines)
         {
-            foreach (var element in container.Descendants())
+            foreach (var element in OutsideTextBoxes(container))
             {
                 var (id, progId) = element switch
                 {
@@ -552,12 +557,16 @@ internal static partial class DocxReader
             }
         }
 
+        private void ReadTextBoxes(OpenXmlElement? element, InlineBuilder inlines)
+        {
+            foreach (var box in OutsideTextBoxes(element).OfType<W.TextBoxContent>())
+            {
+                inlines.Blocks.AddRange(ReadBlocks(box));
+            }
+        }
+
         private void FindUnread(OpenXmlElement element)
         {
-            if (element.Descendants<W.TextBoxContent>().Any(box => !string.IsNullOrWhiteSpace(box.InnerText)))
-            {
-                context.Unread.Found(Place, UnreadKinds.TextBoxes);
-            }
             if (UnreadKinds.HoldsSmartArt(element))
             {
                 context.Unread.Found(Place, UnreadKinds.SmartArt);
@@ -570,6 +579,26 @@ internal static partial class DocxReader
 
         private string Place => context.Section is int section ? $"section {section + 1}" : "comments";
     }
+
+    private static IEnumerable<OpenXmlElement> OutsideTextBoxes(OpenXmlElement? element)
+    {
+        foreach (var child in element?.ChildElements ?? [])
+        {
+            yield return child;
+            if (child is W.TextBoxContent)
+            {
+                continue;
+            }
+            foreach (var descendant in OutsideTextBoxes(child))
+            {
+                yield return descendant;
+            }
+        }
+    }
+
+    private static OpenXmlElement? TextBoxBranch(AlternateContent content) =>
+        content.Elements<AlternateContentChoice>().FirstOrDefault(choice => OutsideTextBoxes(choice).OfType<W.TextBoxContent>().Any())
+        ?? (OpenXmlElement?)content.GetFirstChild<AlternateContentFallback>();
 
     private static IEnumerable<OpenXmlElement> BlockElements(OpenXmlElement container)
     {

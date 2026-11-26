@@ -45,8 +45,9 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   data, no embedded workbook), a picture part of its own and a linked picture's external
   relationship, the footnotes and endnotes parts (with Word's separator and continuation notes),
   the comments and commentsExtended parts, the hyperlinks and bookmarks, the custom properties
-  part, and the kinds docproc-ooxml doesn't read: a VML text box, an equation, and a SmartArt
-  diagram with its four diagram parts.
+  part, the text boxes (Word's DrawingML text box in alternate content with its VML copy as the
+  fallback, and a VML text box alone), and the kinds docproc-ooxml doesn't read: an equation and
+  a SmartArt diagram with its four diagram parts.
 - `<name>.libreoffice.docx`: that file opened and saved again by LibreOffice, so the set also
   carries a real application's XML. Both are kept: the first is the XML the script means to
   write, the second what an editor makes of it, and docproc-ooxml must read both the same way.
@@ -55,7 +56,8 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   against it element by element. It holds:
   - `elements`: the accepted-state text of each element in document order:
     - `heading`, with its level.
-    - `paragraph`.
+    - `paragraph`; a text box's paragraphs follow the paragraph that anchors it, as its
+      pictures do.
     - `listItem`, with its nesting level, whether its level is ordered, and whether it starts a
       list rather than continuing the one before it; on an ordered list's first item, its first
       number, `startAt`, when that isn't 1.
@@ -72,7 +74,8 @@ re-saves it through LibreOffice headless. The docx fixtures are in `generated/do
   - `marks` on a paragraph or list item: each note or comment reference's offset in the text,
     its kind, and its note's or comment's place, from 1, in the truth's list of them.
   - `absent`: the strings that must appear nowhere in docproc-ooxml's output (deleted text).
-  - `once`: the strings that must appear exactly once (moved text).
+  - `once`: the strings that must appear exactly once (moved text, and a text box's text that
+    the document holds twice).
   - `sections`: each section's headers and footers as its pages show them, kind and elements.
   - `footnotes` and `endnotes`: the notes, in the order the text first references them.
   - `comments`: each thread's author, anchored text, resolved state, elements, and replies.
@@ -84,34 +87,40 @@ The xlsx fixtures are in `generated/xlsx/`, the same three or four files each:
 
 - `<name>.openpyxl.xlsx`: written by openpyxl, with what openpyxl can't write patched in as raw
   XML: the shared formula, the cell stored as an ISO date (`t="d"`), the pictures' alternative
-  text, and the OLE objects (`oleObjects`, one in Excel 2010's alternate content) with their
-  payload and preview parts.
+  text, the text box shapes, and the OLE objects (`oleObjects`, one in Excel 2010's alternate content) with their
+  payload and preview parts; and as raw parts the threaded comments and the workbook's persons
+  part, beside the notes openpyxl writes, Excel's copies of the threaded comments among them.
 - `<name>.libreoffice.xlsx`: that file re-saved by LibreOffice.
 - `<name>.truth.json` and `<name>.libreoffice.truth.json`: each sheet in workbook order, its name,
   whether it is hidden, and its elements: `table` with the rows that have cells, each its `row`
   number and its `cells`, each cell its `ref`, its value's `type` and `value` (a date as ISO
   8601, from the date the script gave openpyxl), its `formula` or its shared formula's anchor
   (`sharedFrom`), its `colSpan` and `rowSpan` when merged, and its external hyperlink's
-  `target`; then its charts and pictures, a picture with its `sheet` (the sheet's index, from
-  0), then its objects, each its preview's `media` and its payload's `embedded` or `ole`. The
-  re-save has its own truth wherever its cells differ, which is in every fixture with a formula,
-  a boolean, or an error.
+  `target`, and the `comments` it anchors, each its thread's place, from 1, in the truth's
+  `comments`; then its charts and pictures, a picture with its `sheet` (the sheet's index, from
+  0), then its text boxes' paragraphs, then its objects, each its preview's `media` and its payload's `embedded` or `ole`;
+  and the workbook's `comments`, sheet by sheet its notes and then its threaded comments in the
+  order the writer stores them, in the docx truth's shape, with no anchored text. The re-save
+  has its own truth wherever its cells or its comments' order differ, which is in every fixture
+  with a formula, a boolean, an error, or more than one note or threaded comment on a sheet.
 
 The pptx fixtures are in `generated/pptx/`:
 
 - `<name>.python-pptx.pptx`: written by python-pptx on its default template, with what it has no
   API for set on its XML: a hidden slide's `show="0"`, the presentation's slide order, each
   paragraph's own bullet (`buNone`, `buChar`, `buAutoNum`), the pictures' alternative text
-  and title, a hyperlink to another slide, the comments and comment authors parts, and the OLE
-  objects' graphic frames (one in PowerPoint 2010's alternate content) with their payload
-  parts. Its charts are its own, with an embedded workbook and cached series.
+  and title, a hyperlink to another slide, the legacy comments and comment authors parts (a
+  reply's PowerPoint 2013 threading extension among them), PowerPoint 365's modern comments and
+  authors parts, and the OLE objects' graphic frames (one in PowerPoint 2010's alternate content)
+  with their payload parts. Its charts are its own, with an embedded workbook and cached series.
 - `<name>.libreoffice.pptx`: that file re-saved by LibreOffice.
 - `<name>.truth.json` and `<name>.libreoffice.truth.json`: each slide in presentation order, its
   `number`, whether it is `hidden`, its elements in the docx truth's shape (a title is a level-1
   `heading`; a picture's `media` and a payload's `embedded` or `ole` have their `slide`, the
-  slide's index), and its `notes`' elements when it has notes. `absent` holds the layouts' and
-  master's prompt texts and LibreOffice's notes-page slide-number field, which must appear
-  nowhere.
+  slide's index), its `notes`' elements when it has notes, and its `comments`, each its thread's
+  place, from 1, in the truth's `comments`, which are in the docx truth's shape, with no anchored
+  text. `absent` holds the layouts' and master's prompt texts and LibreOffice's notes-page
+  slide-number field, which must appear nowhere.
 
 | Fixture | Covers |
 | --- | --- |
@@ -127,21 +136,27 @@ The pptx fixtures are in `generated/pptx/`:
 | `media` | a picture on its own line, one between text, the first picture's bytes again through the same part and through a part of its own, an EMF, a linked picture, a deleted picture, one in a table cell, one in a second section |
 | `charts` | a clustered bar chart of two series with a missing value, an untitled pie chart, a line chart |
 | `links` | an external hyperlink whose URL holds `&`, an internal one to a bookmark, which stays text, a hyperlink followed by a footnote's reference; text holding the private-use characters U+E000 and U+E001 beside a footnote's reference; a chart in a table cell; core properties and custom ones of five variant types, one name given twice |
-| `unread` | two VML text boxes, an equation, and a SmartArt diagram, each kind warned of once and none of their text read |
+| `text-boxes` | a text box of two paragraphs in alternate content, DrawingML with its VML copy as the fallback, read once; a VML text box alone; a text box anchored in a paragraph of no text; a text box in a table cell |
+| `unread` | two equations and a SmartArt diagram, each kind warned of once and none of their text read |
 | `cells` (xlsx) | text, rich text, numbers, booleans, errors; dates, datetimes, and times in default, built-in (14, 22, 20), and custom formats, among them quoted text and AM/PM; numbers in formats that aren't dates (`0.00%`, `#,##0`, and letters quoted, bracketed, and escaped); dates either side of the 1900 system's 29 February; a cell stored as an ISO date; text holding `_x0009_` and the escaped underscore `_x005F_`; a duration past a day in the elapsed format `[h]:mm`; a styled cell with no value; a sparse far corner |
 | `formulas` (xlsx) | formulas whose results are a number, text, an error, a boolean, and a date by its format; a shared formula over three cells; an array formula over three |
 | `sheets` (xlsx) | five sheets in an order that isn't their names': a hidden, an empty, and a very hidden one; merged cells across columns, rows, and both |
 | `merges` (xlsx) | two merged ranges starting on row 1, one ending there and one on row 2, then one starting on row 4, with cells under and beside each once it has ended, so a range kept past its last row would claim a cell not its own |
 | `drawings` (xlsx) | a bar chart over the sheet's cells; the same picture twice on one sheet; a second sheet's picture |
 | `dates-1904` (xlsx) | dates and a datetime on the 1904 date system's first day (serial 0.5), and a plain number |
-| `sheet-links` (xlsx) | external hyperlinks on a text cell and a number cell, a hyperlink to a place in the workbook, which stays text, and a cell's note, which is not read |
+| `sheet-links` (xlsx) | external hyperlinks on a text cell and a number cell, a hyperlink to a place in the workbook, which stays text, and a cell's note |
+| `sheet-text-boxes` (xlsx) | a sheet's picture and, after it in the drawing part, a text box of two paragraphs and one of one; a second sheet with no drawing |
+| `sheet-notes` (xlsx) | notes by two authors on two sheets: a number cell's, a text cell's holding Markdown's characters, and one of two lines on an empty cell in a column no other cell uses; a second sheet's text cell's |
+| `sheet-threads` (xlsx) | threaded comments: an open thread of a comment and two replies by two authors, a resolved comment of two lines, each with the note Excel writes as its copy, `[Threaded comment]`, which is skipped; a note of its own on a third cell |
 | `sheet-embeddings` (xlsx) | on a second sheet, an OLE object (the refused set's Word 97-2003 document as its compound file) in Excel 2010's alternate content and an embedded package (a docx), each with its preview picture |
 | `slides` (pptx) | five slides presented in an order that isn't their parts' (welcome, hidden, agenda, closing, questions), a hidden slide, notes of one and two paragraphs on three slides, a title slide's subtitle whose layout turns the master's bullets off, a text box, and a content placeholder left empty |
 | `bullets` (pptx) | a content placeholder's master bullets nested three levels and back, a paragraph whose own bullet is none between lists, a numbered list with a bullet nested in it, a bullet list right after it at the same level; a text box's plain paragraph, its own bullets nested, its own number, an empty paragraph |
 | `groups` (pptx) | a text box, a group of a text box and a nested group (a text box and a picture), and a text box placed above them all but last in the shape tree |
 | `slide-objects` (pptx) | a table with a cell merged across columns and one across rows, a cell of two paragraphs, a pipe; a titled clustered column chart of two series with a missing value, with notes; the same picture on two slides, with another placed over it on the first; alternative text and a title |
-| `slide-links` (pptx) | a paragraph's external hyperlink and its hyperlink to the next slide, which stays text; a comment, which is not read |
+| `slide-links` (pptx) | a paragraph's external hyperlink and its hyperlink to the next slide, which stays text |
 | `slide-embeddings` (pptx) | on a second slide, an OLE object (the refused set's Word 97-2003 document) in PowerPoint 2010's alternate content and an embedded package (a docx), each with its preview picture; on the first, a chart whose source workbook python-pptx embeds, which is never media |
+| `slide-comments` (pptx) | legacy comments by two authors on the first and third of three slides: two threads on the first, one holding Markdown's characters; on the third a thread and a reply its threading extension names |
+| `slide-threads` (pptx) | modern comments: an open thread of a comment and two replies by two authors, and on a second slide a resolved comment of two paragraphs |
 
 What LibreOffice's re-save changes, checked by unzipping it:
 
@@ -160,6 +175,8 @@ What LibreOffice's re-save changes, checked by unzipping it:
   the truth is the same, but only the python-docx file has the case.
 - It keeps the charts' cached data, the notes (renumbering them, the separators too), the
   comments' replies and resolved state (in its own commentsExtended), and the linked picture.
+- It writes every text box as DrawingML in alternate content: it keeps the VML fallback of one
+  written both ways and gives a VML one alone an empty fallback (`text-boxes`).
 - It moves a footnote's reference that follows a hyperlink into the hyperlink (`links`), keeps
   the first of two custom properties of one name and drops the second, and writes the custom
   properties in its own order.
@@ -187,6 +204,12 @@ And in an xlsx file, where openpyxl's file and LibreOffice's differ:
   the pictures' alternative text.
 - LibreOffice drops an OLE object that has no VML shape, which the generator doesn't write, so
   only openpyxl's `sheet-embeddings` holds the objects; its truth says so.
+- openpyxl writes a noted empty cell as a cell with no value; LibreOffice leaves it out of the
+  sheet data and keeps its note, so each variant covers one (`sheet-notes`). LibreOffice keeps
+  the notes, their authors, the threaded comments, the persons part, and Excel's copies of the
+  threaded comments, but stores the notes and the threaded comments column by column, where
+  openpyxl stores its notes row by row and the generator its threaded comments as made: their
+  LibreOffice truths order the comments so (`sheet-notes`, `sheet-threads`).
 
 And in a pptx file, where python-pptx's file and LibreOffice's differ:
 
@@ -204,6 +227,9 @@ And in a pptx file, where python-pptx's file and LibreOffice's differ:
 - LibreOffice keeps an OLE object's compound file as it is but stores it as a Word 97-2003
   document part (`.doc`, `application/msword`), and keeps the embedded package and both
   previews (`slide-embeddings`: its LibreOffice truth says so).
+- LibreOffice keeps legacy comments and their authors but drops the threading extension, so a
+  reply is a thread of its own (`slide-comments`), and drops modern comments altogether
+  (`slide-threads`): their LibreOffice truths say so.
 
 ## Refused set
 
@@ -283,9 +309,12 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/docx/links.python-docx.docx` | `a505f8b03b3ab5f7eda25f86fbdd9e56d00c0e9601b85b994a8a39e19f428d9f` |
 | `generated/docx/links.libreoffice.docx` | `70deb217075b33d0bd16ee09bb2130b718fb521c6206a0945f01ed877db031f7` |
 | `generated/docx/links.truth.json` | `07aa01c7acc1179c2aa9f4e3f559fa8d14455bc5ab29325429e30e5d4fd70acf` |
-| `generated/docx/unread.python-docx.docx` | `52523a35b6bc3d1bd8386ef5333cfd67633fff56c83a39d556bc7d2498697d18` |
-| `generated/docx/unread.libreoffice.docx` | `9273b6e95a5541eb2ae796969f78775a5585d00ddda919cd29e137924f9e1c7a` |
-| `generated/docx/unread.truth.json` | `7fca2bf27bc1b6ab6b7259061b28592ccf1a41bdace61d52564880e0bef37e7f` |
+| `generated/docx/text-boxes.python-docx.docx` | `b8383a66d39f4d113324bce294f2bded534190ee172e89d7ae531b5183dae198` |
+| `generated/docx/text-boxes.libreoffice.docx` | `e5fc72ce47f9d775bab6deaea3bc52981c5db66560a4eadaea28e1298cb0da84` |
+| `generated/docx/text-boxes.truth.json` | `974954b94156a156b711f9dfb97eb1aa944b091649934858f404204c33b38780` |
+| `generated/docx/unread.python-docx.docx` | `2ed15e4c4ba8edfbbae80d36efbfe635886a877cc3db30ed5789bab86becabcd` |
+| `generated/docx/unread.libreoffice.docx` | `343f0c6e3fc8724993fa5dae75602df9ad36fdec912ce9759067f6d22e161f7b` |
+| `generated/docx/unread.truth.json` | `dc145e0e026ec6bf2d7ee64858d3d637ebdb2fa17ade13c7602bd89ab8677efc` |
 | `generated/xlsx/cells.openpyxl.xlsx` | `b19f98987db897942dccb5eb3c390719713e60508dfe2ca1f8dddf91096e80ee` |
 | `generated/xlsx/cells.libreoffice.xlsx` | `c0f7a44e8229d67faed7e0d38b5e183d6e36759cbd2caf37724cd233db7aa17b` |
 | `generated/xlsx/cells.truth.json` | `663de2ede46fffb3c6763687ae877b4b25ee8d8fb2dd77ea4c57a57214f29200` |
@@ -307,13 +336,24 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/xlsx/dates-1904.openpyxl.xlsx` | `1b35da15738c50395bc484dffc0450381121b1204671adaaf8a23c3364e89df2` |
 | `generated/xlsx/dates-1904.libreoffice.xlsx` | `2d7e9b1992ee47476404f0c5d279bcde64013579e31dad9812b5d22f2fdd6a99` |
 | `generated/xlsx/dates-1904.truth.json` | `482d62d7d9fd3c8bf92d81e6d29ca3aab2912338f3d51d0fb7e653dff3e81fd9` |
-| `generated/xlsx/sheet-links.openpyxl.xlsx` | `aa9f703f4fffd7539d8d423d18369e97b6ba3d101869b9cd6df3625dccedded7` |
-| `generated/xlsx/sheet-links.libreoffice.xlsx` | `fac8f9aa1e990c9c1e626e7be2f188bc30270f98d072ce8b1f50123ef513dd41` |
-| `generated/xlsx/sheet-links.truth.json` | `45fea625c198acf131c8f2014536e710470796b5b9b427ef55fad5bd4f4b671b` |
+| `generated/xlsx/sheet-links.openpyxl.xlsx` | `2d3756694fa6bbd77f459de0c64a3152c94376810982ae4e3cf3620c8dbe69f4` |
+| `generated/xlsx/sheet-links.libreoffice.xlsx` | `2f23253cfc11242824d353d8b1e754410a39ee1f77b29c29576611bedaf65a55` |
+| `generated/xlsx/sheet-links.truth.json` | `1c191898098aaad8c740732bdadef3f5451c394e7050e6a89d37758a959c593d` |
 | `generated/xlsx/sheet-embeddings.openpyxl.xlsx` | `186937bd2a84d7720705380b6f646b9a0191a77f9e4265f0fe3fc66497538837` |
 | `generated/xlsx/sheet-embeddings.libreoffice.xlsx` | `6106baa33d76baf243fe2f2b0234e25ad6f4bff38f7d32246601bf58e6324dd5` |
 | `generated/xlsx/sheet-embeddings.truth.json` | `a76fb0d073c3b70cc2e5f8df5c8d816e717db37b42d4ae7ed06dc8d023ca578b` |
 | `generated/xlsx/sheet-embeddings.libreoffice.truth.json` | `e2bbd07b591e4fe7c0e92c5c1540b57a434f6dd94d4945828a2bd506f76ac06d` |
+| `generated/xlsx/sheet-text-boxes.openpyxl.xlsx` | `f790c20ae0f12559b9ae45cceb0c5e276486adc29b35885a1b79d36a03fc9ea2` |
+| `generated/xlsx/sheet-text-boxes.libreoffice.xlsx` | `3977cb4854f58844dbf4477136e44b17ddb10882f03f7cee4af3a3522158e125` |
+| `generated/xlsx/sheet-text-boxes.truth.json` | `710e9222ced77d04f4b0ab3676cc7ea5aff5add514ac06c084e5be0f95a20c71` |
+| `generated/xlsx/sheet-notes.openpyxl.xlsx` | `b73174594946ff5a84ea8dcfb9bd0cfe0f6e82d9405ddb38f4d1a097e73b8401` |
+| `generated/xlsx/sheet-notes.libreoffice.xlsx` | `af60002927990c5bb15c8af19598b15bcb863ce9349dc53817010c03f76bc8b9` |
+| `generated/xlsx/sheet-notes.truth.json` | `1472ac4c93d6f56ef1a13bb28c67ed83f006e67c8fe397b139099ee6d8dbfa83` |
+| `generated/xlsx/sheet-notes.libreoffice.truth.json` | `136af29e10396405959fb1d62e1f5126d0b179e498466bc28e096b43220b9e57` |
+| `generated/xlsx/sheet-threads.openpyxl.xlsx` | `e9f923d98bc464c84aaf1b9b7ea644c5b9792f9e60d49a74fcfc160343abe24c` |
+| `generated/xlsx/sheet-threads.libreoffice.xlsx` | `58cfddcd26c5d814c29bf2cd2aa54b941b6f2e56f2194e99c0c7fb6d208f230a` |
+| `generated/xlsx/sheet-threads.truth.json` | `259ce539e2ecbf25272c4508bbfcbcf67a8f2fd9a75835740561e7b10fb46f5f` |
+| `generated/xlsx/sheet-threads.libreoffice.truth.json` | `fb0b7251a488e57d8f03a9a7aa22194f2c392fde4cd071dd51ff6b454aa869be` |
 | `generated/pptx/slides.python-pptx.pptx` | `fc9f5f4fb65f618489c0561fa1b6aa4c1395d815fc438535058d86711cbe47f0` |
 | `generated/pptx/slides.libreoffice.pptx` | `956895b6d18ea6609ac03cbb8e723dd639b131beade1b4d2bde17da2ae71736b` |
 | `generated/pptx/slides.truth.json` | `feca71bc485c7f545641188beb60ef4bef05a54c52e9b406574c32a15abc4635` |
@@ -327,13 +367,21 @@ LibreOffice: `LibreOffice 26.8.1.1 680(Build:1)`
 | `generated/pptx/slide-objects.libreoffice.pptx` | `7c0b5e40f22001166b9e4ee6f3b8e68a5c21fc6ea73e8ed77e15caffd4918995` |
 | `generated/pptx/slide-objects.truth.json` | `e01a1d4068f68da865feefd2bc1f0acd25faa9eaee5164ed37102a3408a52cac` |
 | `generated/pptx/slide-objects.libreoffice.truth.json` | `aca5bab816c442c3e83e98033bf66aea784d1fac2a8012db2241fe36f05f3952` |
-| `generated/pptx/slide-links.python-pptx.pptx` | `99c2e62124d1669b7d6fd6d261820953b2ee30e62c490d41fd4a0b976206421b` |
-| `generated/pptx/slide-links.libreoffice.pptx` | `db498f0b4772123ae532b0742ffd44d525508a641cd8e51c702353e0aef896b9` |
-| `generated/pptx/slide-links.truth.json` | `4400457f735fc5da691debb66c1ba07e17ef5dc3d74203f6f8cfb1ef8dcffc56` |
+| `generated/pptx/slide-links.python-pptx.pptx` | `0cd38bbe083b6fce39cf6c5a08bd6b99907e393c7f11712981bd62a416f0bf28` |
+| `generated/pptx/slide-links.libreoffice.pptx` | `50cbfbc0e026e60fa86e26a33c29e28cb4cc0d6f7ee173d6ec5010e124b846d8` |
+| `generated/pptx/slide-links.truth.json` | `9530ae50741ce1d78283cbd4cbe48a045dc9030e41afd1fae9b408d470a29180` |
 | `generated/pptx/slide-embeddings.python-pptx.pptx` | `2cbd0b86d761d999d220f7143030d8bcfecce1744e3dcbf829d818033a157de0` |
 | `generated/pptx/slide-embeddings.libreoffice.pptx` | `2453a3a5fe8cf8cfb5cc25c9feb1fba1133a3481023684a29fb40fa2a418ac55` |
 | `generated/pptx/slide-embeddings.truth.json` | `d77eb43f7bb3f94f42cc9078abbf02f48a2ea7cb26fcc98b0c2612d2b94c228c` |
 | `generated/pptx/slide-embeddings.libreoffice.truth.json` | `0d02978be5b48c1a40ae707e26cdbcd220905ba32af4b7110159550c7c0d57d7` |
+| `generated/pptx/slide-comments.python-pptx.pptx` | `baebd558eaa5eab4208a234f3f7e4442dbdf87807d4b4be493b249bf85759b97` |
+| `generated/pptx/slide-comments.libreoffice.pptx` | `c06523e4db6840b61f26530ee8f96b7669d588a0a47b35651a735c4f64e1dd09` |
+| `generated/pptx/slide-comments.truth.json` | `adee0048304abcad4c2bd6c15a8b69be8b0bc0f2f33b9774e3225d39d22b09a7` |
+| `generated/pptx/slide-comments.libreoffice.truth.json` | `ac3977bac978e58b6a3f341912e6130d9ef5e6bcd436d350af9116f52dad9f9c` |
+| `generated/pptx/slide-threads.python-pptx.pptx` | `a2d72c8449cb01ae5c92a2fc60f84b0aef9931a8c840ba858f1b82c204440092` |
+| `generated/pptx/slide-threads.libreoffice.pptx` | `ae13eb2ba14abce1146fc160374a7ac1e073756a4dc1e031a2b319ed05d39962` |
+| `generated/pptx/slide-threads.truth.json` | `9c8e471cb599702af92f4f97bdab4baf8828c1201b5a4910943417c6aa9186b9` |
+| `generated/pptx/slide-threads.libreoffice.truth.json` | `a63267d5572ff9da1e3a549bfddb2c219a52520ec252c87b790d7633313c5657` |
 | `generated/refused/encrypted.libreoffice.docx` | `aee62a814f3d872d211d57c598bf8d4e9c88f1322ec4a5083d07c9b23c4bf9a6` |
 | `generated/refused/legacy.libreoffice.doc` | `6c1632e53bcc4f90f95756dd1c7a05d207433a4474550da7e689a4a09b5a77ab` |
 <!-- generated: end -->

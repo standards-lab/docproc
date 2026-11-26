@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.8.0
+go get github.com/standards-lab/docproc@v0.9.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -53,8 +53,8 @@ build, missing, too old, or failing in that environment, so that route has no pr
 
 | Tool | Minimum | Current release | Stage |
 | --- | --- | --- | --- |
-| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.1.2` | office |
-| docproc-mail | 0.1.0 | `tools/mail/v0.1.4` | email |
+| docproc-ooxml | 0.1.0 | `tools/ooxml/v0.2.0` | office |
+| docproc-mail | 0.1.0 | `tools/mail/v0.2.0` | email |
 | docproc-onenote | 0.1.0 | `tools/onenote/v0.1.2` | onenote |
 
 Each minimum is the tool's first schema `"2"` release, which its reader requires. Fetch a tool by
@@ -62,10 +62,10 @@ its own tag, never as the latest release: the repository's releases include the 
 and every tool's, so "latest" names whichever was tagged last. For linux-x64:
 
 ```sh
-gh release download tools/mail/v0.1.4 --repo standards-lab/docproc \
-  --pattern 'docproc-mail-v0.1.4-linux-x64.tar.gz' --pattern SHA256SUMS
+gh release download tools/mail/v0.2.0 --repo standards-lab/docproc \
+  --pattern 'docproc-mail-v0.2.0-linux-x64.tar.gz' --pattern SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
-tar -xzf docproc-mail-v0.1.4-linux-x64.tar.gz docproc-mail
+tar -xzf docproc-mail-v0.2.0-linux-x64.tar.gz docproc-mail
 ```
 
 Put each binary on the host's PATH. Each tool's README states its install, its output, and its

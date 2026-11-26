@@ -9,15 +9,11 @@
     },
     {
       "kind": "paragraph",
-      "text": "A text box follows."
-    },
-    {
-      "kind": "paragraph",
-      "text": "A second text box follows."
-    },
-    {
-      "kind": "paragraph",
       "text": "An equation follows: "
+    },
+    {
+      "kind": "paragraph",
+      "text": "A second equation follows: "
     },
     {
       "kind": "paragraph",
@@ -29,8 +25,6 @@
     }
   ],
   "absent": [
-    "Text in a box",
-    "More text in a box",
     "A diagram node"
   ],
   "once": []

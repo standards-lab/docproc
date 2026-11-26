@@ -22,7 +22,8 @@ internal sealed record Document(SourceFormat Format, IReadOnlyList<Block> Blocks
     /// <summary>The endnotes the text references, in the order it first references them.</summary>
     public IReadOnlyList<Note>? Endnotes { get; init; }
 
-    /// <summary>The comments, in the order the document stores them, each with its replies.</summary>
+    /// <summary>The comments, in the order the document stores them, a pptx's slide by slide and
+    /// an xlsx's sheet by sheet, each with its replies.</summary>
     public IReadOnlyList<Comment>? Comments { get; init; }
 
     /// <summary>The package's core, extended, and custom properties, or null when it has none.</summary>
@@ -122,6 +123,10 @@ internal sealed record TableCell(IReadOnlyList<Block>? Blocks)
     /// <summary>The target of a sheet cell's external hyperlink, which its Markdown links its
     /// value to; null in a docx table, and for a cell with no hyperlink or an internal one.</summary>
     public string? Target { get; init; }
+
+    /// <summary>The ids of the note and comment threads a sheet cell anchors, in the document's
+    /// comments, in the order they are read; null in a docx table, and for a cell with none.</summary>
+    public IReadOnlyList<int>? Comments { get; init; }
 }
 
 internal sealed record Chart(string ChartType, string? Title, IReadOnlyList<ChartSeries> Series) : Block;
@@ -184,6 +189,10 @@ internal sealed record Slide(int Number, bool Hidden, IReadOnlyList<Block> Block
 {
     /// <summary>The blocks of the slide's notes page: the text of its notes placeholder.</summary>
     public IReadOnlyList<Block>? Notes { get; init; }
+
+    /// <summary>The ids of the slide's comment threads in the document's comments, in the order
+    /// they are read, or null when it has none.</summary>
+    public IReadOnlyList<int>? Comments { get; init; }
 }
 
 internal enum CellValueType

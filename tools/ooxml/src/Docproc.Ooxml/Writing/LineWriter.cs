@@ -119,6 +119,35 @@ internal sealed class LineWriter(Stream output)
         }
     }
 
+    /// <summary>Writes the comments' definition fragments after the last sheet's lines, on
+    /// <c>rows</c> lines holding Markdown and no rows, each as many of the next fragments as keep
+    /// it within the bound a <c>rows</c> line has, and at least one.</summary>
+    public void WriteDefinitions(IReadOnlyList<string> fragments)
+    {
+        if (rows.Count > 0)
+        {
+            throw new InvalidOperationException("the last sheet's rows were not finished");
+        }
+        var markdown = new StringBuilder();
+        long size = RowsLineOverhead;
+        foreach (var fragment in fragments)
+        {
+            var added = JsonEncodedText.Encode(fragment, Options.Encoder).EncodedUtf8Bytes.Length;
+            if (markdown.Length > 0 && size + added > RowsLineBound)
+            {
+                output.Write(RowsLine(markdown.ToString(), []));
+                markdown.Clear();
+                size = RowsLineOverhead;
+            }
+            markdown.Append(fragment);
+            size += added;
+        }
+        if (markdown.Length > 0)
+        {
+            output.Write(RowsLine(markdown.ToString(), []));
+        }
+    }
+
     private void WriteRows()
     {
         output.Write(RowsLine(rowsMarkdown.ToString(), rows));

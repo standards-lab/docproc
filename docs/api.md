@@ -825,8 +825,12 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   `document, media <n>`, in the document's order: a picture converted to PNG as its PNG; any other
   picture, an embedded package, or an OLE object as stored, typed by its stored content type, so its
   own stage reads it; and a linked picture, with no file, an unread child, no processor yet. An RTF
-  converts through LibreOffice to docx, as a `.doc` does. An ODF package, a WordPerfect document,
-  and an Excel binary workbook end with `ErrNoProcessor`, the reason naming the kind.
+  converts through LibreOffice to docx, as a `.doc` does, and so do a WordPerfect document, to docx,
+  an Excel binary workbook, to xlsx, and an ODF text, spreadsheet, presentation, or drawing package
+  or template, to docx, xlsx, or pptx, a drawing through Impress's import. Any other ODF package, a
+  formula, chart, database, or image among them, ends with `ErrNoProcessor`, the reason naming its
+  type, and an ODF package whose manifest holds encryption data ends with `ErrEncrypted` before
+  LibreOffice runs.
   docproc-ooxml writes its lines once it has read the whole package, so its run is a unit, under
   `Timeout`.
 - **picture.** A TIFF yields a PNG per page, in page order, each `page N`, as the document stage

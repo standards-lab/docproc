@@ -1,30 +1,37 @@
 # Limits
 
-ODF, WordPerfect, and `.xlsb` route to office, whose stage ends them with no processor yet; ISO
-routes to no stage. docproc runs no virus scan and flags no macro in an OLE2 file. Content no
-processor claims is read as text, whatever its name, when its first 4096 bytes hold no NUL byte,
-and is unrouted when they do. So HTML and an EPUB's entries are read as raw text, with no
-structure, and UTF-16 without a byte order mark, which holds NULs, is refused. docproc detects no
+An ODF package routes to office. The office stage ends an encrypted one, of any type, Encrypted, and
+an unencrypted one that is not a text, spreadsheet, presentation, or drawing document or template,
+such as a formula, chart, database, or image package (`.odf`, `.odc`, `.odb`, `.odi`), with no
+processor yet. ISO routes to no stage. docproc runs no virus scan and flags no macro in an OLE2
+file. Content no processor claims is read as text, whatever its name, when its first 4096 bytes hold
+no NUL byte, and is unrouted when they do. So HTML and an EPUB's entries are read as raw text, with
+no structure, and UTF-16 without a byte order mark, which holds NULs, is refused. docproc detects no
 text's encoding: it reads text by its byte order mark, as UTF-8, or else as windows-1252, so a
-legacy multibyte encoding such as Shift-JIS, EUC-JP, or ISO-2022-JP reads as mojibake. Beyond
-that, each stage inherits its tool's limits, as the tools' READMEs
+legacy multibyte encoding such as Shift-JIS, EUC-JP, or ISO-2022-JP reads as mojibake. Beyond that,
+each stage inherits its tool's limits, as the tools' READMEs
 ([docproc-ooxml](../tools/ooxml/README.md), [docproc-mail](../tools/mail/README.md),
 [docproc-onenote](../tools/onenote/README.md)) state them in full; these are the ones a host sizes
 or routes by.
 
 - **office.** Pictures are listed with no layout, so a picture another covers, that sits off the
-  slide or page, or that is cropped away is still listed and handed onward. Text boxes,
-  equations, SmartArt, a pptx's comments, and an xlsx's cell notes are not read; no formula is
-  evaluated, a cell's value being the one the file caches; tracked changes are read accepted
-  only. An EMF or WMF is rendered on an A4 page and trimmed to what differs from the page's
-  white, so a picture framed in white loses its frame, and an all-white picture is one pixel.
-  docproc-ooxml links glibc, 2.34 or newer. Under a memory bound on x64 it aborts by SIGABRT in
-  about 1 run in 20 at 256 MiB, its last stderr line naming libssl, not memory, and converts in
-  20 of 20 at 512 MiB and above; arm64 is unmeasured.
+  slide or page, or that is cropped away is still listed and handed onward. Equations and
+  SmartArt are not read; no formula is evaluated, a cell's value being the one the file caches;
+  tracked changes are read accepted only. An EMF or WMF is rendered on an A4 page and trimmed to
+  what differs from the page's white, so a picture framed in white loses its frame, and an
+  all-white picture is one pixel.
+  ODF, WordPerfect, and `.xlsb` are read as LibreOffice converts them to docx, xlsx, or pptx, an
+  ODF drawing's pages as slides; an `.xlsb` is known by its name alone, and a flat ODF document
+  (`.fodt`, `.fods`, `.fodp`, `.fodg`), plain XML, is read as text.
+  docproc-ooxml links glibc, 2.34 or newer. Its floor under a memory bound is 384 MiB on x64 and
+  on arm64 alike: it converts in 20 of 20 runs at 384 MiB and above, and below that some runs
+  fail, by SIGABRT, its last stderr line "Out of memory" or naming libssl, or by exit 255 with no
+  message ([Acceptance](acceptance.md#docproc-ooxmls-memory-floor), measured 2026-11-25 on
+  GitHub's runners from ec69756's docproc-ooxml).
 - **email.** In a `.pst`, an embedded message is listed without its content; an `.ost` is refused;
-  TNEF and opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg`
-  content, each with a warning; a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or
-  ends in `.SMIME`, compared without regard to case, has the opaque S/MIME warning whatever its
+  opaque S/MIME parts are not read, nor a rights-managed message's `message.rpmsg` content, each
+  with a warning; a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or ends in
+  `.SMIME`, compared without regard to case, has the opaque S/MIME warning whatever its
   attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message with no body of its own has
   its Markdown made from its `multipart/signed` attachment's bodies, and that content's own
   attachments are not listed; an attachment by reference has no file; every mbox is read as an

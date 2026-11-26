@@ -82,7 +82,7 @@ var ErrRequest = errors.New("invalid request")
 // unrecorded.
 var (
 	// ErrNoProcessor is a stage's word that it has no processor for this part's kind yet, such
-	// as office given a WordPerfect document: the part's outcome is [NoProcessor].
+	// as office given an ODF formula: the part's outcome is [NoProcessor].
 	ErrNoProcessor = errors.New("no processor yet")
 	// ErrEncrypted is a stage's word that it can't read the part because it is encrypted: the
 	// part's outcome is [Encrypted].

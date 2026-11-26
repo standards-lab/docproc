@@ -30,6 +30,7 @@ mod props;
 mod pst;
 mod rtf;
 mod sniff;
+mod tnef;
 
 use std::ffi::OsString;
 use std::fs::File;

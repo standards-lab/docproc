@@ -4,6 +4,7 @@ using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using Docproc.Ooxml.Model;
 using Docproc.Ooxml.Writing;
+using A = DocumentFormat.OpenXml.Drawing;
 using C = DocumentFormat.OpenXml.Drawing.Charts;
 using S = DocumentFormat.OpenXml.Spreadsheet;
 using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
@@ -24,7 +25,12 @@ internal static partial class XlsxReader
             var rows = workbook.Rows(sheet).ToList();
             blocks.Add(new Model.Sheet(sheet.Name, sheet.Hidden, [.. rows.Count > 0 ? [new Table(rows)] : Array.Empty<Block>(), .. sheet.Drawings]));
         }
-        return new Conversion(new Document(SourceFormat.Xlsx, blocks) { Properties = workbook.Properties }, workbook.Media) { Warnings = workbook.Warnings };
+        var document = new Document(SourceFormat.Xlsx, blocks)
+        {
+            Properties = workbook.Properties,
+            Comments = workbook.Comments.Count > 0 ? workbook.Comments : null,
+        };
+        return new Conversion(document, workbook.Media) { Warnings = workbook.Warnings };
     }
 
     /// <summary>The validate pass: reads every sheet of the package forward once, writing nothing,
@@ -41,6 +47,7 @@ internal static partial class XlsxReader
             new NumberFormats(workbookPart.WorkbookStylesPart?.Stylesheet),
             workbook.WorkbookProperties?.Date1904?.Value ?? false,
             new UnreadKinds(warnings));
+        var comments = new SheetComments(workbookPart);
         var sheets = new List<XlsxSheet>();
         var ordinal = 0;
         foreach (var sheet in workbook.Sheets?.Elements<S.Sheet>() ?? [])
@@ -54,9 +61,9 @@ internal static partial class XlsxReader
             }
             var state = sheet.State?.Value;
             var hidden = state == S.SheetStateValues.Hidden || state == S.SheetStateValues.VeryHidden;
-            sheets.Add(ValidateSheet(context, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
+            sheets.Add(ValidateSheet(context, comments, sheet.Name?.Value ?? "", hidden, part, sheets.Count));
         }
-        return new XlsxWorkbook(context, sheets, warnings) { Properties = properties };
+        return new XlsxWorkbook(context, sheets, comments.All, warnings) { Properties = properties };
     }
 
     internal sealed class XlsxContext(IReadOnlyList<string> strings, NumberFormats formats, bool date1904, UnreadKinds unread)
@@ -72,7 +79,7 @@ internal static partial class XlsxReader
         public MediaStore Media { get; } = new();
     }
 
-    private static XlsxSheet ValidateSheet(XlsxContext context, string name, bool hidden, OpenXmlPart part, int index)
+    private static XlsxSheet ValidateSheet(XlsxContext context, SheetComments comments, string name, bool hidden, OpenXmlPart part, int index)
     {
         SheetCells? cells = null;
         DrawingsPart? drawings = null;
@@ -80,12 +87,8 @@ internal static partial class XlsxReader
         switch (part)
         {
             case WorksheetPart worksheet:
-                (cells, objects) = ValidateCells(context, worksheet);
+                (cells, objects) = ValidateCells(context, worksheet, comments.Read(worksheet));
                 drawings = worksheet.DrawingsPart;
-                if (worksheet.WorksheetCommentsPart is not null || worksheet.WorksheetThreadedCommentsParts.Any())
-                {
-                    context.Unread.Found(Place(index), UnreadKinds.Notes);
-                }
                 break;
             case ChartsheetPart chartsheet:
                 drawings = chartsheet.DrawingsPart;
@@ -251,15 +254,15 @@ internal static partial class XlsxReader
                         ReadDrawing(context, drawings, chartEx.Fallback, sheet, blocks);
                     }
                     break;
-                case Xdr.Shape shape:
-                    if (!string.IsNullOrWhiteSpace(shape.TextBody?.InnerText))
-                    {
-                        context.Unread.Found(Place(sheet), UnreadKinds.TextBoxes);
-                    }
-                    if (shape.TextBody is { } body && UnreadKinds.HoldsEquation(body))
+                case Xdr.Shape shape when shape.TextBody is { } body:
+                    blocks.AddRange(PptxReader.ReadText(body, [body.GetFirstChild<A.ListStyle>()], new PptxReader.TextScope(drawings, context.Unread, Place(sheet))));
+                    if (UnreadKinds.HoldsEquation(body))
                     {
                         context.Unread.Found(Place(sheet), UnreadKinds.Equations);
                     }
+                    break;
+                case AlternateContent content:
+                    ReadBranch(context, drawings, content, sheet, blocks);
                     break;
                 case Xdr.GraphicFrame frame when UnreadKinds.HoldsSmartArt(frame):
                     context.Unread.Found(Place(sheet), UnreadKinds.SmartArt);
@@ -267,6 +270,20 @@ internal static partial class XlsxReader
                 default:
                     ReadDrawing(context, drawings, element, sheet, blocks);
                     break;
+            }
+        }
+    }
+
+    private static void ReadBranch(XlsxContext context, DrawingsPart drawings, AlternateContent content, int sheet, List<Block> blocks)
+    {
+        foreach (var branch in content.Elements<AlternateContentChoice>().Concat<OpenXmlElement>(content.Elements<AlternateContentFallback>()))
+        {
+            var read = new List<Block>();
+            ReadDrawing(context, drawings, branch, sheet, read);
+            if (read.Count > 0)
+            {
+                blocks.AddRange(read);
+                return;
             }
         }
     }

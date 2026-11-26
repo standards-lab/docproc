@@ -3,13 +3,10 @@
 package stages_test
 
 import (
-	"archive/zip"
 	"bytes"
 	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
-	"hash/crc32"
-	"io"
 	"maps"
 	"os"
 	"os/exec"
@@ -271,16 +268,48 @@ func TestBuiltIdentities(t *testing.T) {
 	}
 }
 
-func TestOfficeNoProcessor(t *testing.T) {
-	d := newDispatcher(t, dispatch.Stages{route.Office: testOfficeStage(t)}, dispatch.NewMemoryIndex(0))
-	for name, c := range map[string]struct{ content, reason string }{
-		"x.wpd":  {"\xffWPC\x10\x00\x00\x00\x01\x0a", "office stage: no processor yet for a WordPerfect document"},
-		"x.odt":  {zipOf(t, "mimetype", "application/vnd.oasis.opendocument.text", "content.xml", "<x/>"), "office stage: no processor yet for an ODF package"},
-		"x.xlsb": {zipOf(t, "[Content_Types].xml", "<x/>"), "office stage: no processor yet for an Excel binary workbook"},
+func TestOfficeConverted(t *testing.T) {
+	set := builtSet(t, stages.Options{Exclude: slices.DeleteFunc(stages.Routes(), func(r route.Route) bool { return r == route.Office })})
+	d := newDispatcher(t, dispatch.Stages{route.Office: set.Stages[route.Office]}, dispatch.NewMemoryIndex(0))
+	testdata := filepath.Join("..", "office", "testdata")
+	for _, c := range []struct{ path, from, text string }{
+		{filepath.Join(testdata, "odf", "generated", "tables.libreoffice.odt"), "odt", ""},
+		{filepath.Join(testdata, "odf", "generated", "cells.libreoffice.ots"), "ots", ""},
+		{filepath.Join(testdata, "odf", "generated", "slides.libreoffice.odp"), "odp", ""},
+		{filepath.Join(testdata, "odf", "generated", "drawing.odg"), "odg", "The second page of the drawing"},
+		{filepath.Join(testdata, "wordperfect", "testWordPerfect_6_61.wpd"), "wpd", "Sluwe Sjaantje sloeg de slome slager"},
+		{filepath.Join(testdata, "xlsb", "testVarious.xlsb"), "xlsb", ""},
 	} {
-		ev := dispatchAll(t, d, input(t, name, c.content), nil)[0]
-		if ev.Part.ContentType.Route != route.Office || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, c.reason) {
-			t.Errorf("%s: %s %s, %q; want no processor, %q", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason, c.reason)
+		name := filepath.Base(c.path)
+		events := dispatchAll(t, d, c.path, nil)
+		ev := events[len(events)-1]
+		if ev.Part.ContentType.Route != route.Office || ev.Outcome != dispatch.Prepared {
+			t.Errorf("%s: %s %s, %q; want prepared by office", name, ev.Part.ContentType.Route, ev.Outcome, ev.Reason)
+			continue
+		}
+		doc := outputNamed(t, ev, dispatch.MarkdownOutput, "document")
+		if doc.Meta[dispatch.MetaConvertedFrom] != c.from || !strings.Contains(string(doc.Value), c.text) {
+			t.Errorf("%s: converted from %q, Markdown %q; want %s holding %q", name, doc.Meta[dispatch.MetaConvertedFrom], doc.Value, c.from, c.text)
+		}
+	}
+	formula := input(t, "x.odf", zipOf(t, "mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"))
+	ev := dispatchAll(t, d, formula, nil)[0]
+	if ev.Part.ContentType.Route != route.Office || ev.Outcome != dispatch.NoProcessor || !strings.Contains(ev.Reason, "no processor yet for an ODF package of type application/vnd.oasis.opendocument.formula") {
+		t.Errorf("x.odf: %s %s, %q; want office's no processor", ev.Part.ContentType.Route, ev.Outcome, ev.Reason)
+	}
+}
+
+func TestOfficeEncryptedFixtures(t *testing.T) {
+	testdata := filepath.Join("..", "office", "testdata")
+	for _, path := range []string{
+		filepath.Join(testdata, "odf", "generated", "encrypted.odt"),
+		filepath.Join(testdata, "xlsb", "protected_passtika.xlsb"),
+	} {
+		d := newDispatcher(t, dispatch.Stages{route.Office: testOfficeStage(t)}, dispatch.NewMemoryIndex(0))
+		events := dispatchAll(t, d, path, nil)
+		wantSteps(t, events, []step{{filepath.Base(path), 0, dispatch.Encrypted}})
+		if ev := events[0]; ev.Part.ContentType.Route != route.Office || !errors.Is(ev.Err, dispatch.ErrEncrypted) {
+			t.Errorf("%s: route %s, %v; want office, ErrEncrypted", filepath.Base(path), ev.Part.ContentType.Route, ev.Err)
 		}
 	}
 }
@@ -728,27 +757,4 @@ func recordThenMarkdown(t *testing.T, ev dispatched, name string) {
 		ev.Outputs[i+1].Kind != dispatch.MarkdownOutput || ev.Outputs[i+1].Name != name {
 		t.Errorf("%s: %q's outputs aren't its record, then its Markdown", ev.Part.Name, name)
 	}
-}
-
-func zipOf(t *testing.T, entries ...string) string {
-	t.Helper()
-	var b bytes.Buffer
-	zw := zip.NewWriter(&b)
-	for i := 0; i < len(entries); i += 2 {
-		content := entries[i+1]
-		w, err := zw.CreateRaw(&zip.FileHeader{
-			Name: entries[i], Method: zip.Store, CRC32: crc32.ChecksumIEEE([]byte(content)),
-			CompressedSize64: uint64(len(content)), UncompressedSize64: uint64(len(content)),
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := io.WriteString(w, content); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := zw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	return b.String()
 }

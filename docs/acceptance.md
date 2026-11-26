@@ -22,9 +22,13 @@ when:
   storage and postgres modules were not measured. Each rerun section keeps acceptance's figures
   beside its own.
 
-**A later measurement.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
+**Later measurements.** ["PDF page text"](#pdf-page-text) compares gs's txtwrite with
 pdftotext, the change v0.8.0 makes to a PDF page's text. The docproc-coverage goal's
-pdf-text-padding task measured it on 2026-11-25.
+pdf-text-padding task measured it on 2026-11-25. ["docproc-ooxml's memory
+floor"](#docproc-ooxmls-memory-floor) measures the tool's address-space floor on x64 and arm64 on
+GitHub's runners; the docproc-coverage goal's office-and-mail task measured it on 2026-11-25.
+["The office-and-mail ~/docs run"](#the-office-and-mail-docs-run) runs the same task's build
+over ~/docs, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and tools/mail/v0.2.0.
 
 **The kept run.** The `final` task's ~/docs run is kept at `~/runs/docproc/final` for
 v1.ai.inference's acceptance to read; ["The ~/docs run"](#the-docs-run) gives its run id.
@@ -786,9 +790,48 @@ is on address space, which resident memory understates; acceptance's two runs' z
 failures are the evidence for that side, and the `final` task's ~/docs run had none either
 (["Failures by class"](#failures-by-class)).
 
-One gap: docproc-ooxml's arm64 floor is unmeasured, because this host is x86_64. On x64, about 1
-run in 20 of the .NET tool aborted at a 256 MiB address-space bound, and all 20 passed
-at 512 MiB.
+docproc-ooxml's address-space floor, on x64 and arm64, is measured apart, in
+["docproc-ooxml's memory floor"](#docproc-ooxmls-memory-floor).
+
+## docproc-ooxml's memory floor
+
+The docproc-coverage goal's office-and-mail task measured the floor on 2026-11-25, on GitHub's
+runners, from ec69756, the task's final docproc-ooxml code: the build that reads text boxes, a
+pptx's comments, and an xlsx's notes. Two earlier dispatches measured 6799188, whose docproc-ooxml
+is dcbead1's; ec69756 differs from it in its version, doc comments, one member's visibility, and a
+test. The runs replace acceptance's x64 figure, taken on the laptop (about 1 run in 20 aborted at
+256 MiB, all 20 passed at 512 MiB), whose input isn't recorded; arm64 had not been measured.
+
+**The recipe.** CI's `memory-floor` job, which runs on a dispatch alone:
+`gh workflow run ci.yml --ref <branch>` ([CI](ci.md#the-memory-floor)). On `ubuntu-24.04` (x64)
+and `ubuntu-24.04-arm` (arm64), each builds the release binary with tools/ooxml's `publish` task,
+and `scripts/memory-floor.sh` runs it 20 times on
+`tools/ooxml/fixtures/realworld/docx/form-footnotes.docx`, docproc-ooxml's peak-memory input in
+["Peak memory"](#peak-memory), at each RLIMIT_AS bound under `prlimit --as=<bytes> --`: 128, 192,
+256, 320, 384, 448, 512, 640, 768, 1024, 1536, and 2048 MiB. A run passes when it exits 0. The
+floor is the lowest bound from which every bound up passed 20 of 20.
+
+**The results.** The table gives each run's passes of 20 in three dispatches: "final" is
+ec69756's, [45733851285](https://github.com/standards-lab/docproc/actions/runs/45733851285);
+"first" and "second" are dcbead1's,
+[45724088427](https://github.com/standards-lab/docproc/actions/runs/45724088427) and
+[45724812537](https://github.com/standards-lab/docproc/actions/runs/45724812537).
+
+| RLIMIT_AS | x64, final | x64, first | x64, second | arm64, final | arm64, first | arm64, second |
+| --- | --- | --- | --- | --- | --- | --- |
+| 128 MiB | 0 | 0 | 0 | 0 | 0 | 0 |
+| 192 MiB | 1 | 1 | 0 | 12 | 17 | 17 |
+| 256 MiB | 13 | 11 | 0 | 14 | 15 | 18 |
+| 320 MiB | 19 | 12 | 19 | 19 | 19 | 17 |
+| 384 MiB to 2 GiB | 20 at each | 20 at each | 20 at each | 20 at each | 20 at each | 20 at each |
+
+**The floor is 384 MiB on both architectures**, in all three dispatches. Below it a run fails in
+one of two ways: SIGABRT, exit 134, its last stderr line "Unhandled exception. Out of memory." or,
+at 128 MiB on arm64, "No usable version of libssl was found"; or exit 255 with nothing on stderr.
+In ec69756's dispatch, the failures at 128 MiB were SIGABRT but for one exit 255 on arm64, and
+every failure above 128 MiB was exit 255. The failures below the floor vary from
+run to run, 0 to 20 at 256 MiB on x64, so a bound under 384 MiB is not one a host can size by.
+cmd/docproc's default bound, 2 GiB, is over five times the floor.
 
 ## Bombs
 
@@ -1098,3 +1141,110 @@ for label, read in (("gs", gs), ("pdftotext", pdftotext)):
 k, n, missing = kept("\f".join(text["gs"]), "\f".join(text["pdftotext"]))
 print(f"cfr words | {k}/{n}, {k / n:.1%} | {missing}")
 ```
+
+## The office-and-mail ~/docs run
+
+The docproc-coverage goal's office-and-mail task ran it on 2026-11-25, from 19:47:17 to 19:49:46
+local time (00:47:17 to 00:49:46 UTC on 2026-11-26), on the laptop of "The ~/docs run", to check
+that ODF, WordPerfect, and `.xlsb` inputs are prepared and that no docproc-ooxml warning names a
+kind docproc-ooxml 0.2.0 reads. It measured docproc at `f610dec6bf66cf6589905a729a468a3a6d25bd08`,
+the HEAD of `office-and-mail`, the release candidate for v0.9.0, tools/ooxml/v0.2.0, and
+tools/mail/v0.2.0. The manifest reads the command as
+`v0.2.7-0.20261126004628-f610dec6bf66+dirty`, the tree dirty by the goal record alone, and the
+library as `(devel)`. The run is kept at `~/runs/docproc/office-and-mail`, run id
+`01a21552-2e8b-751f-9535-bc1dfe73fbd6`.
+
+cmd/docproc was built with `go build` in `cmd/docproc` under the root `go.work`, so it ran this
+checkout's base module rather than the v0.8.0 its `go.mod` requires; `GOWORK=off` would have
+built v0.8.0's office stage. The three tools were built from the checkout with `mise -C
+tools/<tool> run publish`, as acceptance built its own:
+
+| Tool | Binary SHA-256 | `--version` |
+| --- | --- | --- |
+| docproc-ooxml | `af9b2c025c7735678f34e3f1e845dbb4b8cf6c605b54141d0837110e0de43db8` | 0.2.0, schema 2 |
+| docproc-mail | `e8105d75f32bdad624169b781cea31c612ab6b9d15085f762d670d202ee0564e` | 0.2.0, schema 2 |
+| docproc-onenote | `0ddc01979c81c89df2ce1b7ade256502df56ef4915192c350d2dfdb331b094d7` | 0.1.2, schema 2 |
+
+The three binaries and cmd/docproc were put first on PATH. Every `DOCPROC_` variable, mise's DSN
+and S3 ones among them, was removed from the command's environment with `env -u`, so every bound
+was its starting value, and the workers were the default, 22. The command was `docproc run ~/docs
+--out ~/runs/docproc/office-and-mail`, then `docproc report ~/runs/docproc/office-and-mail`, both
+exiting 0 with nothing on stderr.
+
+**LibreOffice.** The stages run soffice only in `picture.LibreOfficeImage`, through docker, never
+from the host's PATH. The stage table read LibreOffice 26.8.2.2 680(Build:2), from
+`gotenberg/gotenberg:9.10.1-libreoffice@sha256:79aec465636fef089f6ed3da69b75c7d3c7155fcecd20b3d80563868c54b5a90`,
+in its container. The host's own soffice, LibreOffice 26.8.1.1, which can't import
+`word-perfect-6.wpd`, took no part. Every other tool was the one "The ~/docs run" lists, with
+pdftotext 26.10.0 from /usr/bin, which the document stage has required since v0.8.0.
+
+The corpus's listing, every path's size and modification time, was taken before and after the
+run and compared with `cmp`: identical. The run took **149.4 s**, against the `final` task's
+150.9 s. The stage table wired all ten routes. The counts, beside the `final` task's run, which
+predates v0.6.0's video routes and v0.7.0's text fallback as well as this task:
+
+| Outcome | `final` (2026-11-23) | This run |
+| --- | --- | --- |
+| prepared | 507 | 554 |
+| seen | 18 | 21 |
+| no processor yet | 51 | 1 |
+| encrypted | 6 | 6 |
+| failed | 1 | 1 |
+| read elsewhere | 9 | 9 |
+| total | 592 | 592 |
+
+By route: document 61 prepared, 2 seen, 3 encrypted, 1 failed; office 114 prepared, 2 seen, 1
+encrypted; vision-converted 20; vision 9 and 1 seen; nested 71 and 1 seen; onenote 16 prepared, 9
+read elsewhere, 1 encrypted; archive 8 prepared, 1 encrypted; audio 40; video 11; text 204 and 15
+seen; unrouted 1 no processor yet, `text/encodings/utf16be-nobom.txt`, which holds NULs. The
+record holds 971 part events, 11,621 output events, and 27 warnings.
+
+**The inputs this task and the goal's criteria name:**
+
+| Input | `final` (2026-11-23) | This run |
+| --- | --- | --- |
+| `office/odf/writer-odf13.odt` | office, no processor yet | office, prepared, 1 output, `converted_from` odt |
+| `office/odf/tables.libreoffice.odt` | office, no processor yet | office, prepared, 1 output, odt |
+| `office/multilang/multilang-rtl.odt` | office, no processor yet | office, prepared, 1 output, odt |
+| `office/odf/calc-odf13.ods` | office, no processor yet | office, prepared, 3 outputs, ods |
+| `office/odf/formulas.libreoffice.ods` | office, no processor yet | office, prepared, 3 outputs, ods |
+| `office/odf/impress-odf13.odp` | office, no processor yet | office, prepared, 1 output, odp |
+| `office/odf/slides.libreoffice.odp` | office, no processor yet | office, prepared, 1 output, odp |
+| `office/odf/draw-odf13.odg` | office, no processor yet | office, prepared, 1 output, odg |
+| `office/legacy/other/word-perfect-6.wpd` | office, no processor yet | office, prepared, 1 output, wpd |
+| `office/macro-template/simple.poi.xlsb` | office, no processor yet | office, prepared, 7 outputs, xlsb |
+| `office/macro-template/protected-passtika.poi.xlsb` | office, encrypted | office, encrypted: docproc-ooxml refuses it, an OLE compound file holding an EncryptedPackage stream |
+| `video/prelinger-duck-and-cover/duck-and-cover-mpeg2.mpeg` | unrouted, no processor yet | video, kind `mpeg-ps`, prepared, 162 outputs |
+| `video/prelinger-duck-and-cover/duck-and-cover-theora.ogv` | audio, kind `ogg`, prepared, 22 outputs | video, kind `ogg-video`, prepared, 216 outputs |
+| `pdf/multilang/eurlex-32011D0833/decision-2011-833-{bg,el,en,pl}.html` | unrouted, no processor yet | text, prepared, 1 output each |
+| `office/multilang/multilang-rtl.source.html` | unrouted, no processor yet | text, prepared, 1 output |
+| `text/epub/lorem-ipsum.epub` | archive, prepared, 9 children | archive, prepared, 9 children: its JPEG cover to vision, its other 8 entries, `index.html`, `titlepage.xhtml`, `content.opf`, the CSS, and the rest, to text by their heads |
+
+The `.wpd`'s Markdown is its Dutch text, "Sluwe Sjaantje sloeg de slome slager", as LibreOffice
+26.8.2.2 imports it. The other inputs that moved since `final` are v0.7.0's text fallback, 35
+LICENSE, NOTICE, truth, and other text files beside the five HTML files above, unrouted then and
+text now, among them 7 `.eml` files that aren't header-shaped, and `utf16be-nobom.txt`, text then
+and unrouted now; and `archive/mixed-bundle.zip`, prepared here and seen in `final`, which of it
+and zip-in-zip.zip's `inner.zip` reaches the index first varying at 22 workers.
+
+**Warnings by kind:**
+
+| Tool, warning | `final` (2026-11-23) | This run |
+| --- | --- | --- |
+| docproc-ooxml, `text boxes not read` | 3 | 0 |
+| docproc-ooxml, `comments not read` (pptx) | 0 | 0 |
+| docproc-ooxml, `notes not read` (xlsx) | 0 | 0 |
+| docproc-ooxml, any | 3 | 0 |
+| docproc-mail, any | 13 | 13 |
+| text, windows-1252 fallback and its U+FFFD counts | 11 | 12 |
+| qpdf and pdfdetach, `no-document-catalog.pdf` | 2 | 2 |
+| total | 29 | 27 |
+
+The three `text boxes not read` warnings were on
+`office/realworld/docx/word-with-attachments.docx`,
+`office/realworld/xlsx/simple-monthly-budget.xlsx`, and `office/realworld/xlsx/with-drawing.xlsx`,
+now read without one. No warning in either run
+names TNEF or `winmail.dat`, and docproc-mail's 13 are the same in both. The text stage's warnings
+move with v0.7.0's fallback: `utf16be-nobom.txt`'s 2 are gone, now that it is unrouted, and
+`pdf/edge/malformed/header-no-version-info.pdf`, read as text, has 1, and
+`email/eml/cpython/msg_15.eml` 2 for its attachment, read as text.

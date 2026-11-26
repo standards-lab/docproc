@@ -167,7 +167,63 @@ pub fn signed(class: Option<&str>, bodies: &mut Bodies, content: &[u8]) -> Vec<S
     notes
 }
 
+/// A message's bodies as its properties store them, before its RTF body's own text is read: its
+/// stored HTML, else the HTML recovered from its RTF body, its text body, and its RTF body
+/// decompressed, whose own text stands in for a text body only where there is neither HTML nor a
+/// text body ([`Stored::over`]).
+pub struct Stored {
+    pub html: Option<String>,
+    pub text: Option<String>,
+    rtf: Option<String>,
+}
+
+impl Stored {
+    /// The bodies the Markdown is made from, these stored ones ahead of `others`: the HTML, else
+    /// the other HTML, the text body, else the other text body, and only where there is neither
+    /// HTML nor a text body, the RTF body's own text. The notes are the message's.
+    pub fn over(self, others: Bodies, notes: &mut Vec<String>) -> Bodies {
+        let html = self.html.or(others.html);
+        let text = match (&html, self.text.or(others.text)) {
+            (None, None) => self
+                .rtf
+                .as_deref()
+                .and_then(rtf::text)
+                .map(|(text, mut lossy)| {
+                    notes.append(&mut lossy);
+                    text
+                }),
+            (_, text) => text,
+        };
+        Bodies { html, text }
+    }
+}
+
+/// The bodies a message's properties store, its PT_STRING8 values decoded in `code_page`, with
+/// the notes they give.
+pub fn stored(props: &Bag, code_page: u16) -> (Stored, Vec<String>) {
+    let mut strings = Strings::new(code_page);
+    let mut notes = Vec::new();
+    let stored = stored_in(&mut strings, props, code_page, &mut notes);
+    let mut all = strings.into_notes();
+    all.append(&mut notes);
+    (stored, all)
+}
+
 fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<String>) -> Bodies {
+    let stored = stored_in(strings, props, code_page, notes);
+    let none = Bodies {
+        html: None,
+        text: None,
+    };
+    stored.over(none, notes)
+}
+
+fn stored_in(
+    strings: &mut Strings,
+    props: &Bag,
+    code_page: u16,
+    notes: &mut Vec<String>,
+) -> Stored {
     let text = strings.text(props, tag::BODY);
     let html = html(strings, props, code_page);
     let rtf = binary(props, tag::RTF_COMPRESSED).and_then(|compressed| {
@@ -184,15 +240,11 @@ fn bodies(strings: &mut Strings, props: &Bag, code_page: u16, notes: &mut Vec<St
         notes.append(&mut lossy);
         html
     });
-    let html = html.or(from_rtf);
-    let text = match (&html, text) {
-        (None, None) => rtf.as_deref().and_then(rtf::text).map(|(text, mut lossy)| {
-            notes.append(&mut lossy);
-            text
-        }),
-        (_, text) => text,
-    };
-    Bodies { html, text }
+    Stored {
+        html: html.or(from_rtf),
+        text,
+        rtf,
+    }
 }
 
 fn html(strings: &mut Strings, props: &Bag, code_page: u16) -> Option<String> {

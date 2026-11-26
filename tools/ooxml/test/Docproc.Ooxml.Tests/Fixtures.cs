@@ -7,12 +7,12 @@ internal static class Fixtures
     public static readonly string[] Docx =
     [
         "headings", "lists", "tables", "tracked-changes",
-        "sections", "headers-even-off", "notes", "comments", "comments-plain", "media", "charts", "links", "unread",
+        "sections", "headers-even-off", "notes", "comments", "comments-plain", "media", "charts", "links", "text-boxes", "unread",
     ];
 
-    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904", "sheet-links", "sheet-embeddings"];
+    public static readonly string[] Xlsx = ["cells", "formulas", "sheets", "merges", "drawings", "dates-1904", "sheet-links", "sheet-embeddings", "sheet-text-boxes", "sheet-notes", "sheet-threads"];
 
-    public static readonly string[] Pptx = ["slides", "bullets", "groups", "slide-objects", "slide-links", "slide-embeddings"];
+    public static readonly string[] Pptx = ["slides", "bullets", "groups", "slide-objects", "slide-links", "slide-embeddings", "slide-comments", "slide-threads"];
 
     public static readonly string[] DocxWriters = ["python-docx", "libreoffice"];
 

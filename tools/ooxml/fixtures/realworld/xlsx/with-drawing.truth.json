@@ -36,6 +36,14 @@
           "sheet": 0
         },
         {
+          "kind": "paragraph",
+          "text": "Sheet with various pictures"
+        },
+        {
+          "kind": "paragraph",
+          "text": "(jpeg, png, wmf, emf and pict)"
+        },
+        {
           "kind": "media",
           "name": "fdc312bc0dbea47df16d3e3e98e2777e4aa537d225a703e3cde0177df56a592a.wmf",
           "contentType": "image/x-wmf",

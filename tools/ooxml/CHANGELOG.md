@@ -9,6 +9,36 @@ covers docproc-ooxml only.
 
 ## [Unreleased]
 
+## [v0.2.0] - 2026-11-25
+
+### Added
+
+- Text boxes are read, and no longer warned of as `text boxes not read`. A docx text box's
+  paragraphs, lists, and tables follow the paragraph that anchors it, as its pictures do, in the
+  Markdown and the model; one Word writes twice, as DrawingML in alternate content with its VML
+  copy as the fallback, is read once, and a VML one alone is read too. An xlsx shape's text, a
+  text box's among them, is read as paragraphs and lists in its sheet's drawing order, on the
+  sheet's closing `rows` line with its charts and pictures. Other alternate content in an xlsx
+  drawing is read once, as its first branch that holds anything read, rather than through every
+  branch.
+- A pptx's comments are read, and no longer warned of as `comments not read`: legacy comments
+  (`p:cmLst` with `commentAuthors.xml`), a reply named by PowerPoint 2013's threading extension
+  following its thread, and PowerPoint 365's modern threaded comments (`p188:cmLst` with
+  `authors.xml`), their replies in order and a resolved thread marked. Each thread is a footnote
+  definition as a docx's comment is, `[^cN]: Comment by <author> (open|resolved): <text>`, its
+  replies after it; with no anchored text, its marker follows its slide's heading,
+  `# Slide 2[^c1]`.
+- An xlsx's notes and threaded comments are read, and no longer warned of as `notes not read`:
+  legacy notes (`xl/commentsN.xml`, authors from its `authors`) and Excel 365's threaded comments
+  (`xl/threadedComments/`, authors from the workbook's persons part), their replies in order and
+  a resolved thread (`done="1"`) marked. The note Excel writes on a threaded comment's cell as
+  its copy for older readers is skipped. Each thread is a footnote definition as a docx's comment
+  is; its marker follows its cell's text in the sheet's table, `| 2 | Rent[^c1] |`, on a merged
+  range's anchor for a cell the range covers, and a cell with no value that a thread anchors is a
+  table cell, its `ref` alone in its row's `cells`. The definitions follow the last sheet's
+  lines on `rows` lines of their own, with `markdown` and no `rows`, each within 256 KiB or one
+  definition.
+
 ## [v0.1.2] - 2026-11-19
 
 ### Changed
@@ -96,7 +126,8 @@ says how it differs from the spike.
 - Media are written as stored, never converted.
 - Linux alone, x64 and arm64, on glibc 2.34 or newer.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.2...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.2.0...HEAD
+[v0.2.0]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.2...tools/ooxml/v0.2.0
 [v0.1.2]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.1...tools/ooxml/v0.1.2
 [v0.1.1]: https://github.com/standards-lab/docproc/compare/tools/ooxml/v0.1.0...tools/ooxml/v0.1.1
 [v0.1.0]: https://github.com/standards-lab/docproc/releases/tag/tools/ooxml/v0.1.0

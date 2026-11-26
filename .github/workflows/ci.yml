@@ -202,6 +202,47 @@ jobs:
       - name: mise run integration
         run: mise run integration
 
+  memory-floor:
+    name: memory floor (ooxml, ${{ matrix.runner }})
+    if: github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install the NativeAOT prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang zlib1g-dev
+
+      - uses: jdx/mise-action@v5.3.0
+        with:
+          working_directory: tools/ooxml
+
+      - uses: actions/cache@v6.1.0
+        with:
+          path: ~/.nuget/packages
+          key: nuget-ooxml-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/ooxml/**/packages.lock.json') }}
+          restore-keys: nuget-ooxml-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: mise run publish
+        working-directory: tools/ooxml
+        run: mise run publish
+
+      - name: Measure the floor
+        shell: bash
+        env:
+          RUNNER: ${{ matrix.runner }}
+        run: |
+          {
+            echo "## docproc-ooxml's memory floor on $RUNNER ($(uname -m)), $(git rev-parse --short HEAD)"
+            echo
+            scripts/memory-floor.sh tools/ooxml/.state/publish/docproc-ooxml \
+              tools/ooxml/fixtures/realworld/docx/form-footnotes.docx 20 \
+              128 192 256 320 384 448 512 640 768 1024 1536 2048
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
   ci:
     if: always()
     needs: [changes, lint, go, tool, integration]
