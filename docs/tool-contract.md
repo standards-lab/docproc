@@ -83,16 +83,16 @@ rows      line, markdown?, rows[]: row, cells[]: ref, value_type?, value?, formu
   the Markdown of no sheet, each `sheet` line its sheet's heading and its table's header row and
   delimiter row, and each `rows` line the Markdown table rows of the rows it carries, never the
   header row, which only the `sheet` line carries. A sheet's drawings, its charts' tables, its
-  pictures' links, and its shapes' paragraphs, ride on a closing `rows` line of that sheet with `markdown` and no `rows`,
-  bounded as any `rows` line is; a chart sheet is a `sheet` line and that closing line. The
-  notes' and comments' footnote definitions follow the last sheet's lines on `rows` lines of their
-  own, with `markdown` and no `rows`, each holding as many of the next definitions as keep it
-  within 256 KiB, and at least one. The lines'
-  Markdown fragments concatenate in order with nothing between them into the document's whole
-  rendering: each ends in its own newline and opens with the blank line that separates it from the
-  chunk before it. A picture's image text is its `alt`, or its `title` when it has no `alt`, so a
-  title-only picture is `![title](file)`. A `title` that differs from the image text becomes its
-  image's Markdown title, `![alt](file "title")`.
+  pictures' links, and its shapes' paragraphs, ride on a closing `rows` line of that sheet with
+  `markdown` and no `rows`, bounded as any `rows` line is; a chart sheet is a `sheet` line and that
+  closing line. The notes' and comments' footnote definitions follow the last sheet's lines on
+  `rows` lines of their own, with `markdown` and no `rows`, each holding as many of the next
+  definitions as keep it within 256 KiB, and at least one. The lines' Markdown fragments concatenate
+  in order with nothing between them into the document's whole rendering: each ends in its own
+  newline and opens with the blank line that separates it from the chunk before it. A picture's
+  image text is its `alt`, or its `title` when it has no `alt`, so a title-only picture is
+  `![title](file)`. A `title` that differs from the image text becomes its image's Markdown title,
+  `![alt](file "title")`.
 - `media` holds every picture the document shows, plus embedded packages (`embedded`, the part as
   stored) and OLE objects (`ole`, the part as stored, its compound file unwrapped by docproc,
   `prog_id` from the element naming its relationship). Each is found through its story part's,
@@ -211,16 +211,16 @@ where the document first holds one
   children count: a row inside alternate content is passed over. A sheet is refused with the
   failure a reading of the whole part meets first: its XML, then a shared formula's attributes,
   then the first failing row number or cell, in order, that no merge covers.
-- **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's
-  reference is optional, and one without follows the cell before it. A table holds the cells
-  with a value or a formula, and the cells a note or comment anchors, whether the part holds them
-  or not, such a cell with nothing else its `ref` alone. A merged range's anchor, its top-left cell, carries its spans, and
-  the cells it covers are left out; a range whose anchor holds nothing leaves nothing. Excel
-  refuses overlapping ranges; where a file holds them, a cell is looked for only in the covering
-  range that starts nearest its left. A shared formula's text is on its anchor, the first cell
-  whose formula holds it, and a cell holding only a shared index is kept when the index has an
-  anchor. A cell's external hyperlink is the first of the sheet's whose range holds it; one to a
-  place in the workbook stays text.
+- **xlsx: cells.** A row's number is as stored or else one past the row before; a cell's reference
+  is optional, and one without follows the cell before it. A table holds the cells with a value or a
+  formula, and the cells a note or comment anchors, whether the part holds them or not, a cell
+  holding nothing else being its `ref` alone. A merged range's anchor, its top-left cell, carries
+  its spans, and the cells it covers are left out; a range whose anchor holds nothing leaves
+  nothing. Excel refuses overlapping ranges; where a file holds them, a cell is looked for only in
+  the covering range that starts nearest its left. A shared formula's text is on its anchor, the
+  first cell whose formula holds it, and a cell holding only a shared index is kept when the index
+  has an anchor. A cell's external hyperlink is the first of the sheet's whose range holds it; one
+  to a place in the workbook stays text.
 - **xlsx: values.** A cell's value is a shared or inline string, a formula's string, a boolean, an
   error, an ISO date, or a number, a date when its style's number format shows a date or a time.
   An empty value is none, as openpyxl writes a formula it has not computed, but a formula's

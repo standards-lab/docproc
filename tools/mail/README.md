@@ -124,15 +124,15 @@ warning. Markdown made from HTML is the HTML's alone: nothing of the text body o
 text is appended, as the parts of a `multipart/alternative` are each an alternative version of the
 same information (RFC 2046 §5.1.4).
 
-In an `.eml` or an mbox, a TNEF part (`winmail.dat`, Outlook's own form of a message's
-properties and attachments), one of type `application/ms-tnef` or `application/vnd.ms-tnef` or
-named `winmail.dat`, is read through docproc-mail's own MS-OXTNEF reader. Its attachments are the
-message's, in its place, each read as a `.msg` attachment is, an embedded message nested under its
-`message`, and its bodies come ahead of the message's own: its HTML, stored or recovered from its
-RTF, else the message's HTML, its text body, else the message's, and its RTF body's own text only
-where there is neither, so a `text/plain` part beside it wins over an RTF that encapsulates no HTML.
-A TNEF part that can't be read, its framing broken or cut short, is a `skipped` attachment with a
-warning, and the rest of the message is read.
+In an `.eml` or an mbox, a TNEF part (`winmail.dat`, Outlook's own form of a message's properties
+and attachments), one of type `application/ms-tnef` or `application/vnd.ms-tnef` or named
+`winmail.dat`, is read through docproc-mail's own MS-OXTNEF reader. Its attachments are the
+message's, in the part's place, each read as a `.msg` attachment is, an embedded message nested
+under its `message`. Its bodies come ahead of the message's own: the HTML is the part's, stored or
+recovered from its RTF, else the message's; the text body is the part's, else the message's; and the
+part's RTF body's own text is read only where neither holds a text body, so a `text/plain` part
+beside it wins over an RTF that encapsulates no HTML. A TNEF part that can't be read, its framing
+broken or cut short, is a `skipped` attachment with a warning, and the rest of the message is read.
 
 A field with no value is left out, never `null`, and so is an empty list. The same input gives
 byte-identical stdout and media. The contract, field by field, is docproc's:
@@ -194,9 +194,9 @@ crate, [`tools/envelope`](../envelope).
 - No class-specific field is written: a contact, an appointment, or a task is a `message` line
   with the message fields alone.
 - Opaque S/MIME (`application/pkcs7-mime`) parts are not read; each gives its message a warning.
-  So does a `.msg` or `.pst` message whose class is
-  `IPM.Note.SMIME`, or ends in `.SMIME`, compared without regard to case, whatever its
-  attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned` message gets none.
+  So does a `.msg` or `.pst` message whose class is `IPM.Note.SMIME`, or ends in `.SMIME`, compared
+  without regard to case, whatever its attachments; a clear-signed `IPM.Note.SMIME.MultipartSigned`
+  message gets none.
 - A rights-managed message's content is not read: it is encrypted in its `message.rpmsg`
   attachment. A message with an attachment of that name, in any format, or, in an `.eml` or an
   mbox, with a `Content-Class: rpmsg.message` header, each compared without regard to case, gets

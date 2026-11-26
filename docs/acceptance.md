@@ -795,11 +795,12 @@ docproc-ooxml's address-space floor, on x64 and arm64, is measured apart, in
 
 ## docproc-ooxml's memory floor
 
-The docproc-coverage goal's office-and-mail task measured it on 2026-11-25, on GitHub's runners,
-from 6799188, whose docproc-ooxml is dcbead1's: the build that reads text boxes, a pptx's
-comments, and an xlsx's notes. It replaces acceptance's x64 figure, taken on the laptop (about 1
-run in 20 aborted at 256 MiB, all 20 passed at 512 MiB), whose input isn't recorded; arm64 had not
-been measured.
+The docproc-coverage goal's office-and-mail task measured the floor on 2026-11-25, on GitHub's
+runners, from ec69756, the task's final docproc-ooxml code: the build that reads text boxes, a
+pptx's comments, and an xlsx's notes. Two earlier dispatches measured 6799188, whose docproc-ooxml
+is dcbead1's; ec69756 differs from it in its version, doc comments, one member's visibility, and a
+test. The runs replace acceptance's x64 figure, taken on the laptop (about 1 run in 20 aborted at
+256 MiB, all 20 passed at 512 MiB), whose input isn't recorded; arm64 had not been measured.
 
 **The recipe.** CI's `memory-floor` job, which runs on a dispatch alone:
 `gh workflow run ci.yml --ref <branch>` ([CI](ci.md#the-memory-floor)). On `ubuntu-24.04` (x64)
@@ -810,24 +811,27 @@ and `scripts/memory-floor.sh` runs it 20 times on
 256, 320, 384, 448, 512, 640, 768, 1024, 1536, and 2048 MiB. A run passes when it exits 0. The
 floor is the lowest bound from which every bound up passed 20 of 20.
 
-**The results.** Two dispatches,
+**The results.** The table gives each run's passes of 20 in three dispatches: "final" is
+ec69756's, [45733851285](https://github.com/standards-lab/docproc/actions/runs/45733851285);
+"first" and "second" are dcbead1's,
 [45724088427](https://github.com/standards-lab/docproc/actions/runs/45724088427) and
-[45724812537](https://github.com/standards-lab/docproc/actions/runs/45724812537), each run's
-passes of 20:
+[45724812537](https://github.com/standards-lab/docproc/actions/runs/45724812537).
 
-| RLIMIT_AS | x64, first | x64, second | arm64, first | arm64, second |
-| --- | --- | --- | --- | --- |
-| 128 MiB | 0 | 0 | 0 | 0 |
-| 192 MiB | 1 | 0 | 17 | 17 |
-| 256 MiB | 11 | 0 | 15 | 18 |
-| 320 MiB | 12 | 19 | 19 | 17 |
-| 384 MiB to 2 GiB | 20 at each | 20 at each | 20 at each | 20 at each |
+| RLIMIT_AS | x64, final | x64, first | x64, second | arm64, final | arm64, first | arm64, second |
+| --- | --- | --- | --- | --- | --- | --- |
+| 128 MiB | 0 | 0 | 0 | 0 | 0 | 0 |
+| 192 MiB | 1 | 1 | 0 | 12 | 17 | 17 |
+| 256 MiB | 13 | 11 | 0 | 14 | 15 | 18 |
+| 320 MiB | 19 | 12 | 19 | 19 | 19 | 17 |
+| 384 MiB to 2 GiB | 20 at each | 20 at each | 20 at each | 20 at each | 20 at each | 20 at each |
 
-**The floor is 384 MiB on both architectures**, in both dispatches. Below it a run fails in one of
-two ways: SIGABRT, exit 134, its last stderr line "Unhandled exception. Out of memory." or, at
-128 MiB on arm64, "No usable version of libssl was found"; or exit 255 with nothing on stderr. The
-failures below the floor vary from run to run, 0 to 20 at 256 MiB on x64, so a bound under 384 MiB
-is not one a host can size by. cmd/docproc's default bound, 2 GiB, is over five times the floor.
+**The floor is 384 MiB on both architectures**, in all three dispatches. Below it a run fails in
+one of two ways: SIGABRT, exit 134, its last stderr line "Unhandled exception. Out of memory." or,
+at 128 MiB on arm64, "No usable version of libssl was found"; or exit 255 with nothing on stderr.
+In ec69756's dispatch, the failures at 128 MiB were SIGABRT but for one exit 255 on arm64, and
+every failure above 128 MiB was exit 255. The failures below the floor vary from
+run to run, 0 to 20 at 256 MiB on x64, so a bound under 384 MiB is not one a host can size by.
+cmd/docproc's default bound, 2 GiB, is over five times the floor.
 
 ## Bombs
 

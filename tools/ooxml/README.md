@@ -3,9 +3,10 @@
 docproc's system tool for Office Open XML documents: a command-line utility on Microsoft's
 [Open XML SDK](https://github.com/dotnet/Open-XML-SDK) that reads one docx, xlsx, or pptx file
 and writes it to stdout as JSON Lines, schema `"2"`, with its Markdown rendering inside the lines
-as the text layer. Its headings, paragraphs, lists, tables, text boxes, notes and comments,
-sheets and their typed cells, slides and their notes, charts' cached data, document properties,
-and hyperlinks are read; its pictures, embedded packages, and OLE objects are written out as media files.
+as the text layer. Its headings, paragraphs, lists, tables, text boxes, notes and comments, sheets
+and their typed cells, slides and their notes, charts' cached data, document properties, and
+hyperlinks are read; its pictures, embedded packages, and OLE objects are written out as media
+files.
 
 It is one NativeAOT binary each for linux-x64 and linux-arm64, built with .NET 11, needing no
 .NET runtime on the host, for docproc to run like any other system tool. It renders no page

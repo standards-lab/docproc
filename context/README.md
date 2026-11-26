@@ -38,6 +38,8 @@ tasks' measurements of what v1.ai.processing delivers.
 - **Run directory** (built): [rundir/doc.go](../rundir/doc.go),
   [rundir/schema/doc.go](../rundir/schema/doc.go).
 - **Command** (built): [cmd/docproc/main.go](../cmd/docproc/main.go).
-- **Format coverage** (planned): [tool-gaps.md](tool-gaps.md).
+- **Format coverage** (built): [docs/limits.md](../docs/limits.md), what each stage leaves unread.
+- **Format coverage's open items** (planned): [tool-gaps.md](tool-gaps.md), docproc-ooxml's
+  equations and SmartArt among them.
 - **Cerebro** (planned): [cerebro.md](cerebro.md).
 - **Releases** (built): [.github/workflows/release.yml](../.github/workflows/release.yml).

@@ -12,14 +12,14 @@ tool under `tools/` keeps its own.
 ## [v0.9.0] - 2026-11-25
 
 This release converts ODF text, spreadsheet, presentation, and drawing packages, WordPerfect
-documents, and Excel binary workbooks through LibreOffice and reads them as the office stage reads
-a legacy document, where they had no processor yet. Run over docproc-ooxml 0.2.0 and docproc-mail
-0.2.0, the office and email stages also prepare what those releases read anew: text boxes, a
-pptx's comments, an xlsx's notes and threaded comments, and an `.eml`'s or an mbox message's TNEF
-parts. The office stage's own version re-prepares the office route's parts alone; no other
-stage's identity changes. v0.8.0's notes said an index prepares every PDF again: the stage
-adapters' version 7 re-prepared the parts of every stage but text and vision, whose identities
-don't hash it. The module still requires golang.org/x/text alone.
+documents, and Excel binary workbooks through LibreOffice and reads them as the office stage reads a
+legacy document, where they had no processor yet. Run over docproc-ooxml 0.2.0 and docproc-mail
+0.2.0, the office and email stages also prepare what those releases read anew: text boxes, a pptx's
+comments, an xlsx's notes and threaded comments, and an `.eml`'s or an mbox message's TNEF parts.
+The office stage's identity now hashes the stage's own version, so an index prepares the office
+route's parts again and no other stage's. v0.8.0's notes were wrong to say an index prepares every
+PDF again: the stage adapters' version 7 re-prepared the parts of every stage but text and vision,
+whose identities don't hash it. The module still requires golang.org/x/text alone.
 
 ### Added
 
