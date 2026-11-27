@@ -14,7 +14,6 @@ import (
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/internal/cli"
-	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/picture"
 )
@@ -134,13 +133,8 @@ func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Do
 }
 
 func (w *officeWalk) metadata(doc *office.Document) error {
-	rec := metadata.Office{
-		Core:          properties(doc.Properties.Core),
-		Extended:      properties(doc.Properties.App),
-		Custom:        properties(doc.Properties.Custom),
-		ConvertedFrom: doc.ConvertedFrom,
-	}
-	if rec.Core == nil && rec.Extended == nil && rec.Custom == nil && rec.ConvertedFrom == "" {
+	rec := doc.Metadata()
+	if rec == nil {
 		return nil
 	}
 	o, err := record("metadata", rec, rec.MediaType(), nil)
@@ -148,17 +142,6 @@ func (w *officeWalk) metadata(doc *office.Document) error {
 		return fmt.Errorf("office stage: %w", err)
 	}
 	return w.item(dispatch.OutputItem(o))
-}
-
-func properties(list office.PropertyList) metadata.Properties {
-	if list == nil {
-		return nil
-	}
-	out := make(metadata.Properties, 0, len(list))
-	for _, p := range list {
-		out = append(out, metadata.Property{Key: p.Key, Value: p.Value})
-	}
-	return out
 }
 
 func (w *officeWalk) item(it dispatch.Item) error {

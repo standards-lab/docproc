@@ -30,6 +30,8 @@ media types and the keys, and the run directory's schema stays "2".
   and custom properties, each in its stored order and stored types, and the format it was
   converted from, such as `doc` or `odt`. The office stage yields one after the document's
   Markdown, for every package with a property part or converted from another format.
+- `office.Document.Metadata` is a document's `metadata.Office`, or nil for a package with no
+  property part, converted from no other format.
 - `metadata.PDF`, under `dispatch.MediaPDFMetadata`,
   `application/vnd.docproc.pdf-metadata+json; version=1`: a PDF's information dictionary as a
   `metadata.PDFInfo`, its standard keys typed, CreationDate and ModDate in UTC, and its custom keys
