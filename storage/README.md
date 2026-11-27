@@ -11,7 +11,7 @@ requires `s3`, for its live tier alone.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc/storage@v0.1.7
+go get github.com/standards-lab/docproc/storage@v0.1.8
 ```
 
 [`CHANGELOG.md`](CHANGELOG.md) states what each release changes. The package's documentation,

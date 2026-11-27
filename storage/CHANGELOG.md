@@ -10,6 +10,18 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.8] - 2026-11-27
+
+This release requires the docproc base module at v0.10.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.10.0, from v0.9.0, and passes its
+  `dispatchtest.Content` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  This module stores an output's bytes and reads none of their content, so the metadata records
+  the stages now yield, a PDF's, an office package's, an audio or video file's, and a picture's,
+  reach the store as other record outputs do, through the base module, not through this module.
+
 ## [v0.1.7] - 2026-11-25
 
 This release requires the docproc base module at v0.9.0. Its exported API is unchanged.
@@ -116,7 +128,8 @@ The first release. It requires `github.com/standards-lab/docproc` v0.1.0, whose
   a missing container; the live tier, under `-tags integration`, runs it over go-storage's S3
   provider against the compose harness's SeaweedFS.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.7...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/storage/v0.1.8...HEAD
+[v0.1.8]: https://github.com/standards-lab/docproc/compare/storage/v0.1.7...storage/v0.1.8
 [v0.1.7]: https://github.com/standards-lab/docproc/compare/storage/v0.1.6...storage/v0.1.7
 [v0.1.6]: https://github.com/standards-lab/docproc/compare/storage/v0.1.5...storage/v0.1.6
 [v0.1.5]: https://github.com/standards-lab/docproc/compare/storage/v0.1.4...storage/v0.1.5
