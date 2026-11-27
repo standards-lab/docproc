@@ -1,22 +1,22 @@
 # Layers
 
 These pages state, as signatures and schemas, docproc's boundaries, with the system tools below it
-and its callers above, in Cerebro's five-layer stack: the system tools (docproc-ooxml,
+and its callers above, in Bunrei's five-layer stack: the system tools (docproc-ooxml,
 docproc-mail, docproc-onenote), docproc (the Go extraction library), docinfer (the Go inference
-library), go-ai (the model client), and Cerebro (the data-intelligence capstone's processing
-service); Cerebro's planned boundary is in [`context/cerebro.md`](../context/cerebro.md). Each
+library), go-ai (the model client), and Bunrei (the data-intelligence capstone's processing
+service); Bunrei's planned boundary is in [`context/bunrei.md`](../context/bunrei.md). Each
 arrow points from a layer to a layer that uses it:
 
 ```text
                     ┌────────────────────────┐
                     │                        ▼
-system tools ──► docproc ──► docinfer ──► Cerebro
+system tools ──► docproc ──► docinfer ──► Bunrei
                                ▲             ▲
 go-ai ─────────────────────────┴─────────────┘
 ```
 
 docproc extracts and knows no model; docinfer infers over what docproc extracts, calling go-ai
-directly; Cerebro runs docinfer's jobs over docproc's dispatcher, stages, and stores, which it
+directly; Bunrei runs docinfer's jobs over docproc's dispatcher, stages, and stores, which it
 wires, and builds the go-ai clients docinfer calls. Each signature or schema traces to a capstone
 task in `standards-lab/context/data-intelligence.md` ("Design") or to spike evidence.
 

@@ -1,4 +1,4 @@
-// Package stages builds docproc's stages, the shipped wiring a host such as cmd/docproc or Cerebro
+// Package stages builds docproc's stages, the shipped wiring a host such as cmd/docproc or Bunrei
 // registers with a dispatch.Dispatcher. [Build] finds each tool a route's stage requires through
 // a [Lookup] the host gives, checks it against its package's minimum, and builds the route's stage
 // over it under [Options], which carry every run bound and each stage's request. A tool it can't

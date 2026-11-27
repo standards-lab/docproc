@@ -35,7 +35,7 @@ and its providers, and `postgres` the index in PostgreSQL ("Index"). `postgres` 
 `*sqlate.DB`, its pool on pgx's `database/sql` driver for `Wait`'s LISTEN, its `Verify` a
 `sqlate.Session` as go-messaging's `postgres` does, and requires sqlate for its statements and
 migrations and sqlate's `postgres` for the dialect; the pool behind the session is the host's,
-which Cerebro opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
+which Bunrei opens through go-database and wraps with `sqlate.Wrap`, so no provider requires
 go-database. A provider over a tier pins only its own level, above that tier
 (`repository-topology.md`, "A repository's place follows its base module"):
 `storage` sits above go-storage's, `postgres` depends on no tier, and the base module stays
@@ -133,7 +133,7 @@ type GUID ([MS-ONESTORE] 2.3.1).
 
 ## Running the tools
 
-Cerebro runs the exec runner inside an image that bundles the tools (`tool-packaging`). The
+Bunrei runs the exec runner inside an image that bundles the tools (`tool-packaging`). The
 container runner stays for hosts like `cmd/docproc`'s, since it needs the docker socket
 (data-intelligence.md, "Missing layers"). `tool` reports a run's facts and decides no outcome;
 `stages` classifies them ("Dispatch").
@@ -418,8 +418,8 @@ type Input struct {
 The stages read paths, since mail, onenote, qpdf, and ffprobe take one, and
 `office.Converter.Convert` takes the part's path in its `Request`. So one spool at the input serves
 every stage. The spool's check is the input's one whole-file check: a mismatch stops the dispatch
-with an error matching `ErrSHA256`, which no redelivery changes. Cerebro always passes blob
-storage's reader of the job's staged input and its SHA-256 ([`cerebro.md`](../context/cerebro.md),
+with an error matching `ErrSHA256`, which no redelivery changes. Bunrei always passes blob
+storage's reader of the job's staged input and its SHA-256 ([`bunrei.md`](../context/bunrei.md),
 "Queries and Commands").
 
 An input with `After` set is a resumed store: it is dispatched past that message, and its entry
@@ -753,7 +753,7 @@ output without them and nothing clears them. `Tool.Err` stays local beside its t
 `Event.Err` beside `Reason`. `ContentType` holds what routing read of a part, never a host's own
 sniffing of an input, which is the host's record's (`rundir/schema`'s `File`).
 
-`stages` is docproc's shipped wiring, so `cmd/docproc` and Cerebro wire the same stages from the
+`stages` is docproc's shipped wiring, so `cmd/docproc` and Bunrei wire the same stages from the
 tools a host holds. It holds the stage adapters, unexported: a stage has its tools or doesn't
 exist, so no adapter has a partial mode.
 
@@ -791,7 +791,7 @@ type Set struct {
 
 A host that requires a route reads `Set.Rows` and fails its own startup. The library ships no
 policy: each bound is none unless the host sets it, or the format's own default, and
-`cmd/docproc`'s configuration carries the operator's starting values, Cerebro's its own. Each
+`cmd/docproc`'s configuration carries the operator's starting values, Bunrei's its own. Each
 bound has one owner, and passing it has one outcome:
 
 ```text
@@ -1034,15 +1034,15 @@ The host sweeps content by age, never by reference. Its retention is at least th
 retention plus the renew age plus the job stream's retention: every put an entry's preparation
 makes follows the entry's creation, from which its age runs ("Index"), and leaves its content
 younger than the renew age, so a content is never older than an entry naming it plus the renew
-age, however long the stage runs, and no live entry names a swept content. Cerebro's retentions
-are the `state` task's ([`cerebro.md`](../context/cerebro.md), "State and subjects").
+age, however long the stage runs, and no live entry names a swept content. Bunrei's retentions
+are the `state` task's ([`bunrei.md`](../context/bunrei.md), "State and subjects").
 
 A content missing within that bound, deleted by hand or swept early under clock skew, is outside
 the contract. docproc can't see one: a replay opens no content, its outputs carrying only their
 SHA-256. docinfer finds it when it opens the content, on a cache miss or to chunk its text, and
 its host acts on it (docinfer's `job` package doc).
 
-`cmd/docproc`'s run directory holds its content in a `FileContent`; Cerebro's is blob storage
+`cmd/docproc`'s run directory holds its content in a `FileContent`; Bunrei's is blob storage
 through `docproc/storage`, which maps go-storage's `ErrTooLarge` (an object past the store's
 `MaxObjectSize`) to `dispatch.ErrTooLarge`, so the part fails recorded ("Dispatch").
 
@@ -1050,7 +1050,7 @@ through `docproc/storage`, which maps go-storage's `ErrTooLarge` (an object past
 
 The index is content-addressed by a part's SHA-256 and its stage's identity. One claimant prepares
 the content, and every other claimant waits for its entry, so replicas sharing an index prepare
-content once. Cerebro backs it with PostgreSQL through `docproc/postgres`; `MemoryIndex` and
+content once. Bunrei backs it with PostgreSQL through `docproc/postgres`; `MemoryIndex` and
 `FileIndex` stay for tests and `cmd/docproc`. `dispatch/dispatchtest` holds the contract as
 conformance suites, `Index(t, new)` and `Content(t, new)`, with the fixture stage, which every
 implementation and both providers run.
@@ -1151,8 +1151,8 @@ docproc and docinfer are libraries that emit no CloudEvents themselves, so neith
 kinds or has a `messaging.go`. Their shapes sit in their producing packages' ordinary files:
 docproc's are `dispatch`'s (above), versioned by `dispatch.Version`, and docinfer's are its root
 package's and `job`'s (docinfer's README, "Packages"), both versioned by `docinfer.Version`.
-Cerebro's `messaging.go` declares its `cerebro.job.*` kinds, each over one of these or over its own
-data types ([`cerebro.md`](../context/cerebro.md), "Events"). `rundir/schema` aliases `dispatch`'s
+Bunrei's `messaging.go` declares its `bunrei.job.*` kinds, each over one of these or over its own
+data types ([`bunrei.md`](../context/bunrei.md), "Events"). `rundir/schema` aliases `dispatch`'s
 and `inspect`'s shapes ("Run directory"). The shapes grow by addition only, as the tools' contracts
 do, with one recorded exception. Under wire "1" and run schema "2" both, the text stage's
 `encoding`, once a combined value such as `windows-1252 (fallback)` or

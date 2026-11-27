@@ -57,7 +57,7 @@ and applies field by field.
   language restates a case. docproc-mail's tests also read each destination and title back
   through pulldown-cmark.
 - **Out of the tools.** Warnings as data are docproc's; per-item digests and provenance
-  docinfer's; batch IDs Cerebro's; typed metadata docproc's and Cerebro's.
+  docinfer's; batch IDs Bunrei's; typed metadata docproc's and Bunrei's.
 
 ## docproc-ooxml
 

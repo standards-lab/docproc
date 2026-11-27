@@ -17,7 +17,7 @@ inference. A field's outcome follows from that, the first that applies:
 - **Cut** when it can't be plain text and has no processor.
 
 Owner is the layer that produces the field's value as the settled designs leave it (the tool,
-docproc, docinfer, or Cerebro), with the layer that holds a form of it beside; a cut field's text is
+docproc, docinfer, or Bunrei), with the layer that holds a form of it beside; a cut field's text is
 owned where it is carried. Capstone task is the task of `standards-lab/context/data-intelligence.md`
 ("Design") that reads the field, or, where none does, the docproc stage that reads it. Consumer
 paths are spike-ai-pipeline-processing's ([`layers.md`](layers.md)).
@@ -39,7 +39,7 @@ paths are spike-ai-pipeline-processing's ([`layers.md`](layers.md)).
 | mail | `subject` | `email/threads.go` (`baseSubject`), `dispatch/email.go` meta | tool | metadata | kept |
 | mail | `message_id`, `in_reply_to`, `references`, `conversation_index` | `email/threads.go` | tool; docproc's `Threader` threads by them | none: the email stage's `Threader` | kept |
 | mail | `conversation_topic` | `email/model.go` (`Conversation.Topic`) | tool | none: the email stage's `Conversation` | kept |
-| mail | `transport_headers` | `metadata`: typed mail metadata is docproc's and Cerebro's, built from the raw headers | tool; typed by docproc and Cerebro, as `metadata` settles | metadata | kept |
+| mail | `transport_headers` | `metadata`: typed mail metadata is docproc's and Bunrei's, built from the raw headers | tool; typed by docproc and Bunrei, as `metadata` settles | metadata | kept |
 | mail | address `name`, `address`, `smtp_address` | `email/model.go` (participants), `metadata` | tool; docproc takes a sender's SMTP address from From when the tool leaves it out | metadata | kept |
 | mail | attachment `filename` | `email/route.go`, `dispatch/email.go` (`Found` name) | tool | none: the email stage, naming the found part | kept |
 | mail | message `media` (`file`, `mime_type`) | the email stage (a `data:` image the Markdown links becomes a found part); a reference, not text | tool; docproc makes each a child part | none: the email stage | added |
@@ -64,7 +64,7 @@ paths are spike-ai-pipeline-processing's ([`layers.md`](layers.md)).
 | onenote | page `author`, times | `metadata` | tool | metadata | kept |
 | onenote | section and group `display_name` | none; it duplicates `path`'s last name, a kept field | tool, in `path` | metadata, through `path` | **cut** |
 | all | `schema`, and `--version`'s `schema <n>` | `internal/cli`, each reader's spec refusing a tool of another schema at startup, and the readers' decoders | tool | none: every reader | kept, the version line added |
-| all | stderr warnings (`<tool>: warning: <where>: <what>`) | `internal/cli`, parsed to `dispatch.Warning` | docproc, as data; the tool writes the line | events, as Cerebro's warning event | kept |
+| all | stderr warnings (`<tool>: warning: <where>: <what>`) | `internal/cli`, parsed to `dispatch.Warning` | docproc, as data; the tool writes the line | events, as Bunrei's warning event | kept |
 
 `text-layer` reads an image's OCR text from the Markdown's image text; the contract carries no
 `ocr_text` field.

@@ -124,7 +124,7 @@ license, and the rule that nothing is asked of the parser upstream.
 - **ON-2 · A table of contents through docproc read empty or twice, and a directory never
   arrived.** The stage's outcome is `stages`' (read elsewhere). The tool read a
   `.onetoc2` as its whole notebook, resolving sections beside it. Spooled from a stream, as
-  Cerebro passes every input, nothing is beside it, and the parser drops a missing entry without
+  Bunrei passes every input, nothing is beside it, and the parser drops a missing entry without
   a word: one `notebook` line, exit 0, no warning. Given by path, as `cmd/docproc` walks a share,
   every section was read, and each sibling `.one` is also its own input, so every page came out
   twice under two parts. The header can't tell a section from a table of contents, so the route
@@ -276,7 +276,7 @@ it.
   adapters in `dispatch` and a public envelope package.
 - **8 · `stages.Build`'s options (Q9).** Settled → library. One `Options` struct, each bound's
   owner and outcome stated once in `api.md`, "Dispatch". Rejected: the three
-  settled arguments, under which Cerebro can set none of the groups' bounds.
+  settled arguments, under which Bunrei can set none of the groups' bounds.
 - **9 · Default bounds (Q10).** Settled → library; docproc (`cmd/docproc`'s starting values);
   acceptance. No `Limits` or run bound has a library default; `cmd/docproc` ships starting
   values, and acceptance dispatches PI-1's bombs through it; the bomb rule sums across an
