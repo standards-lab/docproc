@@ -9,33 +9,36 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+This release captures each format's own metadata as a record output named `metadata`, its shape a
+type of the new package `metadata` under a versioned media type of its own: an office package's
+properties, a PDF's information dictionary and XMP packet, an audio or video file's container and
+streams, and a picture's EXIF. A mail message's record and a OneNote page's serve as theirs, and a
+message's meta gains its threading keys. The document stage now requires pdfinfo, and the vision
+stage magick. Each stage that yields a new record or key hashes its own version anew, so an index
+prepares the office, document, audio, video, vision, and vision-converted routes' parts and the
+nested route's mail parts again, and no other stage's. `dispatch.Version` stays "1", grown by the
+media types and the keys, and the run directory's schema stays "2".
+
 ### Added
 
 - Package `metadata`, the metadata records' shapes, one per format, importing no docproc package
   but `dispatch`, so a reader decodes a record without compiling the stages or the format
-  packages. Its first is `metadata.Office`, under `dispatch.MediaOfficeMetadata`,
+  packages. Each record is a record output named `metadata` whose event carries its SHA-256,
+  never its content, which is in the content store.
+- `metadata.Office`, under `dispatch.MediaOfficeMetadata`,
   `application/vnd.docproc.office-metadata+json; version=1`: an office package's core, extended,
   and custom properties, each in its stored order and stored types, and the format it was
-  converted from, such as `doc` or `odt`.
-- The office stage yields an office metadata record, a record output named `metadata`, after the
-  document's Markdown, for every package with a property part or converted from another format;
-  its event carries its SHA-256, its content in the content store. `dispatch.Version` stays "1",
-  grown by the media type, and the run directory's schema stays "2".
-- The email stage's messages carry `dispatch.MetaInReplyTo`, `in_reply_to`, and
-  `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
-  each as stored, `references` its Message-IDs separated by spaces. A message's record is its
-  metadata record; mail yields no other. `dispatch.Version` stays "1", grown by the two keys.
+  converted from, such as `doc` or `odt`. The office stage yields one after the document's
+  Markdown, for every package with a property part or converted from another format.
 - `metadata.PDF`, under `dispatch.MediaPDFMetadata`,
   `application/vnd.docproc.pdf-metadata+json; version=1`: a PDF's information dictionary as a
   `metadata.PDFInfo`, its standard keys typed, CreationDate and ModDate in UTC, and its custom keys
   kept as stored; its XMP packet as a `metadata.XMP`, its common Dublin Core and XMP properties
-  typed, dates in UTC, and the packet kept whole; and its PDF version.
-- The document stage yields a PDF metadata record, a record output named `metadata`, before the
-  forms record, for every PDF with an information dictionary or an XMP packet; its event carries
-  its SHA-256, its content in the content store. A PDF whose metadata pdfinfo can't read, or whose
-  packet doesn't parse, gets a `metadata` warning and its pages still prepare; a PDF that needs a
-  password gets the warning and ends with `ErrEncrypted`, as before. `dispatch.Version` stays
-  "1", grown by the media type, and the run directory's schema stays "2".
+  typed, dates in UTC, and the packet kept whole; and its PDF version. The document stage yields
+  one before the forms record, for every PDF with an information dictionary or an XMP packet. A
+  PDF whose metadata pdfinfo can't read, or whose packet doesn't parse, gets a `metadata` warning
+  and its pages still prepare; a PDF that needs a password gets the warning and ends with
+  `ErrEncrypted`, as before.
 - `document.InfoReader`, over poppler's pdfinfo, built by `document.NewInfoReader` from
   `document.Config.PDFInfo`, declared by `document.PDFInfoSpec`, minimum
   `document.PDFInfoMinimum`, 22.02; `InfoReader.Metadata` reads a PDF's metadata into a
@@ -45,12 +48,9 @@ tool under `tools/` keeps its own.
   format, duration in seconds, bit rate, and tags, kept as stored, in order; and each of its
   streams as a `metadata.MediaStream`: its index, type, codec, and tags, an audio stream's sample
   rate and channels, and a video stream's width, height, frame rate, and whether it is an attached
-  picture.
-- The audio and video stages yield a media metadata record, a record output named `metadata`, for
-  every part whose probe finds a stream they decode: the audio stage before its first window, the
-  video stage first, before its plan. Its event carries its SHA-256, its content in the content
-  store. `dispatch.Version` stays "1", grown by the media type; the run directory's schema stays
-  "2"; and the audio and video plan records keep their shapes.
+  picture. The audio and video stages yield one for every part whose probe finds a stream they
+  decode: the audio stage before its first window, the video stage first, before its plan. The
+  audio and video plan records keep their shapes.
 - `audio.Source.Metadata` is the source's metadata record, read by the same ffprobe run that finds
   its audio stream, which `audio.Splitter.Probe` returns and `audio.WindowFile.Metadata` carries on
   the first window; `media.Event.Metadata` is a file's, which `media.Streamer.Events` yields first,
@@ -59,46 +59,42 @@ tool under `tools/` keeps its own.
   `application/vnd.docproc.picture-metadata+json; version=1`: a picture's EXIF capture time,
   DateTimeOriginal at OffsetTimeOriginal, in UTC, a time with no offset read as UTC; its camera's
   make and model; its orientation; its size in pixels; its GPS position as a `metadata.GPS`, in
-  decimal degrees; and every EXIF property as magick prints it.
-- The picture and vision stages yield a picture metadata record, a record output named `metadata`,
-  before the picture's PNGs or the picture itself, for every picture whose first image holds EXIF:
-  a JPEG, PNG, TIFF, HEIC, WebP, or AVIF. Its event carries its SHA-256, its content in the content
-  store. A picture whose EXIF magick can't read gets a `metadata` warning and still prepares, and
-  reading EXIF never changes the picture. `dispatch.Version` stays "1", grown by the media type,
-  and the run directory's schema stays "2".
+  decimal degrees; and every EXIF property as magick prints it. The picture and vision stages
+  yield one before the picture's PNGs or the picture itself, for every picture whose first image
+  holds EXIF: a JPEG, PNG, TIFF, HEIC, WebP, or AVIF. A picture whose EXIF magick can't read gets
+  a `metadata` warning and still prepares, and reading EXIF never changes the picture.
 - `picture.EXIFReader`, over ImageMagick's magick, built by `picture.NewEXIFReader` from
   `picture.Config`'s Magick and Limits, minimum `picture.MagickMinimum`, 7.1;
   `EXIFReader.Metadata` reads a picture's EXIF into a `metadata.Picture`, and `picture.ErrMetadata`
   is the cause of magick output that isn't read.
+- The email stage's messages carry `dispatch.MetaInReplyTo`, `in_reply_to`, and
+  `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
+  each as stored, `references` its Message-IDs separated by spaces. A message's `MediaMail` record
+  is its metadata record, as a OneNote page's `MediaOneNote` record is the page's; neither format
+  yields another.
 
 ### Changed
 
-- The office stage's identity hashes its own version, 3, so an index prepares the office route's
-  parts again, to yield their metadata records.
-- The email stage's identity hashes its own version, 2, so an index prepares the nested route's
-  mail parts again, to carry their threading keys.
 - The document stage requires pdfinfo, from poppler-utils 22.02 or later, beside gs, qpdf,
   pdfdetach, and pdftotext; `stages.Build` looks it up as it does the other poppler tools, a host
   without it, or with an older one, leaving the document stage out. poppler-utils ships pdfinfo
   with pdfdetach and pdftotext, so a host that ran the document stage before runs it still. The
   stage table's document row carries pdfinfo's version line, and `Options.Timeout` bounds its
   runs.
-- The document stage's identity hashes its own version, 2, so an index prepares the document
-  route's PDFs again, to yield their metadata records.
-- The audio and video stages' identities each hash the stage's own version, 2, so an index
-  prepares the audio and video routes' parts again, to yield their media metadata records.
-- audio's and media's ffprobe runs ask for the container's format name, bit rate, and tags and
-  each stream's codec, sample rate, channels, frame size, frame rates, tags, and attached-picture
-  disposition beside what they asked for before.
 - The vision stage requires magick, ImageMagick 7.1 or later, which the picture and office stages
   require already; `stages.Build` looks it up for the vision route too, a host without it, or with
   an older one, leaving the vision stage out, so PNG, JPEG, GIF, and BMP parts have no processor
   there. The stage table's vision row carries magick's version line, its identity's version
   magick's, and `Options.Timeout`, `Options.Memory`, and `Options.Magick` bound its runs.
-- The picture and vision stages' identities each hash the stage's own version, 2, so an index
-  prepares the vision route's PNGs, JPEGs, GIFs, and BMPs, and the vision-converted route's TIFFs,
-  EMFs, WMFs, SVGs, HEICs, WebPs, and AVIFs, again, to yield their picture metadata records.
-
+- Each stage that yields a new record or key hashes its own version in its identity, so an index
+  prepares its route's parts again: the office stage's, 3, the office route's parts; the email
+  stage's, 2, the nested route's mail parts; the document stage's, 2, the document route's PDFs;
+  the audio and video stages', 2 each, the audio and video routes' parts; and the picture and
+  vision stages', 2 each, the vision route's PNGs, JPEGs, GIFs, and BMPs and the vision-converted
+  route's TIFFs, EMFs, WMFs, SVGs, HEICs, WebPs, and AVIFs.
+- audio's and media's ffprobe runs ask for the container's format name, bit rate, and tags and
+  each stream's codec, sample rate, channels, frame size, frame rates, tags, and attached-picture
+  disposition beside what they asked for before.
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned
   by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,

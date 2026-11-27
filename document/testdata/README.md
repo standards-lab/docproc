@@ -3,9 +3,9 @@
 The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
 AcroForm and a page of a signed PDF for the forms record; a generated PDF of embedded files; a
 generated PDF portfolio; a generated PDF of metadata, with pdfinfo's output of it and of
-`clean.pdf`; and a malformed PDF that gs renders with a message. Each set is one multi-page PDF, so a renderer test names a page of it
-and a page stream test takes the whole PDF. The clean and degraded sets are
-generated from `clean.typ`; the scanned set is real scans.
+`clean.pdf`; and a malformed PDF that gs renders with a message. Each set is one multi-page PDF, so
+a renderer test names a page of it and a page stream test takes the whole PDF. The clean and
+degraded sets are generated from `clean.typ`; the scanned set is real scans.
 
 - `clean.pdf` is six pages, one layout each: prose, two columns, a table, 8 pt print, a filled-in
   form, and a figure (shapes only) with a caption.

@@ -839,10 +839,11 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   SHA-256, never its stored name, and found `attachment <name>`; one past the bomb rule, against the
   whole PDF's size, or past the bytes cap is stopped as an archive's entry is, and one pdfdetach
   can't save is a failed child. The pages come last, each `page N`: its text layer, when the request
-  reads it and it holds text, then its PNG. Each unit, `metadata`, `form`, `attachments`, and `page
-  N`, reads on its own, an XMP packet that doesn't parse a `metadata` warning beside its record, so
-  a failure of the content's class is a warning naming the unit and its tool, and the part fails,
-  recorded, only when nothing of it reads; a failed page count names no page, and none follows it.
+  reads it and it holds text, then its PNG. Each unit, `metadata`, `form`, `attachments`, and
+  `page N`, reads on its own, an XMP packet that doesn't parse a `metadata` warning beside its
+  record, so a failure of the content's class is a warning naming the unit and its tool, and the
+  part fails, recorded, only when nothing of it reads; a failed page count names no page, and none
+  follows it.
 - **office.** The document's Markdown, named `document`, comes first, then, unless the package has
   no property part and was converted from no other format, a `MediaOfficeMetadata` record named
   `metadata`, a `metadata.Office`: its core, extended, and custom properties in stored order and
@@ -874,10 +875,10 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
 - **vision.** A PNG or JPEG whose EXIF magick reads first yields a `MediaPictureMetadata` record
   named `metadata`, as the picture stage's, a failed read a `metadata` warning; a GIF or BMP holds
   none, and no magick runs for it. The stage requires magick. A PNG, JPEG, GIF, or BMP then passes
-  through as an image output named `picture`, its `Path` the part's own file, unchanged, so a layer above meets every picture, converted or not, as an image
-  output. The dispatcher removes the file once the event's body returns, as it does any found
-  part's; a caller that sends the picture on later reads it from `Content` by the output's
-  SHA-256, or links the file within the body.
+  through as an image output named `picture`, its `Path` the part's own file, unchanged, so a layer
+  above meets every picture, converted or not, as an image output. The dispatcher removes the file
+  once the event's body returns, as it does any found part's; a caller that sends the picture on
+  later reads it from `Content` by the output's SHA-256, or links the file within the body.
 - **email.** Each of docproc-mail's lines is a `MediaMail` record, its JSON as `email`'s record
   marshals it back to its line, in its order: `store`; `folder <id>`; `message <id>`, or `message`
   for a `.msg` or an `.eml`, which has no id, then its Markdown of the same name; and a line of a
