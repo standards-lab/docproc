@@ -20,4 +20,6 @@
 //   - [Picture], a picture's EXIF metadata record, under [dispatch.MediaPictureMetadata], its GPS
 //     position a [GPS]
 //   - [Properties], one property part's properties in stored order, each a [Property]
+//
+// Each record's MediaType method returns the media type it is stored under.
 package metadata

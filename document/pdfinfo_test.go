@@ -209,7 +209,18 @@ func TestInfoReaderXMPUnparsed(t *testing.T) {
 	}
 }
 
-func TestParseXMP(t *testing.T) {
+func readXMP(t *testing.T, packet string) (*metadata.XMP, error) {
+	t.Helper()
+	r, st := standinInfoReader(t, "26.10.0")
+	st.set(func(s *settings) { s.Info = map[string]string{"meta": packet} })
+	got, err := r.Metadata(t.Context(), filepath.Join(t.TempDir(), "x.pdf"))
+	if got.Info != nil {
+		t.Errorf("info %+v, want none", got.Info)
+	}
+	return got.XMP, err
+}
+
+func TestInfoReaderXMP(t *testing.T) {
 	t.Parallel()
 	const head = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" ` +
 		`xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xmp="http://ns.adobe.com/xap/1.0/" ` +
@@ -238,6 +249,11 @@ func TestParseXMP(t *testing.T) {
 			metadata.XMP{Creators: []string{"B"}},
 		},
 		{
+			"a date at the local zone's offset",
+			`<rdf:Description><xmp:CreateDate>2026-07-01T13:00:00+05:45</xmp:CreateDate></rdf:Description>`,
+			metadata.XMP{CreateDate: utc("2026-07-01T07:15:00Z")},
+		},
+		{
 			"dates of a year, a month, a minute, and no zone",
 			`<rdf:Description><xmp:CreateDate>2026</xmp:CreateDate><xmp:ModifyDate>2026-02-03T04:05</xmp:ModifyDate></rdf:Description>`,
 			metadata.XMP{CreateDate: utc("2026-01-01T00:00:00Z"), ModifyDate: utc("2026-02-03T04:05:00Z")},
@@ -257,7 +273,7 @@ func TestParseXMP(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
 			packet := head + c.body + tail
-			got, err := document.ParseXMP([]byte(packet))
+			got, err := readXMP(t, packet)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -269,13 +285,16 @@ func TestParseXMP(t *testing.T) {
 	}
 }
 
-func TestParseXMPInvalidUTF8(t *testing.T) {
+func TestInfoReaderXMPInvalidUTF8(t *testing.T) {
 	t.Parallel()
-	got, err := document.ParseXMP([]byte("<a>\xff</a>"))
-	if err == nil {
-		t.Errorf("no error, read %+v", got)
+	r, st := standinInfoReader(t, "26.10.0")
+	packet := []byte("<a>\xff</a>")
+	st.set(func(s *settings) { s.Stdout = &packet })
+	rec, err := r.Metadata(t.Context(), filepath.Join(t.TempDir(), "x.pdf"))
+	if !errors.Is(err, document.ErrXMP) {
+		t.Errorf("error %v, want ErrXMP", err)
 	}
-	if got.Packet != "<a>�</a>" || got.Creators != nil {
-		t.Errorf("packet %q, want its byte replaced", got.Packet)
+	if want := (&metadata.XMP{Packet: "<a>\uFFFD</a>"}); !reflect.DeepEqual(rec.XMP, want) {
+		t.Errorf("xmp %+v, want %+v, its byte replaced", rec.XMP, want)
 	}
 }

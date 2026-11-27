@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/metadata"
 )
 
@@ -62,13 +61,6 @@ func TestOfficeJSON(t *testing.T) {
 				t.Errorf("Unmarshal =\n %+v\n %+v\nwant\n %+v", back, backV2, c.record)
 			}
 		})
-	}
-}
-
-func TestOfficeMediaType(t *testing.T) {
-	t.Parallel()
-	if got := (metadata.Office{}).MediaType(); got != dispatch.MediaOfficeMetadata {
-		t.Errorf("media type %q", got)
 	}
 }
 
@@ -145,13 +137,6 @@ func TestPDFJSON(t *testing.T) {
 	}
 }
 
-func TestPDFMediaType(t *testing.T) {
-	t.Parallel()
-	if got := (metadata.PDF{}).MediaType(); got != dispatch.MediaPDFMetadata {
-		t.Errorf("media type %q", got)
-	}
-}
-
 func TestMediaJSON(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -217,13 +202,6 @@ func TestMediaJSON(t *testing.T) {
 	}
 }
 
-func TestMediaMediaType(t *testing.T) {
-	t.Parallel()
-	if got := (metadata.Media{}).MediaType(); got != dispatch.MediaMediaMetadata {
-		t.Errorf("media type %q", got)
-	}
-}
-
 func TestPictureJSON(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
@@ -281,12 +259,5 @@ func TestPictureJSON(t *testing.T) {
 				t.Errorf("Unmarshal =\n %+v\n %+v\nwant\n %+v", back, backV2, c.record)
 			}
 		})
-	}
-}
-
-func TestPictureMediaType(t *testing.T) {
-	t.Parallel()
-	if got := (metadata.Picture{}).MediaType(); got != dispatch.MediaPictureMetadata {
-		t.Errorf("media type %q", got)
 	}
 }

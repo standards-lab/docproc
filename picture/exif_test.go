@@ -112,7 +112,7 @@ func TestEXIFGoldens(t *testing.T) {
 				}
 			}
 			runs := st.all()
-			want := []string{"-limit", "area", "16777216", string(c.kind) + ":-[0]", "-format", picture.EXIFFormat, "info:"}
+			want := []string{"-limit", "area", "16777216", string(c.kind) + ":-[0]", "-format", "%w %h\n%[EXIF:*]", "info:"}
 			if len(runs) != 1 || !slices.Equal(runs[0].Args, want) || runs[0].Input != inputSum([]byte(golden(t, c.fixture))) {
 				t.Errorf("runs %+v; want one run %q reading the picture from its standard input", runs, want)
 			}
@@ -209,8 +209,25 @@ func TestNewEXIFReader(t *testing.T) {
 	}()
 }
 
-func TestGPSDegrees(t *testing.T) {
+func readEXIF(t *testing.T, out string) *metadata.Picture {
+	t.Helper()
+	r, _ := standinEXIF(t, picture.Limits{}, func(s *settings) { s.EXIF = out })
+	got, err := r.Metadata(t.Context(), filepath.Join("testdata", "exif-gps.jpg"), route.JPEG)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got == nil {
+		t.Fatalf("no record of %q", out)
+	}
+	return got
+}
+
+func TestEXIFGPS(t *testing.T) {
 	t.Parallel()
+	const (
+		latitude  = "exif:GPSLatitude=33/1,51/1,3564/100\nexif:GPSLatitudeRef=S\n"
+		longitude = "exif:GPSLongitude=151/1,12/1,4020/100\nexif:GPSLongitudeRef=E\n"
+	)
 	for _, c := range []struct {
 		value, ref string
 		lat        bool
@@ -235,18 +252,25 @@ func TestGPSDegrees(t *testing.T) {
 		{"-33/1,0/1,0/1", "S", true, 0, false},
 		{"", "N", true, 0, false},
 	} {
-		positive, negative, most := "E", "W", 180.0
-		if c.lat {
-			positive, negative, most = "N", "S", 90
+		out := "1 1\nexif:GPSLatitude=" + c.value + "\nexif:GPSLatitudeRef=" + c.ref + "\n" + longitude
+		if !c.lat {
+			out = "1 1\n" + latitude + "exif:GPSLongitude=" + c.value + "\nexif:GPSLongitudeRef=" + c.ref + "\n"
 		}
-		got, ok := picture.GPSDegrees(c.value, c.ref, positive, negative, most)
-		if ok != c.ok || !degreesNear(got, c.want) {
-			t.Errorf("%q %q: %v, %t; want %v, %t", c.value, c.ref, got, ok, c.want, c.ok)
+		gps := readEXIF(t, out).GPS
+		switch {
+		case !c.ok && gps != nil:
+			t.Errorf("%q %q: GPS %+v, want none", c.value, c.ref, gps)
+		case c.ok && gps == nil:
+			t.Errorf("%q %q: no GPS, want %v", c.value, c.ref, c.want)
+		case c.ok && c.lat && !degreesNear(gps.Latitude, c.want):
+			t.Errorf("%q %q: latitude %v, want %v", c.value, c.ref, gps.Latitude, c.want)
+		case c.ok && !c.lat && !degreesNear(gps.Longitude, c.want):
+			t.Errorf("%q %q: longitude %v, want %v", c.value, c.ref, gps.Longitude, c.want)
 		}
 	}
 }
 
-func TestCaptureTime(t *testing.T) {
+func TestEXIFCaptureTime(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
 		value, offset string
@@ -254,6 +278,7 @@ func TestCaptureTime(t *testing.T) {
 	}{
 		{"2024:05:06 07:08:09", "+02:00", time.Date(2024, 5, 6, 5, 8, 9, 0, time.UTC)},
 		{"2024:05:06 07:08:09", "-05:30", time.Date(2024, 5, 6, 12, 38, 9, 0, time.UTC)},
+		{"2024:05:06 07:08:09", "+05:45", time.Date(2024, 5, 6, 1, 23, 9, 0, time.UTC)},
 		{"2024:05:06 07:08:09", "", time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
 		{"2024:05:06 07:08:09", "local", time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
 		{"2024:05:06 07:08:09", "+15:00", time.Date(2024, 5, 6, 7, 8, 9, 0, time.UTC)},
@@ -263,9 +288,9 @@ func TestCaptureTime(t *testing.T) {
 		{"2024-05-06T07:08:09", "", time.Time{}},
 		{"", "+02:00", time.Time{}},
 	} {
-		got := picture.CaptureTime(c.value, c.offset)
-		if !got.Equal(c.want) || (!got.IsZero() && got.Location() != time.UTC) {
-			t.Errorf("%q %q: %v, want %v in UTC", c.value, c.offset, got, c.want)
+		got := readEXIF(t, "1 1\nexif:DateTimeOriginal="+c.value+"\nexif:OffsetTimeOriginal="+c.offset+"\n").CaptureTime
+		if got != c.want {
+			t.Errorf("%q %q: %v, want %v", c.value, c.offset, got, c.want)
 		}
 	}
 }
