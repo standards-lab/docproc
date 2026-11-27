@@ -20,8 +20,10 @@ import (
 )
 
 type pictureSettings struct {
-	Formats string `json:"formats"`
-	Pages   int    `json:"pages"`
+	Formats  string            `json:"formats"`
+	Pages    int               `json:"pages"`
+	EXIF     map[string]string `json:"exif,omitzero"`
+	EXIFFail string            `json:"exif_fail,omitzero"`
 }
 
 const pictureListing = `   Format  Module    Mode  Description
@@ -52,6 +54,8 @@ func pictureStandin(r tooltest.Run) int {
 	case slices.Equal(args, []string{"-list", "format", "null:"}):
 		fmt.Print(settings.Formats)
 		return 0
+	case len(args) > 0 && args[len(args)-1] == "info:":
+		return pictureEXIFStandin(settings)
 	case len(args) < 2:
 		fmt.Fprintf(os.Stderr, "stand-in: unexpected arguments %q\n", args)
 		return 2
@@ -84,13 +88,13 @@ func sofficeStandin(r tooltest.Run) int {
 
 func standinPictureStage(t *testing.T, listing string, pages int) *stages.PictureStage {
 	t.Helper()
-	spec := picture.MagickSpec()
-	spec.Program = tooltest.Link(t, t.TempDir(), "magick", pictureSettings{Formats: listing, Pages: pages})
-	mg, err := tool.NewExec(t.Context(), spec)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spec = picture.LibreOfficeSpec()
+	return pictureStageOver(t, pictureSettings{Formats: listing, Pages: pages})
+}
+
+func pictureStageOver(t *testing.T, settings pictureSettings) *stages.PictureStage {
+	t.Helper()
+	mg, r := standinEXIF(t, settings)
+	spec := picture.LibreOfficeSpec()
 	spec.Program = tooltest.Link(t, t.TempDir(), "soffice", struct{}{})
 	lo, err := tool.NewExec(t.Context(), spec)
 	if err != nil {
@@ -100,7 +104,7 @@ func standinPictureStage(t *testing.T, listing string, pages int) *stages.Pictur
 	if err != nil {
 		t.Fatal(err)
 	}
-	s := stages.NewPictureStage(stages.PictureConfig{Converter: c, Version: stages.Versions(mg)})
+	s := stages.NewPictureStage(stages.PictureConfig{Converter: c, EXIF: r, Version: stages.Versions(mg)})
 	return s
 }
 

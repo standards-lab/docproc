@@ -175,12 +175,23 @@ func TestPictureStageReal(t *testing.T) {
 		"shapes.svg": route.SVG, "two-images.heic": route.HEIC, "animated.webp": route.WebP, "animated.avif": route.AVIF,
 	} {
 		events := dispatchAll(t, d, filepath.Join("..", "picture", "testdata", name), func(ev *dispatch.Event) {
-			if ev.Output != nil {
+			if ev.Output != nil && ev.Output.Kind != dispatch.RecordOutput {
 				wantPNG(t, *ev.Output)
 			}
 		})
 		wantSteps(t, events, []step{{name, 0, dispatch.Prepared}})
-		if o := events[0].Outputs; len(o) != 1 || o[0].Name != "picture" || o[0].Meta["from"] != string(kind) {
+		o := events[0].Outputs
+		if kind == route.HEIC {
+			if len(o) == 0 || o[0].Kind != dispatch.RecordOutput || o[0].MediaType != dispatch.MediaPictureMetadata {
+				t.Fatalf("%s: outputs %+v, want its primary image's metadata record first", name, o)
+			}
+			var rec metadata.Picture
+			if err := jsonv2.Unmarshal(o[0].Value, &rec); err != nil || rec.Width != 32 || rec.Height != 48 || rec.Orientation != 1 {
+				t.Errorf("%s: record %+v, %v; want the primary image's, 32x48 upright", name, rec, err)
+			}
+			o = o[1:]
+		}
+		if len(o) != 1 || o[0].Name != "picture" || o[0].Meta["from"] != string(kind) {
 			t.Errorf("%s: outputs %+v", name, o)
 		}
 	}
@@ -369,7 +380,7 @@ func TestOfficeEncrypted(t *testing.T) {
 
 func TestOfficeStage(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{
-		route.Office: testOfficeStage(t), route.Vision: stages.NewVisionStage(), route.VisionConverted: testPictureStage(t),
+		route.Office: testOfficeStage(t), route.Vision: testVisionStage(t), route.VisionConverted: testPictureStage(t),
 	}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
 	const (
@@ -410,7 +421,7 @@ func TestOfficeStage(t *testing.T) {
 
 func TestEmailStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
-	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: stages.NewVisionStage()}, index)
+	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: testVisionStage(t)}, index)
 	const (
 		moth = "moth.png"
 		csv  = "отчёт.csv"
@@ -476,7 +487,7 @@ func TestEmailStage(t *testing.T) {
 
 func TestEmailResume(t *testing.T) {
 	stage := testEmailStage(t)
-	stages := dispatch.Stages{route.Nested: stage, route.Vision: stages.NewVisionStage()}
+	stages := dispatch.Stages{route.Nested: stage, route.Vision: testVisionStage(t)}
 	path := filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst")
 	whole := dispatchAll(t, newDispatcher(t, stages, dispatch.NewMemoryIndex(0)), path, nil)
 	wholeStore := whole[len(whole)-1]
@@ -683,7 +694,7 @@ func TestEmailConversations(t *testing.T) {
 func TestOneNoteStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{
-		route.OneNote: testOnenoteStage(t), route.Vision: stages.NewVisionStage(), route.VisionConverted: testPictureStage(t),
+		route.OneNote: testOnenoteStage(t), route.Vision: testVisionStage(t), route.VisionConverted: testPictureStage(t),
 	}, index)
 	const (
 		page  = "page 5eaf76b1-8dde-8745-a8a7-1a9865cc478a"
@@ -774,8 +785,23 @@ func testOfficeStage(t *testing.T) *stages.OfficeStage {
 func testPictureStage(t *testing.T) *stages.PictureStage {
 	t.Helper()
 	pc, lo, mg := hostPictures(t)
-	s := stages.NewPictureStage(stages.PictureConfig{Converter: pc, Version: stages.Versions(mg, lo)})
+	s := stages.NewPictureStage(stages.PictureConfig{Converter: pc, EXIF: hostEXIF(t, mg), Version: stages.Versions(mg, lo)})
 	return s
+}
+
+func hostEXIF(t *testing.T, mg *tool.Tool) *picture.EXIFReader {
+	t.Helper()
+	r, err := picture.NewEXIFReader(picture.Config{Magick: mg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func testVisionStage(t *testing.T) *stages.VisionStage {
+	t.Helper()
+	mg := pinned(t, picture.MagickSpec())
+	return stages.NewVisionStage(stages.VisionConfig{EXIF: hostEXIF(t, mg), Version: stages.Versions(mg)})
 }
 
 func testEmailStage(t *testing.T) *stages.EmailStage {

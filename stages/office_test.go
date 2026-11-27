@@ -61,7 +61,7 @@ func TestOfficeStageSheets(t *testing.T) {
 		Stderr: "docproc-ooxml: warning: sheet 2: notes not read\n",
 		Media:  map[string]string{png: stored},
 	})
-	d := newDispatcher(t, dispatch.Stages{route.Office: stage, route.Vision: stages.NewVisionStage()}, dispatch.NewMemoryIndex(0))
+	d := newDispatcher(t, dispatch.Stages{route.Office: stage, route.Vision: standinVisionStage(t, pictureSettings{})}, dispatch.NewMemoryIndex(0))
 	book := input(t, "book.xlsx", zipBytes(t, zent{name: "[Content_Types].xml", body: "<Types/>"}))
 	var files []string
 	events := dispatchAll(t, d, book, func(ev *dispatch.Event) {

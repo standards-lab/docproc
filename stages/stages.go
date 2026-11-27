@@ -63,8 +63,8 @@ type Options struct {
 	// Picture is the request every converted picture is converted under, its MetafileScale and
 	// Density; its Dir, Path, Kind, and Stem are each part's own.
 	Picture picture.Request
-	// Magick are ImageMagick's -limit values, which every magick run carries, the picture and
-	// office stages' alike. The zero value passes none.
+	// Magick are ImageMagick's -limit values, which every magick run carries, the picture,
+	// vision, and office stages' alike. The zero value passes none.
 	Magick picture.Limits
 	// Audio is the request every audio part's windows are cut under; its Dir is each part's own.
 	Audio audio.Request
@@ -151,7 +151,7 @@ var table = []stage{
 	{route.Document, []string{"gs", "qpdf", "pdfdetach", "pdftotext", "pdfinfo"}, buildDocument},
 	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, buildOffice},
 	{route.VisionConverted, []string{"magick", "soffice"}, buildPicture},
-	{route.Vision, nil, func(context.Context, tools, Options) (dispatch.Stage, error) { return newVisionStage(), nil }},
+	{route.Vision, []string{"magick"}, buildVision},
 	{route.Nested, []string{"docproc-mail"}, buildEmail},
 	{route.OneNote, []string{"docproc-onenote"}, buildOneNote},
 	{route.Archive, []string{"7zz"}, buildArchive},
@@ -347,9 +347,22 @@ func buildPicture(ctx context.Context, t tools, opts Options) (dispatch.Stage, e
 	if err != nil {
 		return nil, err
 	}
+	r, err := picture.NewEXIFReader(picture.Config{Magick: t["magick"], Limits: opts.Magick})
+	if err != nil {
+		return nil, err
+	}
 	return newPictureStage(pictureConfig{
-		Converter: p, Version: versions(t["magick"], t["soffice"]), Request: opts.Picture, Memory: opts.Memory,
+		Converter: p, EXIF: r, Version: versions(t["magick"], t["soffice"]), Request: opts.Picture, Memory: opts.Memory,
 	}), nil
+}
+
+func buildVision(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
+	mg := t["magick"]
+	r, err := picture.NewEXIFReader(picture.Config{Magick: mg, Limits: opts.Magick})
+	if err != nil {
+		return nil, err
+	}
+	return newVisionStage(visionConfig{EXIF: r, Version: versions(mg), Memory: opts.Memory}), nil
 }
 
 func buildEmail(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {

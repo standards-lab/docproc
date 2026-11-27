@@ -25,12 +25,14 @@ type (
 	AudioStage     = audioStage
 	VideoConfig    = videoConfig
 	VideoStage     = videoStage
+	VisionConfig   = visionConfig
 	VisionStage    = visionStage
 	TextStage      = textStage
 	QPDFReader     = qpdfReader
 	PDFDetacher    = pdfDetacher
 	PDFInfoReader  = pdfInfoReader
 	SevenZipReader = sevenZipReader
+	EXIFReader     = exifReader
 )
 
 var (

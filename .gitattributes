@@ -7,3 +7,4 @@ office/testdata/rtf/** -text
 rundir/testdata/** -text
 document/testdata/malformed/** -text
 document/testdata/info/** -text
+picture/testdata/exif-* -text

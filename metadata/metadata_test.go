@@ -223,3 +223,70 @@ func TestMediaMediaType(t *testing.T) {
 		t.Errorf("media type %q", got)
 	}
 }
+
+func TestPictureJSON(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		record metadata.Picture
+		want   string
+	}{
+		{
+			"every field",
+			metadata.Picture{
+				CaptureTime: time.Date(2024, 5, 6, 5, 8, 9, 0, time.UTC), Make: "Docproc", Model: "Fixture One",
+				Orientation: 6, Width: 48, Height: 32, GPS: &metadata.GPS{Latitude: -33.8599, Longitude: 151.2445},
+				EXIF: metadata.Properties{
+					{Key: "DateTimeOriginal", Value: "2024:05:06 07:08:09"}, {Key: "GPSLatitude", Value: "33/1,51/1,3564/100"},
+					{Key: "Make", Value: "Docproc"},
+				},
+			},
+			`{"capture_time":"2024-05-06T05:08:09Z","make":"Docproc","model":"Fixture One","orientation":6,` +
+				`"width":48,"height":32,"gps":{"latitude":-33.8599,"longitude":151.2445},` +
+				`"exif":{"DateTimeOriginal":"2024:05:06 07:08:09","GPSLatitude":"33/1,51/1,3564/100","Make":"Docproc"}}`,
+		},
+		{
+			"the EXIF alone",
+			metadata.Picture{EXIF: metadata.Properties{{Key: "Orientation", Value: "9"}}},
+			`{"exif":{"Orientation":"9"}}`,
+		},
+		{
+			"on the equator and the prime meridian",
+			metadata.Picture{GPS: &metadata.GPS{}, EXIF: metadata.Properties{}},
+			`{"gps":{"latitude":0,"longitude":0},"exif":{}}`,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			for name, marshal := range map[string]func(any) ([]byte, error){
+				"encoding/json":    json.Marshal,
+				"encoding/json/v2": func(v any) ([]byte, error) { return jsonv2.Marshal(v) },
+			} {
+				got, err := marshal(c.record)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != c.want {
+					t.Errorf("%s: Marshal =\n %s\nwant\n %s", name, got, c.want)
+				}
+			}
+			var back, backV2 metadata.Picture
+			if err := json.Unmarshal([]byte(c.want), &back); err != nil {
+				t.Fatal(err)
+			}
+			if err := jsonv2.Unmarshal([]byte(c.want), &backV2); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(back, c.record) || !reflect.DeepEqual(backV2, c.record) {
+				t.Errorf("Unmarshal =\n %+v\n %+v\nwant\n %+v", back, backV2, c.record)
+			}
+		})
+	}
+}
+
+func TestPictureMediaType(t *testing.T) {
+	t.Parallel()
+	if got := (metadata.Picture{}).MediaType(); got != dispatch.MediaPictureMetadata {
+		t.Errorf("media type %q", got)
+	}
+}

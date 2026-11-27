@@ -204,7 +204,7 @@ func TestDocumentStageAttachments(t *testing.T) {
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
 		Content: dispatch.NewMemoryContent(), Puts: 2,
-		Stages: dispatch.Stages{route.Document: s, route.Vision: stages.NewVisionStage()}, Index: dispatch.NewMemoryIndex(0), Dir: work,
+		Stages: dispatch.Stages{route.Document: s, route.Vision: standinVisionStage(t, pictureSettings{})}, Index: dispatch.NewMemoryIndex(0), Dir: work,
 	})
 	if err != nil {
 		t.Fatal(err)

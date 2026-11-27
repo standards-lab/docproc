@@ -280,5 +280,6 @@
 //     [MetaReferences], [MetaTopic], [MetaMissed], [MetaEmbeddedIn], [MetaName], [MetaSection],
 //     and [MetaTitle]; and the record media types [MediaAudioPlan], [MediaVideoPlan],
 //     [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm], [MediaMailConversation],
-//     [MediaOfficeMetadata], [MediaPDFMetadata], and [MediaMediaMetadata].
+//     [MediaOfficeMetadata], [MediaPDFMetadata], [MediaMediaMetadata], and
+//     [MediaPictureMetadata].
 package dispatch

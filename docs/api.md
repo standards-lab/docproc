@@ -347,6 +347,15 @@ How `picture` runs magick and soffice, and why:
 - magick's format listing, `-list format`, marks each coder's modes, `r` when it reads the format.
   It writes to the `null:` output, without which magick refuses the `-limit` options before it, and
   a Converter reads at most 1 MiB of it, some fifty times what ImageMagick 7.1.2 prints.
+- An EXIFReader's run reads the picture from magick's standard input, through the coder its kind
+  names and its first image alone, `<kind>:-[0]`, so no part of its path is read as a format, a
+  frame, or a pattern, and writes nothing, its output `info:` and its format
+  `%w %h\n%[EXIF:*]`: the size, then each EXIF property as `exif:<key>=<value>`, sorted by key, a
+  line that doesn't begin so continuing the value before it. The run decodes the picture, not
+  `-ping`, since magick reads no WebP's EXIF in a ping; libheif turns a HEIC or an AVIF upright as
+  it decodes it, so magick holds its orientation as 1 and its size upright. magick prints a byte it
+  can't print as `.`, GPSAltitudeRef's 0 and 1 alike, so no altitude is typed. A GIF, BMP, SVG,
+  EMF, or WMF holds no EXIF magick reads, and no run is made for it.
 - A conversion has written its PNG when the path is a regular file beginning with PNG's signature,
   as `route.Identify` tells it. A failed magick run's error carries the first line of its output
   that isn't blank, from at most 64 KiB of it; a failed soffice run's, the first line
@@ -853,9 +862,19 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   yields a PDF's. An EMF or WMF at the request's `MetafileScale`, an SVG at its `Density`, and a
   HEIC's primary image or a WebP's or AVIF's first frame each yield one PNG named `picture`, read
   as the kind its content type names and named by the part's SHA-256. A HEIC, WebP, or AVIF whose
-  reader magick lacks ends with `ErrNoProcessor`, its reason naming why.
-- **vision.** A PNG, JPEG, GIF, or BMP passes through as an image output named `picture`, its
-  `Path` the part's own file, so a layer above meets every picture, converted or not, as an image
+  reader magick lacks ends with `ErrNoProcessor`, its reason naming why. Once the picture is
+  converted, and before its PNGs, a picture whose first image holds EXIF yields a
+  `MediaPictureMetadata` record named `metadata`, a `metadata.Picture` read through magick: the
+  capture time in UTC, a time with no offset read as UTC, the camera's make and model, the
+  orientation, the size, the GPS position in decimal degrees, and every EXIF property as magick
+  prints it. A multi-image picture yields one record, its first image's, the one a HEIC converts
+  from and a TIFF's first page, as the part is one. A failed EXIF read is a `metadata` warning,
+  its tool magick, and the picture still prepares; reading EXIF never changes the picture or its
+  PNGs.
+- **vision.** A PNG or JPEG whose EXIF magick reads first yields a `MediaPictureMetadata` record
+  named `metadata`, as the picture stage's, a failed read a `metadata` warning; a GIF or BMP holds
+  none, and no magick runs for it. The stage requires magick. A PNG, JPEG, GIF, or BMP then passes
+  through as an image output named `picture`, its `Path` the part's own file, unchanged, so a layer above meets every picture, converted or not, as an image
   output. The dispatcher removes the file once the event's body returns, as it does any found
   part's; a caller that sends the picture on later reads it from `Content` by the output's
   SHA-256, or links the file within the body.
@@ -927,7 +946,7 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
   never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
   other text is decoded, streamed, into a file, so a large part is never held in memory, and the
-  decoding stops when the context ends. The text and vision stages run no tool, so their identity's
+  decoding stops when the context ends. The text stage runs no tool, so its identity's
   version is this package's; a golang.org/x/text change that changes the text stage's output
   changes it.
 

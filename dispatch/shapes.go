@@ -227,4 +227,8 @@ const (
 	// or video file's container format, duration, bit rate, and tags, and each stream's type,
 	// codec, and tags, as package metadata's Media declares it, under version 1 of its shape.
 	MediaMediaMetadata = "application/vnd.docproc.media-metadata+json; version=1"
+	// MediaPictureMetadata is the picture and vision stages' metadata record, one JSON value: a
+	// picture's EXIF capture time, camera, orientation, pixel size, and GPS position, and every
+	// EXIF key and value, as package metadata's Picture declares it, under version 1 of its shape.
+	MediaPictureMetadata = "application/vnd.docproc.picture-metadata+json; version=1"
 )

@@ -15,12 +15,13 @@ import (
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/media"
+	"github.com/standards-lab/docproc/picture"
 	"github.com/standards-lab/docproc/sevenzip"
 	"github.com/standards-lab/docproc/tool"
 )
 
 var contentErrors = []error{
-	audio.ErrNoAudio, media.ErrNoMedia, document.ErrXMP,
+	audio.ErrNoAudio, media.ErrNoMedia, document.ErrXMP, picture.ErrMetadata,
 	sevenzip.ErrNotArchive, sevenzip.ErrListing, sevenzip.ErrEntries, sevenzip.ErrContent,
 }
 

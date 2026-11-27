@@ -60,7 +60,7 @@ func TestBuildRows(t *testing.T) {
 	for _, row := range set.Rows {
 		var want dispatch.State
 		switch row.Route {
-		case route.Vision, route.Text:
+		case route.Text:
 			want = dispatch.Wired
 		case route.Archive:
 			want = dispatch.Excluded

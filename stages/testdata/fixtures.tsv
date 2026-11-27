@@ -182,6 +182,12 @@ office/testdata/xlsb/testVarious.xlsb	office	prepared
 picture/testdata/README.md	text	prepared
 picture/testdata/animated.avif	vision-converted	prepared
 picture/testdata/animated.webp	vision-converted	prepared
+picture/testdata/exif-gps.jpg	vision	prepared
+picture/testdata/exif-gps.magick.txt	text	prepared
+picture/testdata/exif-none.magick.txt	text	prepared
+picture/testdata/exif-none.png	vision	prepared
+picture/testdata/exif-zoneless.heic	vision-converted	prepared
+picture/testdata/exif-zoneless.magick.txt	text	prepared
 picture/testdata/ink.svg	vision-converted	prepared
 picture/testdata/lzw-gray.tiff	vision-converted	prepared
 picture/testdata/oriented.webp	vision-converted	prepared

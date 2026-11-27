@@ -55,6 +55,21 @@ tool under `tools/` keeps its own.
   its audio stream, which `audio.Splitter.Probe` returns and `audio.WindowFile.Metadata` carries on
   the first window; `media.Event.Metadata` is a file's, which `media.Streamer.Events` yields first,
   before ffmpeg runs.
+- `metadata.Picture`, under `dispatch.MediaPictureMetadata`,
+  `application/vnd.docproc.picture-metadata+json; version=1`: a picture's EXIF capture time,
+  DateTimeOriginal at OffsetTimeOriginal, in UTC, a time with no offset read as UTC; its camera's
+  make and model; its orientation; its size in pixels; its GPS position as a `metadata.GPS`, in
+  decimal degrees; and every EXIF property as magick prints it.
+- The picture and vision stages yield a picture metadata record, a record output named `metadata`,
+  before the picture's PNGs or the picture itself, for every picture whose first image holds EXIF:
+  a JPEG, PNG, TIFF, HEIC, WebP, or AVIF. Its event carries its SHA-256, its content in the content
+  store. A picture whose EXIF magick can't read gets a `metadata` warning and still prepares, and
+  reading EXIF never changes the picture. `dispatch.Version` stays "1", grown by the media type,
+  and the run directory's schema stays "2".
+- `picture.EXIFReader`, over ImageMagick's magick, built by `picture.NewEXIFReader` from
+  `picture.Config`'s Magick and Limits, minimum `picture.MagickMinimum`, 7.1;
+  `EXIFReader.Metadata` reads a picture's EXIF into a `metadata.Picture`, and `picture.ErrMetadata`
+  is the cause of magick output that isn't read.
 
 ### Changed
 
@@ -75,6 +90,14 @@ tool under `tools/` keeps its own.
 - audio's and media's ffprobe runs ask for the container's format name, bit rate, and tags and
   each stream's codec, sample rate, channels, frame size, frame rates, tags, and attached-picture
   disposition beside what they asked for before.
+- The vision stage requires magick, ImageMagick 7.1 or later, which the picture and office stages
+  require already; `stages.Build` looks it up for the vision route too, a host without it, or with
+  an older one, leaving the vision stage out, so PNG, JPEG, GIF, and BMP parts have no processor
+  there. The stage table's vision row carries magick's version line, its identity's version
+  magick's, and `Options.Timeout`, `Options.Memory`, and `Options.Magick` bound its runs.
+- The picture and vision stages' identities each hash the stage's own version, 2, so an index
+  prepares the vision route's PNGs, JPEGs, GIFs, and BMPs, and the vision-converted route's TIFFs,
+  EMFs, WMFs, SVGs, HEICs, WebPs, and AVIFs, again, to yield their picture metadata records.
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned

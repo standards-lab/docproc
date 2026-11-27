@@ -4,9 +4,12 @@ package picture_test
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -31,6 +34,8 @@ type settings struct {
 	ListFail       string  `json:"list_fail,omitzero"`
 	Pages          int     `json:"pages,omitzero"`
 	Gap            bool    `json:"gap,omitzero"`
+	EXIF           string  `json:"exif,omitzero"`
+	Flood          bool    `json:"flood,omitzero"`
 }
 
 const fullListing = `   Format  Module    Mode  Description
@@ -95,6 +100,9 @@ func magickStandin(s settings, args []string) int {
 		fmt.Print(listing)
 		return 0
 	}
+	if len(args) > 0 && args[len(args)-1] == "info:" {
+		return magickEXIF(s, args)
+	}
 	if len(args) < 2 {
 		fmt.Fprintln(os.Stderr, "stand-in: want an input and an output")
 		return 2
@@ -131,6 +139,35 @@ func magickStandin(s settings, args []string) int {
 		return 2
 	}
 	return 0
+}
+
+func magickEXIF(s settings, args []string) int {
+	input, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if err := appendLog(s.Log, "magick", args, inputSum(input), ""); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	if s.Fail != "" {
+		fmt.Fprint(os.Stderr, s.Fail)
+		return 1
+	}
+	if s.Flood {
+		if _, err := os.Stdout.WriteString(strings.Repeat("exif:Flood=x\n", 1<<17)); err != nil {
+			return 1
+		}
+		return 0
+	}
+	fmt.Print(s.EXIF)
+	return 0
+}
+
+func inputSum(input []byte) string {
+	sum := sha256.Sum256(input)
+	return "sha256:" + hex.EncodeToString(sum[:])
 }
 
 func magickPages(s settings, pattern, out string) int {
