@@ -15,8 +15,8 @@ const FFmpegMinimum = "9.0"
 // entrypoint is an init that changes users, which the runner's lockdown refuses; the runner makes
 // the Spec's program the entrypoint in its place, so tool.Image{Ref: FFmpegImage} is the whole of
 // it. A caller may run another image, or the tools on the host through the exec runner.
-const FFmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls90@sha256:" +
-	"66fa8e2351fb78f9dad2c59c946be2658edcc529339320da3f2cf788312368af"
+const FFmpegImage = "linuxserver/ffmpeg:9.0.2-cli-ls91@sha256:" +
+	"6570e68912d840b3923fc9e9e396af4b88199a19dad44b53ff117d80a90babf5"
 
 // FFmpegSpec declares FFmpeg's ffmpeg, minimum 9.0, for either runner's constructor. ffmpeg
 // -version prints a line such as "ffmpeg version n9.0.2 ..." on a host whose build is tagged from

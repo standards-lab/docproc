@@ -9,6 +9,13 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Changed
+
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
+  and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned
+  by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,
+  and the new ffmpeg image the same FFmpeg, 9.0.2.
+
 ## [v0.9.0] - 2026-11-25
 
 This release converts ODF text, spreadsheet, presentation, and drawing packages, WordPerfect
