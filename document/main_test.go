@@ -23,21 +23,22 @@ import (
 )
 
 type settings struct {
-	Version   string      `json:"version"`
-	Log       string      `json:"log"`
-	Fail      string      `json:"fail,omitzero"`
-	Stdout    *[]byte     `json:"stdout,omitzero"`
-	Pages     int         `json:"pages,omitzero"`
-	Sizes     []string    `json:"sizes,omitzero"`
-	FailPage  int         `json:"fail_page,omitzero"`
-	KillPage  int         `json:"kill_page,omitzero"`
-	FailText  int         `json:"fail_text,omitzero"`
-	Portfolio bool        `json:"portfolio,omitzero"`
-	Delay     map[int]int `json:"delay,omitzero"`
-	Leave     bool        `json:"leave,omitzero"`
-	Message   string      `json:"message,omitzero"`
-	Stderr    string      `json:"stderr,omitzero"`
-	Exit      int         `json:"exit,omitzero"`
+	Version   string            `json:"version"`
+	Log       string            `json:"log"`
+	Fail      string            `json:"fail,omitzero"`
+	Stdout    *[]byte           `json:"stdout,omitzero"`
+	Pages     int               `json:"pages,omitzero"`
+	Sizes     []string          `json:"sizes,omitzero"`
+	FailPage  int               `json:"fail_page,omitzero"`
+	KillPage  int               `json:"kill_page,omitzero"`
+	FailText  int               `json:"fail_text,omitzero"`
+	Portfolio bool              `json:"portfolio,omitzero"`
+	Delay     map[int]int       `json:"delay,omitzero"`
+	Leave     bool              `json:"leave,omitzero"`
+	Message   string            `json:"message,omitzero"`
+	Stderr    string            `json:"stderr,omitzero"`
+	Exit      int               `json:"exit,omitzero"`
+	Info      map[string]string `json:"info,omitzero"`
 }
 
 func TestMain(m *testing.M) {
@@ -46,6 +47,7 @@ func TestMain(m *testing.M) {
 		"qpdf":      withSettings(qpdf),
 		"pdfdetach": withSettings(pdfdetach),
 		"pdftotext": withSettings(pdftotext),
+		"pdfinfo":   withSettings(pdfinfo),
 		"docker":    withSettings(docker),
 	})
 }
@@ -219,6 +221,32 @@ func pdftotext(s settings, args []string) int {
 		return 1
 	}
 	if _, err := os.Stdout.WriteString(standinText(page) + "\f"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	return 0
+}
+
+func pdfinfo(s settings, args []string) int {
+	if len(args) == 1 && args[0] == "-v" {
+		fmt.Fprintf(os.Stderr, "pdfinfo version %s\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\n", s.Version)
+		return 0
+	}
+	if s.Info == nil {
+		return scripted(s, args)
+	}
+	if err := appendLog(s.Log, args); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
+	}
+	mode := "summary"
+	switch {
+	case slices.Contains(args, "-custom"):
+		mode = "custom"
+	case slices.Contains(args, "-meta"):
+		mode = "meta"
+	}
+	if _, err := os.Stdout.WriteString(s.Info[mode]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 2
 	}

@@ -19,6 +19,7 @@ func TestMain(m *testing.M) {
 		"qpdf":            qpdfStandin,
 		"pdfdetach":       pdfdetachStandin,
 		"pdftotext":       pdftotextStandin,
+		"pdfinfo":         pdfinfoStandin,
 		"ffmpeg":          ffmpegStandin,
 		"ffprobe":         ffprobeStandin,
 		"magick":          pictureStandin,

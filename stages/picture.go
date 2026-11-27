@@ -13,8 +13,11 @@ import (
 	"github.com/standards-lab/docproc/route"
 )
 
+const pictureVersion = "2"
+
 type pictureConfig struct {
 	Converter *picture.Converter
+	EXIF      exifReader
 	Version   string
 	Request   picture.Request
 	Memory    int64
@@ -22,22 +25,27 @@ type pictureConfig struct {
 
 type pictureStage struct {
 	converter *picture.Converter
+	exif      exifReader
 	request   picture.Request
 	memory    int64
 	id        dispatch.Identity
 }
 
 func newPictureStage(cfg pictureConfig) *pictureStage {
-	if cfg.Converter == nil {
+	switch {
+	case cfg.Converter == nil:
 		panic("stages: pictureConfig.Converter is nil")
+	case cfg.EXIF == nil:
+		panic("stages: pictureConfig.EXIF is nil")
 	}
 	req := picture.Request{
 		MetafileScale: cmp.Or(cfg.Request.MetafileScale, picture.DefaultMetafileScale),
 		Density:       cmp.Or(cfg.Request.Density, picture.DefaultDensity),
 	}
-	return &pictureStage{converter: cfg.Converter, request: req, memory: cfg.Memory, id: identity("picture", cfg.Version, struct {
+	return &pictureStage{converter: cfg.Converter, exif: cfg.EXIF, request: req, memory: cfg.Memory, id: identity("picture", cfg.Version, struct {
+		Stage   string          `json:"stage"`
 		Request picture.Request `json:"request"`
-	}{req})}
+	}{pictureVersion, req})}
 }
 
 func (s *pictureStage) Identity() dispatch.Identity { return s.id }
@@ -53,6 +61,9 @@ func (s *pictureStage) Prepare(ctx context.Context, p dispatch.Part, dir string)
 			return
 		case err != nil:
 			yield(dispatch.Item{}, partErr(ctx, fmt.Errorf("picture stage: %w", err), s.memory))
+			return
+		}
+		if !pictureMetadata(ctx, "picture", s.exif, p, s.memory, yield) {
 			return
 		}
 		for i, png := range pngs {

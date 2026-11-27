@@ -4,8 +4,8 @@
 // document's path in, its records out, streamed, with the media the document embeds. It provides
 // pre-inference preparation only; a layer above sends what it yields to a model. The package
 // builds on every 64-bit platform, on the standard library and this module's tool, route,
-// picture, dispatch, and internal/cli packages; every program it runs is a tool.Tool the caller
-// built.
+// picture, dispatch, metadata, and internal/cli packages; every program it runs is a tool.Tool the
+// caller built.
 //
 // A Converter is built at the composition root over a docproc-ooxml Tool the exec runner built,
 // OfficeSpec declaring it; a container runner's is refused, since docproc-ooxml reads the part's
@@ -114,6 +114,8 @@
 //     [UnknownRecord].
 //   - [Properties] are a Document's property parts, each a [PropertyList] of [Property] pairs in
 //     stored order.
+//   - [Document.Metadata] is a Document's metadata record, a metadata.Office of its property parts
+//     and the format it was converted from.
 //   - [Medium] is one of a Document's media, of a [MediumKind]: [Picture], [Embedded], or [OLE].
 //   - [Row] and [Cell] are a Rows record's sheet rows and cells; [ValueType] is a cell's value
 //     type: [ValueNumber], [ValueText], [ValueBoolean], [ValueError], or [ValueDate].

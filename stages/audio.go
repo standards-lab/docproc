@@ -10,7 +10,10 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/metadata"
 )
+
+const audioVersion = "2"
 
 type audioConfig struct {
 	Splitter *audio.Splitter
@@ -33,8 +36,9 @@ func newAudioStage(cfg audioConfig) *audioStage {
 	req := cfg.Request
 	req.Dir = ""
 	return &audioStage{splitter: cfg.Splitter, request: req, memory: cfg.Memory, id: identity("audio", cfg.Version, struct {
+		Stage   string        `json:"stage"`
 		Request audio.Request `json:"request"`
-	}{resolvedAudio(req)})}
+	}{audioVersion, resolvedAudio(req)})}
 }
 
 func resolvedAudio(req audio.Request) audio.Request {
@@ -77,6 +81,9 @@ func (s *audioStage) Prepare(ctx context.Context, p dispatch.Part, dir string) i
 				return
 			}
 			cut++
+			if w.Metadata != nil && !emitMetadata(*w.Metadata, "audio stage", yield) {
+				return
+			}
 			o := dispatch.Output{
 				Kind: dispatch.AudioOutput, Name: "window " + strconv.Itoa(w.Index), MediaType: "audio/wav",
 				Path: w.Path, Meta: windowMeta(w),
@@ -120,3 +127,12 @@ func windowMeta(w audio.WindowFile) map[string]string {
 func secs(d time.Duration) string { return strconv.FormatFloat(d.Seconds(), 'f', -1, 64) }
 
 func spanSecs(sp audio.Span) string { return secs(sp.Start) + "-" + secs(sp.End) }
+
+func emitMetadata(md metadata.Media, stage string, yield func(dispatch.Item, error) bool) bool {
+	o, err := record("metadata", md, md.MediaType(), nil)
+	if err != nil {
+		yield(dispatch.Item{}, fmt.Errorf("%s: %w", stage, err))
+		return false
+	}
+	return yield(dispatch.OutputItem(o), nil)
+}

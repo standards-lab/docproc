@@ -52,7 +52,10 @@ func TestFixtureSums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"forms/acroform.pdf", "forms/acroform.json", "forms/signed.pdf", "forms/signed.json", "attachments/attachments.pdf", "portfolio/portfolio.pdf", "malformed/compacted-syntax.pdf"} {
+	for _, name := range []string{"forms/acroform.pdf", "forms/acroform.json", "forms/signed.pdf", "forms/signed.json", "attachments/attachments.pdf", "portfolio/portfolio.pdf", "malformed/compacted-syntax.pdf",
+		"info/info.pdf", "info/info.custom.txt", "info/info.meta.xml", "info/info.summary.txt",
+		"info/clean.custom.txt", "info/clean.meta.xml", "info/clean.summary.txt",
+	} {
 		b, err := os.ReadFile(filepath.Join("testdata", name))
 		if err != nil {
 			t.Fatal(err)

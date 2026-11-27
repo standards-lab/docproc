@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/standards-lab/docproc/audio"
+	"github.com/standards-lab/docproc/metadata"
 )
 
 const gainProbe = `{"streams":[` +
@@ -170,6 +171,9 @@ func TestWindows(t *testing.T) {
 				if (w.Plan != nil) != (i == len(ws)-1) {
 					t.Errorf("window %d's plan %v", i, w.Plan)
 				}
+				if (w.Metadata != nil) != (i == 0) {
+					t.Errorf("window %d's metadata %v", i, w.Metadata)
+				}
 			}
 			if got := files(t, dir); !slices.Equal(got, names(ws)) {
 				t.Errorf("media directory %q, want the windows %q", got, names(ws))
@@ -178,7 +182,16 @@ func TestWindows(t *testing.T) {
 			if plan == nil {
 				t.Fatal("no plan")
 			}
-			planned.Source = audio.Source{Duration: gainDuration, Stream: 0, Codec: "pcm_s16le", SampleRate: 16000, Channels: 1}
+			planned.Source = audio.Source{
+				Duration: gainDuration, Stream: 0, Codec: "pcm_s16le", SampleRate: 16000, Channels: 1,
+				Metadata: metadata.Media{
+					Duration: gainDuration.Seconds(),
+					Streams:  []metadata.MediaStream{{Index: 0, Type: "audio", Codec: "pcm_s16le", SampleRate: 16000, Channels: 1}},
+				},
+			}
+			if !reflect.DeepEqual(*ws[0].Metadata, planned.Source.Metadata) {
+				t.Errorf("the first window's metadata %+v, want the probe's %+v", *ws[0].Metadata, planned.Source.Metadata)
+			}
 			planned.Silences = silences
 			if !reflect.DeepEqual(*plan, planned) {
 				t.Errorf("plan %+v, want PlanWindows' %+v", *plan, planned)

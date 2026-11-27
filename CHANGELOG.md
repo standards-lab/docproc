@@ -9,6 +9,103 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-11-27
+
+This release captures each format's own metadata as a record output named `metadata`: an office
+package's properties, a PDF's information dictionary and XMP packet, an audio or video file's
+container and streams, and a picture's EXIF. Each format's record is a type of the new package
+`metadata`, under a versioned media type of its own. A mail message's record and a OneNote page's
+record serve as their metadata records, and a message's meta gains its threading keys. The
+document stage now requires pdfinfo, and the vision stage requires magick. Each stage that yields a
+new record or key hashes its own version anew, so an index prepares the parts of the office,
+document, audio, video, vision, and vision-converted routes again, and the nested route's mail
+parts, and no other stage's. `dispatch.Version` stays "1", grown only by the new media types and
+keys, and the run directory's schema stays "2".
+
+### Added
+
+- Package `metadata`, the metadata records' shapes, one per format, importing no docproc package
+  but `dispatch`, so a reader decodes a record without compiling the stages or the format
+  packages. Each record is a record output named `metadata` whose event carries its SHA-256,
+  never its content, which is in the content store.
+- `metadata.Office`, under `dispatch.MediaOfficeMetadata`,
+  `application/vnd.docproc.office-metadata+json; version=1`: an office package's core, extended,
+  and custom properties, each in its stored order and stored types, and the format it was
+  converted from, such as `doc` or `odt`. The office stage yields one after the document's
+  Markdown, for every package with a property part or converted from another format.
+- `office.Document.Metadata` is a document's `metadata.Office`, or nil for a package with no
+  property part, converted from no other format.
+- `metadata.PDF`, under `dispatch.MediaPDFMetadata`,
+  `application/vnd.docproc.pdf-metadata+json; version=1`: a PDF's information dictionary as a
+  `metadata.PDFInfo`, its standard keys typed, CreationDate and ModDate in UTC, and its custom keys
+  kept as stored; its XMP packet as a `metadata.XMP`, its common Dublin Core and XMP properties
+  typed, dates in UTC, and the packet kept whole; and its PDF version. The document stage yields
+  one before the forms record, for every PDF with an information dictionary or an XMP packet. A
+  PDF whose metadata pdfinfo can't read, or whose packet doesn't parse, gets a `metadata` warning
+  and its pages still prepare; a PDF that needs a password gets the warning and ends with
+  `ErrEncrypted`, as before.
+- `document.InfoReader` reads a PDF's metadata through poppler's pdfinfo: `InfoReader.Metadata`
+  returns a `metadata.PDF`, and `document.ErrXMP` is the cause of a packet that doesn't parse.
+  `document.NewInfoReader` builds one from `document.Config.PDFInfo`, `document.PDFInfoSpec`
+  declares pdfinfo, and `document.PDFInfoMinimum`, 22.02, is its minimum.
+- `metadata.Media`, under `dispatch.MediaMediaMetadata`,
+  `application/vnd.docproc.media-metadata+json; version=1`: an audio or video file's container
+  format, duration in seconds, bit rate, and tags, kept as stored, in order; and each of its
+  streams as a `metadata.MediaStream`: its index, type, codec, and tags, an audio stream's sample
+  rate and channels, and a video stream's width, height, frame rate, and whether it is an attached
+  picture. The audio and video stages yield one for every part whose probe finds a stream they
+  decode: the audio stage before its first window, the video stage first, before its plan. The
+  audio and video plan records keep their shapes.
+- `audio.Source.Metadata` is the source's metadata record, read by the same ffprobe run that finds
+  its audio stream, which `audio.Splitter.Probe` returns and `audio.WindowFile.Metadata` carries on
+  the first window; `media.Event.Metadata` is a file's, which `media.Streamer.Events` yields first,
+  before ffmpeg runs.
+- `metadata.Picture`, under `dispatch.MediaPictureMetadata`,
+  `application/vnd.docproc.picture-metadata+json; version=1`: a picture's EXIF capture time,
+  DateTimeOriginal at OffsetTimeOriginal, in UTC, a time with no offset read as UTC; its camera's
+  make and model; its orientation; its size in pixels; its GPS position as a `metadata.GPS`, in
+  decimal degrees; and every EXIF property as magick prints it. The picture and vision stages
+  yield one before the picture's PNGs or the picture itself, for every picture whose first image
+  holds EXIF: a JPEG, PNG, TIFF, HEIC, WebP, or AVIF. A picture whose EXIF magick can't read gets
+  a `metadata` warning and still prepares, and reading EXIF never changes the picture.
+- `picture.EXIFReader` reads a picture's EXIF through ImageMagick's magick:
+  `EXIFReader.Metadata` returns a `metadata.Picture`, and `picture.ErrMetadata` is the cause of
+  magick output that can't be read: past 1 MiB, or with no size line. `picture.NewEXIFReader`
+  builds one from `picture.Config`'s Magick and Limits, and `picture.MagickMinimum`, 7.1, is its
+  minimum.
+- The email stage's messages carry `dispatch.MetaInReplyTo`, `in_reply_to`, and
+  `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
+  each as stored, `references` its Message-IDs separated by spaces. A message's `MediaMail` record
+  is its metadata record, as a OneNote page's `MediaOneNote` record is the page's; neither format
+  yields another.
+
+### Changed
+
+- The document stage requires pdfinfo, from poppler-utils 22.02 or later, beside gs, qpdf,
+  pdfdetach, and pdftotext; `stages.Build` looks it up as it does the other poppler tools, a host
+  without it, or with an older one, leaving the document stage out. poppler-utils ships pdfinfo
+  with pdfdetach and pdftotext, so a host that ran the document stage before runs it still. The
+  stage table's document row carries pdfinfo's version line, and `Options.Timeout` bounds its
+  runs.
+- The vision stage requires magick, ImageMagick 7.1 or later, which the picture and office stages
+  require already; `stages.Build` looks it up for the vision route too, a host without it, or with
+  an older one, leaving the vision stage out, so PNG, JPEG, GIF, and BMP parts have no processor
+  there. The stage table's vision row carries magick's version line, its identity's version is
+  magick's, and `Options.Timeout`, `Options.Memory`, and `Options.Magick` bound its runs.
+- Each stage that yields a new record or key hashes its own version in its identity, so an index
+  prepares its route's parts again: the office stage's, 3, the office route's parts; the email
+  stage's, 2, the nested route's mail parts; the document stage's, 2, the document route's PDFs;
+  the audio and video stages', 2 each, the audio and video routes' parts; and the picture and
+  vision stages', 2 each, the vision route's PNGs, JPEGs, GIFs, and BMPs and the vision-converted
+  route's TIFFs, EMFs, WMFs, SVGs, HEICs, WebPs, and AVIFs.
+- The `audio` and `media` packages' ffprobe runs ask for the container's format name, bit rate,
+  and tags and each stream's codec, sample rate, channels, frame size, frame rates, tags, and
+  attached-picture disposition beside what they asked for before.
+- `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
+  and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned
+  by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,
+  and the new ffmpeg image the same FFmpeg, 9.0.2.
+
 ## [v0.9.0] - 2026-11-25
 
 This release converts ODF text, spreadsheet, presentation, and drawing packages, WordPerfect
@@ -509,7 +606,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.10.0...HEAD
+[v0.10.0]: https://github.com/standards-lab/docproc/compare/v0.9.0...v0.10.0
 [v0.9.0]: https://github.com/standards-lab/docproc/compare/v0.8.0...v0.9.0
 [v0.8.0]: https://github.com/standards-lab/docproc/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0

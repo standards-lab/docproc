@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -71,6 +72,39 @@ func TestDocumentStageEncryptedReal(t *testing.T) {
 			t.Errorf("%s: %d outputs, %q; want none, a password", name, len(ev.Outputs), ev.Reason)
 		case c.outcome == dispatch.Prepared && !slices.Contains(outputNames(ev), "image page 6"):
 			t.Errorf("%s: outputs %q, want page 6's image", name, outputNames(ev))
+		case c.outcome == dispatch.Prepared && !slices.Contains(outputNames(ev), "record metadata"):
+			t.Errorf("%s: outputs %q, want its metadata record", name, outputNames(ev))
+		case c.outcome == dispatch.Encrypted && !slices.ContainsFunc(ev.Warnings, func(w dispatch.Warning) bool { return w.Where == "metadata" }):
+			t.Errorf("%s: warnings %+v, want the metadata's", name, ev.Warnings)
+		}
+	}
+}
+
+func TestDocumentStageMetadataReal(t *testing.T) {
+	content := dispatch.NewMemoryContent()
+	d, err := dispatch.New(dispatch.Config{Content: content, Puts: 2, Stages: allStages(t), Index: dispatch.NewMemoryIndex(0), Dir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"info", "clean"} {
+		fixture := filepath.Join("..", "document", "testdata", name+".pdf")
+		if name == "info" {
+			fixture = filepath.Join("..", "document", "testdata", "info", "info.pdf")
+		}
+		ev := dispatchAll(t, d, fixture, nil)[0]
+		if ev.Outcome != dispatch.Prepared || len(ev.Warnings) != 0 {
+			t.Errorf("%s: %s, warnings %+v", name, ev.Outcome, ev.Warnings)
+		}
+		got := storedPDFMetadata(t, content, outputNamed(t, ev, dispatch.RecordOutput, "metadata"))
+		want, err := standinInfo(t, goldenInfo(t, name)).Metadata(t.Context(), fixture)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: the host's pdfinfo recorded\n %+v\nthe goldens read\n %+v", name, got, want)
+		}
+		if got.Info == nil || got.XMP == nil || got.Version == "" {
+			t.Errorf("%s: record %+v, want its information dictionary, XMP, and version", name, got)
 		}
 	}
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/standards-lab/docproc/picture"
 )
 
-const officeVersion = "2"
+const officeVersion = "3"
 
 type officeConfig struct {
 	Converter     *office.Converter
@@ -115,7 +115,10 @@ func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Do
 		if r.ConvertedFrom != "" {
 			meta[dispatch.MetaConvertedFrom] = r.ConvertedFrom
 		}
-		return r, w.item(dispatch.OutputItem(markdown("document", r.Markdown, meta)))
+		if err := w.item(dispatch.OutputItem(markdown("document", r.Markdown, meta))); err != nil {
+			return r, err
+		}
+		return r, w.metadata(r)
 	case *office.Sheet:
 		if err := w.flush(); err != nil {
 			return doc, err
@@ -127,6 +130,18 @@ func (w *officeWalk) record(rec office.Record, doc *office.Document) (*office.Do
 		return doc, w.item(dispatch.WarningItem(dispatch.Warning(*r)))
 	}
 	return doc, nil
+}
+
+func (w *officeWalk) metadata(doc *office.Document) error {
+	rec := doc.Metadata()
+	if rec == nil {
+		return nil
+	}
+	o, err := record("metadata", rec, rec.MediaType(), nil)
+	if err != nil {
+		return fmt.Errorf("office stage: %w", err)
+	}
+	return w.item(dispatch.OutputItem(o))
 }
 
 func (w *officeWalk) item(it dispatch.Item) error {

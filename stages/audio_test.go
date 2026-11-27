@@ -247,7 +247,10 @@ func TestAudioStage(t *testing.T) {
 	for _, o := range ev.Outputs {
 		got = append(got, string(o.Kind)+" "+o.Name+" "+o.MediaType)
 	}
-	want := []string{"audio window 0 audio/wav", "audio window 1 audio/wav", "audio window 2 audio/wav", "record plan " + dispatch.MediaAudioPlan}
+	want := []string{
+		"record metadata " + dispatch.MediaMediaMetadata,
+		"audio window 0 audio/wav", "audio window 1 audio/wav", "audio window 2 audio/wav", "record plan " + dispatch.MediaAudioPlan,
+	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("outputs %q, want %q", got, want)
 	}
@@ -255,7 +258,7 @@ func TestAudioStage(t *testing.T) {
 		t.Errorf("runs %q, want ffprobe, then one decode", runs)
 	}
 
-	plan := ev.Outputs[3]
+	plan := ev.Outputs[4]
 	if len(plan.Meta) != 0 {
 		t.Errorf("the plan's Meta %v, want its counts in its record alone", plan.Meta)
 	}
@@ -278,7 +281,7 @@ func TestAudioStage(t *testing.T) {
 			"seam_before": seams[0], "seam_after": seams[1]},
 		{"window": "2", "start": "48.395", "end": "75.23", "cut": "end", "samples": audioSamples[2], "seam_before": seams[1]},
 	}
-	for i, o := range ev.Outputs[:3] {
+	for i, o := range ev.Outputs[1:4] {
 		threshold, err := strconv.ParseFloat(o.Meta["threshold"], 64)
 		if err != nil || threshold >= 0 {
 			t.Errorf("%s's threshold %q", o.Name, o.Meta["threshold"])
@@ -300,8 +303,8 @@ func TestAudioStageInArchive(t *testing.T) {
 	path := writeInput(t, "recordings.zip", zipBytes(t, zent{name: "talks/speech.flac", body: flacBytes}))
 	events := dispatchAll(t, d, path, nil)
 	wantSteps(t, events, []step{{"talks/speech.flac", 1, dispatch.Prepared}, {"recordings.zip", 0, dispatch.Prepared}})
-	if n := len(events[0].Outputs); n != 4 {
-		t.Errorf("the FLAC's %d outputs, want its three windows and its plan", n)
+	if n := len(events[0].Outputs); n != 5 {
+		t.Errorf("the FLAC's %d outputs, want its metadata record, three windows, and its plan", n)
 	}
 }
 
@@ -363,8 +366,8 @@ func TestAudioFailedDecode(t *testing.T) {
 	for _, o := range ev.Outputs {
 		got = append(got, o.Name)
 	}
-	if !slices.Equal(got, []string{"window 0"}) {
-		t.Errorf("outputs %q, want window 0 alone, cut before the failure", got)
+	if !slices.Equal(got, []string{"metadata", "window 0"}) {
+		t.Errorf("outputs %q, want the metadata record and window 0 alone, cut before the failure", got)
 	}
 	if len(ev.Warnings) != 1 || ev.Warnings[0].Tool != "ffmpeg" || ev.Warnings[0].Where != "window 1" ||
 		!strings.Contains(ev.Warnings[0].What, "Cannot allocate memory") {

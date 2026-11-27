@@ -20,8 +20,9 @@
 //     converted_from naming the format; any other ODF package has no processor yet, and an
 //     encrypted one is encrypted, as office's errors say.
 //   - picture, route.VisionConverted: a TIFF's pages, or an EMF, WMF, SVG, HEIC, WebP, or AVIF,
-//     to PNGs.
-//   - vision, route.Vision: a PNG, JPEG, GIF, or BMP passed through.
+//     to PNGs, after the metadata record of a picture holding EXIF.
+//   - vision, route.Vision: a PNG, JPEG, GIF, or BMP passed through, after the metadata record of
+//     a picture holding EXIF.
 //   - email, route.Nested: docproc-mail's lines as records, a message's Markdown, and its
 //     attachments and media found where its message says; Item.After on a message's last output.
 //   - onenote, route.OneNote: docproc-onenote's lines under --file-only, a page's Markdown, and

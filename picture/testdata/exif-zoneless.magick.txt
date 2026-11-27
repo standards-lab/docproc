@@ -1,0 +1,10 @@
+32 32
+exif:DateTimeOriginal=2023:12:31 23:59:58
+exif:ExifOffset=82
+exif:GPSInfo=120
+exif:GPSLatitude=51/1,30/1,1548/100
+exif:GPSLatitudeRef=N
+exif:GPSLongitude=0/1,7/1,3960/100
+exif:GPSLongitudeRef=W
+exif:Make=Docproc
+exif:Model=Fixture Two

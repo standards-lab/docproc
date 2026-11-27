@@ -60,7 +60,7 @@ func TestBuildRows(t *testing.T) {
 	for _, row := range set.Rows {
 		var want dispatch.State
 		switch row.Route {
-		case route.Vision, route.Text:
+		case route.Text:
 			want = dispatch.Wired
 		case route.Archive:
 			want = dispatch.Excluded
@@ -101,6 +101,7 @@ func TestBuildDocumentNeedsPDFToText(t *testing.T) {
 				"gs":        tooltest.Link(t, t.TempDir(), "gs", gsSettings{}),
 				"qpdf":      tooltest.Link(t, t.TempDir(), "qpdf", nil),
 				"pdfdetach": tooltest.Link(t, t.TempDir(), "pdfdetach", nil),
+				"pdfinfo":   tooltest.Link(t, t.TempDir(), "pdfinfo", pdfinfoSettings{}),
 			}
 			if c.version != "" {
 				links["pdftotext"] = tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{Version: c.version})
@@ -128,8 +129,8 @@ func TestBuildDocumentNeedsPDFToText(t *testing.T) {
 					t.Errorf("%s: %v, want it built", tl.Program, tl.Err)
 				}
 			}
-			if !slices.Equal(programs, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}) {
-				t.Errorf("tools %q, want the document stage's four", programs)
+			if !slices.Equal(programs, []string{"gs", "qpdf", "pdfdetach", "pdftotext", "pdfinfo"}) {
+				t.Errorf("tools %q, want the document stage's five", programs)
 			}
 		})
 	}
@@ -216,6 +217,9 @@ func TestStagesPanic(t *testing.T) {
 		"stages: documentConfig.QPDF is nil":     func() { stages.NewDocumentStage(stages.DocumentConfig{Preparer: &document.Preparer{}, Version: "gs"}) },
 		"stages: documentConfig.PDFDetach is nil": func() {
 			stages.NewDocumentStage(stages.DocumentConfig{Preparer: &document.Preparer{}, QPDF: &fakeQPDF{}})
+		},
+		"stages: documentConfig.PDFInfo is nil": func() {
+			stages.NewDocumentStage(stages.DocumentConfig{Preparer: &document.Preparer{}, QPDF: &fakeQPDF{}, PDFDetach: &fakeDetach{}})
 		},
 		"stages: officeConfig.Converter is nil":  func() { stages.NewOfficeStage(stages.OfficeConfig{Version: "x"}) },
 		"stages: pictureConfig.Converter is nil": func() { stages.NewPictureStage(stages.PictureConfig{Version: "x"}) },

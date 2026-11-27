@@ -1,15 +1,17 @@
 # testdata
 
 The audio package's speech fixture and its reference transcript, the streams fixtures built
-from them, the truncated MP3, and v0.9.0's windows of the speech fixtures. The audio package's
-tests and dispatch's audio stage tests cut the fixtures, through the stand-in in the unit tier,
-which decodes a WAV to its own samples, and through both runners in the integration tier. Every
-file is committed and never generated in the check. The fixtures were built in
+from them, the truncated MP3, the tagged MP3, ffprobe's reports of the tagged MP3 and the scenes
+fixture, and v0.9.0's windows of the speech fixtures. The audio package's tests and dispatch's
+audio stage tests cut the fixtures, through the stand-in in the unit tier, which decodes a WAV to
+its own samples, and through both runners in the integration tier. Every file is committed and
+never generated in the check. The speech and streams fixtures were built in
 spike-ai-pipeline-processing by `mise run fixtures:audio` (`scripts/fixtures-audio.sh`), from the
 test corpus that was then at `~/docs`, checking each source against the SHA-256 the corpus's
-`MANIFEST.json` pinned, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from
-`speech.flac` and `speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to
-its SHA-256 below.
+`MANIFEST.json` pinned, and by
+`mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
+`speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to its SHA-256
+below.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -21,6 +23,9 @@ its SHA-256 below.
 | `speech-noise.wav` | `speech.flac`'s utterances, with generated pink noise | CC BY 4.0 | 2407404 | `bb8655839e2a6a120984225f7996ea5183f52f6db350bd68e72bd4425bae867a` |
 | `speech-levels.truth.json` | the variants' settings and measure, with `speech.truth.txt` | CC BY 4.0 | 2891 | `a3193d531303009c0338f2b6a35abb1f3fda962f9fe7cd35f9e4a7db9a45f7b8` |
 | `speech-truncated.mp3` | `speech.flac`'s first 12 s, as MP3, cut short | CC BY 4.0 | 24000 | `1281d2e9ab62d7f925218183206ddbb8d831f211ac80c06071cdf5fbaac66c68` |
+| `speech-tagged.mp3` | `speech.flac`'s first utterance, as MP3, with ID3 tags | CC BY 4.0 | 27178 | `c5d39050443f56f684be880f6916c97dedbb5ef0de6c6a6c476a9e5049aee348` |
+| `speech-tagged.ffprobe.json` | ffprobe n9.0.2's report of `speech-tagged.mp3` | CC BY 4.0 | 858 | `19d200bd977ab027f677fb73a270a67df337784444763200200cfd160db323b2` |
+| `speech-scenes.ffprobe.json` | ffprobe n9.0.2's report of `speech-scenes.mkv` | CC BY 4.0 | 1125 | `213694ab7b1bb4e94df4ce8a9eff378c56a945e9230aeb2c7c0a8b02611bca3b` |
 | `windows-v0.9.0.txt` | v0.9.0's windows of three fixtures, under DetectorTracker | CC BY 4.0 | 929 | `4886500f856f56a395e6dee006a9bc2ea2e03e2e4828e639cb3f0914149383e3` |
 
 - `speech.flac`: 49.82 s of 16 kHz mono 16-bit FLAC. The four utterances, 6.59, 7.145, 4.835, and
@@ -71,6 +76,27 @@ its SHA-256 below.
     -flags:a +bitexact -fflags +bitexact -map_metadata -1 full.mp3
   head -c 24000 full.mp3 > speech-truncated.mp3
   ```
+
+- `speech-tagged.mp3`: `speech.flac`'s first 6.59 s, its first utterance, as 32 kb/s MP3, with an
+  ID3v2 tag of seven frames, one of them user-defined and one holding a character outside ASCII, so
+  a metadata record keeps its container's tags as stored, in order. It carries no encoder tag. Its
+  recipe, with the host's ffmpeg n9.0.2 and its libmp3lame, which builds the same bytes again:
+
+  ```sh
+  ffmpeg -nostdin -i speech.flac -t 6.59 -c:a libmp3lame -b:a 32k \
+    -flags:a +bitexact -fflags +bitexact -map_metadata -1 \
+    -metadata title="Chapter 1, utterance 1" -metadata artist="LibriSpeech 2277" \
+    -metadata album=dev-clean -metadata date=2015 -metadata genre=Speech \
+    -metadata comment="Zürich harbor" -metadata librispeech_id=2277-149896-0000 \
+    speech-tagged.mp3
+  ```
+
+- `speech-tagged.ffprobe.json` and `speech-scenes.ffprobe.json`: the goldens the unit tier's
+  ffprobe stand-in prints for the two files, each ffprobe's stdout as audio's and media's probe
+  runs it, `-v error -print_format json -show_entries` with `cli.FFprobeEntries`, the host's
+  ffprobe n9.0.2 and `audio.FFmpegImage`'s 9.0.2 printing the same bytes. The scenes fixture's
+  report carries Matroska's own tags: the container's encoder, and each stream's duration, the
+  video stream's encoder beside it.
 
 - `windows-v0.9.0.txt`: the oracle the one-decode windows are held to, byte for byte. A line a
   window: the fixture, the window's index, its start and end in nanoseconds, its cut, its samples,

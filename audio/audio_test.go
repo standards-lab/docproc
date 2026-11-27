@@ -6,12 +6,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/standards-lab/docproc/audio"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -101,8 +103,14 @@ func TestProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := audio.Source{Duration: 49820 * time.Millisecond, Stream: 1, Codec: "flac", SampleRate: 16000, Channels: 1}
-	if src != want {
+	want := audio.Source{
+		Duration: 49820 * time.Millisecond, Stream: 1, Codec: "flac", SampleRate: 16000, Channels: 1,
+		Metadata: metadata.Media{
+			Duration: 49.82,
+			Streams:  []metadata.MediaStream{{Index: 0, Type: "video", Codec: "mjpeg"}, {Index: 1, Type: "audio", Codec: "flac", SampleRate: 16000, Channels: 1}},
+		},
+	}
+	if !reflect.DeepEqual(src, want) {
 		t.Errorf("Probe = %+v, want %+v", src, want)
 	}
 	rs := st.runs()
@@ -115,6 +123,35 @@ func TestProbe(t *testing.T) {
 	}
 	if args := rs[0].Args; args[len(args)-1] != abs {
 		t.Errorf("ffprobe read %q, want the absolute path %s", args[len(args)-1], abs)
+	}
+}
+
+func TestProbeTagged(t *testing.T) {
+	t.Parallel()
+	report, err := os.ReadFile(filepath.Join("testdata", "speech-tagged.ffprobe.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, st := standinSplitter(t)
+	st.set(func(c *settings) { c.Probe = string(report) })
+	src, err := s.Probe(t.Context(), filepath.Join("testdata", "speech-tagged.mp3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := audio.Source{
+		Duration: 6590938 * time.Microsecond, Stream: 0, Codec: "mp3", SampleRate: 16000, Channels: 1,
+		Metadata: metadata.Media{
+			Format: "mp3", Duration: 6.590938, BitRate: 32988,
+			Tags: metadata.Properties{
+				{Key: "title", Value: "Chapter 1, utterance 1"}, {Key: "artist", Value: "LibriSpeech 2277"},
+				{Key: "album", Value: "dev-clean"}, {Key: "date", Value: "2015"}, {Key: "genre", Value: "Speech"},
+				{Key: "comment", Value: "Zürich harbor"}, {Key: "librispeech_id", Value: "2277-149896-0000"},
+			},
+			Streams: []metadata.MediaStream{{Index: 0, Type: "audio", Codec: "mp3", SampleRate: 16000, Channels: 1}},
+		},
+	}
+	if !reflect.DeepEqual(src, want) {
+		t.Errorf("Probe =\n %+v\nwant\n %+v", src, want)
 	}
 }
 

@@ -126,7 +126,7 @@ func standinPreparer(t *testing.T, s gsSettings) *document.Preparer {
 func testDocumentStage(t *testing.T, prep *document.Preparer) *stages.DocumentStage {
 	t.Helper()
 	return stages.NewDocumentStage(stages.DocumentConfig{
-		Preparer: prep, QPDF: &fakeQPDF{}, PDFDetach: &fakeDetach{}, Version: "gs 10.08.0",
+		Preparer: prep, QPDF: &fakeQPDF{}, PDFDetach: &fakeDetach{}, PDFInfo: &fakeInfo{}, Version: "gs 10.08.0",
 		Request: document.ImagesRequest{Text: true, Concurrency: 1},
 	})
 }

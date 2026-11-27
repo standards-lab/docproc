@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/internal/mediatest"
 	"github.com/standards-lab/docproc/media"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -68,11 +70,21 @@ func setStandin(t *testing.T, st *standins, probe string, frames []mediatest.Fra
 func collect(t *testing.T, events func(func(media.Event, error) bool)) []media.Event {
 	t.Helper()
 	var out []media.Event
+	records := 0
 	for e, err := range events {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if e.Metadata != nil {
+			if records++; len(out) != 0 || e.Window != nil || e.Frame != nil {
+				t.Errorf("a metadata event %+v after %d events", e, len(out))
+			}
+			continue
+		}
 		out = append(out, e)
+	}
+	if records != 1 {
+		t.Errorf("%d metadata events, want one, first", records)
 	}
 	return out
 }
@@ -291,6 +303,48 @@ func TestEventsNoMedia(t *testing.T) {
 	}
 }
 
+func TestEventsMetadata(t *testing.T) {
+	t.Parallel()
+	report, err := os.ReadFile(filepath.Join("..", "audio", "testdata", "speech-scenes.ffprobe.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, st := standinStreamer(t)
+	setStandin(t, st, string(report), sceneFrames)
+	var first *media.Event
+	for e, err := range s.Events(t.Context(), source(t), media.Request{Dir: t.TempDir()}) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first == nil {
+			first = &e
+			if r := st.runs(); len(r) != 1 || r[0].Program != "ffprobe" {
+				t.Errorf("runs %v before the first event, want the probe alone", r)
+			}
+		}
+	}
+	if first == nil || first.Metadata == nil || first.Window != nil || first.Frame != nil || first.Time != 0 {
+		t.Fatalf("first event %+v, want the metadata record alone", first)
+	}
+	want := metadata.Media{
+		Format: "matroska,webm", Duration: 50, BitRate: 135819,
+		Tags: metadata.Properties{{Key: "encoder", Value: "Lavf"}},
+		Streams: []metadata.MediaStream{
+			{
+				Index: 0, Type: "video", Codec: "mpeg4", Width: 320, Height: 180, FrameRate: 10,
+				Tags: metadata.Properties{{Key: "ENCODER", Value: "Lavc mpeg4"}, {Key: "DURATION", Value: "00:00:50.000000000"}},
+			},
+			{
+				Index: 1, Type: "audio", Codec: "flac", SampleRate: 16000, Channels: 1,
+				Tags: metadata.Properties{{Key: "DURATION", Value: "00:00:49.820000000"}},
+			},
+		},
+	}
+	if !reflect.DeepEqual(*first.Metadata, want) {
+		t.Errorf("metadata\n %+v\nwant\n %+v", *first.Metadata, want)
+	}
+}
+
 func TestEventsStandin(t *testing.T) {
 	t.Parallel()
 	s, st := standinStreamer(t)
@@ -458,6 +512,9 @@ func TestEventsOpenSilence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("after %d windows: %v", len(ws), err)
 		}
+		if e.Metadata != nil {
+			continue
+		}
 		if path, ok := open[len(ws)]; ok {
 			if err := os.WriteFile(path, nil, 0o600); err != nil {
 				t.Fatal(err)
@@ -518,6 +575,9 @@ func TestEventsBreak(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if e.Metadata != nil {
+			continue
+		}
 		events = append(events, e)
 		break
 	}
@@ -542,6 +602,9 @@ func TestEventsCancel(t *testing.T) {
 	for e, err := range s.Events(ctx, path, media.Request{Dir: dir}) {
 		if err != nil {
 			errs = append(errs, err)
+			continue
+		}
+		if e.Metadata != nil {
 			continue
 		}
 		events = append(events, e)
@@ -596,7 +659,9 @@ func TestEventsNoPNG(t *testing.T) {
 	var errs []error
 	for e, err := range s.Events(t.Context(), source(t), media.Request{Dir: dir}) {
 		if err == nil {
-			t.Errorf("event %+v", e)
+			if e.Metadata == nil {
+				t.Errorf("event %+v", e)
+			}
 			continue
 		}
 		errs = append(errs, err)

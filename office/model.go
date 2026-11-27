@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/metadata"
 )
 
 // Record is one item of a conversion, by its kind: *Document, *Sheet, or *Rows for docproc-ooxml's
@@ -41,6 +42,22 @@ type Document struct {
 	ConvertedFrom string `json:"-"`
 }
 
+// Metadata returns the document's metadata record, a metadata.Office of its property parts, each
+// in its stored order, and the format it was converted from; nil when the package has no property
+// part and was converted from no other format.
+func (d *Document) Metadata() *metadata.Office {
+	rec := &metadata.Office{
+		Core:          d.Properties.Core.properties(),
+		Extended:      d.Properties.App.properties(),
+		Custom:        d.Properties.Custom.properties(),
+		ConvertedFrom: d.ConvertedFrom,
+	}
+	if rec.Core == nil && rec.Extended == nil && rec.Custom == nil && rec.ConvertedFrom == "" {
+		return nil
+	}
+	return rec
+}
+
 // Properties are a package's three property parts, each a list of its properties in stored
 // order; nil for a part the package doesn't have.
 type Properties struct {
@@ -64,6 +81,17 @@ type PropertyList []Property
 type Property struct {
 	Key   string
 	Value any
+}
+
+func (l PropertyList) properties() metadata.Properties {
+	if l == nil {
+		return nil
+	}
+	out := make(metadata.Properties, len(l))
+	for i, p := range l {
+		out[i] = metadata.Property(p)
+	}
+	return out
 }
 
 // UnmarshalJSONFrom reads a JSON object into l, one Property per member, in order.

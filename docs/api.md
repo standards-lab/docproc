@@ -64,12 +64,14 @@ stages                     Build and its Options, Routes and ParseRoutes, the st
 internal/tooltest,         test helpers: the unit tier's stand-in tool, golden sums, and
   goldentest, mediatest      media's stand-in ffmpeg run
 rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and written
+metadata                   the metadata records' shapes, one per format; imports dispatch
+                             only
 ```
 
 No root package. Another module reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`,
-`stages.Build`, `rundir`, and the record types docinfer decodes (the plan records, the readers' line
-types, `email.Threader`); the module builds on every 64-bit platform, and only running a tool needs
-Linux.
+`stages.Build`, `rundir`, and the record types docinfer decodes (the plan records, `metadata`'s
+records, the readers' line types, `email.Threader`); the module builds on every 64-bit platform, and
+only running a tool needs Linux.
 
 ## Inspection and routing
 
@@ -301,7 +303,7 @@ How `document` runs gs, and why (the measurements behind it are on
   one page at a time and the stream at most `Concurrency`, each outcome buffered so a lane never
   waits on the consumer to hand one over.
 
-How `document` reads qpdf and pdfdetach, and why:
+How `document` reads qpdf, pdfdetach, and pdfinfo, and why:
 
 - qpdf lists a field once for each of its widgets, so a radio group's buttons are one field, at its
   first button's place. qpdf's JSON version 2 writes a string as `u:` and its text or `b:` and its
@@ -311,6 +313,13 @@ How `document` reads qpdf and pdfdetach, and why:
   aren't warnings are its error.
 - `pdfdetach -list` prints `N embedded files`, then `i: name` for each from 1; a line that isn't
   the next number's continues the name before it, so a name holding a line break reads whole.
+- `pdfinfo -custom` prints the information dictionary alone, its string values by key, each line
+  `Key:` padded with spaces to 17 columns and its value, a longer key followed by its value with no
+  space; a character it can't print, a line break among them, prints as `?`, so each line is one
+  key. It prints no value that isn't a string, so Trapped, a name, never reaches the record.
+  `-isodates` prints CreationDate and ModDate in ISO 8601 with their stored zone, and a value that
+  isn't a date as stored. `-meta` prints the metadata stream as stored and nothing without one, and
+  the PDF version is only in the summary, so a PDF's metadata is three runs.
 
 How `office` converts through LibreOffice, and why:
 
@@ -338,6 +347,15 @@ How `picture` runs magick and soffice, and why:
 - magick's format listing, `-list format`, marks each coder's modes, `r` when it reads the format.
   It writes to the `null:` output, without which magick refuses the `-limit` options before it, and
   a Converter reads at most 1 MiB of it, some fifty times what ImageMagick 7.1.2 prints.
+- An EXIFReader's run reads the picture from magick's standard input, through the coder its kind
+  names and its first image alone, `<kind>:-[0]`, so no part of its path is read as a format, a
+  frame, or a pattern. It writes nothing: its output is `info:`, and its format,
+  `%w %h\n%[EXIF:*]`, prints the size, then each EXIF property as `exif:<key>=<value>`, sorted by
+  key; a line that doesn't begin so continues the value before it. The run decodes the picture, not
+  `-ping`, since magick reads no WebP's EXIF in a ping; libheif turns a HEIC or an AVIF upright as
+  it decodes it, so magick holds its orientation as 1 and its size upright. magick prints a byte it
+  can't print as `.`, GPSAltitudeRef's 0 and 1 alike, so no altitude is typed. A GIF, BMP, SVG,
+  EMF, or WMF holds no EXIF magick reads, and no run is made for it.
 - A conversion has written its PNG when the path is a regular file beginning with PNG's signature,
   as `route.Identify` tells it. A failed magick run's error carries the first line of its output
   that isn't blank, from at most 64 KiB of it; a failed soffice run's, the first line
@@ -769,7 +787,7 @@ type Options struct { // the zero value wires every route, with no bound
     Exclude     []route.Route
     Inspect     inspect.Options // validated once; the archive and document stages' bomb rule
     Timeout     time.Duration   // Spec.Timeout of the unit tools: gs, qpdf, pdfdetach,
-                                // pdftotext, magick, soffice, docproc-ooxml, ffprobe
+                                // pdftotext, pdfinfo, magick, soffice, docproc-ooxml, ffprobe
     Idle        time.Duration   // Spec.Idle of the stream tools: ffmpeg, docproc-mail,
                                 // docproc-onenote, 7zz
     Memory      int64           // tool.Spec.MemoryLimit for every Spec Build builds
@@ -811,38 +829,57 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
 
 - **document.** qpdf first says whether the PDF needs a password: one that does raises qpdf's
   finding as the part's own flag, `pdf-encrypt`, then ends with `ErrEncrypted`, nothing rendered;
-  one restricted only by its permissions opens with no password and is prepared as any other. A
-  PDF whose AcroForm has fields then yields, before anything else, a `MediaForm` record named
-  `forms`, a `document.Form`. Each embedded file, the name tree's and the file attachment
-  annotations', is then streamed from pdfdetach's stdout under its content's SHA-256, never its
-  stored name, and found `attachment <name>`; one past the bomb rule, against the whole PDF's size,
-  or past the bytes cap is stopped as an archive's entry is, and one pdfdetach can't save is a
-  failed child. The pages come last, each `page N`: its text layer, when the request reads it and
-  it holds text, then its PNG. Each unit, `form`, `attachments`, and `page N`, reads on its own, so
-  a failure of the content's class is a warning naming the unit and its tool, and the part fails,
-  recorded, only when nothing of it reads; a failed page count names no page, and none follows it.
-- **office.** After the Markdown and the sheets, each medium the document names is found at
-  `document, media <n>`, in the document's order: a picture converted to PNG as its PNG; any other
-  picture, an embedded package, or an OLE object as stored, typed by its stored content type, so its
-  own stage reads it; and a linked picture, with no file, an unread child, no processor yet. An RTF
-  converts through LibreOffice to docx, as a `.doc` does, and so do a WordPerfect document, to docx,
-  an Excel binary workbook, to xlsx, and an ODF text, spreadsheet, presentation, or drawing package
-  or template, to docx, xlsx, or pptx, a drawing through Impress's import. Any other ODF package, a
-  formula, chart, database, or image among them, ends with `ErrNoProcessor`, the reason naming its
-  type, and an ODF package whose manifest holds encryption data ends with `ErrEncrypted` before
-  LibreOffice runs.
+  one restricted only by its permissions opens with no password and is prepared as any other. A PDF
+  that needs a password is first given a warning that its metadata isn't read. Any other PDF first
+  yields a `MediaPDFMetadata` record named `metadata`, a `metadata.PDF`: its information dictionary,
+  typed, its XMP packet, typed and kept whole, and its PDF version; a PDF of which pdfinfo prints no
+  information dictionary and no XMP packet yields none. A PDF whose AcroForm has fields then yields
+  a `MediaForm` record named `forms`, a `document.Form`. Each embedded file, the name tree's and the
+  file attachment annotations', is then streamed from pdfdetach's stdout under its content's
+  SHA-256, never its stored name, and found `attachment <name>`; one past the bomb rule, against the
+  whole PDF's size, or past the bytes cap is stopped as an archive's entry is, and one pdfdetach
+  can't save is a failed child. The pages come last, each `page N`: its text layer, when the request
+  reads it and it holds text, then its PNG. Each unit, `metadata`, `form`, `attachments`, and
+  `page N`, reads on its own, so a failure of the content's class is a warning naming the unit and
+  its tool, and the part fails, recorded, only when nothing of it reads; a failed page count names
+  no page, and none follows it. An XMP packet that doesn't parse is a `metadata` warning beside the
+  record.
+- **office.** The document's Markdown, named `document`, comes first, then a `MediaOfficeMetadata`
+  record named `metadata`, a `metadata.Office`: its core, extended, and custom properties in stored
+  order and types, and the format it was converted from. A package with no property part, converted
+  from no other format, yields no record. After the Markdown, the record, and the sheets, each
+  medium the document names is found at `document, media <n>`, in the document's order: a picture
+  converted to PNG as its PNG; any other picture, an embedded package, or an OLE object as stored,
+  typed by its stored content type, so its own stage reads it; and a linked picture, with no file,
+  an unread child, no processor yet. An RTF converts through LibreOffice to docx, as a `.doc` does,
+  and so do a WordPerfect document, to docx, an Excel binary workbook, to xlsx, and an ODF text,
+  spreadsheet, presentation, or drawing package or template, to docx, xlsx, or pptx, a drawing
+  through Impress's import. Any other ODF package, a formula, chart, database, or image among them,
+  ends with `ErrNoProcessor`, the reason naming its type, and an ODF package whose manifest holds
+  encryption data ends with `ErrEncrypted` before LibreOffice runs.
   docproc-ooxml writes its lines once it has read the whole package, so its run is a unit, under
   `Timeout`.
 - **picture.** A TIFF yields a PNG per page, in page order, each `page N`, as the document stage
   yields a PDF's. An EMF or WMF at the request's `MetafileScale`, an SVG at its `Density`, and a
   HEIC's primary image or a WebP's or AVIF's first frame each yield one PNG named `picture`, read
   as the kind its content type names and named by the part's SHA-256. A HEIC, WebP, or AVIF whose
-  reader magick lacks ends with `ErrNoProcessor`, its reason naming why.
-- **vision.** A PNG, JPEG, GIF, or BMP passes through as an image output named `picture`, its
-  `Path` the part's own file, so a layer above meets every picture, converted or not, as an image
-  output. The dispatcher removes the file once the event's body returns, as it does any found
-  part's; a caller that sends the picture on later reads it from `Content` by the output's
-  SHA-256, or links the file within the body.
+  reader magick lacks ends with `ErrNoProcessor`, its reason naming why. Once the picture is
+  converted, and before its PNGs, a picture whose first image holds EXIF yields a
+  `MediaPictureMetadata` record named `metadata`, a `metadata.Picture` read through magick: the
+  capture time in UTC, a time with no offset read as UTC, the camera's make and model, the
+  orientation, the size, the GPS position in decimal degrees, and every EXIF property as magick
+  prints it. A multi-image picture yields one record, its first image's, the one a HEIC converts
+  from and a TIFF's first page, as the part is one. A failed EXIF read is a `metadata` warning,
+  its tool magick, and the picture still prepares; reading EXIF never changes the picture or its
+  PNGs.
+- **vision.** The stage requires magick. First, a PNG or JPEG whose EXIF magick reads yields a
+  `MediaPictureMetadata` record named `metadata`, as the picture stage's, and a failed read is a
+  `metadata` warning; a GIF or BMP holds no EXIF, and no magick runs for it. A PNG, JPEG, GIF, or
+  BMP then passes through as an image output named `picture`, its `Path` the part's own file,
+  unchanged, so a layer above meets every picture, converted or not, as an image output. The
+  dispatcher removes the file once the event's body returns, as it does any found part's; a caller
+  that sends the picture on later reads it from `Content` by the output's SHA-256, or links the
+  file within the body.
 - **email.** Each of docproc-mail's lines is a `MediaMail` record, its JSON as `email`'s record
   marshals it back to its line, in its order: `store`; `folder <id>`; `message <id>`, or `message`
   for a `.msg` or an `.eml`, which has no id, then its Markdown of the same name; and a line of a
@@ -874,25 +911,30 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   routed by it. A page's ink is an SVG, routed vision-converted, to the picture stage's PNG. A skipped section is an
   unread child at `skipped section <name>`: encrypted for a password-protected one, else failed.
 - **audio.** No model runs: the stage prepares the windows a layer above transcribes and joins, and
-  the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan
-  order, `window N`, a 16 kHz mono 16-bit PCM WAV named by its SHA-256, its `Meta` carrying what a
-  caller needs to transcribe and join it before the plan arrives. Every time is strconv's shortest
-  decimal of its seconds, such as `24.91`. The plan, a `MediaAudioPlan` record named `plan`, an
-  `audio.PlanRecord` carrying ffprobe's duration beside the decoded one when the two differ, comes
-  last. A failure of the content's class after a window is a warning at the next window, and the
-  part is prepared with its windows and no plan; with none, the part fails, recorded. A source
-  with no audio stream, such as an M4A holding none, fails before ffmpeg runs.
-- **video.** One ffmpeg run reads each part. The plan, a `MediaVideoPlan` record named `plan`, a
-  `media.VideoPlan` of the run's settings with every default applied, comes first, once the run
-  has a stream, just before its first frame or window, so a source media refuses has no outputs;
-  it holds no windows, which media plans as the audio arrives. Frames, `frame N`, PNGs named by
-  their SHA-256, and windows, `window N`, as the audio stage's, follow interleaved as the run
-  completes them. A video with no audio stream yields frames only, a part routed video with no
-  video stream windows only, and one with neither fails, recorded, before ffmpeg runs. media writes
-  a file's frames into a hidden directory beside it, so the stage runs it over a hard link to the
-  part's file in the part's directory, a copy where the file system refuses one, never over a
-  caller's input, and everything it makes is removed with that directory. A failure of the
-  content's class after a frame or window is a warning at `stream`.
+  the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan order,
+  `window N`, a 16 kHz mono 16-bit PCM WAV named by its SHA-256, its `Meta` carrying what a caller
+  needs to transcribe and join it before the plan arrives. The first window comes after a
+  `MediaMediaMetadata` record named `metadata`, a `metadata.Media` from the probe that found the
+  stream: the container's format, duration, bit rate, and tags as stored, in order, and each
+  stream's type, codec, and tags, an audio stream's sample rate and channels, a video stream's size
+  and frame rate. Every time is strconv's shortest decimal of its seconds, such as `24.91`. The
+  plan, a `MediaAudioPlan` record named `plan`, an `audio.PlanRecord` carrying ffprobe's duration
+  beside the decoded one when the two differ, comes last. A failure of the content's class after a
+  window is a warning at the next window, and the part is prepared with its windows and no plan;
+  with none, the part fails, recorded. A source with no audio stream, such as an M4A holding none,
+  fails before ffmpeg runs.
+- **video.** One ffmpeg run reads each part. A `MediaMediaMetadata` record named `metadata`, a
+  `metadata.Media` as the audio stage's, comes first, once the probe has found a stream and before
+  ffmpeg runs. The plan, a `MediaVideoPlan` record named `plan`, a `media.VideoPlan` of the run's
+  settings with every default applied, comes next, once the run has a stream, just before its first
+  frame or window, so a source media refuses has no outputs; it holds no windows, which media plans
+  as the audio arrives. Frames, `frame N`, PNGs named by their SHA-256, and windows, `window N`, as
+  the audio stage's, follow interleaved as the run completes them. A video with no audio stream
+  yields frames only, a part routed video with no video stream windows only, and one with neither
+  fails, recorded, before ffmpeg runs. media writes a file's frames into a hidden directory beside
+  it, so the stage runs it over a hard link to the part's file in the part's directory, a copy where
+  the file system refuses one, never over a caller's input, and everything it makes is removed with
+  that directory. A failure of the content's class after a frame or window is a warning at `stream`.
 - **text.** One UTF-8 text output named `text`, its line endings as stored. Its encoding is decided,
   never detected: a byte order mark, UTF-8's, UTF-32's (checked before the UTF-16 marks they begin
   with), or UTF-16's, which the output drops; else UTF-8, when the whole part is valid UTF-8; else
@@ -906,9 +948,8 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
   never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
   other text is decoded, streamed, into a file, so a large part is never held in memory, and the
-  decoding stops when the context ends. The text and vision stages run no tool, so their identity's
-  version is this package's; a golang.org/x/text change that changes the text stage's output
-  changes it.
+  decoding stops when the context ends. The text stage runs no tool, so its identity's version is
+  this package's; a golang.org/x/text change that changes the text stage's output changes it.
 
 How the archive stage reads each kind, and why:
 

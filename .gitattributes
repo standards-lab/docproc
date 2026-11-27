@@ -1,6 +1,10 @@
 # Fixtures pinned byte for byte, which git never converts.
 # See docs/development.md
 audio/testdata/speech.* -text
+audio/testdata/speech-tagged.mp3 -text
+audio/testdata/*.ffprobe.json -text
 office/testdata/rtf/** -text
 rundir/testdata/** -text
 document/testdata/malformed/** -text
+document/testdata/info/** -text
+picture/testdata/exif-* -text

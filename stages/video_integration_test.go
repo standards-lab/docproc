@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/media"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/stages"
 	"github.com/standards-lab/docproc/tool"
@@ -141,12 +143,20 @@ func TestVideoStageReal(t *testing.T) {
 			})
 			wantSteps(t, events, []step{{"speech-scenes.mkv", 0, dispatch.Prepared}})
 			outs := events[0].Outputs
-			if len(outs) == 0 || outs[0].Name != "plan" {
-				t.Fatalf("outputs %q, want the plan first", kinds(outs))
+			if len(outs) < 2 || outs[0].Name != "metadata" || outs[1].Name != "plan" {
+				t.Fatalf("outputs %q, want the metadata record, then the plan, first", kinds(outs))
 			}
-			t.Logf("recorded: plan %s", outs[0].Value)
+			t.Logf("recorded: metadata %s", outs[0].Value)
+			var md metadata.Media
+			if err := json.Unmarshal(outs[0].Value, &md); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(md, scenesRecord) {
+				t.Errorf("the metadata record\n %+v\nwant\n %+v", md, scenesRecord)
+			}
+			t.Logf("recorded: plan %s", outs[1].Value)
 			var frames, windows []string
-			for _, o := range outs[1:] {
+			for _, o := range outs[2:] {
 				t.Logf("recorded: %s %s, %s, Meta %v", o.Kind, o.Name, filepath.Base(o.Path), o.Meta)
 				switch o.Kind {
 				case dispatch.ImageOutput:
@@ -178,15 +188,24 @@ func TestVideoStageReal(t *testing.T) {
 			events = dispatchAll(t, d, only, nil)
 			wantSteps(t, events, []step{{"video-only.mkv", 0, dispatch.Prepared}})
 			outs = events[0].Outputs
+			if len(outs) < 2 {
+				t.Fatalf("the video-only copy's outputs %q", kinds(outs))
+			}
 			var onlyFrames []string
-			for _, o := range outs[1:] {
+			for _, o := range outs[2:] {
 				if o.Kind != dispatch.ImageOutput {
 					t.Errorf("the video-only copy yielded %s %s", o.Kind, o.Name)
 				}
 				onlyFrames = append(onlyFrames, sumOf(o))
 			}
-			if outs[0].Name != "plan" || !slices.Equal(onlyFrames, frames) {
-				t.Errorf("the video-only copy's outputs %q, frames %q; want the plan and frames %q", kinds(outs), onlyFrames, frames)
+			var onlyMD metadata.Media
+			if err := json.Unmarshal(outs[0].Value, &onlyMD); err != nil {
+				t.Fatal(err)
+			}
+			if outs[0].Name != "metadata" || len(onlyMD.Streams) != 1 || onlyMD.Streams[0].Type != "video" || outs[1].Name != "plan" ||
+				!slices.Equal(onlyFrames, frames) {
+				t.Errorf("the video-only copy's outputs %q, metadata %+v, frames %q; want its metadata record of one video stream, "+
+					"the plan, and frames %q", kinds(outs), onlyMD, onlyFrames, frames)
 			}
 			if entries, err := os.ReadDir(filepath.Dir(only)); err != nil || len(entries) != 1 {
 				t.Errorf("the video-only copy's directory holds %v, %v", entries, err)

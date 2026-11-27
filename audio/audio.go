@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -119,26 +120,15 @@ type Source struct {
 	SampleRate int
 	// Channels is the stream's channel count.
 	Channels int
+	// Metadata is the source's metadata record, from the same probe: its container's format,
+	// duration, bit rate, and tags, and each of its streams.
+	Metadata metadata.Media
 }
 
-type probeReport struct {
-	Format struct {
-		Duration string `json:"duration"`
-	} `json:"format"`
-	Streams []struct {
-		Index      int    `json:"index"`
-		CodecType  string `json:"codec_type"`
-		CodecName  string `json:"codec_name"`
-		SampleRate string `json:"sample_rate"`
-		Channels   int    `json:"channels"`
-		Duration   string `json:"duration"`
-	} `json:"streams"`
-}
-
-// Probe reads the source at path through ffprobe: its duration and its first audio stream's
-// index, codec, sample rate, and channels. A source with no audio stream is an error wrapping
-// ErrNoAudio, as is one ffprobe reports no duration for; a source ffprobe can't read is its
-// *tool.ExitError, wrapped.
+// Probe reads the source at path through ffprobe: its duration and its first audio stream's index,
+// codec, sample rate, and channels, and, from the same run, its metadata record. A source with no
+// audio stream is an error wrapping ErrNoAudio, as is one ffprobe reports no duration for; a source
+// ffprobe can't read is its *tool.ExitError, wrapped.
 func (s *Splitter) Probe(ctx context.Context, path string) (Source, error) {
 	if path == "" {
 		return Source{}, fmt.Errorf("audio: no source path: %w", ErrRequest)
@@ -155,7 +145,7 @@ func (s *Splitter) probe(ctx context.Context, path string) (Source, error) {
 	err := s.ffprobe.Run(ctx, tool.Invocation{
 		Args: []string{
 			"-v", "error", "-print_format", "json",
-			"-show_entries", "format=duration:stream=index,codec_type,codec_name,sample_rate,channels,duration",
+			"-show_entries", cli.FFprobeEntries,
 			path,
 		},
 		Dir:    filepath.Dir(path),
@@ -164,15 +154,15 @@ func (s *Splitter) probe(ctx context.Context, path string) (Source, error) {
 	if err != nil {
 		return Source{}, fmt.Errorf("audio: probe %s: %w", path, err)
 	}
-	var report probeReport
-	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+	report, err := cli.ParseFFprobe(stdout.Bytes())
+	if err != nil {
 		return Source{}, fmt.Errorf("audio: probe %s: ffprobe's report: %w", path, err)
 	}
 	for _, st := range report.Streams {
 		if st.CodecType != "audio" {
 			continue
 		}
-		src := Source{Stream: st.Index, Codec: st.CodecName, Channels: st.Channels}
+		src := Source{Stream: st.Index, Codec: st.CodecName, Channels: st.Channels, Metadata: report.Metadata()}
 		if src.SampleRate, err = strconv.Atoi(st.SampleRate); err != nil {
 			return Source{}, fmt.Errorf("audio: probe %s: stream %d's sample rate %q: %w", path, st.Index, st.SampleRate, err)
 		}

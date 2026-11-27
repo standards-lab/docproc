@@ -34,8 +34,8 @@ const LibreOfficeMinimum = "24.2"
 // runs in it under the runner's full lockdown, with no relaxation, so
 // tool.Image{Ref: LibreOfficeImage} is the whole of it. A caller may run another image, or soffice
 // on the host through the exec runner.
-const LibreOfficeImage = "gotenberg/gotenberg:9.10.1-libreoffice@sha256:" +
-	"79aec465636fef089f6ed3da69b75c7d3c7155fcecd20b3d80563868c54b5a90"
+const LibreOfficeImage = "gotenberg/gotenberg:9.10.2-libreoffice@sha256:" +
+	"4e262b3ba32cc99dd95455a2ee7e11d2a9b5f8e562e3f9cf8550a16c814e5421"
 
 // LibreOfficeSpec declares LibreOffice's soffice, minimum 24.2, for either runner's constructor;
 // the container runner makes it the entrypoint in place of the image's own. soffice --version

@@ -201,3 +201,42 @@ func TestTextReaderReal(t *testing.T) {
 		}
 	}
 }
+
+func TestInfoReaderReal(t *testing.T) {
+	tl, err := tool.NewExec(t.Context(), document.PDFInfoSpec())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := document.NewInfoReader(document.Config{PDFInfo: tl})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, pdf := range map[string]string{
+		"info":  filepath.Join("testdata", "info", "info.pdf"),
+		"clean": filepath.Join("testdata", "clean.pdf"),
+	} {
+		got, err := r.Metadata(t.Context(), pdf)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		standin, st := standinInfoReader(t, "26.10.0")
+		st.set(func(s *settings) { s.Info = pdfinfoGoldens(t, name) })
+		want, err := standin.Metadata(t.Context(), pdf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: the host's pdfinfo read\n %+v\nthe goldens\n %+v", name, got, want)
+		}
+		if name == "info" {
+			wantInfoFixture(t, got, want.XMP.Packet)
+		}
+	}
+	pdfs := encrypted(t)
+	if _, err := r.Metadata(t.Context(), pdfs["open-password.pdf"]); err == nil || !strings.Contains(err.Error(), "password") {
+		t.Errorf("open-password.pdf: %v, want pdfinfo's password failure", err)
+	}
+	if got, err := r.Metadata(t.Context(), pdfs["permissions.pdf"]); err != nil || got.Info == nil || got.Info.Title != "document fixtures" {
+		t.Errorf("permissions.pdf: %+v, %v; want its information dictionary", got, err)
+	}
+}

@@ -205,17 +205,20 @@ func TestVideoStage(t *testing.T) {
 		t.Errorf("the part's route %s, stage %v", ev.Part.ContentType.Route, ev.Stage)
 	}
 	got := kinds(ev.Outputs)
-	if len(got) == 0 || got[0] != "record plan" {
-		t.Fatalf("outputs %q, want the plan first", got)
+	if len(got) < 2 || got[0] != "record metadata" || got[1] != "record plan" {
+		t.Fatalf("outputs %q, want the metadata record, then the plan, first", got)
 	}
-	slices.Sort(got[1:])
-	want := []string{"record plan", "audio window 0", "image frame 0", "image frame 1", "image frame 2"}
+	slices.Sort(got[2:])
+	want := []string{"record metadata", "record plan", "audio window 0", "image frame 0", "image frame 1", "image frame 2"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("outputs %q, want %q", got, want)
 	}
+	if ev.Outputs[0].MediaType != dispatch.MediaMediaMetadata {
+		t.Errorf("the metadata record's media type %q", ev.Outputs[0].MediaType)
+	}
 
 	var p media.VideoPlan
-	if err := json.Unmarshal(ev.Outputs[0].Value, &p); err != nil {
+	if err := json.Unmarshal(ev.Outputs[1].Value, &p); err != nil {
 		t.Fatal(err)
 	}
 	wantPlan := media.VideoPlan{
@@ -225,7 +228,7 @@ func TestVideoStage(t *testing.T) {
 		},
 		Frames: media.VideoSampling{SceneThreshold: media.DefaultSceneThreshold, MaxGap: 10},
 	}
-	if p != wantPlan || ev.Outputs[0].MediaType != dispatch.MediaVideoPlan {
+	if p != wantPlan || ev.Outputs[1].MediaType != dispatch.MediaVideoPlan {
 		t.Errorf("the plan %+v, want %+v", p, wantPlan)
 	}
 
@@ -234,7 +237,7 @@ func TestVideoStage(t *testing.T) {
 		"frame 1": {"frame": "1", "time": "1.2", "reason": "scene", "width": "32", "height": "18"},
 		"frame 2": {"frame": "2", "time": "11.2", "reason": "interval", "width": "32", "height": "18"},
 	}
-	for _, o := range ev.Outputs[1:] {
+	for _, o := range ev.Outputs[2:] {
 		if o.Kind == dispatch.AudioOutput {
 			threshold, err := strconv.ParseFloat(o.Meta["threshold"], 64)
 			if o.MediaType != "audio/wav" || err != nil || threshold >= 0 {
@@ -274,7 +277,7 @@ func TestVideoStageRoutes(t *testing.T) {
 	} {
 		events, _ := videoDispatch(t, dispatch.Stages{route.Video: stage}, writeInput(t, in.name, in.content))
 		wantSteps(t, events, []step{{in.name, 0, dispatch.Prepared}})
-		if ev := events[0]; ev.Part.ContentType.Route != route.Video || len(ev.Outputs) != 5 {
+		if ev := events[0]; ev.Part.ContentType.Route != route.Video || len(ev.Outputs) != 6 {
 			t.Errorf("%s: route %s, %d outputs", in.name, ev.Part.ContentType.Route, len(ev.Outputs))
 		}
 	}
@@ -286,8 +289,8 @@ func TestVideoStageTracks(t *testing.T) {
 		name, probe string
 		want        []string
 	}{
-		{"video only", videoProbeVideo, []string{"record plan", "image frame 0", "image frame 1", "image frame 2"}},
-		{"audio only", videoProbeAudio, []string{"record plan", "audio window 0"}},
+		{"video only", videoProbeVideo, []string{"record metadata", "record plan", "image frame 0", "image frame 1", "image frame 2"}},
+		{"audio only", videoProbeAudio, []string{"record metadata", "record plan", "audio window 0"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -331,8 +334,9 @@ func TestVideoFailedRun(t *testing.T) {
 	wantSteps(t, events, []step{{"broken.mkv", 0, dispatch.Prepared}})
 	ev := events[0]
 	if len(ev.Warnings) != 1 || ev.Warnings[0].Tool != "ffmpeg" || ev.Warnings[0].Where != "stream" ||
-		!strings.Contains(ev.Warnings[0].What, "Invalid data found") || len(ev.Outputs) == 0 || ev.Outputs[0].Name != "plan" {
-		t.Errorf("warnings %+v, outputs %q; want ffmpeg's last line, after the plan", ev.Warnings, kinds(ev.Outputs))
+		!strings.Contains(ev.Warnings[0].What, "Invalid data found") || len(ev.Outputs) < 2 || ev.Outputs[0].Name != "metadata" ||
+		ev.Outputs[1].Name != "plan" {
+		t.Errorf("warnings %+v, outputs %q; want ffmpeg's last line, after the metadata record and the plan", ev.Warnings, kinds(ev.Outputs))
 	}
 	wantClean(t, work, path)
 }
@@ -364,8 +368,8 @@ func TestVideoCancel(t *testing.T) {
 			}
 		}
 	}
-	if !errors.Is(last, context.Canceled) || !slices.Equal(outputs, []string{"plan", "frame 0"}) {
-		t.Errorf("last error %v, outputs %q; want context.Canceled after the plan and frame 0", last, outputs)
+	if !errors.Is(last, context.Canceled) || !slices.Equal(outputs, []string{"metadata", "plan", "frame 0"}) {
+		t.Errorf("last error %v, outputs %q; want context.Canceled after the metadata record, the plan, and frame 0", last, outputs)
 	}
 	if elapsed := time.Since(start); elapsed > 15*time.Second {
 		t.Errorf("the dispatch took %v: ffmpeg wasn't stopped", elapsed)
@@ -381,8 +385,8 @@ func TestVideoStageInArchive(t *testing.T) {
 	path := writeInput(t, "clips.zip", zipBytes(t, zent{name: "clips/a.avi", body: aviBytes}))
 	events, work := videoDispatch(t, stages, path)
 	wantSteps(t, events, []step{{"clips/a.avi", 1, dispatch.Prepared}, {"clips.zip", 0, dispatch.Prepared}})
-	if n := len(events[0].Outputs); n != 5 {
-		t.Errorf("the AVI's %d outputs, want its plan, three frames, and a window", n)
+	if n := len(events[0].Outputs); n != 6 {
+		t.Errorf("the AVI's %d outputs, want its metadata record, plan, three frames, and a window", n)
 	}
 	wantClean(t, work, path)
 }

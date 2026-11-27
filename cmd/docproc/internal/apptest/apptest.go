@@ -87,6 +87,5 @@ func Tools(a *app.App, lookup stages.Lookup) {
 var ErrNoTool = errors.New("no such tool")
 
 // NoTools is the lookup of a host with no tool: it finds no program. Given to [Tools], it leaves
-// out every stage that needs a tool, wiring the vision and text stages alone, and runs nothing on
-// the host.
+// out every stage that needs a tool, wiring the text stage alone, and runs nothing on the host.
 func NoTools(string) (string, error) { return "", ErrNoTool }

@@ -14,7 +14,7 @@ tags.
 ## Install
 
 ```sh
-go get github.com/standards-lab/docproc@v0.9.0
+go get github.com/standards-lab/docproc@v0.10.0
 ```
 
 The module's releases are tagged `vX.Y.Z`, and [`CHANGELOG.md`](CHANGELOG.md) states what each
@@ -96,14 +96,15 @@ made fails before the tool starts.
 | `qpdf` | qpdf | 11.0 | document |
 | `pdfdetach` | poppler-utils | 22.02 | document |
 | `pdftotext` | poppler-utils | 22.02 | document |
-| `magick` | ImageMagick | 7.1 | office, picture |
+| `pdfinfo` | poppler-utils | 22.02 | document |
+| `magick` | ImageMagick | 7.1 | office, picture, vision |
 | `soffice` | LibreOffice | 24.2 | office, picture |
 | `7zz` | 7-Zip | 26.06 | archive |
 | `ffmpeg`, `ffprobe` | FFmpeg | 9.0 | audio, video |
 
 7zz's minimum is its mise pin, 26.06: 25.00 fixes CVE-2025-53816 in RAR's decoder, 26.02 fixes
-CVE-2026-14266 in xz's, and 26.03 through 26.06 fix vulnerabilities they don't name. The vision and
-text stages run no tool.
+CVE-2026-14266 in xz's, and 26.03 through 26.06 fix vulnerabilities they don't name. The text stage
+runs no tool.
 
 The container runner runs a tool inside a digest-pinned image through the docker CLI, 20.10 or
 later: `audio.FFmpegImage` for ffmpeg and ffprobe, `picture.LibreOfficeImage` for soffice.

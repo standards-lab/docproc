@@ -1,0 +1,37 @@
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "mp3",
+            "codec_type": "audio",
+            "sample_rate": "16000",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "duration": "6.590937",
+            "disposition": {
+                "attached_pic": 0
+            }
+        }
+    ],
+    "format": {
+        "format_name": "mp3",
+        "duration": "6.590938",
+        "bit_rate": "32988",
+        "tags": {
+            "title": "Chapter 1, utterance 1",
+            "artist": "LibriSpeech 2277",
+            "album": "dev-clean",
+            "date": "2015",
+            "genre": "Speech",
+            "comment": "Zürich harbor",
+            "librispeech_id": "2277-149896-0000"
+        }
+    }
+}

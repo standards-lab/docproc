@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -14,6 +13,8 @@ import (
 	"time"
 
 	"github.com/standards-lab/docproc/audio"
+	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -172,6 +173,7 @@ func (req Request) check(path string) (checked, error) {
 
 type streams struct {
 	audio, video string
+	metadata     metadata.Media
 }
 
 func (s *Streamer) probe(ctx context.Context, path string) (streams, error) {
@@ -179,7 +181,7 @@ func (s *Streamer) probe(ctx context.Context, path string) (streams, error) {
 	err := s.ffprobe.Run(ctx, tool.Invocation{
 		Args: []string{
 			"-v", "error", "-protocol_whitelist", fileProtocols, "-print_format", "json",
-			"-show_entries", "stream=index,codec_type:stream_disposition=attached_pic", path,
+			"-show_entries", cli.FFprobeEntries, path,
 		},
 		Dir:    filepath.Dir(path),
 		Stdout: &stdout,
@@ -187,16 +189,8 @@ func (s *Streamer) probe(ctx context.Context, path string) (streams, error) {
 	if err != nil {
 		return streams{}, fmt.Errorf("media: probe %s: %w", path, err)
 	}
-	var report struct {
-		Streams []struct {
-			Index       int    `json:"index"`
-			CodecType   string `json:"codec_type"`
-			Disposition struct {
-				AttachedPic int `json:"attached_pic"`
-			} `json:"disposition"`
-		} `json:"streams"`
-	}
-	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+	report, err := cli.ParseFFprobe(stdout.Bytes())
+	if err != nil {
 		return streams{}, fmt.Errorf("media: probe %s: ffprobe's report: %w", path, err)
 	}
 	var st streams
@@ -211,19 +205,24 @@ func (s *Streamer) probe(ctx context.Context, path string) (streams, error) {
 	if st.audio == "" && st.video == "" {
 		return streams{}, fmt.Errorf("media: probe %s: %w", path, ErrNoMedia)
 	}
+	st.metadata = report.Metadata()
 	return st, nil
 }
 
-// Event is one event of a file's stream: a window of its audio or a frame of its video. Exactly
-// one of Window and Frame is set; the zero Event, which a stream yields with an error that ends it,
-// has neither.
+// Event is one event of a file's stream: the file's metadata record, a window of its audio, or a
+// frame of its video. Exactly one of Metadata, Window, and Frame is set; the zero Event, which a
+// stream yields with an error that ends it, has none.
 type Event struct {
+	// Metadata is the file's metadata record, for the stream's first event, yielded once the
+	// probe has found its streams, before ffmpeg runs: its container's format, duration, bit rate,
+	// and tags, and each of its streams, as ffprobe read them in the same run that found them.
+	Metadata *metadata.Media
 	// Window is the window, for a window event.
 	Window *Window
 	// Frame is the frame, for a frame event.
 	Frame *Frame
 	// Time is the event's source time, an offset from the source's start: a window's start, its
-	// Span's Start, or a frame's presentation time.
+	// Span's Start, or a frame's presentation time; zero for the metadata record.
 	Time time.Duration
 }
 

@@ -74,7 +74,7 @@ The `Client` has one method per Command and Query, each taking a `context.Contex
   `docinfer.Profile` before any batch, so the consumer registers the matching embedding space (the
   `chunks` task). The `vision` task's prompt and sampling live in a profile.
 - **Extraction** is optional: a caller's `docinfer.Extract`. Bunrei refuses one that marshals past
-  256 KiB, so `queued`, which carries it, stays under the 1 MB `max_payload`.
+  256 KiB, so `queued`, which carries it, fits `max_payload`.
 
 ## State and subjects
 
@@ -135,6 +135,10 @@ bunrei.job.cancelled           {}                                            Bun
   the deliveries are spent or on an error `docinfer.Permanent` reports.
 - **Size.** Every event fits NATS's 1 MB `max_payload`; an output or inference carries its content's
   SHA-256, never the content.
+- **Metadata** outputs are `metadata` records, under `dispatch.MediaOfficeMetadata`,
+  `MediaPDFMetadata`, `MediaMediaMetadata`, or `MediaPictureMetadata`, and `MediaMail` and
+  `MediaOneNote` records; a message's meta adds `in_reply_to` and `references`
+  ([`docs/api.md`](../docs/api.md), "Dispatch").
 
 ## Results and the manifest
 
@@ -155,13 +159,13 @@ type Attempt struct {
 }
 ```
 
-Each event carries the job's sequence, from 1 with no gap, in the CloudEvents `sequence` extension,
-kept contiguous by the append check. A batch is identified by its job and its event's sequence,
-which no attempt reuses, so docinfer numbers none. The consumer checks completeness by holding every
-sequence through `completed`'s and recomputing the manifest over what it committed, every attempt's
-batches, since a redelivery replays content. Counts are per attempt, never summed: a failed attempt
-reports none. The digest covers the chunks' digests, so their text, not their vectors: it proves
-which chunks arrived; a vector's length is checked against the profile's dimensions.
+Each event carries the job's gap-free sequence in the CloudEvents `sequence` extension. A batch is
+identified by its job and its event's sequence, which no attempt reuses, so docinfer numbers none.
+The consumer checks completeness by holding every sequence through `completed`'s and recomputing the
+manifest over what it committed, every attempt's batches, since a redelivery replays content. Counts
+are per attempt, never summed: a failed attempt reports none. The digest covers the chunks' digests,
+so their text, not their vectors: it proves which chunks arrived; a vector's length is checked
+against the profile's dimensions.
 
 ## Open questions
 
@@ -174,7 +178,7 @@ which chunks arrived; a vector's length is checked against the profile's dimensi
 ## Requests to go-messaging
 
 data-intelligence.md queues these asks of go-messaging's NATS provider, sized by the `state` and
-`events` tasks:
+`events` tasks, the `events` task assuming them met:
 
 - A publish on a subject the caller names.
 - A durable consumer filtered by subject.
@@ -188,7 +192,5 @@ data-intelligence.md queues these asks of go-messaging's NATS provider, sized by
 - Assumes one `docinfer.Bounds` per replica, shared by its pipelines, one per profile.
 - Assumes a result batch's cap suits the consumer; the `events` task may tune it.
 - Assumes Bunrei speaks Chat Completions to the gateway, its consumer key the bearer token.
-- Assumes go-messaging gains what "Requests to go-messaging" asks before the `events` task builds on
-  it.
 - Assumes the consumer stores chunks by their identity, so a batch a redelivered job repeats changes
   nothing (the `chunks` task).

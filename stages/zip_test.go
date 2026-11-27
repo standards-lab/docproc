@@ -124,7 +124,7 @@ func archiveDispatcherLimited(t *testing.T, cfg stages.ArchiveConfig, limits dis
 	work := t.TempDir()
 	d, err := dispatch.New(dispatch.Config{
 		Content: dispatch.NewMemoryContent(), Puts: 2,
-		Stages:  dispatch.Stages{route.Archive: zs, route.Vision: stages.NewVisionStage()},
+		Stages:  dispatch.Stages{route.Archive: zs, route.Vision: standinVisionStage(t, pictureSettings{})},
 		Index:   dispatch.NewMemoryIndex(0),
 		Dir:     work,
 		Inspect: cfg.Inspect,

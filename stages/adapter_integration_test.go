@@ -24,6 +24,7 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/media"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/onenote"
 	"github.com/standards-lab/docproc/picture"
@@ -55,7 +56,7 @@ func builtSet(t *testing.T, opts stages.Options) stages.Set {
 
 func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect.Options) *stages.DocumentStage {
 	t.Helper()
-	qt, dt := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec())
+	qt, dt, it := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec()), pinned(t, document.PDFInfoSpec())
 	q, err := document.NewQPDF(document.Config{QPDF: qt})
 	if err != nil {
 		t.Fatal(err)
@@ -64,9 +65,13 @@ func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect
 	if err != nil {
 		t.Fatal(err)
 	}
+	info, err := document.NewInfoReader(document.Config{PDFInfo: it})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := stages.NewDocumentStage(stages.DocumentConfig{
-		Preparer: prep, Version: stages.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true, Concurrency: 2},
-		QPDF: q, PDFDetach: detach, Inspect: opts,
+		Preparer: prep, Version: stages.Versions(gs, qt, dt, it), Request: document.ImagesRequest{Text: true, Concurrency: 2},
+		QPDF: q, PDFDetach: detach, PDFInfo: info, Inspect: opts,
 	})
 	return s
 }
@@ -91,14 +96,14 @@ func TestDocumentStageReal(t *testing.T) {
 	for _, o := range events[0].Outputs {
 		got = append(got, string(o.Kind)+" "+o.Name+" of "+o.Meta["count"])
 	}
-	var want []string
+	want := []string{"record metadata of "}
 	for _, n := range []string{"1", "2", "3", "4", "5", "6"} {
 		want = append(want, "text page "+n+" of 6", "image page "+n+" of 6")
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("outputs:\n got %q\nwant %q", got, want)
 	}
-	if text := string(events[0].Outputs[0].Value); !strings.Contains(text, "The Harbor Survey") {
+	if text := string(events[0].Outputs[1].Value); !strings.Contains(text, "The Harbor Survey") {
 		t.Errorf("page 1's text %.80q", text)
 	}
 }
@@ -119,6 +124,30 @@ func TestOfficeStageReal(t *testing.T) {
 	}
 	if last := events[len(events)-1]; last.Part.Depth != 0 || last.Children != 8 {
 		t.Errorf("the document: %s@%d, %d children", last.Part.Name, last.Part.Depth, last.Children)
+	}
+}
+
+func TestOfficeStageMetadataReal(t *testing.T) {
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
+	events := dispatchAll(t, d, tooltest.Tools(t, "ooxml/fixtures/generated/docx/links.libreoffice.docx"), nil)
+	ev := events[len(events)-1]
+	o := outputNamed(t, ev, dispatch.RecordOutput, "metadata")
+	if o.MediaType != dispatch.MediaOfficeMetadata {
+		t.Errorf("media type %q, want %q", o.MediaType, dispatch.MediaOfficeMetadata)
+	}
+	var rec metadata.Office
+	if err := jsonv2.Unmarshal(o.Value, &rec); err != nil {
+		t.Fatal(err)
+	}
+	want := metadata.Properties{
+		{Key: "Due", Value: "2026-02-01T00:00:00Z"}, {Key: "Project", Value: "docproc"},
+		{Key: "Ratio", Value: 0.25}, {Key: "Reviewed", Value: true}, {Key: "Revision", Value: 7.0},
+	}
+	if !slices.EqualFunc(rec.Custom, want, func(a, b metadata.Property) bool { return a == b }) {
+		t.Errorf("custom %+v, want %+v", rec.Custom, want)
+	}
+	if len(rec.Core) == 0 || rec.Core[0] != (metadata.Property{Key: "created", Value: "2013-12-23T23:15:00Z"}) || len(rec.Extended) == 0 || rec.ConvertedFrom != "" {
+		t.Errorf("record %+v", rec)
 	}
 }
 
@@ -146,12 +175,23 @@ func TestPictureStageReal(t *testing.T) {
 		"shapes.svg": route.SVG, "two-images.heic": route.HEIC, "animated.webp": route.WebP, "animated.avif": route.AVIF,
 	} {
 		events := dispatchAll(t, d, filepath.Join("..", "picture", "testdata", name), func(ev *dispatch.Event) {
-			if ev.Output != nil {
+			if ev.Output != nil && ev.Output.Kind != dispatch.RecordOutput {
 				wantPNG(t, *ev.Output)
 			}
 		})
 		wantSteps(t, events, []step{{name, 0, dispatch.Prepared}})
-		if o := events[0].Outputs; len(o) != 1 || o[0].Name != "picture" || o[0].Meta["from"] != string(kind) {
+		o := events[0].Outputs
+		if kind == route.HEIC {
+			if len(o) == 0 || o[0].Kind != dispatch.RecordOutput || o[0].MediaType != dispatch.MediaPictureMetadata {
+				t.Fatalf("%s: outputs %+v, want its primary image's metadata record first", name, o)
+			}
+			var rec metadata.Picture
+			if err := jsonv2.Unmarshal(o[0].Value, &rec); err != nil || rec.Width != 32 || rec.Height != 48 || rec.Orientation != 1 {
+				t.Errorf("%s: record %+v, %v; want the primary image's, 32x48 upright", name, rec, err)
+			}
+			o = o[1:]
+		}
+		if len(o) != 1 || o[0].Name != "picture" || o[0].Meta["from"] != string(kind) {
 			t.Errorf("%s: outputs %+v", name, o)
 		}
 	}
@@ -291,6 +331,10 @@ func TestOfficeConverted(t *testing.T) {
 		if doc.Meta[dispatch.MetaConvertedFrom] != c.from || !strings.Contains(string(doc.Value), c.text) {
 			t.Errorf("%s: converted from %q, Markdown %q; want %s holding %q", name, doc.Meta[dispatch.MetaConvertedFrom], doc.Value, c.from, c.text)
 		}
+		var rec metadata.Office
+		if err := jsonv2.Unmarshal(outputNamed(t, ev, dispatch.RecordOutput, "metadata").Value, &rec); err != nil || rec.ConvertedFrom != c.from {
+			t.Errorf("%s: the metadata record converted from %q, %v; want %s", name, rec.ConvertedFrom, err, c.from)
+		}
 	}
 	formula := input(t, "x.odf", zipOf(t, "mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"))
 	ev := dispatchAll(t, d, formula, nil)[0]
@@ -336,7 +380,7 @@ func TestOfficeEncrypted(t *testing.T) {
 
 func TestOfficeStage(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{
-		route.Office: testOfficeStage(t), route.Vision: stages.NewVisionStage(), route.VisionConverted: testPictureStage(t),
+		route.Office: testOfficeStage(t), route.Vision: testVisionStage(t), route.VisionConverted: testPictureStage(t),
 	}, dispatch.NewMemoryIndex(0))
 	events := dispatchAll(t, d, filepath.Join(officeFixtures, "media.libreoffice.docx"), nil)
 	const (
@@ -377,7 +421,7 @@ func TestOfficeStage(t *testing.T) {
 
 func TestEmailStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
-	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: stages.NewVisionStage()}, index)
+	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: testVisionStage(t)}, index)
 	const (
 		moth = "moth.png"
 		csv  = "отчёт.csv"
@@ -443,7 +487,7 @@ func TestEmailStage(t *testing.T) {
 
 func TestEmailResume(t *testing.T) {
 	stage := testEmailStage(t)
-	stages := dispatch.Stages{route.Nested: stage, route.Vision: stages.NewVisionStage()}
+	stages := dispatch.Stages{route.Nested: stage, route.Vision: testVisionStage(t)}
 	path := filepath.Join(mailFixtures(t), "generated", "pst", "mailbox.pst")
 	whole := dispatchAll(t, newDispatcher(t, stages, dispatch.NewMemoryIndex(0)), path, nil)
 	wholeStore := whole[len(whole)-1]
@@ -559,6 +603,23 @@ func TestEmailEmbedded(t *testing.T) {
 	}
 }
 
+func TestEmailThreadingReal(t *testing.T) {
+	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
+	events := dispatchAll(t, d, filepath.Join(mailFixtures(t), "mime", "eml", "09-threading.eml"), nil)
+	m := outputNamed(t, events[0], dispatch.RecordOutput, "message").Meta
+	if m[dispatch.MetaInReplyTo] != "<table-1@example.org>" || m[dispatch.MetaReferences] != "<notes-1@example.org> <table-1@example.org>" {
+		t.Errorf("the reply's meta %v", m)
+	}
+	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "eml", "01-plain.eml"), nil)
+	m = outputNamed(t, events[0], dispatch.RecordOutput, "message").Meta
+	if _, ok := m[dispatch.MetaInReplyTo]; ok {
+		t.Errorf("the first message's meta %v, want no in_reply_to", m)
+	}
+	if _, ok := m[dispatch.MetaReferences]; ok {
+		t.Errorf("the first message's meta %v, want no references", m)
+	}
+}
+
 func TestEmailConversations(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
 	generated := filepath.Join(mailFixtures(t), "generated")
@@ -633,7 +694,7 @@ func TestEmailConversations(t *testing.T) {
 func TestOneNoteStage(t *testing.T) {
 	index := dispatch.NewMemoryIndex(0)
 	d := newDispatcher(t, dispatch.Stages{
-		route.OneNote: testOnenoteStage(t), route.Vision: stages.NewVisionStage(), route.VisionConverted: testPictureStage(t),
+		route.OneNote: testOnenoteStage(t), route.Vision: testVisionStage(t), route.VisionConverted: testPictureStage(t),
 	}, index)
 	const (
 		page  = "page 5eaf76b1-8dde-8745-a8a7-1a9865cc478a"
@@ -724,8 +785,23 @@ func testOfficeStage(t *testing.T) *stages.OfficeStage {
 func testPictureStage(t *testing.T) *stages.PictureStage {
 	t.Helper()
 	pc, lo, mg := hostPictures(t)
-	s := stages.NewPictureStage(stages.PictureConfig{Converter: pc, Version: stages.Versions(mg, lo)})
+	s := stages.NewPictureStage(stages.PictureConfig{Converter: pc, EXIF: hostEXIF(t, mg), Version: stages.Versions(mg, lo)})
 	return s
+}
+
+func hostEXIF(t *testing.T, mg *tool.Tool) *picture.EXIFReader {
+	t.Helper()
+	r, err := picture.NewEXIFReader(picture.Config{Magick: mg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func testVisionStage(t *testing.T) *stages.VisionStage {
+	t.Helper()
+	mg := pinned(t, picture.MagickSpec())
+	return stages.NewVisionStage(stages.VisionConfig{EXIF: hostEXIF(t, mg), Version: stages.Versions(mg)})
 }
 
 func testEmailStage(t *testing.T) *stages.EmailStage {

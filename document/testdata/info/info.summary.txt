@@ -1,0 +1,22 @@
+Title:           Harbor survey, Zürich
+Subject:         Soundings
+Keywords:        harbor, survey
+Author:          Ada Lovelace
+Creator:         generate.go
+Producer:        docproc fixtures
+CreationDate:    Sun Mar 15 00:00:00 2026 EDT
+ModDate:         Wed Apr  1 08:00:00 2026 EDT
+Custom Metadata: yes
+Metadata Stream: yes
+Tagged:          no
+UserProperties:  no
+Suspects:        no
+Form:            none
+JavaScript:      no
+Pages:           1
+Encrypted:       no
+Page size:       612 x 792 pts (letter)
+Page rot:        0
+File size:       2572 bytes
+Optimized:       no
+PDF version:     1.6

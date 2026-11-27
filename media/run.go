@@ -29,8 +29,10 @@ import (
 //
 // Ranging over it validates path and req, an invalid one an error wrapping ErrRequest. It probes
 // the file through ffprobe for its first audio stream and first video stream, an attached picture
-// not counted, and refuses one with neither, with ErrNoMedia, before ffmpeg runs. Then one ffmpeg
-// run reads the file, allowed only the file protocol, and writes:
+// not counted, and refuses one with neither, with ErrNoMedia, before ffmpeg runs. The same probe
+// reads the file's metadata record, a metadata.Media of its container and streams, which the
+// stream yields first, as an Event whose Metadata is set. Then one ffmpeg run reads the file,
+// allowed only the file protocol, and writes:
 //
 //   - its audio stream, resampled to 16 kHz, audio.SampleRate, downmixed to mono, as 16-bit PCM on
 //     its stdout, as audio's Splitter decodes it. audio's stream cutter, an audio.Cutter of req's
@@ -78,6 +80,10 @@ func (s *Streamer) Events(ctx context.Context, path string, req Request) iter.Se
 				err = cerr
 			}
 			yield(Event{}, err)
+			return
+		}
+		md := st.metadata
+		if !yield(Event{Metadata: &md}, nil) {
 			return
 		}
 		s.run(ctx, c, st, yield)

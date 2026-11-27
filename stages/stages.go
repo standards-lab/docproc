@@ -42,7 +42,7 @@ type Options struct {
 	// is the one a 7-Zip listing's flags are weighed under, as inspect.CheckListing weighs them.
 	Inspect inspect.Options
 	// Timeout is a unit run's bound, on every run of a tool whose runs are units: gs, qpdf,
-	// pdfdetach, pdftotext, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.
+	// pdfdetach, pdftotext, pdfinfo, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.
 	Timeout time.Duration
 	// Idle is a stream run's bound, on every run of a tool whose runs stream: ffmpeg,
 	// docproc-mail, docproc-onenote, and 7zz, each ended once it writes nothing for this long.
@@ -63,8 +63,8 @@ type Options struct {
 	// Picture is the request every converted picture is converted under, its MetafileScale and
 	// Density; its Dir, Path, Kind, and Stem are each part's own.
 	Picture picture.Request
-	// Magick are ImageMagick's -limit values, which every magick run carries, the picture and
-	// office stages' alike. The zero value passes none.
+	// Magick are ImageMagick's -limit values, which every magick run carries, the picture,
+	// vision, and office stages' alike. The zero value passes none.
 	Magick picture.Limits
 	// Audio is the request every audio part's windows are cut under; its Dir is each part's own.
 	Audio audio.Request
@@ -127,6 +127,7 @@ func specs() []spec {
 		{Spec: document.QPDFSpec()},
 		{Spec: document.PDFDetachSpec()},
 		{Spec: document.PDFToTextSpec()},
+		{Spec: document.PDFInfoSpec()},
 		{Spec: picture.MagickSpec()},
 		{Spec: picture.LibreOfficeSpec(), image: picture.LibreOfficeImage},
 		{Spec: office.OfficeSpec()},
@@ -147,10 +148,10 @@ type stage struct {
 }
 
 var table = []stage{
-	{route.Document, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}, buildDocument},
+	{route.Document, []string{"gs", "qpdf", "pdfdetach", "pdftotext", "pdfinfo"}, buildDocument},
 	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, buildOffice},
 	{route.VisionConverted, []string{"magick", "soffice"}, buildPicture},
-	{route.Vision, nil, func(context.Context, tools, Options) (dispatch.Stage, error) { return newVisionStage(), nil }},
+	{route.Vision, []string{"magick"}, buildVision},
 	{route.Nested, []string{"docproc-mail"}, buildEmail},
 	{route.OneNote, []string{"docproc-onenote"}, buildOneNote},
 	{route.Archive, []string{"7zz"}, buildArchive},
@@ -291,8 +292,8 @@ func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string,
 }
 
 func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
-	gs, qt, dt, tt := t["gs"], t["qpdf"], t["pdfdetach"], t["pdftotext"]
-	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt, PDFToText: tt}
+	gs, qt, dt, tt, it := t["gs"], t["qpdf"], t["pdfdetach"], t["pdftotext"], t["pdfinfo"]
+	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt, PDFToText: tt, PDFInfo: it}
 	render, err := document.NewGhostscript(cfg)
 	if err != nil {
 		return nil, err
@@ -309,11 +310,15 @@ func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, er
 	if err != nil {
 		return nil, err
 	}
+	info, err := document.NewInfoReader(cfg)
+	if err != nil {
+		return nil, err
+	}
 	req := opts.Document
 	req.Concurrency = opts.concurrency()
 	return newDocumentStage(documentConfig{
-		Preparer: document.NewPreparer(cfg), QPDF: q, PDFDetach: detach,
-		Version: versions(gs, qt, dt, tt), Request: req, Inspect: opts.Inspect, Memory: opts.Memory,
+		Preparer: document.NewPreparer(cfg), QPDF: q, PDFDetach: detach, PDFInfo: info,
+		Version: versions(gs, qt, dt, tt, it), Request: req, Inspect: opts.Inspect, Memory: opts.Memory,
 	}), nil
 }
 
@@ -342,9 +347,22 @@ func buildPicture(ctx context.Context, t tools, opts Options) (dispatch.Stage, e
 	if err != nil {
 		return nil, err
 	}
+	r, err := picture.NewEXIFReader(picture.Config{Magick: t["magick"], Limits: opts.Magick})
+	if err != nil {
+		return nil, err
+	}
 	return newPictureStage(pictureConfig{
-		Converter: p, Version: versions(t["magick"], t["soffice"]), Request: opts.Picture, Memory: opts.Memory,
+		Converter: p, EXIF: r, Version: versions(t["magick"], t["soffice"]), Request: opts.Picture, Memory: opts.Memory,
 	}), nil
+}
+
+func buildVision(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
+	mg := t["magick"]
+	r, err := picture.NewEXIFReader(picture.Config{Magick: mg, Limits: opts.Magick})
+	if err != nil {
+		return nil, err
+	}
+	return newVisionStage(visionConfig{EXIF: r, Version: versions(mg), Memory: opts.Memory}), nil
 }
 
 func buildEmail(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {

@@ -1,11 +1,11 @@
-// Package media reads a file's audio and video through one ffmpeg run and streams them, as they
-// are complete, as the inputs a model takes: windows of its audio, cut by audio's stream cutter,
-// and frames of its video, taken at its scene changes and at least every so often. It provides
+// Package media reads a file's audio and video through one ffmpeg run and streams them, as they are
+// complete, as the inputs a model takes: windows of its audio, cut by audio's stream cutter, and
+// frames of its video, taken at its scene changes and at least every so often. It provides
 // pre-inference preparation only; a layer above sends the windows and frames to a model. The
-// package builds on every 64-bit platform, on the standard library and this module's audio, route,
-// and tool packages. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the
-// caller built through either runner, typically from audio.FFmpegSpec and audio.FFprobeSpec,
-// minimum 9.0, the container runner running them in audio.FFmpegImage.
+// package builds on every 64-bit platform, on the standard library and this module's audio,
+// metadata, route, and tool packages. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a
+// tool.Tool the caller built through either runner, typically from audio.FFmpegSpec and
+// audio.FFprobeSpec, minimum 9.0, the container runner running them in audio.FFmpegImage.
 //
 // A Streamer, built over a Config of the two Tools, both required, takes a file and a Request: the
 // media directory its windows and frames are written into and left, and the settings of its
@@ -15,8 +15,10 @@
 //
 // Events probes the file through ffprobe for its first audio stream and its first video stream,
 // an attached picture not counted, refusing a file with neither, with ErrNoMedia, before ffmpeg
-// runs. Then one ffmpeg run reads the file, and the stream yields an Event for each window and
-// each frame as soon as it is complete, a lazy iter.Seq2 of Event:
+// runs; the same probe reads the file's metadata record, a metadata.Media of its container's
+// format, duration, bit rate, and tags and each stream's, which the stream yields first. Then one
+// ffmpeg run reads the file, and the stream yields an Event for each window and each frame as soon
+// as it is complete, a lazy iter.Seq2 of Event:
 //
 //   - The audio stream comes to the package as 16 kHz mono 16-bit PCM on ffmpeg's stdout, as
 //     audio's Splitter decodes it, and audio's stream cutter, an audio.Cutter, cuts it into
@@ -55,8 +57,8 @@
 //
 //   - [Config] is the Tools a Streamer is built over: ffmpeg and ffprobe.
 //   - [Streamer] reads a file through one ffmpeg run; [NewStreamer] builds one over a Config.
-//   - [Streamer.Events] streams a file's windows and frames, as a [Request] says, each an
-//     [Event].
+//   - [Streamer.Events] streams a file's metadata record, windows, and frames, as a [Request]
+//     says, each an [Event].
 //   - [Window] is a window event's window of the audio; [Frame] a frame event's frame of the
 //     video, taken for its [Reason]: [ReasonFirst], [ReasonScene], or [ReasonInterval].
 //   - [Request.Plan] returns a request's plan record, a [VideoPlan] of its [VideoWindowing] and

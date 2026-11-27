@@ -1,6 +1,7 @@
-// Package picture converts pictures to PNG for a model's vision. It provides pre-inference
-// preparation only; a layer above sends what it returns to a model. The package builds on every
-// 64-bit platform, on the standard library and this module's tool and route packages; every program
+// Package picture converts pictures to PNG for a model's vision, and reads a picture's EXIF
+// metadata. It provides pre-inference preparation only; a layer above sends what it returns to a
+// model. The package builds on every 64-bit platform, on the standard library and this module's
+// tool, route, and metadata packages; every program
 // it runs is a tool.Tool the caller built: ImageMagick's magick, MagickSpec declaring it, minimum
 // 7.1, and LibreOffice's soffice, LibreOfficeSpec declaring it, minimum 24.2, which the container
 // runner runs in LibreOfficeImage under its full lockdown.
@@ -40,6 +41,14 @@
 // caller's working directory, which holds a copy of each input, soffice's user profile, started
 // with an optional registry, its output, and, under the exec runner, its HOME, so no run leaves
 // anything elsewhere but in its TMPDIR, which the exec runner makes for the run and removes.
+//
+// An EXIFReader, built over a Config's Magick and Limits alone, reads the EXIF a picture's first
+// image holds into a metadata.Picture, the record the stages package's picture and vision stages
+// yield: its capture time in UTC, its camera, its orientation, its size, its GPS position in
+// decimal degrees, and every EXIF property as magick prints it. One magick run reads the picture
+// from its standard input, through its kind's coder, and writes nothing, so the picture is never
+// changed; a JPEG, PNG, TIFF, HEIC, WebP, or AVIF is read, and a GIF, BMP, SVG, EMF, or WMF, which
+// holds no EXIF magick reads, runs nothing.
 //
 // ConvertPages converts one picture, read as its Request's Kind, writing its PNGs into the working
 // directory named by the Request's Stem: a TIFF's every page, named by the stem, -page, its number
@@ -85,4 +94,8 @@
 //     limit, an empty working directory, a kind it doesn't convert, a stem that isn't one, two
 //     PNGs of one stem, or a LibreOfficeRun missing what it needs.
 //   - [ErrNoReader] is the cause of a HEIC's, WebP's, or AVIF's refusal without magick's reader.
+//   - [EXIFReader] reads a picture's EXIF metadata through magick.
+//   - [NewEXIFReader] builds an EXIFReader over a Config's Magick and Limits.
+//   - [EXIFReader.Metadata] returns a picture's EXIF metadata as a metadata.Picture, or nil.
+//   - [ErrMetadata] is the cause of magick EXIF output that isn't read.
 package picture

@@ -1,0 +1,17 @@
+48 32
+exif:DateTimeOriginal=2024:05:06 07:08:09
+exif:ExifOffset=122
+exif:GPSAltitude=585/10
+exif:GPSAltitudeRef=.
+exif:GPSInfo=204
+exif:GPSLatitude=33/1,51/1,3564/100
+exif:GPSLatitudeRef=S
+exif:GPSLongitude=151/1,12/1,4020/100
+exif:GPSLongitudeRef=E
+exif:ImageDescription=Harbor, Z..rich
+exif:Make=Docproc
+exif:Model=Fixture One
+exif:OffsetTimeOriginal=+02:00
+exif:Orientation=6
+exif:PixelXDimension=48
+exif:PixelYDimension=32

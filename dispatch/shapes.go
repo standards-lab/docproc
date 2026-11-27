@@ -75,7 +75,8 @@ type Row struct {
 }
 
 // The Meta keys of an [Output]'s Meta: every key a stage of package stages sets is declared here,
-// each value a decimal string, a time in seconds as strconv's shortest decimal of them, or a name.
+// each value a decimal string, a time in seconds as strconv's shortest decimal of them, a name, or a
+// message's Message-IDs as stored.
 const (
 	// MetaPage is a page's number, from 1: the document stage's text and image of a PDF's page,
 	// and the picture stage's PNG of a TIFF's page.
@@ -167,6 +168,12 @@ const (
 	MetaSubject = "subject"
 	// MetaMessageID is a message's Message-ID, when it has one: the email stage's messages.
 	MetaMessageID = "message_id"
+	// MetaInReplyTo is a message's In-Reply-To, the Message-ID of the message it replies to, as
+	// stored, when it has one: the email stage's messages.
+	MetaInReplyTo = "in_reply_to"
+	// MetaReferences is a message's References, the Message-IDs of its thread separated by spaces,
+	// as stored, when it has them: the email stage's messages.
+	MetaReferences = "references"
 	// MetaTopic is a conversation's topic: the email stage's conversations.
 	MetaTopic = "topic"
 	// MetaMissed is whether a conversation was missed, "true" or "false": the email stage's
@@ -208,4 +215,20 @@ const (
 	// Skype for Business conversation or missed conversation as email's Message.Conversation views
 	// a docproc-mail message line, under version 1 of its shape.
 	MediaMailConversation = "application/vnd.docproc.mail-conversation+json; version=1"
+	// MediaOfficeMetadata is the office stage's metadata record, one JSON value: an office
+	// package's core, extended, and custom properties and the format it was converted from, as
+	// package metadata's Office declares it, under version 1 of its shape.
+	MediaOfficeMetadata = "application/vnd.docproc.office-metadata+json; version=1"
+	// MediaPDFMetadata is the document stage's metadata record, one JSON value: a PDF's
+	// information dictionary, its XMP metadata, and its PDF version, as package metadata's PDF
+	// declares it, under version 1 of its shape.
+	MediaPDFMetadata = "application/vnd.docproc.pdf-metadata+json; version=1"
+	// MediaMediaMetadata is the audio and video stages' metadata record, one JSON value: an audio
+	// or video file's container format, duration, bit rate, and tags, and each stream's type,
+	// codec, and tags, as package metadata's Media declares it, under version 1 of its shape.
+	MediaMediaMetadata = "application/vnd.docproc.media-metadata+json; version=1"
+	// MediaPictureMetadata is the picture and vision stages' metadata record, one JSON value: a
+	// picture's EXIF capture time, camera, orientation, pixel size, and GPS position, and every
+	// EXIF key and value, as package metadata's Picture declares it, under version 1 of its shape.
+	MediaPictureMetadata = "application/vnd.docproc.picture-metadata+json; version=1"
 )

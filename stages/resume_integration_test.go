@@ -16,7 +16,6 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/email"
 	"github.com/standards-lab/docproc/route"
-	"github.com/standards-lab/docproc/stages"
 )
 
 type storeCaller struct {
@@ -84,7 +83,7 @@ func (c *crashing) Release(ctx context.Context, key dispatch.Key, token string) 
 }
 
 func TestStoreCrashResume(t *testing.T) {
-	stages := dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: stages.NewVisionStage()}
+	stages := dispatch.Stages{route.Nested: testEmailStage(t), route.Vision: testVisionStage(t)}
 	for _, rel := range []string{"generated/pst/mailbox.pst", "mime/nine.mboxrd"} {
 		path := filepath.Join(mailFixtures(t), rel)
 		t.Run(filepath.Base(rel), func(t *testing.T) {

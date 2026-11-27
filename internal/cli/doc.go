@@ -59,6 +59,9 @@
 //   - [Spool] copies an input into a file in a working directory, for a tool that reads a path.
 //   - [LineWriter] splits a program's stderr into lines as it arrives, keeping the last, each at
 //     most [MaxLine], for audio's and media's FFmpeg runs.
+//   - [FFprobeEntries] is the -show_entries audio's and media's ffprobe runs ask for, and
+//     [ParseFFprobe] decodes the report they print, an [FFprobeReport] of [FFprobeStream]s, whose
+//     [FFprobeReport.Metadata] is the file's metadata.Media record.
 //   - [WriteTemp] writes bytes to a hidden temporary file in a directory, for a file renamed into
 //     place once whole, as audio's windows and media's windows and frames are.
 //   - [UTC] is the decoding option that makes every time a reader decodes UTC.
