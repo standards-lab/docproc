@@ -1,0 +1,49 @@
+{
+    "programs": [
+
+    ],
+    "stream_groups": [
+
+    ],
+    "streams": [
+        {
+            "index": 0,
+            "codec_name": "mpeg4",
+            "codec_type": "video",
+            "width": 320,
+            "height": 180,
+            "r_frame_rate": "10/1",
+            "avg_frame_rate": "10/1",
+            "disposition": {
+                "attached_pic": 0
+            },
+            "tags": {
+                "ENCODER": "Lavc mpeg4",
+                "DURATION": "00:00:50.000000000"
+            }
+        },
+        {
+            "index": 1,
+            "codec_name": "flac",
+            "codec_type": "audio",
+            "sample_rate": "16000",
+            "channels": 1,
+            "r_frame_rate": "0/0",
+            "avg_frame_rate": "0/0",
+            "disposition": {
+                "attached_pic": 0
+            },
+            "tags": {
+                "DURATION": "00:00:49.820000000"
+            }
+        }
+    ],
+    "format": {
+        "format_name": "matroska,webm",
+        "duration": "50.000000",
+        "bit_rate": "135819",
+        "tags": {
+            "encoder": "Lavf"
+        }
+    }
+}

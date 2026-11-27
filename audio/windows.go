@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/tool"
 )
 
@@ -42,6 +43,9 @@ type WindowFile struct {
 	SHA256 string
 	// Samples is the number of samples the WAV holds, at SampleRate.
 	Samples int
+	// Metadata is the source's metadata record, Source's Metadata from the probe, set on the first
+	// window alone, so a caller has it before the decode ends.
+	Metadata *metadata.Media
 	// Plan is the source's whole plan, set on the last window alone, the one cut at the end,
 	// CutEnd: the decode has ended by then, so the plan's Duration is the samples it gave.
 	Plan *Plan
@@ -67,7 +71,8 @@ func (w WindowFile) Duration() time.Duration {
 // doesn't mount. Over the committed speech fixtures, the windows are v0.9.0's under its tracker
 // detector, byte for byte.
 //
-// Windows are yielded in plan order, each as soon as it is cut. At most req.Concurrency windows
+// Windows are yielded in plan order, each as soon as it is cut. The first carries the source's
+// metadata record, Source's Metadata from the probe. At most req.Concurrency windows
 // are held at once, from its cut until the consumer's loop body returns from it: while that many
 // are held, the decode waits. The last window, cut at the end, carries the source's Plan: its
 // Duration the samples the stream decoded to, which the windows cover, with ffprobe's duration
@@ -197,6 +202,10 @@ func (s *Splitter) windows(ctx context.Context, path string, req Request, src So
 			return
 		}
 		w.file.Path = name
+		if w.file.Index == 0 {
+			md := src.Metadata
+			w.file.Metadata = &md
+		}
 		if !yield(w.file, nil) {
 			return
 		}

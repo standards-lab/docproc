@@ -3,12 +3,15 @@
 package audio_test
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/standards-lab/docproc/audio"
+	"github.com/standards-lab/docproc/internal/cli"
+	"github.com/standards-lab/docproc/metadata"
 )
 
 func speechGaps() (gaps []audio.Span, duration time.Duration) {
@@ -31,8 +34,14 @@ func TestSpeech(t *testing.T) {
 			got[name] = plan
 			src := plan.Source
 			t.Logf("recorded: source %v, stream %d, %s, %d Hz, %d channel(s)", src.Duration, src.Stream, src.Codec, src.SampleRate, src.Channels)
-			want := audio.Source{Duration: duration, Stream: 0, Codec: "flac", SampleRate: 16000, Channels: 1}
-			if src != want || plan.Duration != duration || plan.Probed != 0 {
+			want := audio.Source{
+				Duration: duration, Stream: 0, Codec: "flac", SampleRate: 16000, Channels: 1,
+				Metadata: metadata.Media{
+					Format: "flac", Duration: duration.Seconds(), BitRate: 122907,
+					Streams: []metadata.MediaStream{{Index: 0, Type: "audio", Codec: "flac", SampleRate: 16000, Channels: 1}},
+				},
+			}
+			if !reflect.DeepEqual(src, want) || plan.Duration != duration || plan.Probed != 0 {
 				t.Errorf("source %+v, decoded %v, probed %v; want %+v, %v decoded, none probed", src, plan.Duration, plan.Probed, want, duration)
 			}
 			var silences []audio.Span
@@ -91,5 +100,34 @@ func logPlan(t *testing.T, plan audio.Plan) {
 	}
 	for i, s := range plan.Seams {
 		t.Logf("recorded: seam %d: %v", i, s)
+	}
+}
+
+func TestProbeGoldens(t *testing.T) {
+	for _, c := range []struct{ fixture, golden string }{
+		{"speech-tagged.mp3", "speech-tagged.ffprobe.json"},
+		{"speech-scenes.mkv", "speech-scenes.ffprobe.json"},
+	} {
+		golden, err := os.ReadFile(filepath.Join("testdata", c.golden))
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := cli.ParseFFprobe(golden)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := report.Metadata()
+		for name, runner := range speechRunners {
+			t.Run(c.fixture+"/"+name, func(t *testing.T) {
+				src, err := runner(t).Probe(t.Context(), filepath.Join("testdata", c.fixture))
+				if err != nil {
+					t.Fatal(err)
+				}
+				t.Logf("recorded: %s: %+v", c.fixture, src.Metadata)
+				if !reflect.DeepEqual(src.Metadata, want) || len(want.Tags) == 0 {
+					t.Errorf("metadata\n %+v\nwant the golden's\n %+v, tagged", src.Metadata, want)
+				}
+			})
+		}
 	}
 }

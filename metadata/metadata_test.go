@@ -151,3 +151,75 @@ func TestPDFMediaType(t *testing.T) {
 		t.Errorf("media type %q", got)
 	}
 }
+
+func TestMediaJSON(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name   string
+		record metadata.Media
+		want   string
+	}{
+		{
+			"every field",
+			metadata.Media{
+				Format: "matroska,webm", Duration: 50.5, BitRate: 135819,
+				Tags: metadata.Properties{{Key: "title", Value: "Zürich"}, {Key: "encoder", Value: "Lavf"}},
+				Streams: []metadata.MediaStream{
+					{
+						Index: 0, Type: "video", Codec: "h264", Width: 1920, Height: 1080, FrameRate: 25,
+						Tags: metadata.Properties{{Key: "language", Value: "und"}},
+					},
+					{Index: 1, Type: "video", Codec: "mjpeg", Width: 600, Height: 600, FrameRate: 90000, AttachedPicture: true},
+					{Index: 2, Type: "audio", Codec: "flac", SampleRate: 16000, Channels: 1},
+					{Index: 3, Type: "data"},
+				},
+			},
+			`{"format":"matroska,webm","duration":50.5,"bit_rate":135819,"tags":{"title":"Zürich","encoder":"Lavf"},` +
+				`"streams":[{"index":0,"type":"video","codec":"h264","width":1920,"height":1080,"frame_rate":25,` +
+				`"tags":{"language":"und"}},` +
+				`{"index":1,"type":"video","codec":"mjpeg","width":600,"height":600,"frame_rate":90000,"attached_picture":true},` +
+				`{"index":2,"type":"audio","codec":"flac","sample_rate":16000,"channels":1},` +
+				`{"index":3,"type":"data"}]}`,
+		},
+		{
+			"the container alone",
+			metadata.Media{Format: "mp3", Streams: []metadata.MediaStream{{Index: 0, Type: "audio"}}},
+			`{"format":"mp3","streams":[{"index":0,"type":"audio"}]}`,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := json.Marshal(c.record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != c.want {
+				t.Errorf("Marshal =\n %s\nwant\n %s", got, c.want)
+			}
+			gotV2, err := jsonv2.Marshal(c.record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fromV2, back, backV2 metadata.Media
+			if err := json.Unmarshal(gotV2, &fromV2); err != nil || !reflect.DeepEqual(fromV2, c.record) {
+				t.Errorf("encoding/json/v2: Marshal = %s, which reads back as %+v, %v", gotV2, fromV2, err)
+			}
+			if err := json.Unmarshal([]byte(c.want), &back); err != nil {
+				t.Fatal(err)
+			}
+			if err := jsonv2.Unmarshal([]byte(c.want), &backV2); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(back, c.record) || !reflect.DeepEqual(backV2, c.record) {
+				t.Errorf("Unmarshal =\n %+v\n %+v\nwant\n %+v", back, backV2, c.record)
+			}
+		})
+	}
+}
+
+func TestMediaMediaType(t *testing.T) {
+	t.Parallel()
+	if got := (metadata.Media{}).MediaType(); got != dispatch.MediaMediaMetadata {
+		t.Errorf("media type %q", got)
+	}
+}

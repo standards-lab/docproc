@@ -13,6 +13,8 @@ import (
 	"github.com/standards-lab/docproc/media"
 )
 
+const videoVersion = "2"
+
 type videoConfig struct {
 	Streamer *media.Streamer
 	Version  string
@@ -41,8 +43,9 @@ func newVideoStage(cfg videoConfig) *videoStage {
 	return &videoStage{
 		streamer: cfg.Streamer, request: req, plan: plan, memory: cfg.Memory,
 		id: identity("video", cfg.Version, struct {
+			Stage   string          `json:"stage"`
 			Request media.VideoPlan `json:"request"`
-		}{plan}),
+		}{videoVersion, plan}),
 	}
 }
 
@@ -85,6 +88,11 @@ func (s *videoStage) Prepare(ctx context.Context, p dispatch.Part, dir string) i
 			}
 			var o dispatch.Output
 			switch {
+			case ev.Metadata != nil:
+				if !emitMetadata(*ev.Metadata, "video stage", yield) {
+					return
+				}
+				continue
 			case ev.Frame != nil:
 				o = frameOutput(ev)
 			case ev.Window != nil:

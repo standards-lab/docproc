@@ -40,6 +40,21 @@ tool under `tools/` keeps its own.
   `document.Config.PDFInfo`, declared by `document.PDFInfoSpec`, minimum
   `document.PDFInfoMinimum`, 22.02; `InfoReader.Metadata` reads a PDF's metadata into a
   `metadata.PDF`, and `document.ErrXMP` is the cause of a packet that doesn't parse.
+- `metadata.Media`, under `dispatch.MediaMediaMetadata`,
+  `application/vnd.docproc.media-metadata+json; version=1`: an audio or video file's container
+  format, duration in seconds, bit rate, and tags, kept as stored, in order; and each of its
+  streams as a `metadata.MediaStream`: its index, type, codec, and tags, an audio stream's sample
+  rate and channels, and a video stream's width, height, frame rate, and whether it is an attached
+  picture.
+- The audio and video stages yield a media metadata record, a record output named `metadata`, for
+  every part whose probe finds a stream they decode: the audio stage before its first window, the
+  video stage first, before its plan. Its event carries its SHA-256, its content in the content
+  store. `dispatch.Version` stays "1", grown by the media type; the run directory's schema stays
+  "2"; and the audio and video plan records keep their shapes.
+- `audio.Source.Metadata` is the source's metadata record, read by the same ffprobe run that finds
+  its audio stream, which `audio.Splitter.Probe` returns and `audio.WindowFile.Metadata` carries on
+  the first window; `media.Event.Metadata` is a file's, which `media.Streamer.Events` yields first,
+  before ffmpeg runs.
 
 ### Changed
 
@@ -55,6 +70,11 @@ tool under `tools/` keeps its own.
   runs.
 - The document stage's identity hashes its own version, 2, so an index prepares the document
   route's PDFs again, to yield their metadata records.
+- The audio and video stages' identities each hash the stage's own version, 2, so an index
+  prepares the audio and video routes' parts again, to yield their media metadata records.
+- audio's and media's ffprobe runs ask for the container's format name, bit rate, and tags and
+  each stream's codec, sample rate, channels, frame size, frame rates, tags, and attached-picture
+  disposition beside what they asked for before.
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned

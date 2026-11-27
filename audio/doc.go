@@ -2,21 +2,23 @@
 // enough for the model to take whole, each ending in a silence so no cut splits a word. It provides
 // pre-inference preparation only; a layer above sends the windows to a model and joins their
 // transcripts. The package builds on every 64-bit platform, on the standard library and this
-// module's tool package. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a tool.Tool the
-// caller built through either runner: FFmpegSpec and FFprobeSpec declare them, minimum 9.0, and the
-// container runner runs them in FFmpegImage.
+// module's metadata and tool packages. The programs it runs are FFmpeg's ffmpeg and ffprobe, each a
+// tool.Tool the caller built through either runner: FFmpegSpec and FFprobeSpec declare them,
+// minimum 9.0, and the container runner runs them in FFmpegImage.
 //
 // A Splitter, built over a Config of the two Tools, both required, cuts a source's windows with one
 // decode. Splitter.Windows probes the source through ffprobe for its first audio stream and its
-// estimated duration, refusing a source with none, with ErrNoAudio, before ffmpeg runs. Then one
-// ffmpeg run decodes the stream to 16 kHz, SampleRate, mono 16-bit PCM, and a Cutter, the stream
-// cutter, cuts it into windows as it arrives, each written into the request's media directory as
-// WAV with the canonical 44-byte header of ffmpeg's -bitexact WAV, named by the SHA-256 of its
-// bytes. The same window is the same file through either runner, and over the committed speech
-// fixtures the windows are v0.9.0's under its tracker detector, byte for byte. A Request names the
-// media directory and how many windows are held at once, at least one; the decode waits while that
-// many wait for the consumer. A loop that stops early, or a context that ends, stops the run, and
-// the media directory keeps only the windows the stream yielded.
+// estimated duration, and, from the same run, the source's metadata record, a metadata.Media of its
+// container and streams, which the first window carries; it refuses a source with no audio stream,
+// with ErrNoAudio, before ffmpeg runs. Then one ffmpeg run decodes the stream to 16 kHz,
+// SampleRate, mono 16-bit PCM, and a Cutter, the stream cutter, cuts it into windows as it arrives,
+// each written into the request's media directory as WAV with the canonical 44-byte header of
+// ffmpeg's -bitexact WAV, named by the SHA-256 of its bytes. The same window is the same file
+// through either runner, and over the committed speech fixtures the windows are v0.9.0's under its
+// tracker detector, byte for byte. A Request names the media directory and how many windows are
+// held at once, at least one; the decode waits while that many wait for the consumer. A loop that
+// stops early, or a context that ends, stops the run, and the media directory keeps only the
+// windows the stream yielded.
 //
 // A Cutter feeds the PCM to a Tracker, which finds its silences, and gives them and the stream's
 // position to a Planner, which fixes each window once the stream has passed its limit or ended,
@@ -54,9 +56,10 @@
 //   - [FFmpegImage] is the default image ffmpeg and ffprobe run in through the container runner.
 //   - [Config] is the Tools a Splitter is built over: ffmpeg and ffprobe.
 //   - [Splitter] cuts a source's windows with one decode; [NewSplitter] builds one over a Config.
-//   - [Splitter.Probe] reads a source's audio stream and estimated duration, a [Source].
+//   - [Splitter.Probe] reads a source's audio stream, estimated duration, and metadata record, a
+//     [Source].
 //   - [Splitter.Windows] cuts a source's windows as a [Request] says, each a [WindowFile], the
-//     last carrying the source's [Plan].
+//     first carrying the source's metadata record and the last its [Plan].
 //   - [Cutter] is the stream cutter, cutting PCM into windows as it arrives, each a [Piece];
 //     [NewCutter] builds one. [Cutter.Feed] gives it the stream's next bytes and [Cutter.End]
 //     ends it, each returning the windows that fixes; [Cutter.Plan] returns its plan.

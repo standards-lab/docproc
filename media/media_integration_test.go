@@ -159,6 +159,9 @@ func TestCancel(t *testing.T) {
 					errs = append(errs, err)
 					continue
 				}
+				if e.Metadata != nil {
+					continue
+				}
 				events = append(events, e)
 				if cancelled.IsZero() {
 					cancelled = time.Now()

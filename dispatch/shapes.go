@@ -223,4 +223,8 @@ const (
 	// information dictionary, its XMP metadata, and its PDF version, as package metadata's PDF
 	// declares it, under version 1 of its shape.
 	MediaPDFMetadata = "application/vnd.docproc.pdf-metadata+json; version=1"
+	// MediaMediaMetadata is the audio and video stages' metadata record, one JSON value: an audio
+	// or video file's container format, duration, bit rate, and tags, and each stream's type,
+	// codec, and tags, as package metadata's Media declares it, under version 1 of its shape.
+	MediaMediaMetadata = "application/vnd.docproc.media-metadata+json; version=1"
 )

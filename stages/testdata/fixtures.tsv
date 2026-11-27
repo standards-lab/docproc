@@ -2,8 +2,11 @@ audio/testdata/README.md	text	prepared
 audio/testdata/speech-gain.wav	audio	prepared
 audio/testdata/speech-levels.truth.json	text	prepared
 audio/testdata/speech-noise.wav	audio	prepared
+audio/testdata/speech-scenes.ffprobe.json	text	prepared
 audio/testdata/speech-scenes.mkv	video	prepared
 audio/testdata/speech-scenes.truth.json	text	prepared
+audio/testdata/speech-tagged.ffprobe.json	text	prepared
+audio/testdata/speech-tagged.mp3	audio	prepared
 audio/testdata/speech-truncated.mp3	audio	prepared
 audio/testdata/speech.flac	audio	prepared
 audio/testdata/speech.truth.txt	text	prepared

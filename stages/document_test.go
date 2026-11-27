@@ -413,11 +413,16 @@ func metadataStage(t *testing.T, q stages.QPDFReader, info stages.PDFInfoReader)
 
 func storedPDFMetadata(t *testing.T, content dispatch.Content, o dispatch.Output) metadata.PDF {
 	t.Helper()
+	return storedRecord[metadata.PDF](t, content, o, dispatch.MediaPDFMetadata)
+}
+
+func storedRecord[T any](t *testing.T, content dispatch.Content, o dispatch.Output, mediaType string) T {
+	t.Helper()
 	wire, err := json.Marshal(o)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"kind":"record","name":"metadata","media_type":"` + dispatch.MediaPDFMetadata + `","sha256":"` + o.SHA256 + `"}`; string(wire) != want {
+	if want := `{"kind":"record","name":"metadata","media_type":"` + mediaType + `","sha256":"` + o.SHA256 + `"}`; string(wire) != want {
 		t.Errorf("the record's wire %s, want %s", wire, want)
 	}
 	r, err := content.Open(t.Context(), o.SHA256)
@@ -434,7 +439,7 @@ func storedPDFMetadata(t *testing.T, content dispatch.Content, o dispatch.Output
 	if sum := sha256.Sum256(stored); hex.EncodeToString(sum[:]) != o.SHA256 {
 		t.Errorf("the stored record's SHA-256 isn't the output's %s", o.SHA256)
 	}
-	var rec metadata.PDF
+	var rec T
 	if err := json.Unmarshal(stored, &rec); err != nil {
 		t.Fatal(err)
 	}

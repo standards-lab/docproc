@@ -13,6 +13,7 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/route"
 	"github.com/standards-lab/docproc/stages"
 	"github.com/standards-lab/docproc/tool"
@@ -72,8 +73,17 @@ func TestAudioStageReal(t *testing.T) {
 			wantSteps(t, events, []step{{"speech.flac", 0, dispatch.Prepared}})
 			outs := events[0].Outputs
 			last := len(outs) - 1
-			if len(outs) != 1+len(plan.Windows) || outs[last].Name != "plan" {
-				t.Fatalf("%d outputs, want the plan's %d windows and the plan", len(outs), len(plan.Windows))
+			if len(outs) != 2+len(plan.Windows) || outs[0].Name != "metadata" || outs[last].Name != "plan" {
+				t.Fatalf("%d outputs, want the metadata record, the plan's %d windows, and the plan", len(outs), len(plan.Windows))
+			}
+			t.Logf("recorded: metadata %s", outs[0].Value)
+			var md metadata.Media
+			if err := json.Unmarshal(outs[0].Value, &md); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(md, plan.Source.Metadata) || md.Format != "flac" || md.Duration != 49.82 || md.BitRate <= 0 ||
+				len(md.Streams) != 1 || md.Streams[0].Codec != "flac" || md.Streams[0].SampleRate != 16000 {
+				t.Errorf("the metadata record %+v, want the probe's %+v, a 49.82 s FLAC", md, plan.Source.Metadata)
 			}
 			t.Logf("recorded: plan %s", outs[last].Value)
 			var p audio.PlanRecord
@@ -84,7 +94,7 @@ func TestAudioStageReal(t *testing.T) {
 				t.Fatalf("the plan record %+v isn't the Splitter's plan %+v", p, plan.Record())
 			}
 			for i, w := range plan.Windows {
-				o := outs[i]
+				o := outs[i+1]
 				if o.Kind != dispatch.AudioOutput || o.Name != "window "+strconv.Itoa(i) || o.Meta["end"] != strconv.FormatFloat(w.End.Seconds(), 'f', -1, 64) {
 					t.Errorf("output %d is %s %s ending at %s, want window %d, %v", i, o.Kind, o.Name, o.Meta["end"], i, w.Span)
 				}
@@ -100,5 +110,38 @@ func TestAudioStageReal(t *testing.T) {
 	}
 	if _, err := os.Stat(speechFixture); err != nil {
 		t.Errorf("the dispatcher removed the input: %v", err)
+	}
+}
+
+func TestAudioStageMetadataReal(t *testing.T) {
+	for name, build := range audioRunners {
+		t.Run(name, func(t *testing.T) {
+			ffmpeg, err := build(t, audio.FFmpegSpec())
+			if err != nil {
+				t.Fatal(err)
+			}
+			ffprobe, err := build(t, audio.FFprobeSpec())
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, err := audio.NewSplitter(audio.Config{FFmpeg: ffmpeg, FFprobe: ffprobe})
+			if err != nil {
+				t.Fatal(err)
+			}
+			stage := stages.NewAudioStage(stages.AudioConfig{
+				Splitter: s, Version: stages.Versions(ffmpeg, ffprobe), Request: audio.Request{Concurrency: 2},
+			})
+			path, err := filepath.Abs(taggedMP3)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, order := dispatchMediaMetadata(t, route.Audio, stage, path)
+			if want := []string{"record metadata", "audio window 0", "record plan"}; !slices.Equal(order, want) {
+				t.Errorf("order %q, want %q", order, want)
+			}
+			if !reflect.DeepEqual(got, taggedRecord) {
+				t.Errorf("record\n %+v\nwant\n %+v", got, taggedRecord)
+			}
+		})
 	}
 }

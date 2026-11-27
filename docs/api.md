@@ -890,25 +890,30 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   routed by it. A page's ink is an SVG, routed vision-converted, to the picture stage's PNG. A skipped section is an
   unread child at `skipped section <name>`: encrypted for a password-protected one, else failed.
 - **audio.** No model runs: the stage prepares the windows a layer above transcribes and joins, and
-  the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan
-  order, `window N`, a 16 kHz mono 16-bit PCM WAV named by its SHA-256, its `Meta` carrying what a
-  caller needs to transcribe and join it before the plan arrives. Every time is strconv's shortest
-  decimal of its seconds, such as `24.91`. The plan, a `MediaAudioPlan` record named `plan`, an
-  `audio.PlanRecord` carrying ffprobe's duration beside the decoded one when the two differ, comes
-  last. A failure of the content's class after a window is a warning at the next window, and the
-  part is prepared with its windows and no plan; with none, the part fails, recorded. A source
-  with no audio stream, such as an M4A holding none, fails before ffmpeg runs.
-- **video.** One ffmpeg run reads each part. The plan, a `MediaVideoPlan` record named `plan`, a
-  `media.VideoPlan` of the run's settings with every default applied, comes first, once the run
-  has a stream, just before its first frame or window, so a source media refuses has no outputs;
-  it holds no windows, which media plans as the audio arrives. Frames, `frame N`, PNGs named by
-  their SHA-256, and windows, `window N`, as the audio stage's, follow interleaved as the run
-  completes them. A video with no audio stream yields frames only, a part routed video with no
-  video stream windows only, and one with neither fails, recorded, before ffmpeg runs. media writes
-  a file's frames into a hidden directory beside it, so the stage runs it over a hard link to the
-  part's file in the part's directory, a copy where the file system refuses one, never over a
-  caller's input, and everything it makes is removed with that directory. A failure of the
-  content's class after a frame or window is a warning at `stream`.
+  the plan it joins them by. Each window is yielded as the part's one decode cuts it, in plan order,
+  `window N`, a 16 kHz mono 16-bit PCM WAV named by its SHA-256, its `Meta` carrying what a caller
+  needs to transcribe and join it before the plan arrives. The first window comes after a
+  `MediaMediaMetadata` record named `metadata`, a `metadata.Media` from the probe that found the
+  stream: the container's format, duration, bit rate, and tags as stored, in order, and each
+  stream's type, codec, and tags, an audio stream's sample rate and channels, a video stream's size
+  and frame rate. Every time is strconv's shortest decimal of its seconds, such as `24.91`. The
+  plan, a `MediaAudioPlan` record named `plan`, an `audio.PlanRecord` carrying ffprobe's duration
+  beside the decoded one when the two differ, comes last. A failure of the content's class after a
+  window is a warning at the next window, and the part is prepared with its windows and no plan;
+  with none, the part fails, recorded. A source with no audio stream, such as an M4A holding none,
+  fails before ffmpeg runs.
+- **video.** One ffmpeg run reads each part. A `MediaMediaMetadata` record named `metadata`, a
+  `metadata.Media` as the audio stage's, comes first, once the probe has found a stream, before
+  ffmpeg runs. The plan, a `MediaVideoPlan` record named `plan`, a `media.VideoPlan` of the run's
+  settings with every default applied, comes next, once the run has a stream, just before its first
+  frame or window, so a source media refuses has no outputs; it holds no windows, which media plans
+  as the audio arrives. Frames, `frame N`, PNGs named by their SHA-256, and windows, `window N`, as
+  the audio stage's, follow interleaved as the run completes them. A video with no audio stream
+  yields frames only, a part routed video with no video stream windows only, and one with neither
+  fails, recorded, before ffmpeg runs. media writes a file's frames into a hidden directory beside
+  it, so the stage runs it over a hard link to the part's file in the part's directory, a copy where
+  the file system refuses one, never over a caller's input, and everything it makes is removed with
+  that directory. A failure of the content's class after a frame or window is a warning at `stream`.
 - **text.** One UTF-8 text output named `text`, its line endings as stored. Its encoding is decided,
   never detected: a byte order mark, UTF-8's, UTF-32's (checked before the UTF-16 marks they begin
   with), or UTF-16's, which the output drops; else UTF-8, when the whole part is valid UTF-8; else
