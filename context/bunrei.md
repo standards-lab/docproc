@@ -2,63 +2,22 @@
 
 Bunrei, the data-intelligence capstone's processing service, is planned. It runs docinfer's jobs
 over docproc's dispatcher, stages, and stores, which it wires, and builds the go-ai clients docinfer
-calls. This note holds the boundary its design tasks start from: `protocol` settles the Queries and
-Commands and the upload protocol, `state` the stores, streams, and the fold, and `events` the event
-protocol (`standards-lab/context/data-intelligence.md`, "Design"). Its nested `client` module,
-tagged `client/vX`, holds these types and a Go client; Bunrei imports none of its consumers
-(data-intelligence.md, "Bunrei and Mikoshi", "API").
+calls. The capstone root's notes hold its contracts; this note holds what Bunrei keeps to itself:
+its input, its jobs and their fencing, and its state, which the `state` task settles
+(`standards-lab/context/data-intelligence.md`, "Design").
 
 ## Queries and Commands
 
-Go Elemental Queries and Commands. Every Command that changes a job appends one event to the job's
+The capstone root's [`protocol`](https://github.com/JaimeStill/capstone-data-intelligence/blob/main/context/protocol.md) note holds Bunrei's Queries and Commands, the
+`client` module's types, the profiles, and the extraction spec, and its [`upload`](https://github.com/JaimeStill/capstone-data-intelligence/blob/main/context/upload.md)
+note the resumable upload, which go-web-sdk's handler, mounted by Bunrei, serves; CompleteUpload
+is Bunrei's one upload Command. Every Command that changes a job appends one event to the job's
 subject under the expected-last-subject-sequence check, which is its transaction.
 
-```go
-package client // capstone-bunrei/client
-
-// Commands
-type Submit struct { // a small document, whole
-    ID         string // the caller's idempotency ID
-    Profile    string // a versioned processing profile in Bunrei's configuration, never a model
-    Name, MIME string
-    Content    []byte // at most Bunrei's configured small-document size
-    Extraction *docinfer.Extract
-}
-type OpenUpload struct { Name, MIME string; Size int64; SHA256 string }
-type AppendChunk struct { Upload string; Offset int64; SHA256 string; Bytes []byte }
-type CompleteUpload struct { Upload, Profile string; Extraction *docinfer.Extract }
-type AbortUpload struct { Upload string }
-type CancelJob struct { Job string }
-
-// Queries
-type GetJob struct { Job string }       // -> Job
-type GetUpload struct { Upload string } // -> Upload: the offset to resume from
-type GetOutput struct { SHA256 string } // -> the content a job's update names, streamed
-type ListProfiles struct{}              // -> []Profile
-
-type Upload struct { ID string; Size, Received int64; ChunkSize int; Expires time.Time } // UTC
-type Profile struct { Name string; Resolved docinfer.Profile }
-type Job struct {
-    ID, Profile, Name string; Size int64; SHA256 string
-    State    State  // queued, running, completed, failed, cancelled
-    Attempt  int    // the work queue's delivery, from 1
-    Sequence uint64 // the job's last event
-    Manifest *Manifest
-    Error    string
-}
-```
-
-The `Client` has one method per Command and Query, each taking a `context.Context`.
-
-- **Input.** `Submit` stages a small document in blob storage at `input/<sha256>` before it returns
-  the job queued; a larger one goes through the upload, any replica taking any chunk, a mismatched
-  chunk refused, `GetUpload` giving the offset to resume from, and `CompleteUpload` queuing the job
-  once all `Size` bytes are received. Either way the input is durable past the work queue's
-  `MaxDeliver` deliveries: `dispatch.Input`'s `Reader` is blob storage's and its `SHA256` the
-  declared one, checked once by the dispatcher's spool ([`docs/api.md`](../docs/api.md), "Input from
-  a stream, or a path"); a mismatch fails the job at once. `Submit`'s `ID` makes a retried Submit
-  return the first one's job. The upload's shape graduates to go-web-sdk
-  (`chunked-upload-graduation`).
+- **Input.** A job's input is durable past the work queue's `MaxDeliver` deliveries, staged in
+  blob storage at `input/<sha256>`: `dispatch.Input`'s `Reader` is blob storage's and its `SHA256`
+  the declared one, checked once by the dispatcher's spool ([`docs/api.md`](../docs/api.md), "Input
+  from a stream, or a path"); a mismatch fails the job at once.
 - **A job** is one input, the unit of retry (data-intelligence.md, "Distribution"), its ID a UUIDv7.
   The replica running it extends its work-queue delivery while it runs, runs `job.Runner.Run` with
   `docinfer.Options.Final` set on the last delivery, and on a redelivery resumes a store from its
@@ -70,11 +29,7 @@ The `Client` has one method per Command and Query, each taking a `context.Contex
   through a headers-only consumer and ends the job's context on a `cancel_requested`, after which
   only `cancelled` follows, or on a `started` newer than its own, after which it appends nothing. A
   refused append reads the subject's tail and acts on either alike.
-- **The profile** resolves to a `docinfer.Pipeline`. Each attempt's `started` carries the resolved
-  `docinfer.Profile` before any batch, so the consumer registers the matching embedding space (the
-  `chunks` task). The `vision` task's prompt and sampling live in a profile.
-- **Extraction** is optional: a caller's `docinfer.Extract`. Bunrei refuses one that marshals past
-  256 KiB, so `queued`, which carries it, fits `max_payload`.
+- **The profile** resolves to a `docinfer.Pipeline`, one per profile.
 
 ## State and subjects
 
@@ -104,76 +59,9 @@ its own stream (data-intelligence.md, "Browser"). The names and retentions are t
 
 ## Events
 
-Each event is a CloudEvents 1.0 event in binary mode: `source` is `bunrei`, `id` a UUIDv7,
-`subject` the job's ID, and `Nats-Msg-Id` de-duplicates a retried append; consumers de-duplicate on
-`source` and `id`. Bunrei's `messaging.go` defines each type with go-core's `event.Define[T]`
-([`docs/api.md`](../docs/api.md), "Event shapes"); `dataschema` names the payload's producing
-package's `Version`, its exact form the `events` task's.
-
-```text
-type                            data                                          whose
-bunrei.job.queued              {profile, name, mime, size, sha256, extraction} Bunrei's
-bunrei.job.started             {attempt, replica, profile}                   Bunrei's
-bunrei.job.part                dispatch.Event, a part's own                  docproc's
-bunrei.job.output              dispatch.Event, an output's (SHA256, no path) docproc's
-bunrei.job.warning             dispatch.Event, a warning's                   docproc's
-bunrei.job.inference           docinfer.Inference                            docinfer's
-bunrei.job.progress            docinfer.Progress                             docinfer's
-bunrei.job.batch               docinfer.Batch; batchdigest, batchchunks      docinfer's
-bunrei.job.checkpoint          job.Checkpoint                                docinfer's
-bunrei.job.cancel_requested    {}                                            Bunrei's
-bunrei.job.completed           Manifest                                      Bunrei's
-bunrei.job.attempt.failed      {attempt, error}                              Bunrei's
-bunrei.job.failed              {attempt, error}                              Bunrei's
-bunrei.job.cancelled           {}                                            Bunrei's
-```
-
-- **docinfer's updates pass through**, their JSON unchanged; `done`'s `job.Done` goes into the
-  manifest's entry for its attempt.
-- **The fold.** A job is queued, then running from `started`, then completed, failed, or cancelled.
-  An attempt that fails with deliveries left appends `attempt.failed`; `failed` is terminal, once
-  the deliveries are spent or on an error `docinfer.Permanent` reports.
-- **Size.** Every event fits NATS's 1 MB `max_payload`; an output or inference carries its content's
-  SHA-256, never the content.
-- **Metadata** outputs are `metadata` records, under `dispatch.MediaOfficeMetadata`,
-  `MediaPDFMetadata`, `MediaMediaMetadata`, or `MediaPictureMetadata`, and `MediaMail` and
-  `MediaOneNote` records; a message's meta adds `in_reply_to` and `references`
-  ([`docs/api.md`](../docs/api.md), "Dispatch").
-
-## Results and the manifest
-
-A `bunrei.job.batch` event carries docinfer's `Batch` and, as the extension attributes
-`batchdigest` and `batchchunks`, its `Digest()` and chunk count, so the headers-only fold yields the
-manifest without reading a batch back. The consumer commits each batch in one transaction,
-de-duplicated through its inbox. The job ends with `completed`, whose data is the manifest:
-
-```go
-type Manifest struct { // its range: every sequence from 1 through the completed event's own
-    Batches  int       `json:"batches"`  // the batch events in the range, every attempt's
-    Chunks   int       `json:"chunks"`   // the chunks those batches hold
-    Digest   string    `json:"digest"`   // SHA-256 over those batches' digests, in sequence order
-    Attempts []Attempt `json:"attempts"` // one per started, in order
-}
-type Attempt struct {
-    Done *job.Done `json:"done,omitempty"` // nil for an attempt that ended without one
-}
-```
-
-Each event carries the job's gap-free sequence in the CloudEvents `sequence` extension. A batch is
-identified by its job and its event's sequence, which no attempt reuses, so docinfer numbers none.
-The consumer checks completeness by holding every sequence through `completed`'s and recomputing the
-manifest over what it committed, every attempt's batches, since a redelivery replays content. Counts
-are per attempt, never summed: a failed attempt reports none. The digest covers the chunks' digests,
-so their text, not their vectors: it proves which chunks arrived; a vector's length is checked
-against the profile's dimensions.
-
-## Open questions
-
-- **Live sources.** A URL source read as it arrives (srt, rtmp, http, udp) has no owner yet
-  ([`docs/design-review.md`](../docs/design-review.md), decision 14). Whether one is a job, and
-  through which Command, is the `protocol` task's.
-- **The small-document size**, `Submit`'s limit and the upload's threshold, is a setting whose
-  default the `protocol` task picks.
+The root's [`events`](https://github.com/JaimeStill/capstone-data-intelligence/blob/main/context/events.md) note holds Bunrei's events: the envelope, the lineage and
+`layer` extensions, the gap-free `jobsequence`, the event table, the result batches with their cap,
+a Bunrei setting, and the manifest.
 
 ## Requests to go-messaging
 
@@ -182,7 +70,7 @@ data-intelligence.md queues these asks of go-messaging's NATS provider, sized by
 
 - A publish on a subject the caller names.
 - A durable consumer filtered by subject.
-- The CloudEvents `sequence` extension carried.
+- The CloudEvents `jobsequence` extension carried.
 - Events delivered in order within a delivery group.
 - A work-queue delivery its handler extends while it runs (an in-progress acknowledgement).
 
@@ -190,7 +78,6 @@ data-intelligence.md queues these asks of go-messaging's NATS provider, sized by
 
 - Assumes Bunrei wires docproc's `stages` as `cmd/docproc` does.
 - Assumes one `docinfer.Bounds` per replica, shared by its pipelines, one per profile.
-- Assumes a result batch's cap suits the consumer; the `events` task may tune it.
 - Assumes Bunrei speaks Chat Completions to the gateway, its consumer key the bearer token.
 - Assumes the consumer stores chunks by their identity, so a batch a redelivered job repeats changes
   nothing (the `chunks` task).
