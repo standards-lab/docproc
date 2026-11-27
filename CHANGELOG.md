@@ -9,6 +9,8 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-11-27
+
 This release captures each format's own metadata as a record output named `metadata`: an office
 package's properties, a PDF's information dictionary and XMP packet, an audio or video file's
 container and streams, and a picture's EXIF. Each format's record is a type of the new package
@@ -604,7 +606,8 @@ fixtures scripts stay in the spike.
 The [limits page](docs/limits.md) states them: each stage's tool's limits, docproc-ooxml's
 behavior under a memory bound, the Threader's memory, and the formats no stage reads.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/v0.10.0...HEAD
+[v0.10.0]: https://github.com/standards-lab/docproc/compare/v0.9.0...v0.10.0
 [v0.9.0]: https://github.com/standards-lab/docproc/compare/v0.8.0...v0.9.0
 [v0.8.0]: https://github.com/standards-lab/docproc/compare/v0.7.0...v0.8.0
 [v0.7.0]: https://github.com/standards-lab/docproc/compare/v0.6.0...v0.7.0
