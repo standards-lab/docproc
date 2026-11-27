@@ -44,13 +44,16 @@ func TestBuiltConfigs(t *testing.T) {
 			got[row.Route] = row.Stage.Config
 		}
 	}
-	const officeBefore = "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb"
+	const (
+		officeBefore = "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb"
+		nestedBefore = "9fe416eecf2b6ec8bc2b9d046beb095e15b5b2404cd4e33d16b78e502bfbf5b1"
+	)
 	want := map[route.Route]string{
 		route.Document:        "776d533ec07b950f8346e688554e5cfa21085cb6788b6047b0e0946a91689937",
 		route.Office:          "b1b9d4a0803c67734e8745a39ea3808a377a695d6b562448f49e24a2735e8b54",
 		route.VisionConverted: "e0f3f024fe0aa65fa4f403099bb0a4327827a3db6643357d6b3dfd99725f1e07",
 		route.Vision:          "c953ea6e98fa93d682dab2a14cdfe1455cf8c995cb7d276006a137b25a958835",
-		route.Nested:          "9fe416eecf2b6ec8bc2b9d046beb095e15b5b2404cd4e33d16b78e502bfbf5b1",
+		route.Nested:          "580ca77071f32324e9eac20836b2a5180ef31bee737c14b448b7494d5b33aeb3",
 		route.OneNote:         "65d639819be88c73860479cd13b2b72a684277d3e00f0c3fcbf793bb6931216a",
 		route.Archive:         "c88904149201469bfd191e144ba4081f3ff51980790d2872476f4d3ca71aa9f9",
 		route.Audio:           "a577e560d03c66543be383f6d92e51c88b274b153dd442824cff45b0572b6553",
@@ -59,6 +62,9 @@ func TestBuiltConfigs(t *testing.T) {
 	}
 	if got[route.Office] == officeBefore {
 		t.Errorf("office: config %s, the one that yielded no metadata record", officeBefore)
+	}
+	if got[route.Nested] == nestedBefore {
+		t.Errorf("nested: config %s, the one whose messages carried no in_reply_to or references", nestedBefore)
 	}
 	for _, r := range stages.Routes() {
 		if got[r] != want[r] {

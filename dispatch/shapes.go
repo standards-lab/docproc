@@ -75,7 +75,8 @@ type Row struct {
 }
 
 // The Meta keys of an [Output]'s Meta: every key a stage of package stages sets is declared here,
-// each value a decimal string, a time in seconds as strconv's shortest decimal of them, or a name.
+// each value a decimal string, a time in seconds as strconv's shortest decimal of them, a name, or a
+// message's Message-IDs as stored.
 const (
 	// MetaPage is a page's number, from 1: the document stage's text and image of a PDF's page,
 	// and the picture stage's PNG of a TIFF's page.
@@ -167,6 +168,12 @@ const (
 	MetaSubject = "subject"
 	// MetaMessageID is a message's Message-ID, when it has one: the email stage's messages.
 	MetaMessageID = "message_id"
+	// MetaInReplyTo is a message's In-Reply-To, the Message-ID of the message it replies to, as
+	// stored, when it has one: the email stage's messages.
+	MetaInReplyTo = "in_reply_to"
+	// MetaReferences is a message's References, the Message-IDs of its thread separated by spaces,
+	// as stored, when it has them: the email stage's messages.
+	MetaReferences = "references"
 	// MetaTopic is a conversation's topic: the email stage's conversations.
 	MetaTopic = "topic"
 	// MetaMissed is whether a conversation was missed, "true" or "false": the email stage's

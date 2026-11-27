@@ -16,6 +16,8 @@ import (
 	"github.com/standards-lab/docproc/internal/cli"
 )
 
+const emailVersion = "2"
+
 type emailConfig struct {
 	Reader  *email.Reader
 	Version string
@@ -33,9 +35,10 @@ func newEmailStage(cfg emailConfig) *emailStage {
 		panic("stages: emailConfig.Reader is nil")
 	}
 	return &emailStage{reader: cfg.Reader, memory: cfg.Memory, id: identity("email", cfg.Version, struct {
+		Stage   string        `json:"stage"`
 		Schema  string        `json:"schema"`
 		Request email.Request `json:"request"`
-	}{cli.Schema, email.Request{}})}
+	}{emailVersion, cli.Schema, email.Request{}})}
 }
 
 func (s *emailStage) Identity() dispatch.Identity { return s.id }
@@ -149,6 +152,12 @@ func (w *emailWalk) message(m *email.Message, name, parent string) error {
 	meta := map[string]string{dispatch.MetaSubject: m.Subject}
 	if m.MessageID != "" {
 		meta[dispatch.MetaMessageID] = m.MessageID
+	}
+	if m.InReplyTo != "" {
+		meta[dispatch.MetaInReplyTo] = m.InReplyTo
+	}
+	if m.References != "" {
+		meta[dispatch.MetaReferences] = m.References
 	}
 	return w.own(m, dispatch.MediaMail, name, parent, m.ID, m.Folder, m.Markdown, meta)
 }

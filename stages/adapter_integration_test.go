@@ -588,6 +588,23 @@ func TestEmailEmbedded(t *testing.T) {
 	}
 }
 
+func TestEmailThreadingReal(t *testing.T) {
+	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
+	events := dispatchAll(t, d, filepath.Join(mailFixtures(t), "mime", "eml", "09-threading.eml"), nil)
+	m := outputNamed(t, events[0], dispatch.RecordOutput, "message").Meta
+	if m[dispatch.MetaInReplyTo] != "<table-1@example.org>" || m[dispatch.MetaReferences] != "<notes-1@example.org> <table-1@example.org>" {
+		t.Errorf("the reply's meta %v", m)
+	}
+	events = dispatchAll(t, d, filepath.Join(mailFixtures(t), "generated", "eml", "01-plain.eml"), nil)
+	m = outputNamed(t, events[0], dispatch.RecordOutput, "message").Meta
+	if _, ok := m[dispatch.MetaInReplyTo]; ok {
+		t.Errorf("the first message's meta %v, want no in_reply_to", m)
+	}
+	if _, ok := m[dispatch.MetaReferences]; ok {
+		t.Errorf("the first message's meta %v, want no references", m)
+	}
+}
+
 func TestEmailConversations(t *testing.T) {
 	d := newDispatcher(t, dispatch.Stages{route.Nested: testEmailStage(t)}, dispatch.NewMemoryIndex(0))
 	generated := filepath.Join(mailFixtures(t), "generated")

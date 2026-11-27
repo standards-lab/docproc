@@ -276,8 +276,9 @@
 //     [MetaThreshold], [MetaSeamBefore], and [MetaSeamAfter]; the frames' [MetaTime],
 //     [MetaReason], [MetaWidth], and [MetaHeight]; [MetaKind], [MetaFrom], [MetaEncoding],
 //     [MetaEncodingBy], and [MetaConvertedFrom]; and the stores' [MetaID], [MetaPath],
-//     [MetaFormat], [MetaFolder], [MetaSubject], [MetaMessageID], [MetaTopic], [MetaMissed],
-//     [MetaEmbeddedIn], [MetaName], [MetaSection], and [MetaTitle]; and the record media types
-//     [MediaAudioPlan], [MediaVideoPlan], [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm],
-//     [MediaMailConversation], and [MediaOfficeMetadata].
+//     [MetaFormat], [MetaFolder], [MetaSubject], [MetaMessageID], [MetaInReplyTo],
+//     [MetaReferences], [MetaTopic], [MetaMissed], [MetaEmbeddedIn], [MetaName], [MetaSection],
+//     and [MetaTitle]; and the record media types [MediaAudioPlan], [MediaVideoPlan],
+//     [MediaOOXML], [MediaMail], [MediaOneNote], [MediaForm], [MediaMailConversation], and
+//     [MediaOfficeMetadata].
 package dispatch

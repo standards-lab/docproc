@@ -21,11 +21,17 @@ tool under `tools/` keeps its own.
   document's Markdown, for every package with a property part or converted from another format;
   its event carries its SHA-256, its content in the content store. `dispatch.Version` stays "1",
   grown by the media type, and the run directory's schema stays "2".
+- The email stage's messages carry `dispatch.MetaInReplyTo`, `in_reply_to`, and
+  `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
+  each as stored, `references` its Message-IDs separated by spaces. A message's record is its
+  metadata record; mail yields no other. `dispatch.Version` stays "1", grown by the two keys.
 
 ### Changed
 
 - The office stage's identity hashes its own version, 3, so an index prepares the office route's
-  parts again, to yield their metadata records, and no other stage's.
+  parts again, to yield their metadata records.
+- The email stage's identity hashes its own version, 2, so an index prepares the nested route's
+  mail parts again, to carry their threading keys.
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned
