@@ -2,7 +2,7 @@
 
 docproc is the extraction library: it extracts text, metadata, and media from binary documents,
 messages, and streams so native model capabilities can use them, and docinfer
-(`github.com/standards-lab/docinfer`) runs inference over what it extracts. Its callers are Cerebro,
+(`github.com/standards-lab/docinfer`) runs inference over what it extracts. Its callers are Bunrei,
 the data-intelligence capstone's processing service, and any other caller. It is a Go library
 adjacent to the organization's Go Elemental standard, beside sqlate. The system tools it runs where
 a mature implementation lives in another language sit beside it under `tools/`, each on its own
@@ -17,7 +17,7 @@ pages it lists state docproc's boundaries with the system tools and its callers 
 schemas. [`docs/design-review.md`](../docs/design-review.md) holds the design review of the five
 promoted artifacts, and [`docs/acceptance.md`](../docs/acceptance.md) the acceptance and final
 tasks' measurements of what v1.ai.processing delivers.
-[`cerebro.md`](cerebro.md) holds Cerebro's planned boundary over docproc and docinfer.
+[`bunrei.md`](bunrei.md) holds Bunrei's planned boundary over docproc and docinfer.
 
 ## Capability map
 
@@ -41,5 +41,5 @@ tasks' measurements of what v1.ai.processing delivers.
 - **Format coverage** (built): [docs/limits.md](../docs/limits.md), what each stage leaves unread.
 - **Format coverage's open items** (planned): [tool-gaps.md](tool-gaps.md), docproc-ooxml's
   equations and SmartArt among them.
-- **Cerebro** (planned): [cerebro.md](cerebro.md).
+- **Bunrei** (planned): [bunrei.md](bunrei.md).
 - **Releases** (built): [.github/workflows/release.yml](../.github/workflows/release.yml).
