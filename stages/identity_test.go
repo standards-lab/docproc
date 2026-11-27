@@ -19,6 +19,7 @@ func TestBuiltConfigs(t *testing.T) {
 		"qpdf":            tooltest.Link(t, t.TempDir(), "qpdf", nil),
 		"pdfdetach":       tooltest.Link(t, t.TempDir(), "pdfdetach", nil),
 		"pdftotext":       tooltest.Link(t, t.TempDir(), "pdftotext", pdftotextSettings{}),
+		"pdfinfo":         tooltest.Link(t, t.TempDir(), "pdfinfo", pdfinfoSettings{}),
 		"docproc-mail":    tooltest.Link(t, t.TempDir(), "docproc-mail", onenoteSettings{}),
 		"docproc-onenote": tooltest.Link(t, t.TempDir(), "docproc-onenote", onenoteSettings{}),
 		"7zz":             tooltest.Link(t, t.TempDir(), "7zz", sevenZipSettings{}),
@@ -45,11 +46,12 @@ func TestBuiltConfigs(t *testing.T) {
 		}
 	}
 	const (
-		officeBefore = "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb"
-		nestedBefore = "9fe416eecf2b6ec8bc2b9d046beb095e15b5b2404cd4e33d16b78e502bfbf5b1"
+		documentBefore = "776d533ec07b950f8346e688554e5cfa21085cb6788b6047b0e0946a91689937"
+		officeBefore   = "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb"
+		nestedBefore   = "9fe416eecf2b6ec8bc2b9d046beb095e15b5b2404cd4e33d16b78e502bfbf5b1"
 	)
 	want := map[route.Route]string{
-		route.Document:        "776d533ec07b950f8346e688554e5cfa21085cb6788b6047b0e0946a91689937",
+		route.Document:        "d6a2b529f44c5df7dc9e4216f763a6ce910e3f2d62ca5c682055a00f64908872",
 		route.Office:          "b1b9d4a0803c67734e8745a39ea3808a377a695d6b562448f49e24a2735e8b54",
 		route.VisionConverted: "e0f3f024fe0aa65fa4f403099bb0a4327827a3db6643357d6b3dfd99725f1e07",
 		route.Vision:          "c953ea6e98fa93d682dab2a14cdfe1455cf8c995cb7d276006a137b25a958835",
@@ -59,6 +61,9 @@ func TestBuiltConfigs(t *testing.T) {
 		route.Audio:           "a577e560d03c66543be383f6d92e51c88b274b153dd442824cff45b0572b6553",
 		route.Video:           "bfcfb63f00a5631944dd6e107fb187d3a0a5fa754304480ac18d6e3d828c0456",
 		route.Text:            "16d15a494f8ca3d92d400f6c5df9cae9dcfbe28530f925ce2cae16e5139c86ad",
+	}
+	if got[route.Document] == documentBefore {
+		t.Errorf("document: config %s, the one that yielded no PDF metadata record", documentBefore)
 	}
 	if got[route.Office] == officeBefore {
 		t.Errorf("office: config %s, the one that yielded no metadata record", officeBefore)

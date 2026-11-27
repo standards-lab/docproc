@@ -219,4 +219,8 @@ const (
 	// package's core, extended, and custom properties and the format it was converted from, as
 	// package metadata's Office declares it, under version 1 of its shape.
 	MediaOfficeMetadata = "application/vnd.docproc.office-metadata+json; version=1"
+	// MediaPDFMetadata is the document stage's metadata record, one JSON value: a PDF's
+	// information dictionary, its XMP metadata, and its PDF version, as package metadata's PDF
+	// declares it, under version 1 of its shape.
+	MediaPDFMetadata = "application/vnd.docproc.pdf-metadata+json; version=1"
 )

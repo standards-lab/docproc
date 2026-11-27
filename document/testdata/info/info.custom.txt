@@ -1,0 +1,10 @@
+Author:          Ada Lovelace
+CreationDate:    2026-03-15T09:30:00+05:30
+Creator:         generate.go
+Keywords:        harbor, survey
+ModDate:         2026-04-01T12:00:00Z
+Producer:        docproc fixtures
+Project:         docproc
+Reviewed:        D:20260402
+Subject:         Soundings
+Title:           Harbor survey, Zürich

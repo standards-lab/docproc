@@ -13,5 +13,7 @@
 // The package exports:
 //
 //   - [Office], an office package's metadata record, under [dispatch.MediaOfficeMetadata]
+//   - [PDF], a PDF's metadata record, under [dispatch.MediaPDFMetadata], its information
+//     dictionary a [PDFInfo] and its XMP metadata an [XMP]
 //   - [Properties], one property part's properties in stored order, each a [Property]
 package metadata

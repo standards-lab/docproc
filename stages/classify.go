@@ -12,6 +12,7 @@ import (
 
 	"github.com/standards-lab/docproc/audio"
 	"github.com/standards-lab/docproc/dispatch"
+	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/internal/cli"
 	"github.com/standards-lab/docproc/media"
 	"github.com/standards-lab/docproc/sevenzip"
@@ -19,7 +20,7 @@ import (
 )
 
 var contentErrors = []error{
-	audio.ErrNoAudio, media.ErrNoMedia,
+	audio.ErrNoAudio, media.ErrNoMedia, document.ErrXMP,
 	sevenzip.ErrNotArchive, sevenzip.ErrListing, sevenzip.ErrEntries, sevenzip.ErrContent,
 }
 

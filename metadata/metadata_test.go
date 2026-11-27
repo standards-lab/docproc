@@ -5,6 +5,7 @@ import (
 	jsonv2 "encoding/json/v2"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/metadata"
@@ -78,5 +79,75 @@ func TestPropertiesRefused(t *testing.T) {
 		if err := json.Unmarshal([]byte(in), &p); err == nil {
 			t.Errorf("%s: no error, read %+v", in, p)
 		}
+	}
+}
+
+func TestPDFJSON(t *testing.T) {
+	t.Parallel()
+	created := time.Date(2026, 3, 15, 4, 0, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name   string
+		record metadata.PDF
+		want   string
+	}{
+		{
+			"every field",
+			metadata.PDF{
+				Version: "1.7",
+				Info: &metadata.PDFInfo{
+					Title: "T", Author: "A", Subject: "S", Keywords: "k1, k2", Creator: "C", Producer: "P",
+					CreationDate: created, ModDate: created.Add(time.Hour),
+					Custom: metadata.Properties{{Key: "Project", Value: "docproc"}, {Key: "CreationDate", Value: "garbage"}},
+				},
+				XMP: &metadata.XMP{
+					Title: "XT", Creators: []string{"A", "B"}, Description: "D", Subjects: []string{"s"},
+					Languages: []string{"en"}, CreateDate: created, ModifyDate: created.Add(time.Minute),
+					CreatorTool: "CT", Producer: "XP", Keywords: "xk", DocumentID: "uuid:1", Packet: "<x:xmpmeta/>",
+				},
+			},
+			`{"version":"1.7","info":{"title":"T","author":"A","subject":"S","keywords":"k1, k2","creator":"C",` +
+				`"producer":"P","creation_date":"2026-03-15T04:00:00Z","mod_date":"2026-03-15T05:00:00Z",` +
+				`"custom":{"Project":"docproc","CreationDate":"garbage"}},` +
+				`"xmp":{"title":"XT","creators":["A","B"],"description":"D","subjects":["s"],"languages":["en"],` +
+				`"create_date":"2026-03-15T04:00:00Z","modify_date":"2026-03-15T04:01:00Z","creator_tool":"CT",` +
+				`"producer":"XP","keywords":"xk","document_id":"uuid:1","packet":"\u003cx:xmpmeta/\u003e"}}`,
+		},
+		{"info alone", metadata.PDF{Version: "1.4", Info: &metadata.PDFInfo{Title: "T"}}, `{"version":"1.4","info":{"title":"T"}}`},
+		{"a packet alone", metadata.PDF{XMP: &metadata.XMP{Packet: ""}}, `{"xmp":{"packet":""}}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			got, err := json.Marshal(c.record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != c.want {
+				t.Errorf("Marshal =\n %s\nwant\n %s", got, c.want)
+			}
+			gotV2, err := jsonv2.Marshal(c.record)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var fromV2, back, backV2 metadata.PDF
+			if err := json.Unmarshal(gotV2, &fromV2); err != nil || !reflect.DeepEqual(fromV2, c.record) {
+				t.Errorf("encoding/json/v2: Marshal = %s, which reads back as %+v, %v", gotV2, fromV2, err)
+			}
+			if err := json.Unmarshal([]byte(c.want), &back); err != nil {
+				t.Fatal(err)
+			}
+			if err := jsonv2.Unmarshal([]byte(c.want), &backV2); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(back, c.record) || !reflect.DeepEqual(backV2, c.record) {
+				t.Errorf("Unmarshal =\n %+v\n %+v\nwant\n %+v", back, backV2, c.record)
+			}
+		})
+	}
+}
+
+func TestPDFMediaType(t *testing.T) {
+	t.Parallel()
+	if got := (metadata.PDF{}).MediaType(); got != dispatch.MediaPDFMetadata {
+		t.Errorf("media type %q", got)
 	}
 }

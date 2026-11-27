@@ -2,9 +2,9 @@
 // and its text layer read when a request says to. It provides pre-inference preparation only; a
 // layer above sends the prepared pages to a model and owns the requests, retries, and any final
 // step. The package builds on every 64-bit platform, on the standard library and this module's tool
-// package; every system tool it runs is a tool.Tool the caller built. It also reads what a PDF
-// holds beside its pages, its password requirement, its form fields, and its embedded files,
-// through qpdf and pdfdetach.
+// and metadata packages; every system tool it runs is a tool.Tool the caller built. It also reads
+// what a PDF holds beside its pages, its password requirement, its form fields, and its embedded
+// files, through qpdf and pdfdetach, and its metadata, through pdfinfo.
 //
 // The renderer, Ghostscript, runs one gs process per call. Count returns a PDF's page count with
 // gs's own PDF interpreter; and Render writes one page, 1-based, as PNG at a DPI to a writer, with
@@ -32,6 +32,14 @@
 // content to the caller's writer, pdfdetach told to save it to /dev/stdout, so it writes no file
 // and a stored name is only ever a name. Each reads the PDF by its absolute path in the PDF's
 // directory.
+//
+// InfoReader, over poppler's pdfinfo, minimum 22.02, reads a PDF's metadata into a metadata.PDF in
+// three runs: the information dictionary through -isodates -enc UTF-8 -custom, each standard key
+// typed and each date in UTC, every other string key kept as stored; the XMP packet through -meta,
+// kept whole, its common Dublin Core and XMP properties parsed with encoding/xml; and the PDF
+// version from pdfinfo's summary. pdfinfo prints no value of the dictionary that isn't a string,
+// Trapped among them. A packet that doesn't parse returns the metadata with the packet alone and
+// an error wrapping ErrXMP.
 //
 // TextReader, over poppler's pdftotext, minimum 22.02, reads one page's text layer per run in
 // pdftotext's reading-order mode, neither -layout nor -raw, so a multi-column page reads column by
@@ -95,4 +103,8 @@
 //     builds one, [PDFToTextSpec] declares pdftotext, and [PDFToTextMinimum] is the oldest it
 //     accepts, 22.02.
 //   - [TextReader.Text] reads one page's text layer with pdftotext.
+//   - [InfoReader] reads a PDF's metadata through pdfinfo; [NewInfoReader] builds one,
+//     [PDFInfoSpec] declares pdfinfo, and [PDFInfoMinimum] is the oldest it accepts, 22.02.
+//   - [InfoReader.Metadata] reads a PDF's information dictionary, XMP packet, and PDF version;
+//     [ErrXMP] is the cause of a packet that doesn't parse.
 package document

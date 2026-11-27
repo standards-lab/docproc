@@ -17,6 +17,8 @@ type Config struct {
 	// PDFToText is poppler's pdftotext, typically built from PDFToTextSpec; NewTextReader
 	// requires it.
 	PDFToText *tool.Tool
+	// PDFInfo is poppler's pdfinfo, typically built from PDFInfoSpec; NewInfoReader requires it.
+	PDFInfo *tool.Tool
 	// Renderer counts and renders the pages a Preparer prepares, typically built by
 	// NewGhostscript; NewPreparer requires it.
 	Renderer *Ghostscript

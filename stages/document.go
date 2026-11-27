@@ -12,7 +12,10 @@ import (
 	"github.com/standards-lab/docproc/dispatch"
 	"github.com/standards-lab/docproc/document"
 	"github.com/standards-lab/docproc/inspect"
+	"github.com/standards-lab/docproc/metadata"
 )
+
+const documentVersion = "2"
 
 type qpdfReader interface {
 	RequiresPassword(ctx context.Context, pdf string) (bool, error)
@@ -24,10 +27,15 @@ type pdfDetacher interface {
 	Save(ctx context.Context, pdf string, number int, w io.Writer) error
 }
 
+type pdfInfoReader interface {
+	Metadata(ctx context.Context, pdf string) (metadata.PDF, error)
+}
+
 type documentConfig struct {
 	Preparer  *document.Preparer
 	QPDF      qpdfReader
 	PDFDetach pdfDetacher
+	PDFInfo   pdfInfoReader
 	Version   string
 	Request   document.ImagesRequest
 	Inspect   inspect.Options
@@ -39,6 +47,7 @@ type documentStage struct {
 	request  document.ImagesRequest
 	qpdf     qpdfReader
 	detach   pdfDetacher
+	info     pdfInfoReader
 	bomb     inspect.BombRule
 	memory   int64
 	id       dispatch.Identity
@@ -52,16 +61,19 @@ func newDocumentStage(cfg documentConfig) *documentStage {
 		panic("stages: documentConfig.QPDF is nil")
 	case cfg.PDFDetach == nil:
 		panic("stages: documentConfig.PDFDetach is nil")
+	case cfg.PDFInfo == nil:
+		panic("stages: documentConfig.PDFInfo is nil")
 	}
 	req := cfg.Request
 	req.DPI = cmp.Or(req.DPI, document.DefaultDPI)
 	bomb := cfg.Inspect.Bomb()
 	return &documentStage{
-		preparer: cfg.Preparer, request: req, qpdf: cfg.QPDF, detach: cfg.PDFDetach, bomb: bomb, memory: cfg.Memory,
+		preparer: cfg.Preparer, request: req, qpdf: cfg.QPDF, detach: cfg.PDFDetach, info: cfg.PDFInfo, bomb: bomb, memory: cfg.Memory,
 		id: identity("document", cfg.Version, struct {
+			Stage   string                 `json:"stage"`
 			Request document.ImagesRequest `json:"request"`
 			Bomb    inspect.BombRule       `json:"bomb"`
-		}{req, bomb}),
+		}{documentVersion, req, bomb}),
 	}
 }
 
@@ -105,17 +117,18 @@ func (s *documentStage) Prepare(ctx context.Context, p dispatch.Part, dir string
 		locked, err := s.qpdf.RequiresPassword(ctx, p.Path)
 		switch {
 		case err != nil:
-			if !r.unit("qpdf", "form", err) {
+			if !r.unit("qpdf", "form", err) || !r.metadata() {
 				return
 			}
 		case locked:
+			unread := dispatch.Warning{Tool: "qpdf", Where: "metadata", What: "the PDF needs a password, so its metadata isn't read"}
 			flag := inspect.Flag{Check: inspect.PDFEncrypt, Class: inspect.Active, Evidence: "qpdf: the PDF needs a password to open"}
-			if r.emit(dispatch.FlagItem(flag)) {
+			if r.emit(dispatch.WarningItem(unread)) && r.emit(dispatch.FlagItem(flag)) {
 				yield(dispatch.Item{}, fmt.Errorf("document stage: the PDF needs a password: %w", dispatch.ErrEncrypted))
 			}
 			return
 		default:
-			if !r.forms() {
+			if !r.metadata() || !r.forms() {
 				return
 			}
 		}
@@ -126,6 +139,27 @@ func (s *documentStage) Prepare(ctx context.Context, p dispatch.Part, dir string
 			yield(dispatch.Item{}, fmt.Errorf("document stage: nothing of the PDF reads: %v: %w", r.failed, dispatch.ErrRefused))
 		}
 	}
+}
+
+func (r *documentRun) metadata() bool {
+	rec, err := r.s.info.Metadata(r.ctx, r.p.Path)
+	if err != nil && !errors.Is(err, document.ErrXMP) {
+		return r.unit("pdfinfo", "metadata", err)
+	}
+	if rec.Info != nil || rec.XMP != nil {
+		o, recErr := record("metadata", rec, rec.MediaType(), nil)
+		if recErr != nil {
+			r.yield(dispatch.Item{}, fmt.Errorf("document stage: %w", recErr))
+			return false
+		}
+		if !r.emit(dispatch.OutputItem(o)) {
+			return false
+		}
+	}
+	if err != nil {
+		return r.unit("pdfinfo", "metadata", err)
+	}
+	return true
 }
 
 func (r *documentRun) forms() bool {

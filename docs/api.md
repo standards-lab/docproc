@@ -313,6 +313,13 @@ How `document` reads qpdf and pdfdetach, and why:
   aren't warnings are its error.
 - `pdfdetach -list` prints `N embedded files`, then `i: name` for each from 1; a line that isn't
   the next number's continues the name before it, so a name holding a line break reads whole.
+- `pdfinfo -custom` prints the information dictionary alone, its string values by key, each line
+  `Key:` padded with spaces to 17 columns and its value, a longer key followed by its value with no
+  space; a character it can't print, a line break among them, prints as `?`, so each line is one
+  key. It prints no value that isn't a string, so Trapped, a name, never reaches the record.
+  `-isodates` prints CreationDate and ModDate in ISO 8601 with their stored zone, a value that
+  isn't a date as stored. `-meta` prints the metadata stream as stored and nothing without one, and
+  the PDF version is only in the summary, so a PDF's metadata is three runs.
 
 How `office` converts through LibreOffice, and why:
 
@@ -771,7 +778,7 @@ type Options struct { // the zero value wires every route, with no bound
     Exclude     []route.Route
     Inspect     inspect.Options // validated once; the archive and document stages' bomb rule
     Timeout     time.Duration   // Spec.Timeout of the unit tools: gs, qpdf, pdfdetach,
-                                // pdftotext, magick, soffice, docproc-ooxml, ffprobe
+                                // pdftotext, pdfinfo, magick, soffice, docproc-ooxml, ffprobe
     Idle        time.Duration   // Spec.Idle of the stream tools: ffmpeg, docproc-mail,
                                 // docproc-onenote, 7zz
     Memory      int64           // tool.Spec.MemoryLimit for every Spec Build builds
@@ -813,14 +820,18 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
 
 - **document.** qpdf first says whether the PDF needs a password: one that does raises qpdf's
   finding as the part's own flag, `pdf-encrypt`, then ends with `ErrEncrypted`, nothing rendered;
-  one restricted only by its permissions opens with no password and is prepared as any other. A
-  PDF whose AcroForm has fields then yields, before anything else, a `MediaForm` record named
-  `forms`, a `document.Form`. Each embedded file, the name tree's and the file attachment
-  annotations', is then streamed from pdfdetach's stdout under its content's SHA-256, never its
-  stored name, and found `attachment <name>`; one past the bomb rule, against the whole PDF's size,
-  or past the bytes cap is stopped as an archive's entry is, and one pdfdetach can't save is a
-  failed child. The pages come last, each `page N`: its text layer, when the request reads it and
-  it holds text, then its PNG. Each unit, `form`, `attachments`, and `page N`, reads on its own, so
+  one restricted only by its permissions opens with no password and is prepared as any other. A PDF
+  that needs a password is first given a warning that its metadata isn't read. Any other PDF yields
+  first, unless pdfinfo prints no information dictionary and no XMP packet of it, a
+  `MediaPDFMetadata` record named `metadata`, a `metadata.PDF`: its information dictionary, typed,
+  its XMP packet, typed and kept whole, and its PDF version. A PDF whose AcroForm has fields then
+  yields a `MediaForm` record named `forms`, a `document.Form`. Each embedded file, the name tree's
+  and the file attachment annotations', is then streamed from pdfdetach's stdout under its content's
+  SHA-256, never its stored name, and found `attachment <name>`; one past the bomb rule, against the
+  whole PDF's size, or past the bytes cap is stopped as an archive's entry is, and one pdfdetach
+  can't save is a failed child. The pages come last, each `page N`: its text layer, when the request
+  reads it and it holds text, then its PNG. Each unit, `metadata`, `form`, `attachments`, and `page
+  N`, reads on its own, an XMP packet that doesn't parse a `metadata` warning beside its record, so
   a failure of the content's class is a warning naming the unit and its tool, and the part fails,
   recorded, only when nothing of it reads; a failed page count names no page, and none follows it.
 - **office.** The document's Markdown, named `document`, comes first, then, unless the package has

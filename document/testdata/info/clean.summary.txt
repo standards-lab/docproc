@@ -1,0 +1,16 @@
+Title:           document fixtures
+Creator:         Typst 0.15.1
+Custom Metadata: no
+Metadata Stream: yes
+Tagged:          yes
+UserProperties:  no
+Suspects:        no
+Form:            none
+JavaScript:      no
+Pages:           6
+Encrypted:       no
+Page size:       612 x 792 pts (letter)
+Page rot:        0
+File size:       41290 bytes
+Optimized:       no
+PDF version:     1.7

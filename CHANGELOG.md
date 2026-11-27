@@ -25,6 +25,21 @@ tool under `tools/` keeps its own.
   `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
   each as stored, `references` its Message-IDs separated by spaces. A message's record is its
   metadata record; mail yields no other. `dispatch.Version` stays "1", grown by the two keys.
+- `metadata.PDF`, under `dispatch.MediaPDFMetadata`,
+  `application/vnd.docproc.pdf-metadata+json; version=1`: a PDF's information dictionary as a
+  `metadata.PDFInfo`, its standard keys typed, CreationDate and ModDate in UTC, and its custom keys
+  kept as stored; its XMP packet as a `metadata.XMP`, its common Dublin Core and XMP properties
+  typed, dates in UTC, and the packet kept whole; and its PDF version.
+- The document stage yields a PDF metadata record, a record output named `metadata`, before the
+  forms record, for every PDF with an information dictionary or an XMP packet; its event carries
+  its SHA-256, its content in the content store. A PDF whose metadata pdfinfo can't read, or whose
+  packet doesn't parse, gets a `metadata` warning and its pages still prepare; a PDF that needs a
+  password gets the warning and ends with `ErrEncrypted`, as before. `dispatch.Version` stays
+  "1", grown by the media type, and the run directory's schema stays "2".
+- `document.InfoReader`, over poppler's pdfinfo, built by `document.NewInfoReader` from
+  `document.Config.PDFInfo`, declared by `document.PDFInfoSpec`, minimum
+  `document.PDFInfoMinimum`, 22.02; `InfoReader.Metadata` reads a PDF's metadata into a
+  `metadata.PDF`, and `document.ErrXMP` is the cause of a packet that doesn't parse.
 
 ### Changed
 
@@ -32,6 +47,14 @@ tool under `tools/` keeps its own.
   parts again, to yield their metadata records.
 - The email stage's identity hashes its own version, 2, so an index prepares the nested route's
   mail parts again, to carry their threading keys.
+- The document stage requires pdfinfo, from poppler-utils 22.02 or later, beside gs, qpdf,
+  pdfdetach, and pdftotext; `stages.Build` looks it up as it does the other poppler tools, a host
+  without it, or with an older one, leaving the document stage out. poppler-utils ships pdfinfo
+  with pdfdetach and pdftotext, so a host that ran the document stage before runs it still. The
+  stage table's document row carries pdfinfo's version line, and `Options.Timeout` bounds its
+  runs.
+- The document stage's identity hashes its own version, 2, so an index prepares the document
+  route's PDFs again, to yield their metadata records.
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned

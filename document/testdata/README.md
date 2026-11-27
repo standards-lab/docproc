@@ -2,7 +2,8 @@
 
 The document fixtures: letter-size PDFs with each page's ground truth, in three sets; a generated
 AcroForm and a page of a signed PDF for the forms record; a generated PDF of embedded files; a
-generated PDF portfolio; and a malformed PDF that gs renders with a message. Each set is one multi-page PDF, so a renderer test names a page of it
+generated PDF portfolio; a generated PDF of metadata, with pdfinfo's output of it and of
+`clean.pdf`; and a malformed PDF that gs renders with a message. Each set is one multi-page PDF, so a renderer test names a page of it
 and a page stream test takes the whole PDF. The clean and degraded sets are
 generated from `clean.typ`; the scanned set is real scans.
 
@@ -236,6 +237,48 @@ Its SHA-256 sum, which `TestFixtureSums` holds it to:
 
 ```
 c459d50b851ac5fcad70ea49c2b3491d158bc975a70c2a03839c41b53c3d1754  portfolio/portfolio.pdf
+```
+
+## The metadata fixture
+
+`info/info.pdf` is this repository's, Apache-2.0: a one-page PDF 1.6, written by hand by
+`info/generate.go`, every byte fixed, so a rerun writes the same bytes. Run it in
+`document/testdata/info`:
+
+```sh
+mise exec -- go run generate.go
+```
+
+Its information dictionary holds every standard key: a Title in UTF-16BE, `Harbor survey,
+Zürich`; Author, Subject, Keywords, Creator, and Producer; a CreationDate at +05'30', a ModDate in
+UTC; Trapped, a name, which pdfinfo never prints; a number, `/Pages 3`, which pdfinfo doesn't print
+either; and two custom keys, `Project`, `docproc`, and `Reviewed`, `D:20260402`, a date pdfinfo
+prints as stored. Its catalog's XMP packet has two `rdf:Description`s: the first holds dc:title, an
+alternative whose x-default is second, dc:creator, a sequence of two, dc:description, dc:subject,
+dc:language, a bag of two, xmp:CreateDate at +05:30, xmp:ModifyDate, and xmp:CreatorTool, each an
+element; the second holds pdf:Producer, pdf:Keywords, and xmpMM:DocumentID, each an attribute.
+
+`info/<name>.custom.txt`, `info/<name>.meta.xml`, and `info/<name>.summary.txt` are poppler
+26.10.0's pdfinfo output of `info/info.pdf` and of `clean.pdf`, recorded so the check reads them
+without pdfinfo; the integration tier reads both PDFs through the host's pdfinfo and holds them to
+the same metadata:
+
+```sh
+pdfinfo -isodates -enc UTF-8 -custom info.pdf > info.custom.txt
+pdfinfo -meta info.pdf > info.meta.xml
+pdfinfo -enc UTF-8 info.pdf > info.summary.txt
+```
+
+Their SHA-256 sums, which `TestFixtureSums` holds them to:
+
+```
+a4b05025a162c25796514c4d8e586464fc60818d2f485fe6e5712c93c4a4da12  info/info.pdf
+89edc7717215effacbc9f8121f72ea9d8e42b92838c475616296f7340cee94d4  info/info.custom.txt
+f67877c8db6228fe505506a145a578e2ca9753130cfe45bd8b5ebc01f6e8512c  info/info.meta.xml
+a001608400a6e921d8fe8bce180e90da3e99d491ca9da61ed05d2f73e6b02284  info/info.summary.txt
+28432b342d1038bf661f093903ea322fd6cd10cd73ba16657c09579e295abf4b  info/clean.custom.txt
+a12935b5d884fe54efd4a7135ca12e64f7b50ffc0639b9204cac3d2e18b4df24  info/clean.meta.xml
+ad450e808404e3ef54aac949791aa81b1a9fffd41abb7268cb73b2879ac508b8  info/clean.summary.txt
 ```
 
 ## The malformed fixture

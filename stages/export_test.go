@@ -29,6 +29,7 @@ type (
 	TextStage      = textStage
 	QPDFReader     = qpdfReader
 	PDFDetacher    = pdfDetacher
+	PDFInfoReader  = pdfInfoReader
 	SevenZipReader = sevenZipReader
 )
 

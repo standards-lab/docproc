@@ -56,7 +56,7 @@ func builtSet(t *testing.T, opts stages.Options) stages.Set {
 
 func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect.Options) *stages.DocumentStage {
 	t.Helper()
-	qt, dt := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec())
+	qt, dt, it := pinned(t, document.QPDFSpec()), pinned(t, document.PDFDetachSpec()), pinned(t, document.PDFInfoSpec())
 	q, err := document.NewQPDF(document.Config{QPDF: qt})
 	if err != nil {
 		t.Fatal(err)
@@ -65,9 +65,13 @@ func pdfStage(t *testing.T, prep *document.Preparer, gs *tool.Tool, opts inspect
 	if err != nil {
 		t.Fatal(err)
 	}
+	info, err := document.NewInfoReader(document.Config{PDFInfo: it})
+	if err != nil {
+		t.Fatal(err)
+	}
 	s := stages.NewDocumentStage(stages.DocumentConfig{
-		Preparer: prep, Version: stages.Versions(gs, qt, dt), Request: document.ImagesRequest{Text: true, Concurrency: 2},
-		QPDF: q, PDFDetach: detach, Inspect: opts,
+		Preparer: prep, Version: stages.Versions(gs, qt, dt, it), Request: document.ImagesRequest{Text: true, Concurrency: 2},
+		QPDF: q, PDFDetach: detach, PDFInfo: info, Inspect: opts,
 	})
 	return s
 }
@@ -92,14 +96,14 @@ func TestDocumentStageReal(t *testing.T) {
 	for _, o := range events[0].Outputs {
 		got = append(got, string(o.Kind)+" "+o.Name+" of "+o.Meta["count"])
 	}
-	var want []string
+	want := []string{"record metadata of "}
 	for _, n := range []string{"1", "2", "3", "4", "5", "6"} {
 		want = append(want, "text page "+n+" of 6", "image page "+n+" of 6")
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("outputs:\n got %q\nwant %q", got, want)
 	}
-	if text := string(events[0].Outputs[0].Value); !strings.Contains(text, "The Harbor Survey") {
+	if text := string(events[0].Outputs[1].Value); !strings.Contains(text, "The Harbor Survey") {
 		t.Errorf("page 1's text %.80q", text)
 	}
 }

@@ -20,7 +20,7 @@ tool under `tools/` pins its own. Tasks run from the repository root, `mise run 
   it over the committed fixtures, and checks its arguments, output, exit status, signals, and the
   run directory it writes, read back through `rundir`; and `integration`, below. Run it on your
   machine before each Go tag; CI doesn't. The other programs come from the host, each at its
-  minimum or later: `gs`, `qpdf`, `pdfdetach`, `pdftotext`, `ffmpeg`, `ffprobe`, `magick`,
+  minimum or later: `gs`, `qpdf`, `pdfdetach`, `pdftotext`, `pdfinfo`, `ffmpeg`, `ffprobe`, `magick`,
   `soffice`, util-linux's `prlimit`, and `docker`, which runs the compose harness and pulls
   `audio.FFmpegImage` and `picture.LibreOfficeImage` for the tools tier.
 - `integration`: the providers' live tiers, `integration:postgres` then `integration:storage`, every

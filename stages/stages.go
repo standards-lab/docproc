@@ -42,7 +42,7 @@ type Options struct {
 	// is the one a 7-Zip listing's flags are weighed under, as inspect.CheckListing weighs them.
 	Inspect inspect.Options
 	// Timeout is a unit run's bound, on every run of a tool whose runs are units: gs, qpdf,
-	// pdfdetach, pdftotext, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.
+	// pdfdetach, pdftotext, pdfinfo, magick, soffice, docproc-ooxml, and ffprobe. Zero is none.
 	Timeout time.Duration
 	// Idle is a stream run's bound, on every run of a tool whose runs stream: ffmpeg,
 	// docproc-mail, docproc-onenote, and 7zz, each ended once it writes nothing for this long.
@@ -127,6 +127,7 @@ func specs() []spec {
 		{Spec: document.QPDFSpec()},
 		{Spec: document.PDFDetachSpec()},
 		{Spec: document.PDFToTextSpec()},
+		{Spec: document.PDFInfoSpec()},
 		{Spec: picture.MagickSpec()},
 		{Spec: picture.LibreOfficeSpec(), image: picture.LibreOfficeImage},
 		{Spec: office.OfficeSpec()},
@@ -147,7 +148,7 @@ type stage struct {
 }
 
 var table = []stage{
-	{route.Document, []string{"gs", "qpdf", "pdfdetach", "pdftotext"}, buildDocument},
+	{route.Document, []string{"gs", "qpdf", "pdfdetach", "pdftotext", "pdfinfo"}, buildDocument},
 	{route.Office, []string{"docproc-ooxml", "soffice", "magick"}, buildOffice},
 	{route.VisionConverted, []string{"magick", "soffice"}, buildPicture},
 	{route.Vision, nil, func(context.Context, tools, Options) (dispatch.Stage, error) { return newVisionStage(), nil }},
@@ -291,8 +292,8 @@ func buildTool(ctx context.Context, lookup Lookup, sp spec) (*tool.Tool, string,
 }
 
 func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, error) {
-	gs, qt, dt, tt := t["gs"], t["qpdf"], t["pdfdetach"], t["pdftotext"]
-	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt, PDFToText: tt}
+	gs, qt, dt, tt, it := t["gs"], t["qpdf"], t["pdfdetach"], t["pdftotext"], t["pdfinfo"]
+	cfg := document.Config{Ghostscript: gs, QPDF: qt, PDFDetach: dt, PDFToText: tt, PDFInfo: it}
 	render, err := document.NewGhostscript(cfg)
 	if err != nil {
 		return nil, err
@@ -309,11 +310,15 @@ func buildDocument(_ context.Context, t tools, opts Options) (dispatch.Stage, er
 	if err != nil {
 		return nil, err
 	}
+	info, err := document.NewInfoReader(cfg)
+	if err != nil {
+		return nil, err
+	}
 	req := opts.Document
 	req.Concurrency = opts.concurrency()
 	return newDocumentStage(documentConfig{
-		Preparer: document.NewPreparer(cfg), QPDF: q, PDFDetach: detach,
-		Version: versions(gs, qt, dt, tt), Request: req, Inspect: opts.Inspect, Memory: opts.Memory,
+		Preparer: document.NewPreparer(cfg), QPDF: q, PDFDetach: detach, PDFInfo: info,
+		Version: versions(gs, qt, dt, tt, it), Request: req, Inspect: opts.Inspect, Memory: opts.Memory,
 	}), nil
 }
 
