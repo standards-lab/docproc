@@ -9,15 +9,16 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
-This release captures each format's own metadata as a record output named `metadata`, its shape a
-type of the new package `metadata` under a versioned media type of its own: an office package's
-properties, a PDF's information dictionary and XMP packet, an audio or video file's container and
-streams, and a picture's EXIF. A mail message's record and a OneNote page's serve as theirs, and a
-message's meta gains its threading keys. The document stage now requires pdfinfo, and the vision
-stage magick. Each stage that yields a new record or key hashes its own version anew, so an index
-prepares the office, document, audio, video, vision, and vision-converted routes' parts and the
-nested route's mail parts again, and no other stage's. `dispatch.Version` stays "1", grown by the
-media types and the keys, and the run directory's schema stays "2".
+This release captures each format's own metadata as a record output named `metadata`: an office
+package's properties, a PDF's information dictionary and XMP packet, an audio or video file's
+container and streams, and a picture's EXIF. Each format's record is a type of the new package
+`metadata`, under a versioned media type of its own. A mail message's record and a OneNote page's
+record serve as their metadata records, and a message's meta gains its threading keys. The
+document stage now requires pdfinfo, and the vision stage requires magick. Each stage that yields a
+new record or key hashes its own version anew, so an index prepares the parts of the office,
+document, audio, video, vision, and vision-converted routes again, and the nested route's mail
+parts, and no other stage's. `dispatch.Version` stays "1", grown only by the new media types and
+keys, and the run directory's schema stays "2".
 
 ### Added
 
@@ -41,10 +42,10 @@ media types and the keys, and the run directory's schema stays "2".
   PDF whose metadata pdfinfo can't read, or whose packet doesn't parse, gets a `metadata` warning
   and its pages still prepare; a PDF that needs a password gets the warning and ends with
   `ErrEncrypted`, as before.
-- `document.InfoReader`, over poppler's pdfinfo, built by `document.NewInfoReader` from
-  `document.Config.PDFInfo`, declared by `document.PDFInfoSpec`, minimum
-  `document.PDFInfoMinimum`, 22.02; `InfoReader.Metadata` reads a PDF's metadata into a
-  `metadata.PDF`, and `document.ErrXMP` is the cause of a packet that doesn't parse.
+- `document.InfoReader` reads a PDF's metadata through poppler's pdfinfo: `InfoReader.Metadata`
+  returns a `metadata.PDF`, and `document.ErrXMP` is the cause of a packet that doesn't parse.
+  `document.NewInfoReader` builds one from `document.Config.PDFInfo`, `document.PDFInfoSpec`
+  declares pdfinfo, and `document.PDFInfoMinimum`, 22.02, is its minimum.
 - `metadata.Media`, under `dispatch.MediaMediaMetadata`,
   `application/vnd.docproc.media-metadata+json; version=1`: an audio or video file's container
   format, duration in seconds, bit rate, and tags, kept as stored, in order; and each of its
@@ -65,10 +66,11 @@ media types and the keys, and the run directory's schema stays "2".
   yield one before the picture's PNGs or the picture itself, for every picture whose first image
   holds EXIF: a JPEG, PNG, TIFF, HEIC, WebP, or AVIF. A picture whose EXIF magick can't read gets
   a `metadata` warning and still prepares, and reading EXIF never changes the picture.
-- `picture.EXIFReader`, over ImageMagick's magick, built by `picture.NewEXIFReader` from
-  `picture.Config`'s Magick and Limits, minimum `picture.MagickMinimum`, 7.1;
-  `EXIFReader.Metadata` reads a picture's EXIF into a `metadata.Picture`, and `picture.ErrMetadata`
-  is the cause of magick output that isn't read.
+- `picture.EXIFReader` reads a picture's EXIF through ImageMagick's magick:
+  `EXIFReader.Metadata` returns a `metadata.Picture`, and `picture.ErrMetadata` is the cause of
+  magick output that can't be read: past 1 MiB, or with no size line. `picture.NewEXIFReader`
+  builds one from `picture.Config`'s Magick and Limits, and `picture.MagickMinimum`, 7.1, is its
+  minimum.
 - The email stage's messages carry `dispatch.MetaInReplyTo`, `in_reply_to`, and
   `dispatch.MetaReferences`, `references`, in their outputs' meta when the message stores them,
   each as stored, `references` its Message-IDs separated by spaces. A message's `MediaMail` record
@@ -86,7 +88,7 @@ media types and the keys, and the run directory's schema stays "2".
 - The vision stage requires magick, ImageMagick 7.1 or later, which the picture and office stages
   require already; `stages.Build` looks it up for the vision route too, a host without it, or with
   an older one, leaving the vision stage out, so PNG, JPEG, GIF, and BMP parts have no processor
-  there. The stage table's vision row carries magick's version line, its identity's version
+  there. The stage table's vision row carries magick's version line, its identity's version is
   magick's, and `Options.Timeout`, `Options.Memory`, and `Options.Magick` bound its runs.
 - Each stage that yields a new record or key hashes its own version in its identity, so an index
   prepares its route's parts again: the office stage's, 3, the office route's parts; the email
@@ -94,9 +96,9 @@ media types and the keys, and the run directory's schema stays "2".
   the audio and video stages', 2 each, the audio and video routes' parts; and the picture and
   vision stages', 2 each, the vision route's PNGs, JPEGs, GIFs, and BMPs and the vision-converted
   route's TIFFs, EMFs, WMFs, SVGs, HEICs, WebPs, and AVIFs.
-- audio's and media's ffprobe runs ask for the container's format name, bit rate, and tags and
-  each stream's codec, sample rate, channels, frame size, frame rates, tags, and attached-picture
-  disposition beside what they asked for before.
+- The `audio` and `media` packages' ffprobe runs ask for the container's format name, bit rate,
+  and tags and each stream's codec, sample rate, channels, frame size, frame rates, tags, and
+  attached-picture disposition beside what they asked for before.
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned
   by its multi-arch index digest. The new Gotenberg image carries the same LibreOffice, 26.8.2.2,

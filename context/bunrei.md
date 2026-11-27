@@ -135,10 +135,10 @@ bunrei.job.cancelled           {}                                            Bun
   the deliveries are spent or on an error `docinfer.Permanent` reports.
 - **Size.** Every event fits NATS's 1 MB `max_payload`; an output or inference carries its content's
   SHA-256, never the content.
-- **Metadata** outputs are `metadata` records, `dispatch.MediaOfficeMetadata`, `MediaPDFMetadata`,
-  `MediaMediaMetadata`, or `MediaPictureMetadata`, and `MediaMail` and `MediaOneNote` records, a
-  message's meta adding `in_reply_to` and `references` ([`docs/api.md`](../docs/api.md),
-  "Dispatch").
+- **Metadata** outputs are `metadata` records, under `dispatch.MediaOfficeMetadata`,
+  `MediaPDFMetadata`, `MediaMediaMetadata`, or `MediaPictureMetadata`, and `MediaMail` and
+  `MediaOneNote` records; a message's meta adds `in_reply_to` and `references`
+  ([`docs/api.md`](../docs/api.md), "Dispatch").
 
 ## Results and the manifest
 

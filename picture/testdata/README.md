@@ -1,10 +1,9 @@
 # testdata
 
 The picture package's fixtures, for the integration tier's conversions and EXIF reads on the
-host's magick: its SVGs, its TIFF, HEIC, WebP, and AVIF pictures, and its EXIF pictures, with the
-magick output recorded of each EXIF picture, which the unit tier's stand-in serves. The tiers read
-these alone. They are committed and never generated in the check; `TestFixtureSums` checks the
-table.
+host's magick: its SVGs, its TIFF, HEIC, WebP, and AVIF pictures, and its EXIF pictures, each with
+magick's recorded output of it, which the unit tier's stand-in serves. The tiers read these alone.
+They are committed and never generated in the check; `TestFixtureSums` checks the table.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |
@@ -72,7 +71,10 @@ for c in red lime blue; do magick -size 24x16 xc:$c f-$c.png; done
 avifenc -l f-red.png f-lime.png f-blue.png animated.avif
 ```
 
-heif-enc turns the JPEG's EXIF orientation into the HEIC's irot box.
+heif-enc turns the JPEG's EXIF orientation into the HEIC's irot box. Their conversions are
+checked by size, page order, and pixel, and by two conversions giving the same bytes; no output
+sum is recorded, since magick and its libraries are the host's, not pinned, and their PNG bytes
+may differ from one build to another.
 
 - `exif-gps.jpg`: 48x32, its left half white and its right red, whose EXIF holds Make `Docproc`,
   Model `Fixture One`, Orientation 6, an ImageDescription with a non-ASCII character,
@@ -112,8 +114,5 @@ for f in exif-gps.jpg:jpeg exif-zoneless.heic:heic exif-none.png:png; do
 done
 ```
 
-The magick outputs are ImageMagick 7.1.2-34's; another build may differ, so the integration tier
-checks the typed fields the reader takes from the host's magick, not these bytes. Their conversions are
-checked by size, page order, and pixel, and by two conversions giving the same bytes; no output
-sum is recorded, since magick and its libraries are the host's, not pinned, and their PNG bytes
-may differ from one build to another.
+The magick outputs are ImageMagick 7.1.2-34's, and another build may print other bytes, so the
+integration tier checks the typed fields the reader takes from the host's magick, not these bytes.

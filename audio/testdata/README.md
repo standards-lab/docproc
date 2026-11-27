@@ -2,15 +2,16 @@
 
 The audio package's speech fixture and its reference transcript, the streams fixtures built
 from them, the truncated MP3, the tagged MP3, ffprobe's reports of the tagged MP3 and the scenes
-fixture, and v0.9.0's windows of the speech fixtures. The audio package's
-tests and dispatch's audio stage tests cut the fixtures, through the stand-in in the unit tier,
-which decodes a WAV to its own samples, and through both runners in the integration tier. Every
-file is committed and never generated in the check. The fixtures were built in
+fixture, and v0.9.0's windows of the speech fixtures. The audio package's tests and dispatch's
+audio stage tests cut the fixtures, through the stand-in in the unit tier, which decodes a WAV to
+its own samples, and through both runners in the integration tier. Every file is committed and
+never generated in the check. The speech and streams fixtures were built in
 spike-ai-pipeline-processing by `mise run fixtures:audio` (`scripts/fixtures-audio.sh`), from the
 test corpus that was then at `~/docs`, checking each source against the SHA-256 the corpus's
-`MANIFEST.json` pinned, and by `mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from
-`speech.flac` and `speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to
-its SHA-256 below.
+`MANIFEST.json` pinned, and by
+`mise run fixtures:streams` (`scripts/fixtures-streams.sh`), from `speech.flac` and
+`speech.truth.txt`; the scripts stay there at v0.9.0, and each output is held to its SHA-256
+below.
 
 | File | Source | License | Bytes | SHA-256 |
 | --- | --- | --- | --- | --- |

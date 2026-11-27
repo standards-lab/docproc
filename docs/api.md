@@ -303,7 +303,7 @@ How `document` runs gs, and why (the measurements behind it are on
   one page at a time and the stream at most `Concurrency`, each outcome buffered so a lane never
   waits on the consumer to hand one over.
 
-How `document` reads qpdf and pdfdetach, and why:
+How `document` reads qpdf, pdfdetach, and pdfinfo, and why:
 
 - qpdf lists a field once for each of its widgets, so a radio group's buttons are one field, at its
   first button's place. qpdf's JSON version 2 writes a string as `u:` and its text or `b:` and its
@@ -317,7 +317,7 @@ How `document` reads qpdf and pdfdetach, and why:
   `Key:` padded with spaces to 17 columns and its value, a longer key followed by its value with no
   space; a character it can't print, a line break among them, prints as `?`, so each line is one
   key. It prints no value that isn't a string, so Trapped, a name, never reaches the record.
-  `-isodates` prints CreationDate and ModDate in ISO 8601 with their stored zone, a value that
+  `-isodates` prints CreationDate and ModDate in ISO 8601 with their stored zone, and a value that
   isn't a date as stored. `-meta` prints the metadata stream as stored and nothing without one, and
   the PDF version is only in the summary, so a PDF's metadata is three runs.
 
@@ -349,9 +349,9 @@ How `picture` runs magick and soffice, and why:
   a Converter reads at most 1 MiB of it, some fifty times what ImageMagick 7.1.2 prints.
 - An EXIFReader's run reads the picture from magick's standard input, through the coder its kind
   names and its first image alone, `<kind>:-[0]`, so no part of its path is read as a format, a
-  frame, or a pattern, and writes nothing, its output `info:` and its format
-  `%w %h\n%[EXIF:*]`: the size, then each EXIF property as `exif:<key>=<value>`, sorted by key, a
-  line that doesn't begin so continuing the value before it. The run decodes the picture, not
+  frame, or a pattern. It writes nothing: its output is `info:`, and its format,
+  `%w %h\n%[EXIF:*]`, prints the size, then each EXIF property as `exif:<key>=<value>`, sorted by
+  key; a line that doesn't begin so continues the value before it. The run decodes the picture, not
   `-ping`, since magick reads no WebP's EXIF in a ping; libheif turns a HEIC or an AVIF upright as
   it decodes it, so magick holds its orientation as 1 and its size upright. magick prints a byte it
   can't print as `.`, GPSAltitudeRef's 0 and 1 alike, so no altitude is typed. A GIF, BMP, SVG,
@@ -830,24 +830,24 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
 - **document.** qpdf first says whether the PDF needs a password: one that does raises qpdf's
   finding as the part's own flag, `pdf-encrypt`, then ends with `ErrEncrypted`, nothing rendered;
   one restricted only by its permissions opens with no password and is prepared as any other. A PDF
-  that needs a password is first given a warning that its metadata isn't read. Any other PDF yields
-  first, unless pdfinfo prints no information dictionary and no XMP packet of it, a
-  `MediaPDFMetadata` record named `metadata`, a `metadata.PDF`: its information dictionary, typed,
-  its XMP packet, typed and kept whole, and its PDF version. A PDF whose AcroForm has fields then
-  yields a `MediaForm` record named `forms`, a `document.Form`. Each embedded file, the name tree's
-  and the file attachment annotations', is then streamed from pdfdetach's stdout under its content's
+  that needs a password is first given a warning that its metadata isn't read. Any other PDF first
+  yields a `MediaPDFMetadata` record named `metadata`, a `metadata.PDF`: its information dictionary,
+  typed, its XMP packet, typed and kept whole, and its PDF version; a PDF of which pdfinfo prints no
+  information dictionary and no XMP packet yields none. A PDF whose AcroForm has fields then yields
+  a `MediaForm` record named `forms`, a `document.Form`. Each embedded file, the name tree's and the
+  file attachment annotations', is then streamed from pdfdetach's stdout under its content's
   SHA-256, never its stored name, and found `attachment <name>`; one past the bomb rule, against the
   whole PDF's size, or past the bytes cap is stopped as an archive's entry is, and one pdfdetach
   can't save is a failed child. The pages come last, each `page N`: its text layer, when the request
   reads it and it holds text, then its PNG. Each unit, `metadata`, `form`, `attachments`, and
-  `page N`, reads on its own, an XMP packet that doesn't parse a `metadata` warning beside its
-  record, so a failure of the content's class is a warning naming the unit and its tool, and the
-  part fails, recorded, only when nothing of it reads; a failed page count names no page, and none
-  follows it.
-- **office.** The document's Markdown, named `document`, comes first, then, unless the package has
-  no property part and was converted from no other format, a `MediaOfficeMetadata` record named
-  `metadata`, a `metadata.Office`: its core, extended, and custom properties in stored order and
-  types, and the format it was converted from. After the Markdown, the record, and the sheets, each
+  `page N`, reads on its own, so a failure of the content's class is a warning naming the unit and
+  its tool, and the part fails, recorded, only when nothing of it reads; a failed page count names
+  no page, and none follows it. An XMP packet that doesn't parse is a `metadata` warning beside the
+  record.
+- **office.** The document's Markdown, named `document`, comes first, then a `MediaOfficeMetadata`
+  record named `metadata`, a `metadata.Office`: its core, extended, and custom properties in stored
+  order and types, and the format it was converted from. A package with no property part, converted
+  from no other format, yields no record. After the Markdown, the record, and the sheets, each
   medium the document names is found at `document, media <n>`, in the document's order: a picture
   converted to PNG as its PNG; any other picture, an embedded package, or an OLE object as stored,
   typed by its stored content type, so its own stage reads it; and a linked picture, with no file,
@@ -872,13 +872,14 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   from and a TIFF's first page, as the part is one. A failed EXIF read is a `metadata` warning,
   its tool magick, and the picture still prepares; reading EXIF never changes the picture or its
   PNGs.
-- **vision.** A PNG or JPEG whose EXIF magick reads first yields a `MediaPictureMetadata` record
-  named `metadata`, as the picture stage's, a failed read a `metadata` warning; a GIF or BMP holds
-  none, and no magick runs for it. The stage requires magick. A PNG, JPEG, GIF, or BMP then passes
-  through as an image output named `picture`, its `Path` the part's own file, unchanged, so a layer
-  above meets every picture, converted or not, as an image output. The dispatcher removes the file
-  once the event's body returns, as it does any found part's; a caller that sends the picture on
-  later reads it from `Content` by the output's SHA-256, or links the file within the body.
+- **vision.** The stage requires magick. First, a PNG or JPEG whose EXIF magick reads yields a
+  `MediaPictureMetadata` record named `metadata`, as the picture stage's, and a failed read is a
+  `metadata` warning; a GIF or BMP holds no EXIF, and no magick runs for it. A PNG, JPEG, GIF, or
+  BMP then passes through as an image output named `picture`, its `Path` the part's own file,
+  unchanged, so a layer above meets every picture, converted or not, as an image output. The
+  dispatcher removes the file once the event's body returns, as it does any found part's; a caller
+  that sends the picture on later reads it from `Content` by the output's SHA-256, or links the
+  file within the body.
 - **email.** Each of docproc-mail's lines is a `MediaMail` record, its JSON as `email`'s record
   marshals it back to its line, in its order: `store`; `folder <id>`; `message <id>`, or `message`
   for a `.msg` or an `.eml`, which has no id, then its Markdown of the same name; and a line of a
@@ -923,7 +924,7 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   with none, the part fails, recorded. A source with no audio stream, such as an M4A holding none,
   fails before ffmpeg runs.
 - **video.** One ffmpeg run reads each part. A `MediaMediaMetadata` record named `metadata`, a
-  `metadata.Media` as the audio stage's, comes first, once the probe has found a stream, before
+  `metadata.Media` as the audio stage's, comes first, once the probe has found a stream and before
   ffmpeg runs. The plan, a `MediaVideoPlan` record named `plan`, a `media.VideoPlan` of the run's
   settings with every default applied, comes next, once the run has a stream, just before its first
   frame or window, so a source media refuses has no outputs; it holds no windows, which media plans
@@ -947,9 +948,8 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   It counts only the U+FFFD the decoding put in, matched at the encoding's own unit alignment,
   never one the text stored. Valid UTF-8 without a mark passes through as the part's own file; any
   other text is decoded, streamed, into a file, so a large part is never held in memory, and the
-  decoding stops when the context ends. The text stage runs no tool, so its identity's
-  version is this package's; a golang.org/x/text change that changes the text stage's output
-  changes it.
+  decoding stops when the context ends. The text stage runs no tool, so its identity's version is
+  this package's; a golang.org/x/text change that changes the text stage's output changes it.
 
 How the archive stage reads each kind, and why:
 
