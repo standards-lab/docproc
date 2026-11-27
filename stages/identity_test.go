@@ -44,10 +44,10 @@ func TestBuiltConfigs(t *testing.T) {
 			got[row.Route] = row.Stage.Config
 		}
 	}
-	const officeBefore = "a98c4c3f92006bed742c8041e264abca039efcc4ee69592407f88dfc40b0e9fd"
+	const officeBefore = "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb"
 	want := map[route.Route]string{
 		route.Document:        "776d533ec07b950f8346e688554e5cfa21085cb6788b6047b0e0946a91689937",
-		route.Office:          "406f2f9c1434d127e1edb0650f70db15daa3668bf91bcdb28350b8c0f9fea1bb",
+		route.Office:          "b1b9d4a0803c67734e8745a39ea3808a377a695d6b562448f49e24a2735e8b54",
 		route.VisionConverted: "e0f3f024fe0aa65fa4f403099bb0a4327827a3db6643357d6b3dfd99725f1e07",
 		route.Vision:          "c953ea6e98fa93d682dab2a14cdfe1455cf8c995cb7d276006a137b25a958835",
 		route.Nested:          "9fe416eecf2b6ec8bc2b9d046beb095e15b5b2404cd4e33d16b78e502bfbf5b1",
@@ -58,7 +58,7 @@ func TestBuiltConfigs(t *testing.T) {
 		route.Text:            "16d15a494f8ca3d92d400f6c5df9cae9dcfbe28530f925ce2cae16e5139c86ad",
 	}
 	if got[route.Office] == officeBefore {
-		t.Errorf("office: config %s, the one that ended ODF, WordPerfect, and .xlsb with no processor", officeBefore)
+		t.Errorf("office: config %s, the one that yielded no metadata record", officeBefore)
 	}
 	for _, r := range stages.Routes() {
 		if got[r] != want[r] {

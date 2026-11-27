@@ -9,7 +9,23 @@ tool under `tools/` keeps its own.
 
 ## [Unreleased]
 
+### Added
+
+- Package `metadata`, the metadata records' shapes, one per format, importing no docproc package
+  but `dispatch`, so a reader decodes a record without compiling the stages or the format
+  packages. Its first is `metadata.Office`, under `dispatch.MediaOfficeMetadata`,
+  `application/vnd.docproc.office-metadata+json; version=1`: an office package's core, extended,
+  and custom properties, each in its stored order and stored types, and the format it was
+  converted from, such as `doc` or `odt`.
+- The office stage yields an office metadata record, a record output named `metadata`, after the
+  document's Markdown, for every package with a property part or converted from another format;
+  its event carries its SHA-256, its content in the content store. `dispatch.Version` stays "1",
+  grown by the media type, and the run directory's schema stays "2".
+
 ### Changed
+
+- The office stage's identity hashes its own version, 3, so an index prepares the office route's
+  parts again, to yield their metadata records, and no other stage's.
 
 - `picture.LibreOfficeImage` is `gotenberg/gotenberg:9.10.2-libreoffice`, from 9.10.1-libreoffice,
   and `audio.FFmpegImage` is `linuxserver/ffmpeg:9.0.2-cli-ls91`, from 9.0.2-cli-ls90, each pinned

@@ -16,6 +16,7 @@
 | `stages` | `Build` and its `Options`: docproc's shipped wiring, each route's stage over its format package and tools, found on the host, under the host's run bounds and requests, with the one failure classification and each stage's identity. `cmd/docproc` is its first caller. |
 | `rundir` | `cmd/docproc`'s run directory, read and written: `Open` to read it and `Create` to write it, its runs, the latest that ended, each run's manifest and record, its content store and the path of a content's file, its index, a quarantined part's kept file, and a run's report directory, `runs/<run>/report/`. One process writes a run directory. |
 | `rundir/schema` | The run directory's schema `"2"`: the shapes `cmd/docproc` writes and a reader decodes, a record line, a manifest, an input's file, and a time, each in UTC. It imports no docproc package but `dispatch` and `inspect`. |
+| `metadata` | The metadata records' shapes, one per format, each a JSON value under a versioned media type `dispatch` declares: `Office`, an office package's properties and the format it was converted from. It imports no docproc package but `dispatch`, so a reader decodes a record without compiling the stages. |
 | `internal/cli` | The envelope reader the three readers share: their lines, stderr warnings, exit codes, and media names. |
 | `internal/goldentest`, `internal/mediatest`, `internal/tooltest` | Test helpers: PNG goldens, media fixtures, and the unit tier's stand-in tool. |
 

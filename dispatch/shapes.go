@@ -208,4 +208,8 @@ const (
 	// Skype for Business conversation or missed conversation as email's Message.Conversation views
 	// a docproc-mail message line, under version 1 of its shape.
 	MediaMailConversation = "application/vnd.docproc.mail-conversation+json; version=1"
+	// MediaOfficeMetadata is the office stage's metadata record, one JSON value: an office
+	// package's core, extended, and custom properties and the format it was converted from, as
+	// package metadata's Office declares it, under version 1 of its shape.
+	MediaOfficeMetadata = "application/vnd.docproc.office-metadata+json; version=1"
 )

@@ -64,12 +64,14 @@ stages                     Build and its Options, Routes and ParseRoutes, the st
 internal/tooltest,         test helpers: the unit tier's stand-in tool, golden sums, and
   goldentest, mediatest      media's stand-in ffmpeg run
 rundir, rundir/schema      cmd/docproc's run directory: its shapes, read and written
+metadata                   the metadata records' shapes, one per format; imports dispatch
+                             only
 ```
 
 No root package. Another module reaches `dispatch`, `dispatch/dispatchtest`, `route`, `inspect`,
-`stages.Build`, `rundir`, and the record types docinfer decodes (the plan records, the readers' line
-types, `email.Threader`); the module builds on every 64-bit platform, and only running a tool needs
-Linux.
+`stages.Build`, `rundir`, and the record types docinfer decodes (the plan records, `metadata`'s
+records, the readers' line types, `email.Threader`); the module builds on every 64-bit platform, and
+only running a tool needs Linux.
 
 ## Inspection and routing
 
@@ -821,16 +823,19 @@ What each stage yields, and why, beside the `Meta` keys `dispatch` documents on 
   it holds text, then its PNG. Each unit, `form`, `attachments`, and `page N`, reads on its own, so
   a failure of the content's class is a warning naming the unit and its tool, and the part fails,
   recorded, only when nothing of it reads; a failed page count names no page, and none follows it.
-- **office.** After the Markdown and the sheets, each medium the document names is found at
-  `document, media <n>`, in the document's order: a picture converted to PNG as its PNG; any other
-  picture, an embedded package, or an OLE object as stored, typed by its stored content type, so its
-  own stage reads it; and a linked picture, with no file, an unread child, no processor yet. An RTF
-  converts through LibreOffice to docx, as a `.doc` does, and so do a WordPerfect document, to docx,
-  an Excel binary workbook, to xlsx, and an ODF text, spreadsheet, presentation, or drawing package
-  or template, to docx, xlsx, or pptx, a drawing through Impress's import. Any other ODF package, a
-  formula, chart, database, or image among them, ends with `ErrNoProcessor`, the reason naming its
-  type, and an ODF package whose manifest holds encryption data ends with `ErrEncrypted` before
-  LibreOffice runs.
+- **office.** The document's Markdown, named `document`, comes first, then, unless the package has
+  no property part and was converted from no other format, a `MediaOfficeMetadata` record named
+  `metadata`, a `metadata.Office`: its core, extended, and custom properties in stored order and
+  types, and the format it was converted from. After the Markdown, the record, and the sheets, each
+  medium the document names is found at `document, media <n>`, in the document's order: a picture
+  converted to PNG as its PNG; any other picture, an embedded package, or an OLE object as stored,
+  typed by its stored content type, so its own stage reads it; and a linked picture, with no file,
+  an unread child, no processor yet. An RTF converts through LibreOffice to docx, as a `.doc` does,
+  and so do a WordPerfect document, to docx, an Excel binary workbook, to xlsx, and an ODF text,
+  spreadsheet, presentation, or drawing package or template, to docx, xlsx, or pptx, a drawing
+  through Impress's import. Any other ODF package, a formula, chart, database, or image among them,
+  ends with `ErrNoProcessor`, the reason naming its type, and an ODF package whose manifest holds
+  encryption data ends with `ErrEncrypted` before LibreOffice runs.
   docproc-ooxml writes its lines once it has read the whole package, so its run is a unit, under
   `Timeout`.
 - **picture.** A TIFF yields a PNG per page, in page order, each `page N`, as the document stage

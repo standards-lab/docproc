@@ -24,6 +24,7 @@ import (
 	"github.com/standards-lab/docproc/inspect"
 	"github.com/standards-lab/docproc/internal/tooltest"
 	"github.com/standards-lab/docproc/media"
+	"github.com/standards-lab/docproc/metadata"
 	"github.com/standards-lab/docproc/office"
 	"github.com/standards-lab/docproc/onenote"
 	"github.com/standards-lab/docproc/picture"
@@ -119,6 +120,30 @@ func TestOfficeStageReal(t *testing.T) {
 	}
 	if last := events[len(events)-1]; last.Part.Depth != 0 || last.Children != 8 {
 		t.Errorf("the document: %s@%d, %d children", last.Part.Name, last.Part.Depth, last.Children)
+	}
+}
+
+func TestOfficeStageMetadataReal(t *testing.T) {
+	d := newDispatcher(t, allStages(t), dispatch.NewMemoryIndex(0))
+	events := dispatchAll(t, d, tooltest.Tools(t, "ooxml/fixtures/generated/docx/links.libreoffice.docx"), nil)
+	ev := events[len(events)-1]
+	o := outputNamed(t, ev, dispatch.RecordOutput, "metadata")
+	if o.MediaType != dispatch.MediaOfficeMetadata {
+		t.Errorf("media type %q, want %q", o.MediaType, dispatch.MediaOfficeMetadata)
+	}
+	var rec metadata.Office
+	if err := jsonv2.Unmarshal(o.Value, &rec); err != nil {
+		t.Fatal(err)
+	}
+	want := metadata.Properties{
+		{Key: "Due", Value: "2026-02-01T00:00:00Z"}, {Key: "Project", Value: "docproc"},
+		{Key: "Ratio", Value: 0.25}, {Key: "Reviewed", Value: true}, {Key: "Revision", Value: 7.0},
+	}
+	if !slices.EqualFunc(rec.Custom, want, func(a, b metadata.Property) bool { return a == b }) {
+		t.Errorf("custom %+v, want %+v", rec.Custom, want)
+	}
+	if len(rec.Core) == 0 || rec.Core[0] != (metadata.Property{Key: "created", Value: "2013-12-23T23:15:00Z"}) || len(rec.Extended) == 0 || rec.ConvertedFrom != "" {
+		t.Errorf("record %+v", rec)
 	}
 }
 
@@ -290,6 +315,10 @@ func TestOfficeConverted(t *testing.T) {
 		doc := outputNamed(t, ev, dispatch.MarkdownOutput, "document")
 		if doc.Meta[dispatch.MetaConvertedFrom] != c.from || !strings.Contains(string(doc.Value), c.text) {
 			t.Errorf("%s: converted from %q, Markdown %q; want %s holding %q", name, doc.Meta[dispatch.MetaConvertedFrom], doc.Value, c.from, c.text)
+		}
+		var rec metadata.Office
+		if err := jsonv2.Unmarshal(outputNamed(t, ev, dispatch.RecordOutput, "metadata").Value, &rec); err != nil || rec.ConvertedFrom != c.from {
+			t.Errorf("%s: the metadata record converted from %q, %v; want %s", name, rec.ConvertedFrom, err, c.from)
 		}
 	}
 	formula := input(t, "x.odf", zipOf(t, "mimetype", "application/vnd.oasis.opendocument.formula", "content.xml", "<x/>"))
