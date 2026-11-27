@@ -10,6 +10,20 @@ each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.1.8] - 2026-11-27
+
+This release requires the docproc base module at v0.10.0. Its exported API is unchanged.
+
+### Changed
+
+- The module requires the docproc base module at v0.10.0, from v0.9.0, and passes its
+  `dispatchtest.Index` suite; its [CHANGELOG](../CHANGELOG.md) states the base module's changes.
+  Each stage that yields a new metadata record or key hashes its own version anew, so the index
+  holds a caller's earlier entries for those stages under the old identities, and a run over it
+  prepares the office, document, audio, video, vision, and vision-converted routes' parts and the
+  nested route's mail parts again, and no other stage's. The index itself is unchanged and reads
+  none of an output's content.
+
 ## [v0.1.7] - 2026-11-25
 
 This release requires the docproc base module at v0.9.0. Its exported API is unchanged.
@@ -147,7 +161,8 @@ tier runs on; and pgx v5.13.0, whose `database/sql` driver the host's pool must 
   skipped. The host drives it from a sweeper; the age has no default. A non-positive age and a
   budget below 1 are refused, matching `dispatch.ErrRequest`, and a nil `db` panics.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.7...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.8...HEAD
+[v0.1.8]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.7...postgres/v0.1.8
 [v0.1.7]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.6...postgres/v0.1.7
 [v0.1.6]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.5...postgres/v0.1.6
 [v0.1.5]: https://github.com/standards-lab/docproc/compare/postgres/v0.1.4...postgres/v0.1.5

@@ -10,6 +10,45 @@ postgres modules, and each system tool under `tools/` keep their own.
 
 ## [Unreleased]
 
+## [v0.2.8] - 2026-11-27
+
+This release requires the docproc base module at v0.10.0, whose changes reach `docproc run` as
+Changed says. Its command line, exit codes, and run directory's schema are unchanged; the run
+directory holds each format's metadata record, a message's meta holds its threading keys, and the
+document and vision stages each require one more tool.
+
+### Changed
+
+- The module requires the docproc base module at v0.10.0, and `docproc run` takes its changes,
+  which its [CHANGELOG](../../CHANGELOG.md) states in full:
+  - A record output named `metadata` in `record.jsonl` holds a format's own metadata, under a
+    versioned media type of its own: a PDF's information dictionary and XMP packet, read by
+    pdfinfo; an office package's core, extended, and custom properties and the format it was
+    converted from; an audio or video file's container and streams, read by ffprobe; and a
+    picture's EXIF, read by magick. Its event carries the record's SHA-256, and the record is in
+    the content store. A PDF or picture whose metadata can't be read gets a `metadata` warning
+    and still prepares. A message's mail record and a OneNote page's record serve as their
+    metadata records.
+  - A message's outputs carry `in_reply_to` and `references` in their meta when the message
+    stores them, each as stored, `references` its Message-IDs separated by spaces.
+  - The document stage requires pdfinfo, from poppler-utils 22.02 or later, beside gs, qpdf,
+    pdfdetach, and pdftotext. poppler-utils ships pdfinfo with pdfdetach and pdftotext, so a host
+    that ran the document stage before runs it still. The stage table's document row carries
+    pdfinfo's version line, and `DOCPROC_UNIT_TIMEOUT` bounds its runs.
+  - The vision stage requires magick, ImageMagick 7.1 or later, which the picture and office
+    stages require already. On a host without it, or with an older one, `docproc run` leaves the
+    vision stage out, and its stage table says why, so PNG, JPEG, GIF, and BMP parts have no
+    processor. The stage table's vision row carries magick's version line, and
+    `DOCPROC_UNIT_TIMEOUT`, `DOCPROC_TOOL_MEMORY`, and the `DOCPROC_MAGICK_*` limits bound its
+    runs.
+  - Each stage that yields a new record or key hashes its own version anew, so a run over an index
+    prepares the office, document, audio, video, vision, and vision-converted routes' content and
+    the nested route's mail parts again rather than replaying them, and replays every other
+    stage's.
+  - soffice runs in `gotenberg/gotenberg:9.10.2-libreoffice`, which carries the same LibreOffice,
+    26.8.2.2, and the ffmpeg default is `linuxserver/ffmpeg:9.0.2-cli-ls91`, which carries the
+    same FFmpeg, 9.0.2, each pinned by its multi-arch index digest.
+
 ## [v0.2.7] - 2026-11-25
 
 This release requires the docproc base module at v0.9.0, whose changes reach `docproc run` as
@@ -280,7 +319,8 @@ and go-core v0.12.0, in place of the spike's port of go-cli-sdk v0.2.0's.
   writes, read back through `rundir`, and the report it renders of a fixture run and of a killed
   run.
 
-[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.7...HEAD
+[Unreleased]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.8...HEAD
+[v0.2.8]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.7...cmd/docproc/v0.2.8
 [v0.2.7]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.6...cmd/docproc/v0.2.7
 [v0.2.6]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.5...cmd/docproc/v0.2.6
 [v0.2.5]: https://github.com/standards-lab/docproc/compare/cmd/docproc/v0.2.4...cmd/docproc/v0.2.5
